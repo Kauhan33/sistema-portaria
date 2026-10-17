@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# dados reais da portaria (CPF, celular) nunca vão para o git
+registros_portaria*
+*.db
+*.db-journal
+
+# material da faculdade e entrega (nome, RA, professora) ficam só no computador
+material_aula/
+entrega/
+*.pdf
+*.docx
+
+# gerados pelo PyInstaller
+build/
+dist/
+*.spec

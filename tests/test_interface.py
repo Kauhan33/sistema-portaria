@@ -1,0 +1,577 @@
+"""Testa a tela de verdade: preenche campos e clica nos botões (janela oculta)."""
+
+import json
+import os
+import tempfile
+import tkinter as tk
+import unittest
+from datetime import datetime, timedelta
+from unittest import mock
+
+from portaria import dados
+from portaria.interface import AppPortaria
+from portaria.usuarios import LIMITE_TENTATIVAS, autenticar, gerar_hash
+from portaria.validacao import FORMATO, converter_data
+
+VISITA_ANTIGA = {"nome": "Beto Rocha", "cpf": "11144477735",
+                 "celular": "31933334444", "placa": "QWE1234",
+                 "tipo": "Professor", "entrada": "15/10/2026 07:00",
+                 "saida": "15/10/2026 12:00"}
+
+
+def ha_uma_hora():
+    return (datetime.now() - timedelta(hours=1)).strftime(FORMATO)
+
+
+def criar_usuario(banco, nome, login, perfil, senha):
+    id_ = banco.criar_usuario(nome, login, perfil, gerar_hash(senha))
+    return {"id": id_, "login": login, "nome": nome, "perfil": perfil}
+
+
+class BaseInterface(unittest.TestCase):
+    entrar_como = "admin"      # "admin", "porteiro" ou None (abre no login)
+    com_usuarios = True        # False = banco vazio (primeiro acesso)
+
+    def setUp(self):
+        try:
+            self.janela = tk.Tk()
+        except tk.TclError:
+            self.skipTest("sem tela disponível para o Tkinter")
+        self.janela.withdraw()
+        self.pasta = tempfile.TemporaryDirectory()
+        self.caminho_db = os.path.join(self.pasta.name, "portaria.db")
+        self.caminho_json = os.path.join(self.pasta.name, "registros_portaria.json")
+
+        # caixas de mensagem e de diálogo viram "falsas" para o teste não travar
+        self.msg = mock.MagicMock()
+        self.msg.askyesno.return_value = True
+        self.dialogo = mock.MagicMock()
+        for alvo, falso in [("portaria.interface.messagebox", self.msg),
+                            ("portaria.tela_usuarios.messagebox", self.msg),
+                            ("portaria.tela_pessoas.messagebox", self.msg),
+                            ("portaria.tela_usuarios.simpledialog", self.dialogo)]:
+            patcher = mock.patch(alvo, falso)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+        self.banco = dados.Banco(self.caminho_db)
+        if self.com_usuarios:
+            self.admin = criar_usuario(self.banco, "Ana Admin", "ana.admin",
+                                       "admin", "senha123")
+            self.porteiro = criar_usuario(self.banco, "Paulo Porteiro", "paulo",
+                                          "porteiro", "senha456")
+        usuario = {"admin": getattr(self, "admin", None),
+                   "porteiro": getattr(self, "porteiro", None)}.get(self.entrar_como)
+        self.app = AppPortaria(self.caminho_db, self.janela,
+                               json_antigo=self.caminho_json, usuario=usuario)
+
+    def tearDown(self):
+        self.app.janela.destroy()
+        self.pasta.cleanup()
+
+    def no_banco(self):
+        return self.banco.listar()
+
+    def acoes(self):
+        return [(e["usuario"], e["acao"]) for e in self.banco.listar_eventos()]
+
+    def preencher(self, nome="Ana Silva", cpf="52998224725",
+                  celular="31987654321", placa="", tipo="Visitante"):
+        self.app.nome.insert(0, nome)
+        self.app.cpf.insert(0, cpf)
+        self.app.celular.insert(0, celular)
+        self.app.var_placa.set(placa)
+        self.app.tipo.set(tipo)
+
+    def cadastrar_um(self):
+        self.preencher()
+        self.app.cadastrar()
+        return self.app.tabela.get_children()[0]
+
+    def todos(self, widget):
+        for filho in widget.winfo_children():
+            yield filho
+            yield from self.todos(filho)
+
+
+class TestCadastroComoAdmin(BaseInterface):
+    def test_cadastrar_salva_no_banco_e_limpa_o_formulario(self):
+        self.preencher(placa="abc1d23")
+        self.app.cadastrar()
+        self.msg.showinfo.assert_called_with("Cadastro",
+                                             "Registro cadastrado com sucesso!")
+        salvos = self.no_banco()
+        self.assertEqual(len(salvos), 1)
+        self.assertEqual(salvos[0]["placa"], "ABC1D23")
+        self.assertEqual(self.app.nome.get(), "")
+        self.assertEqual(self.app.tabela.get_children(), (str(salvos[0]["id"]),))
+        self.assertIn(("ana.admin", "Cadastro de entrada"), self.acoes())
+
+    def test_cadastro_invalido_mostra_erro_e_nao_salva(self):
+        self.preencher(nome="123 456")
+        self.app.cadastrar()
+        self.msg.showerror.assert_called_once()
+        self.assertEqual(self.no_banco(), [])
+
+    def test_registrar_saida_e_excluir(self):
+        linha = self.cadastrar_um()
+        self.app.tabela.selection_set(linha)
+        self.app.registrar_saida()
+        self.assertIsNotNone(converter_data(self.no_banco()[0]["saida"]))
+        self.assertNotEqual(self.app.tabela.item(linha)["values"][-1], "— dentro —")
+
+        self.app.tabela.selection_set(linha)
+        self.app.excluir_selecionado()
+        self.assertEqual(self.no_banco(), [])
+        self.assertEqual(self.app.tabela.get_children(), ())
+        exclusao = self.banco.listar_eventos()[0]
+        self.assertEqual((exclusao["usuario"], exclusao["acao"]),
+                         ("ana.admin", "Exclusão de registro"))
+        self.assertIn("Ana Silva", exclusao["detalhe"])
+
+    def test_admin_ve_botao_excluir_e_aba_usuarios(self):
+        self.assertIsNotNone(self.app.btn_excluir)
+        self.assertIsNotNone(self.app.aba_usuarios)
+        self.assertIn("Administrador", self.app.lbl_usuario.cget("text"))
+
+    def test_rotulo_mostra_formato_legivel(self):  # falha F4 da v1
+        textos = [w.cget("text") for w in self.todos(self.app.aba_cad)
+                  if isinstance(w, tk.Label)]
+        self.assertTrue(any("dd/mm/aaaa hh:mm" in t for t in textos))
+        self.assertFalse(any("%d" in t for t in textos))
+
+
+class TestPorteiro(BaseInterface):
+    entrar_como = "porteiro"
+
+    def test_porteiro_cadastra_e_registra_saida(self):
+        linha = self.cadastrar_um()
+        self.app.tabela.selection_set(linha)
+        self.app.registrar_saida()
+        self.assertTrue(self.no_banco()[0]["saida"])
+        self.assertIn(("paulo", "Saída registrada"), self.acoes())
+
+    def test_porteiro_nao_ve_botao_excluir_nem_aba_usuarios(self):  # RN02
+        self.assertIsNone(self.app.btn_excluir)
+        self.assertIsNone(self.app.aba_usuarios)
+        textos = [w.cget("text") for w in self.todos(self.app.aba_cad)
+                  if isinstance(w, tk.Button)]
+        self.assertFalse(any("Excluir" in t for t in textos))
+
+    def test_porteiro_ve_a_aba_pessoas(self):
+        self.assertIsNotNone(self.app.tela_pessoas)
+
+    def test_porteiro_nao_consegue_excluir(self):  # RN02
+        linha = self.cadastrar_um()
+        self.app.tabela.selection_set(linha)
+        self.app.excluir_selecionado()
+        self.msg.showerror.assert_called_with(
+            "Acesso negado", "Somente o administrador pode excluir registros.")
+        self.assertEqual(len(self.no_banco()), 1)
+
+
+class TestLogin(BaseInterface):
+    entrar_como = None
+
+    def tentar_login(self, login, senha):
+        tela = self.app.tela_login
+        tela.campo_login.delete(0, tk.END)
+        tela.campo_login.insert(0, login)
+        tela.campo_senha.delete(0, tk.END)
+        tela.campo_senha.insert(0, senha)
+        tela.entrar()
+
+    def test_abre_na_tela_de_login_com_senha_oculta(self):  # RNF02
+        self.assertIsNone(self.app.usuario)
+        self.assertFalse(self.app.tela_login.primeiro_acesso)
+        self.assertEqual(self.app.tela_login.campo_senha.cget("show"), "•")
+        self.assertFalse(self.app.sessao.winfo_ismapped())
+
+    def test_login_certo_entra_no_sistema(self):
+        self.tentar_login(" Ana.Admin ", "senha123")
+        self.assertEqual(self.app.usuario["login"], "ana.admin")
+        self.assertTrue(hasattr(self.app, "aba_cad"))
+        self.assertIn(("ana.admin", "Entrou no sistema"), self.acoes())
+
+    def test_senha_errada_nao_entra(self):
+        self.tentar_login("ana.admin", "errada")
+        self.assertIsNone(self.app.usuario)
+        self.assertIn("incorretos", self.app.tela_login.lbl_erro.cget("text"))
+        self.assertEqual(self.app.tela_login.campo_senha.get(), "")
+        self.assertIn(("ana.admin", "Login recusado"), self.acoes())
+
+    def test_usuario_desativado_nao_entra(self):
+        self.banco.definir_ativo(self.porteiro["id"], False)
+        self.tentar_login("paulo", "senha456")
+        self.assertIsNone(self.app.usuario)
+
+    def test_bloqueio_depois_de_muitas_tentativas(self):
+        agora = [500.0]
+        self.app.tentativas.relogio = lambda: agora[0]
+        for _ in range(LIMITE_TENTATIVAS):
+            self.tentar_login("ana.admin", "errada")
+        self.tentar_login("ana.admin", "senha123")      # certa, mas bloqueado
+        self.assertIsNone(self.app.usuario)
+        self.assertIn("Aguarde", self.app.tela_login.lbl_erro.cget("text"))
+        agora[0] += 31
+        self.tentar_login("ana.admin", "senha123")
+        self.assertEqual(self.app.usuario["login"], "ana.admin")
+
+    def test_sair_volta_para_o_login(self):
+        self.tentar_login("paulo", "senha456")
+        self.app.sair()
+        self.assertIsNone(self.app.usuario)
+        self.assertEqual(self.janela.bind("<Return>"), "")
+        self.assertEqual(self.janela.bind("<F2>"), "")
+        self.assertIn(("paulo", "Saiu do sistema"), self.acoes())
+        self.tentar_login("ana.admin", "senha123")      # outro usuário entra
+        self.assertEqual(self.app.usuario["perfil"], "admin")
+
+
+class TestPrimeiroAcesso(BaseInterface):
+    entrar_como = None
+    com_usuarios = False
+
+    def preencher_admin(self, senha="segredo1", confirmacao="segredo1"):
+        tela = self.app.tela_login
+        tela.campo_nome.insert(0, "Carla Dias")
+        tela.campo_login.insert(0, "carla")
+        tela.campo_senha.insert(0, senha)
+        tela.campo_confirmacao.insert(0, confirmacao)
+        tela.criar_administrador()
+
+    def test_banco_vazio_pede_para_criar_o_administrador(self):
+        self.assertTrue(self.app.tela_login.primeiro_acesso)
+
+    def test_senha_curta_e_recusada(self):
+        self.preencher_admin(senha="123", confirmacao="123")
+        self.assertIn("pelo menos", self.app.tela_login.lbl_erro.cget("text"))
+        self.assertFalse(self.banco.tem_usuarios())
+
+    def test_cria_administrador_e_entra(self):
+        self.preencher_admin()
+        self.assertEqual(self.app.usuario["perfil"], "admin")
+        self.assertIsNotNone(autenticar(self.banco, "carla", "segredo1"))
+
+    def test_importa_o_json_da_v1_mesmo_antes_do_login(self):
+        self.app.janela.destroy()
+        with open(self.caminho_json, "w", encoding="utf-8") as f:
+            json.dump([{"nome": "Ana Silva", "cpf": "52998224725",
+                        "celular": "31987654321", "placa": "", "tipo": "Aluno",
+                        "entrada": "15/10/2026 08:00", "saida": ""}], f)
+        self.janela = tk.Tk()
+        self.janela.withdraw()
+        self.app = AppPortaria(self.caminho_db, self.janela,
+                               json_antigo=self.caminho_json)
+        self.assertIn("1 registro(s)", self.msg.showinfo.call_args[0][1])
+        self.preencher_admin()
+        self.assertEqual(len(self.app.tabela.get_children()), 1)
+
+
+class TestAbaUsuarios(BaseInterface):
+    def setUp(self):
+        super().setUp()
+        self.aba = self.app.tela_usuarios
+
+    def linha_de(self, login):
+        return next(i for i in self.aba.tabela.get_children()
+                    if self.aba.tabela.item(i)["values"][0] == login)
+
+    def test_lista_os_usuarios(self):
+        logins = [self.aba.tabela.item(i)["values"][0]
+                  for i in self.aba.tabela.get_children()]
+        self.assertEqual(logins, ["ana.admin", "paulo"])
+
+    def test_criar_porteiro(self):
+        self.aba.nome.insert(0, "Maria Souza")
+        self.aba.login.insert(0, "Maria.Souza")
+        self.aba.senha.insert(0, "segredo1")
+        self.aba.confirmacao.insert(0, "segredo1")
+        self.aba.criar()
+        novo = autenticar(self.banco, "maria.souza", "segredo1")
+        self.assertEqual(novo["perfil"], "porteiro")
+        self.linha_de("maria.souza")      # aparece na lista
+        self.assertEqual(self.aba.senha.get(), "")
+        self.assertIn(("ana.admin", "Usuário criado"), self.acoes())
+
+    def test_login_repetido_e_recusado(self):
+        self.aba.nome.insert(0, "Outro Paulo")
+        self.aba.login.insert(0, "paulo")
+        self.aba.senha.insert(0, "segredo1")
+        self.aba.confirmacao.insert(0, "segredo1")
+        self.aba.criar()
+        self.assertIn("Já existe", self.msg.showerror.call_args[0][1])
+
+    def test_admin_nao_desativa_a_si_mesmo(self):
+        self.aba.tabela.selection_set(self.linha_de("ana.admin"))
+        self.aba.alternar_ativo()
+        self.assertIn("próprio", self.msg.showerror.call_args[0][1])
+
+    def test_desativar_e_reativar_porteiro(self):
+        self.aba.tabela.selection_set(self.linha_de("paulo"))
+        self.aba.alternar_ativo()
+        self.assertIsNone(autenticar(self.banco, "paulo", "senha456"))
+        self.assertEqual(self.aba.tabela.item(self.linha_de("paulo"))["values"][3],
+                         "Desativado")
+        self.aba.tabela.selection_set(self.linha_de("paulo"))
+        self.aba.alternar_ativo()
+        self.assertIsNotNone(autenticar(self.banco, "paulo", "senha456"))
+
+    def test_redefinir_senha(self):
+        self.dialogo.askstring.side_effect = ["novasenha", "novasenha"]
+        self.aba.tabela.selection_set(self.linha_de("paulo"))
+        self.aba.redefinir_senha()
+        self.assertIsNone(autenticar(self.banco, "paulo", "senha456"))
+        self.assertIsNotNone(autenticar(self.banco, "paulo", "novasenha"))
+        self.assertIn(("ana.admin", "Senha redefinida"), self.acoes())
+
+    def test_historico_mostra_as_acoes(self):
+        self.cadastrar_um()
+        self.aba.atualizar()
+        acoes = [self.aba.historico.item(i)["values"][2]
+                 for i in self.aba.historico.get_children()]
+        self.assertEqual(acoes[0], "Cadastro de entrada")
+
+
+class TestPreenchimentoAutomatico(BaseInterface):
+    entrar_como = "porteiro"
+
+    def setUp(self):
+        super().setUp()
+        self.banco.inserir(dict(VISITA_ANTIGA))
+
+    def digitar_cpf(self, cpf):
+        self.app.cpf.delete(0, tk.END)
+        self.app.cpf.insert(0, cpf)
+
+    def campos(self):
+        a = self.app
+        return (a.nome.get(), a.celular.get(), a.var_placa.get(), a.tipo.get())
+
+    def dica(self):
+        return self.app.lbl_pessoa.cget("text")
+
+    def test_cpf_de_quem_ja_veio_preenche_os_dados(self):
+        self.digitar_cpf("11144477735")
+        self.assertEqual(self.campos(),
+                         ("Beto Rocha", "31933334444", "QWE1234", "Professor"))
+        self.assertIn("Já cadastrado: 1 visita(s)", self.dica())
+
+    def test_basta_o_cpf_para_cadastrar_a_entrada(self):
+        self.digitar_cpf("11144477735")
+        self.app.cadastrar()
+        self.assertEqual(len(self.no_banco()), 2)
+        self.assertEqual(self.banco.buscar_pessoa("11144477735")["visitas"], 2)
+
+    def test_cpf_novo_nao_preenche_nada(self):
+        self.digitar_cpf("52998224725")
+        self.assertEqual(self.campos(), ("", "", "", ""))
+        self.assertIn("Pessoa nova", self.dica())
+
+    def test_cpf_invalido_avisa_na_hora(self):
+        self.digitar_cpf("12345678900")
+        self.assertIn("CPF inválido", self.dica())
+
+    def test_nao_apaga_o_que_ja_foi_digitado(self):
+        self.app.nome.insert(0, "Roberto Rocha")
+        self.digitar_cpf("11144477735")
+        self.assertEqual(self.app.nome.get(), "Roberto Rocha")
+        self.assertEqual(self.app.celular.get(), "31933334444")
+
+    def test_trocar_o_cpf_desfaz_so_o_que_foi_preenchido_sozinho(self):
+        self.digitar_cpf("11144477735")
+        self.app.celular.delete(0, tk.END)
+        self.app.celular.insert(0, "31900001111")      # porteiro corrigiu
+        self.app.cpf.delete(10, tk.END)                 # apagou um dígito
+        self.assertEqual(self.campos(), ("", "31900001111", "", ""))
+
+    def test_avisa_quando_a_pessoa_ja_esta_no_campus(self):
+        self.banco.inserir(dict(VISITA_ANTIGA, entrada=ha_uma_hora(), saida=""))
+        self.digitar_cpf("11144477735")
+        self.assertIn("está no campus desde", self.dica())
+
+    def test_limpar_volta_ao_inicio(self):
+        self.digitar_cpf("11144477735")
+        self.app.limpar()
+        self.assertEqual(self.campos(), ("", "", "", ""))
+        self.assertIn("Digite o CPF primeiro", self.dica())
+
+
+class TestAbaPessoas(BaseInterface):
+    def setUp(self):
+        super().setUp()
+        self.banco.inserir(dict(VISITA_ANTIGA))
+        self.banco.inserir({"nome": "Ana Silva", "cpf": "52998224725",
+                            "celular": "31987654321", "placa": "",
+                            "tipo": "Visitante", "entrada": ha_uma_hora(),
+                            "saida": ""})
+        self.aba = self.app.tela_pessoas
+        self.aba.atualizar()
+        self.beto = self.banco.buscar_pessoa("11144477735")["id"]
+        self.ana = self.banco.buscar_pessoa("52998224725")["id"]
+
+    def selecionar(self, id_pessoa):
+        self.aba.tabela.selection_set(str(id_pessoa))
+        self.aba._ao_selecionar()
+
+    def valores(self, id_pessoa):
+        return self.aba.tabela.item(str(id_pessoa))["values"]
+
+    def test_lista_pessoas_com_visitas_e_situacao(self):
+        self.assertEqual(self.aba.tabela.get_children(),
+                         (str(self.ana), str(self.beto)))   # ordem alfabética
+        self.assertEqual(self.valores(self.ana)[-1], "No campus")
+        self.assertEqual(self.valores(self.beto)[5:], [1, "15/10/2026 07:00", "—"])
+        self.assertIn("No campus agora: 1", self.aba.lbl_total.cget("text"))
+
+    def test_busca(self):
+        self.aba.busca.insert(0, "beto")
+        self.aba.atualizar()
+        self.assertEqual(self.aba.tabela.get_children(), (str(self.beto),))
+
+    def test_selecionar_preenche_o_formulario(self):
+        self.selecionar(self.beto)
+        self.assertEqual(self.aba.nome.get(), "Beto Rocha")
+        self.assertEqual(self.aba.var_placa.get(), "QWE1234")
+        self.assertIn("111.444.777-35", self.aba.lbl_titulo.cget("text"))
+
+    def test_salvar_alteracoes(self):
+        self.selecionar(self.beto)
+        self.aba.celular.delete(0, tk.END)
+        self.aba.celular.insert(0, "31955556666")
+        self.aba.salvar()
+        self.assertEqual(self.banco.buscar_pessoa("11144477735")["celular"],
+                         "31955556666")
+        self.assertIn(("ana.admin", "Dados de pessoa alterados"), self.acoes())
+
+    def test_salvar_dados_invalidos_e_recusado(self):
+        self.selecionar(self.beto)
+        self.aba.nome.delete(0, tk.END)
+        self.aba.nome.insert(0, "Beto")
+        self.aba.salvar()
+        self.assertIn("nome completo", self.msg.showerror.call_args[0][1])
+        self.assertEqual(self.banco.buscar_pessoa("11144477735")["nome"],
+                         "Beto Rocha")
+
+    def test_registrar_entrada_abre_o_cadastro_preenchido(self):
+        self.selecionar(self.beto)
+        self.aba.registrar_entrada()
+        self.assertEqual(self.app.abas.select(), str(self.app.aba_cad))
+        self.assertEqual(self.app.cpf.get(), "11144477735")
+        self.assertEqual(self.app.nome.get(), "Beto Rocha")
+
+    def test_quem_esta_no_campus_nao_ganha_outra_entrada(self):
+        self.selecionar(self.ana)
+        self.aba.registrar_entrada()
+        self.assertIn("já está no campus", self.msg.showwarning.call_args[0][1])
+        self.assertEqual(self.app.cpf.get(), "")
+
+    def test_acao_sem_selecao_avisa(self):
+        self.aba.salvar()
+        self.assertIn("Selecione", self.msg.showwarning.call_args[0][1])
+
+
+
+class TestSaidaRapida(BaseInterface):
+    entrar_como = "porteiro"
+
+    def setUp(self):
+        super().setUp()
+        entrada = ha_uma_hora()
+        pessoas = [("Beto Rocha", "11144477735", "QWE1234"),
+                   ("Ana Silva", "52998224725", "QWE1234"),     # mesma carona
+                   ("Duda Reis", "39053344705", "")]
+        self.ids = {}
+        for nome, cpf, placa in pessoas:
+            self.ids[nome.split()[0]] = self.banco.inserir(
+                {"nome": nome, "cpf": cpf, "celular": "31987654321",
+                 "placa": placa, "tipo": "Visitante", "entrada": entrada,
+                 "saida": ""})
+        self.app.registros = self.banco.listar()
+        self.app.atualizar_tabela()
+
+    def saida(self, nome):
+        return next(r["saida"] for r in self.no_banco()
+                    if r["id"] == self.ids[nome])
+
+    def digitar(self, texto):
+        self.app.campo_saida_rapida.delete(0, tk.END)
+        self.app.campo_saida_rapida.insert(0, texto)
+        return self.app.saida_rapida()
+
+    def aviso(self):
+        return self.app.lbl_aviso.cget("text")
+
+    def desfazer_visivel(self):
+        return self.app.btn_desfazer.winfo_manager() == "pack"
+
+    def test_saida_pelo_cpf_formatado(self):
+        resultado = self.digitar("111.444.777-35")
+        self.assertEqual(resultado, "break")       # Enter não cadastra nada
+        self.assertTrue(self.saida("Beto"))
+        self.assertEqual(self.saida("Ana"), "")
+        self.assertEqual(self.app.campo_saida_rapida.get(), "")
+        self.assertIn("Saída de Beto registrada", self.aviso())
+        self.assertTrue(self.desfazer_visivel())
+        self.msg.showinfo.assert_not_called()      # não trava com caixinha
+        self.assertIn(("paulo", "Saída registrada"), self.acoes())
+
+    def test_placa_de_duas_pessoas_pergunta_antes(self):
+        self.msg.askyesno.return_value = False
+        self.digitar("qwe-1234")
+        self.assertIn("Beto Rocha", self.msg.askyesno.call_args[0][1])
+        self.assertEqual((self.saida("Beto"), self.saida("Ana")), ("", ""))
+        self.msg.askyesno.return_value = True
+        self.digitar("qwe-1234")
+        self.assertTrue(self.saida("Beto") and self.saida("Ana"))
+        self.assertIn("Beto e Ana", self.aviso())
+
+    def test_cpf_ou_placa_sem_ninguem_dentro(self):
+        for texto in ["12345678909", "111444777", "ZZZ9999"]:
+            with self.subTest(texto=texto):
+                self.digitar(texto)
+                self.assertIn("Ninguém no campus", self.msg.showerror.call_args[0][1])
+        self.assertTrue(all(not r["saida"] for r in self.no_banco()))
+
+    def test_quem_ja_saiu_nao_e_encontrado_de_novo(self):
+        self.digitar("39053344705")
+        self.digitar("39053344705")
+        self.assertIn("Ninguém no campus", self.msg.showerror.call_args[0][1])
+
+    def test_campo_vazio_avisa(self):
+        self.digitar("  ")
+        self.assertIn("Digite o CPF", self.msg.showwarning.call_args[0][1])
+
+    def test_duplo_clique_na_linha(self):
+        self.assertTrue(self.app.tabela.bind("<Double-1>"))
+        self.app.registrar_saida_da_linha(str(self.ids["Duda"]))
+        self.assertTrue(self.saida("Duda"))
+        self.assertIn("Saída de Duda", self.aviso())
+
+    def test_duplo_clique_em_quem_ja_saiu(self):
+        self.app.registrar_saida_da_linha(str(self.ids["Duda"]))
+        self.app.registrar_saida_da_linha(str(self.ids["Duda"]))
+        self.assertIn("já tem a saída", self.msg.showinfo.call_args[0][1])
+
+    def test_botao_com_varias_linhas_selecionadas(self):
+        self.app.tabela.selection_set([str(self.ids["Beto"]), str(self.ids["Duda"])])
+        self.app.registrar_saida()
+        self.assertTrue(self.saida("Beto") and self.saida("Duda"))
+        self.assertEqual(self.saida("Ana"), "")
+
+    def test_desfazer_volta_a_pessoa_para_dentro(self):
+        self.digitar("11144477735")
+        self.app.desfazer_saida()
+        self.assertEqual(self.saida("Beto"), "")
+        self.assertIn("Saída desfeita", self.aviso())
+        self.assertFalse(self.desfazer_visivel())
+        self.assertIn(("paulo", "Saída desfeita"), self.acoes())
+        linha = self.app.tabela.item(str(self.ids["Beto"]))["values"]
+        self.assertEqual(linha[-1], "— dentro —")
+
+    def test_f2_vai_para_a_saida_rapida(self):
+        self.assertTrue(self.janela.bind("<F2>"))
+
+
+if __name__ == "__main__":
+    unittest.main()

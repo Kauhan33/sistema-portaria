@@ -64,7 +64,11 @@ Ordem pensada para cada etapa já deixar algo entregável.
   exatos + Enter (F2); carona pela placa pergunta antes; várias linhas no botão;
   aviso com Desfazer por 10 s (bloqueado se a pessoa já entrou de novo).
   149 testes.
-- **Editar registro** para corrigir erro de digitação (com histórico da alteração).
+- ✅ **Corrigir registro** (17/10/2026): todos os campos, mesmas validações;
+  porteiro só registros com entrada nas últimas 24 h (RN11 — a primeira versão
+  era "só de hoje", mas travava o turno da noite depois da meia-noite);
+  histórico "antes → depois" ligado a cada registro (esquema v4); CPF errado
+  migra a visita para a pessoa certa. 177 testes.
 - **Lista de bloqueio**: CPF/placa com acesso negado e motivo; alerta ao cadastrar.
 - **Visitante**: campos "quem vai visitar / setor" e "motivo"; crachá numerado.
 - **Alerta de permanência**: destacar visitante/entregador dentro há mais de X horas
@@ -122,4 +126,5 @@ Python padrão (ou .exe) · RNF05 dados pessoais ficam só no computador da port
 aberta · RN04 saída não anterior à entrada · RN05 um CPF não pode ter duas entradas
 abertas · RN06 CPF/celular/placa válidos · RN07 entrada não pode ser no futuro ·
 RN08 sempre existe ao menos um administrador ativo · RN09 usuário desativado não
-entra · RN10 5 senhas erradas bloqueiam o login por 30 s.
+entra · RN10 5 senhas erradas bloqueiam o login por 30 s · RN11 porteiro corrige só registros com
+entrada nas últimas 24 h; administrador corrige qualquer um, sempre com histórico.

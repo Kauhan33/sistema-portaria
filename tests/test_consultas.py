@@ -1,7 +1,7 @@
 import unittest
 from datetime import date, timedelta
 
-from portaria.consultas import (encontrar_dentro, filtrar, formatar_duracao,
+from portaria.consultas import (descrever_alteracoes, encontrar_dentro, filtrar, formatar_duracao,
                                 resumo)
 
 REGISTROS = [
@@ -95,6 +95,18 @@ class TestEncontrarDentro(unittest.TestCase):
         for texto in ["1114447773", "111", "", "   "]:
             with self.subTest(texto=texto):
                 self.assertEqual(self.nomes(texto), [])
+
+
+class TestDescreverAlteracoes(unittest.TestCase):
+    def test_sem_mudanca(self):
+        self.assertEqual(descrever_alteracoes(REGISTROS[0], dict(REGISTROS[0])), [])
+
+    def test_lista_so_o_que_mudou_formatado(self):
+        depois = dict(REGISTROS[0], cpf="11144477735", placa="", saida="")
+        self.assertEqual(descrever_alteracoes(REGISTROS[0], depois), [
+            "CPF: 529.982.247-25 → 111.444.777-35",
+            "Placa: ABC1D23 → —",
+            "Saída: 16/10/2026 09:40 → —"])
 
 
 if __name__ == "__main__":

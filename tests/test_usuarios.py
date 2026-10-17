@@ -1,11 +1,13 @@
 import os
+from datetime import datetime
 import tempfile
 import unittest
 
 from portaria import dados
 from portaria.usuarios import (LIMITE_TENTATIVAS, SEGUNDOS_BLOQUEIO,
                                ControleTentativas, autenticar, conferir_senha,
-                               gerar_hash, pode_desativar, pode_excluir,
+                               gerar_hash, pode_desativar, pode_editar,
+                               pode_excluir,
                                validar_novo_usuario, validar_senha)
 
 ADMIN = {"id": 1, "login": "ana", "perfil": "admin", "ativo": True}
@@ -99,6 +101,19 @@ class TestPermissoes(unittest.TestCase):
         self.assertTrue(pode_excluir(ADMIN))
         self.assertFalse(pode_excluir(PORTEIRO))
         self.assertFalse(pode_excluir(None))
+
+    def test_quem_pode_corrigir_registro(self):  # RN11
+        agora = datetime(2026, 10, 17, 0, 10)
+        virou_a_noite = {"entrada": "16/10/2026 23:50"}   # 20 min atrás
+        de_ontem_cedo = {"entrada": "15/10/2026 23:00"}   # mais de 24 h
+        no_futuro = {"entrada": "17/10/2026 08:00"}
+        self.assertTrue(pode_editar(ADMIN, de_ontem_cedo, agora)[0])
+        self.assertTrue(pode_editar(PORTEIRO, virou_a_noite, agora)[0])
+        ok, msg = pode_editar(PORTEIRO, de_ontem_cedo, agora)
+        self.assertFalse(ok)
+        self.assertIn("administrador", msg)
+        self.assertFalse(pode_editar(PORTEIRO, no_futuro, agora)[0])
+        self.assertFalse(pode_editar(None, virou_a_noite, agora)[0])
 
     def test_nao_pode_desativar_a_si_mesmo(self):
         ok, msg = pode_desativar(ADMIN, ADMIN, admins_ativos=2)

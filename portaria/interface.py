@@ -14,11 +14,12 @@ from tkinter import messagebox, ttk
 from . import dados
 from .consultas import encontrar_dentro, filtrar, formatar_duracao, resumo
 from .estilo import FUNDO, VERMELHO, botao, fonte_dica, fonte_lbl
+from .tela_edicao import JanelaEdicao
 from .tela_login import TelaLogin
 from .tela_pessoas import AbaPessoas
 from .tela_usuarios import AbaUsuarios
-from .usuarios import (PERFIS, ControleTentativas, pode_excluir,
-                       pode_gerenciar_usuarios)
+from .usuarios import (PERFIS, ControleTentativas, pode_editar,
+                       pode_excluir, pode_gerenciar_usuarios)
 from .validacao import (FORMATO, FORMATO_EXIBICAO, PLACA_OBRIGATORIA,
                         TIPOS_ACESSO, checar_saida, cpf_valido,
                         formatar_celular, formatar_cpf, formatar_placa,
@@ -243,6 +244,23 @@ class AppPortaria:
         self.var_cpf.set(pessoa["cpf"])
         self.abas.select(self.aba_cad)
         self.tipo.focus()
+
+    def editar_selecionado(self):
+        """Abre a janela para corrigir o registro selecionado (RN11)."""
+        selecionado = self.tabela.selection()
+        if not selecionado:
+            messagebox.showwarning("Atenção", "Selecione um registro na tabela.")
+            return
+        if len(selecionado) > 1:
+            messagebox.showwarning("Atenção",
+                                   "Selecione um registro só para corrigir.")
+            return
+        registro = self._registro(selecionado[0])
+        ok, msg = pode_editar(self.usuario, registro, datetime.now())
+        if not ok:
+            messagebox.showerror("Acesso negado", msg)
+            return
+        self.janela_edicao = JanelaEdicao(self, registro)
 
     def excluir_selecionado(self):
         if not pode_excluir(self.usuario):  # RN02
@@ -540,6 +558,7 @@ class AppPortaria:
         botao(botoes, "+ Cadastrar (Enter)", "#0a9a5a", self.cadastrar)
         botao(botoes, "Limpar", "#1f6fd1", self.limpar)
         botao(botoes, "Registrar saída", "#e08a00", self.registrar_saida)
+        botao(botoes, "✎ Corrigir", "#5a6b7b", self.editar_selecionado)
         self.btn_excluir = None
         if pode_excluir(self.usuario):  # RN02: o porteiro nem vê o botão
             self.btn_excluir = botao(botoes, "✕ Excluir selecionado", "#e03131",

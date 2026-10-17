@@ -9,8 +9,9 @@ import math
 import os
 import re
 import time
+from datetime import timedelta
 
-from .validacao import nome_valido
+from .validacao import converter_data, nome_valido
 
 PERFIS = {"admin": "Administrador", "porteiro": "Porteiro"}
 SENHA_MINIMA = 6
@@ -18,6 +19,7 @@ REGEX_LOGIN = re.compile(r"^[a-z0-9._]{3,20}$")
 ITERACOES = 200_000
 LIMITE_TENTATIVAS = 5
 SEGUNDOS_BLOQUEIO = 30
+HORAS_PARA_CORRIGIR = 24
 
 
 # ------------------------------------------------------------------
@@ -99,6 +101,24 @@ def eh_admin(usuario):
 
 pode_excluir = eh_admin
 pode_gerenciar_usuarios = eh_admin
+
+
+def pode_editar(usuario, registro, agora):
+    """
+    Retorna (ok, mensagem). Administrador corrige qualquer registro; o
+    porteiro só os com entrada nas últimas HORAS_PARA_CORRIGIR horas (erro
+    de digitação do turno, mesmo virando a meia-noite) — RN11.
+    """
+    if eh_admin(usuario):
+        return True, ""
+    entrada = converter_data(registro["entrada"])
+    if (usuario is not None and entrada is not None
+            and timedelta(0) <= agora - entrada
+            <= timedelta(hours=HORAS_PARA_CORRIGIR)):
+        return True, ""
+    return False, (f"O porteiro só pode corrigir registros com entrada nas "
+                   f"últimas {HORAS_PARA_CORRIGIR} horas.\n"
+                   "Para registros mais antigos, peça a um administrador.")
 
 
 def pode_desativar(alvo, logado, admins_ativos):

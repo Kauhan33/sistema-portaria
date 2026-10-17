@@ -3,7 +3,25 @@
 import re
 from datetime import timedelta
 
-from .validacao import TIPOS_ACESSO, converter_data, so_digitos
+from .validacao import (TIPOS_ACESSO, converter_data, formatar_celular,
+                        formatar_cpf, formatar_placa, so_digitos)
+
+# Campos de um registro na ordem e com o nome que aparecem no histórico
+CAMPOS_REGISTRO = [("cpf", "CPF", formatar_cpf), ("nome", "Nome", str),
+                   ("celular", "Celular", formatar_celular),
+                   ("placa", "Placa", formatar_placa), ("tipo", "Tipo", str),
+                   ("entrada", "Entrada", str), ("saida", "Saída", str)]
+
+
+def descrever_alteracoes(antes, depois):
+    """Lista 'Campo: valor antigo → valor novo' só do que mudou."""
+    mudancas = []
+    for chave, rotulo, formatar in CAMPOS_REGISTRO:
+        velho, novo = antes.get(chave, ""), depois.get(chave, "")
+        if velho != novo:
+            mudancas.append(f"{rotulo}: {formatar(velho) or '—'} → "
+                            f"{formatar(novo) or '—'}")
+    return mudancas
 
 
 def filtrar(registros, texto):

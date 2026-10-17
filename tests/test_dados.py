@@ -125,6 +125,70 @@ class TestSaidas(BaseTemp):
         self.assertEqual(self.banco.desfazer_saidas([a]), 0)
 
 
+class TestEdicao(BaseTemp):
+    def corrigir(self, id_, **mudancas):
+        antes = self.banco.buscar(id_)
+        novo = {k: v for k, v in antes.items() if k != "id"}
+        novo.update(mudancas)
+        self.banco.editar(id_, novo, [f"{k} alterado" for k in mudancas],
+                          autor="paulo")
+        return self.banco.buscar(id_)
+
+    def test_corrige_e_guarda_no_historico_do_registro(self):
+        id_ = self.banco.inserir(registro(), autor="paulo")
+        depois = self.corrigir(id_, nome="João Ávila Neto", celular="31911112222")
+        self.assertEqual((depois["nome"], depois["celular"]),
+                         ("João Ávila Neto", "31911112222"))
+        eventos = self.banco.eventos_do_registro(id_)
+        self.assertEqual([e["acao"] for e in eventos],
+                         ["Cadastro de entrada", "Registro corrigido"])
+        self.assertIn("nome alterado; celular alterado", eventos[1]["detalhe"])
+        self.assertEqual(self.banco.eventos_do_registro(999), [])
+
+    def test_visita_mais_recente_atualiza_a_pessoa(self):
+        self.banco.inserir(registro(entrada="15/10/2026 08:00",
+                                    saida="15/10/2026 09:00"))
+        recente = self.banco.inserir(registro())
+        self.corrigir(recente, celular="31911112222")
+        self.assertEqual(self.banco.buscar_pessoa("52998224725")["celular"],
+                         "31911112222")
+
+    def test_visita_antiga_nao_mexe_na_pessoa(self):
+        antiga = self.banco.inserir(registro(entrada="15/10/2026 08:00",
+                                             saida="15/10/2026 09:00"))
+        self.banco.inserir(registro())
+        self.corrigir(antiga, celular="31911112222")
+        self.assertEqual(self.banco.buscar_pessoa("52998224725")["celular"],
+                         "31987654321")
+
+    def test_cpf_digitado_errado_passa_para_a_pessoa_certa(self):
+        self.banco.inserir(registro(cpf="11144477735", entrada="15/10/2026 08:00",
+                                    saida="15/10/2026 09:00"))
+        errado = self.banco.inserir(registro(cpf="52998224725"))
+        self.corrigir(errado, cpf="11144477735")
+        self.assertIsNone(self.banco.buscar_pessoa("52998224725"))  # fantasma
+        self.assertEqual(self.banco.buscar_pessoa("11144477735")["visitas"], 2)
+
+    def test_cpf_trocado_nao_remove_pessoa_com_outras_visitas(self):
+        self.banco.inserir(registro(entrada="15/10/2026 08:00",
+                                    saida="15/10/2026 09:00"))
+        id_ = self.banco.inserir(registro())
+        self.corrigir(id_, cpf="39053344705")
+        self.assertEqual(self.banco.buscar_pessoa("52998224725")["visitas"], 1)
+        self.assertEqual(self.banco.buscar_pessoa("39053344705")["visitas"], 1)
+
+    def test_correcao_invalida_nao_muda_nada(self):
+        id_ = self.banco.inserir(registro())
+        with self.assertRaises(dados.ErroDados):
+            self.corrigir(id_, saida="16/10/2026 07:00")   # saída < entrada
+        self.assertEqual(self.banco.buscar(id_)["saida"], "")
+        self.assertEqual(self.banco.eventos_do_registro(id_), [])
+
+    def test_registro_que_nao_existe(self):
+        with self.assertRaises(dados.ErroDados):
+            self.banco.editar(999, registro(), ["x"], autor="paulo")
+
+
 class TestUsuariosNoBanco(BaseTemp):
     def test_criar_listar_e_buscar(self):
         self.assertFalse(self.banco.tem_usuarios())
@@ -315,6 +379,24 @@ class TestAtualizacaoDoEsquema(unittest.TestCase):
                                      "WHERE pessoa_id IS NULL").fetchone()[0]
             con.close()
             self.assertEqual(sem_pessoa, 0)
+
+    def test_historico_antigo_e_ligado_ao_registro_na_v4(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = os.path.join(pasta, "portaria.db")
+            banco = dados.Banco(caminho)
+            id_ = banco.inserir(registro(), autor="paulo")
+            banco.registrar_saida(id_, "16/10/2026 09:00", autor="paulo")
+            banco.registrar_evento("paulo", "Entrou no sistema")
+            con = sqlite3.connect(caminho)      # volta o banco para a v3
+            con.executescript("""
+                DROP INDEX idx_auditoria_registro;
+                ALTER TABLE auditoria DROP COLUMN registro_id;
+                PRAGMA user_version = 3;""")
+            con.close()
+
+            banco = dados.Banco(caminho)
+            self.assertEqual([e["acao"] for e in banco.eventos_do_registro(id_)],
+                             ["Cadastro de entrada", "Saída registrada"])
 
     def test_reabrir_banco_novo_nao_duplica_nada(self):
         with tempfile.TemporaryDirectory() as pasta:

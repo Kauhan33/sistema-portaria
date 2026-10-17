@@ -24,8 +24,8 @@ padrão). Depois disso abre sempre na tela de login.
 
 | Perfil | Pode |
 |---|---|
-| Porteiro | Cadastrar entradas, registrar saídas, buscar, ver e corrigir o cadastro de pessoas, ver o dashboard |
-| Administrador | Tudo do porteiro + **excluir registros** + aba **Usuários** (criar, ativar/desativar, redefinir senha, ver o histórico de ações) |
+| Porteiro | Cadastrar entradas, registrar saídas, corrigir registros com entrada nas últimas 24 horas, buscar, ver e corrigir o cadastro de pessoas, ver o dashboard |
+| Administrador | Tudo do porteiro + corrigir registros de qualquer data + **excluir registros** + aba **Usuários** (criar, ativar/desativar, redefinir senha, ver o histórico de ações) |
 
 ## Testes automatizados
 
@@ -33,9 +33,9 @@ padrão). Depois disso abre sempre na tela de login.
 python -m unittest -v
 ```
 
-149 testes (biblioteca padrão `unittest`) cobrindo validações, regras de negócio,
+177 testes (biblioteca padrão `unittest`) cobrindo validações, regras de negócio,
 login, senhas, permissões, cadastro de pessoas e preenchimento automático, saída
-rápida e desfazer, banco
+rápida e desfazer, correção de registros, banco
 de dados, histórico, migração do JSON, busca, dashboard e a própria tela (preenche campos e clica nos botões com a janela oculta).
 
 ## O que o sistema faz hoje
@@ -50,6 +50,11 @@ de dados, histórico, migração do JSON, busca, dashboard e a própria tela (pr
   ou a placa exatos, e pergunta antes se a placa trouxer mais de uma pessoa
   (carona). O botão "Registrar saída" aceita várias linhas selecionadas. Em vez de
   uma caixa para fechar, aparece um aviso com **Desfazer** por 10 segundos.
+- **Corrigir registro** (botão "✎ Corrigir"): conserta erro de digitação em
+  qualquer campo, com as mesmas validações do cadastro. O histórico guarda o
+  que mudou ("Nome: Beto Roxa → Beto Rocha") e quem mudou; a janela mostra o
+  histórico daquele registro. Se o CPF estava errado, a visita passa para a
+  pessoa certa e o cadastro criado pelo erro é removido se ficar sem visitas.
 - Aba **Pessoas**: todos que já passaram pela portaria, com nº de visitas, última
   visita e quem está no campus; dá para corrigir os dados e começar uma nova
   entrada já preenchida (botão ou duplo clique).
@@ -82,6 +87,7 @@ de dados, histórico, migração do JSON, busca, dashboard e a própria tela (pr
 | `portaria/usuarios.py` | Senhas (hash), perfis, permissões e bloqueio por tentativas |
 | `portaria/interface.py` | Janela principal, sessão, abas Cadastro e Dashboard |
 | `portaria/tela_login.py` | Tela de login e de primeiro acesso |
+| `portaria/tela_edicao.py` | Janela "Corrigir registro" com o histórico do registro |
 | `portaria/tela_pessoas.py` | Aba Pessoas (lista, busca, correção de dados, nova entrada) |
 | `portaria/tela_usuarios.py` | Aba Usuários e histórico de ações (só administrador) |
 | `portaria/estilo.py` | Cores, fontes e botões compartilhados |

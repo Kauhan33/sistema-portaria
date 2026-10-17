@@ -20,7 +20,9 @@ from datetime import datetime
 from .validacao import FORMATO
 
 FORMATO_ISO = "%Y-%m-%d %H:%M"
-VERSAO_ESQUEMA = 3   # 1: registros | 2: + usuarios e auditoria | 3: + pessoas
+# 1: registros | 2: + usuarios e auditoria | 3: + pessoas
+# 4: auditoria ligada ao registro (histórico de cada visita)
+VERSAO_ESQUEMA = 4
 
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS registros (
@@ -60,7 +62,8 @@ CREATE TABLE IF NOT EXISTS auditoria (
     momento  TEXT NOT NULL,             -- ISO com segundos
     usuario  TEXT NOT NULL,             -- login de quem fez
     acao     TEXT NOT NULL,
-    detalhe  TEXT NOT NULL DEFAULT ''
+    detalhe  TEXT NOT NULL DEFAULT '',
+    registro_id INTEGER                 -- visita afetada, quando houver
 );
 """
 
@@ -95,6 +98,17 @@ SET pessoa_id = (SELECT p.id FROM pessoas p WHERE p.cpf = registros.cpf)
 WHERE pessoa_id IS NULL;
 """
 
+# Liga ao registro os eventos gravados antes da v4 (o detalhe começa
+# com "#<id>" nas ações sobre visitas).
+MIGRAR_AUDITORIA = """
+UPDATE auditoria
+SET registro_id = CAST(substr(detalhe, 2, instr(detalhe || ' ', ' ') - 2)
+                       AS INTEGER)
+WHERE registro_id IS NULL AND detalhe LIKE '#%'
+  AND acao IN ('Cadastro de entrada', 'Saída registrada', 'Saída desfeita',
+               'Exclusão de registro');
+"""
+
 # Visitas, última entrada e entrada em aberto de cada pessoa
 SELECT_PESSOAS = """
 SELECT p.id, p.cpf, p.nome, p.celular, p.placa, p.tipo,
@@ -116,8 +130,15 @@ class Banco:
                             "INTEGER REFERENCES pessoas (id)")
             if versao < 3:
                 con.executescript(MIGRAR_PESSOAS)
+            colunas = {c[1] for c in con.execute("PRAGMA table_info(auditoria)")}
+            if "registro_id" not in colunas:   # banco das versões 2 e 3
+                con.execute("ALTER TABLE auditoria ADD COLUMN registro_id INTEGER")
+            if versao < 4:
+                con.executescript(MIGRAR_AUDITORIA)
             con.execute("CREATE INDEX IF NOT EXISTS idx_registros_pessoa "
                         "ON registros (pessoa_id)")
+            con.execute("CREATE INDEX IF NOT EXISTS idx_auditoria_registro "
+                        "ON auditoria (registro_id)")
             con.execute(f"PRAGMA user_version = {VERSAO_ESQUEMA}")
 
     @contextmanager
@@ -158,7 +179,7 @@ class Banco:
         with self._conexao() as con:
             id_ = self._inserir(con, registro)
             self._evento(con, autor, "Cadastro de entrada",
-                         f"#{id_} {registro['nome']} ({registro['tipo']})")
+                         f"#{id_} {registro['nome']} ({registro['tipo']})", id_)
             return id_
 
     @staticmethod
@@ -199,7 +220,7 @@ class Banco:
                                      "WHERE id = ? AND saida = ''",
                                      (para_iso(saida), i))
                 if cursor.rowcount:
-                    self._evento(con, autor, "Saída registrada", f"#{i}")
+                    self._evento(con, autor, "Saída registrada", f"#{i}", i)
 
     def desfazer_saidas(self, ids, autor=None):
         """
@@ -217,7 +238,7 @@ class Banco:
                     "  AND (o.saida = '' OR o.saida > registros.entrada))", (i,))
                 if cursor.rowcount:
                     desfeitas += 1
-                    self._evento(con, autor, "Saída desfeita", f"#{i}")
+                    self._evento(con, autor, "Saída desfeita", f"#{i}", i)
         return desfeitas
 
     def excluir(self, ids, autor=None):
@@ -233,7 +254,65 @@ class Banco:
                 nome, cpf, entrada, saida = linha
                 self._evento(con, autor, "Exclusão de registro",
                              f"#{i} {nome}, CPF {cpf}, entrada {de_iso(entrada)}, "
-                             f"saída {de_iso(saida) or '—'}")
+                             f"saída {de_iso(saida) or '—'}", i)
+
+    def buscar(self, id_registro):
+        """Um registro pelo id (datas no formato da tela), ou None."""
+        return next((r for r in self.listar() if r["id"] == id_registro), None)
+
+    def editar(self, id_registro, novo, alteracoes, autor=None):
+        """
+        Corrige um registro e grava no histórico o que mudou (`alteracoes`,
+        já descritas). Mantém o cadastro da pessoa coerente:
+        - se esta é a visita mais recente da pessoa, ela recebe os dados novos;
+        - se o CPF mudou, a visita passa para a pessoa certa e a pessoa do
+          CPF errado é removida se ficar sem nenhuma visita.
+        """
+        with self._conexao() as con:
+            linha = con.execute("SELECT pessoa_id, nome FROM registros "
+                                "WHERE id = ?", (id_registro,)).fetchone()
+            if linha is None:
+                raise ErroDados("Este registro não existe mais.")
+            pessoa_antiga = linha[0]
+            con.execute(
+                "UPDATE registros SET nome = ?, cpf = ?, celular = ?, placa = ?, "
+                "tipo = ?, entrada = ?, saida = ? WHERE id = ?",
+                (novo["nome"], novo["cpf"], novo["celular"], novo["placa"],
+                 novo["tipo"], para_iso(novo["entrada"]), para_iso(novo["saida"]),
+                 id_registro))
+            # Pessoa do CPF (novo): cria se ainda não existe
+            con.execute("INSERT INTO pessoas (cpf, nome, celular, placa, tipo) "
+                        "VALUES (?, ?, ?, ?, ?) ON CONFLICT (cpf) DO NOTHING",
+                        (novo["cpf"], novo["nome"], novo["celular"],
+                         novo["placa"], novo["tipo"]))
+            pessoa = con.execute("SELECT id FROM pessoas WHERE cpf = ?",
+                                 (novo["cpf"],)).fetchone()[0]
+            con.execute("UPDATE registros SET pessoa_id = ? WHERE id = ?",
+                        (pessoa, id_registro))
+            mais_recente = con.execute(
+                "SELECT id FROM registros WHERE pessoa_id = ? "
+                "ORDER BY entrada DESC, id DESC LIMIT 1", (pessoa,)).fetchone()[0]
+            if mais_recente == id_registro:
+                con.execute(
+                    "UPDATE pessoas SET nome = ?, celular = ?, tipo = ?, "
+                    "placa = CASE WHEN ? <> '' THEN ? ELSE placa END WHERE id = ?",
+                    (novo["nome"], novo["celular"], novo["tipo"], novo["placa"],
+                     novo["placa"], pessoa))
+            if pessoa_antiga is not None and pessoa_antiga != pessoa:
+                con.execute("DELETE FROM pessoas WHERE id = ? AND NOT EXISTS "
+                            "(SELECT 1 FROM registros WHERE pessoa_id = ?)",
+                            (pessoa_antiga, pessoa_antiga))
+            self._evento(con, autor, "Registro corrigido",
+                         f"#{id_registro} {linha[1]} — " + "; ".join(alteracoes),
+                         id_registro)
+
+    def eventos_do_registro(self, id_registro):
+        """Histórico de uma visita, do mais antigo para o mais recente."""
+        with self._conexao() as con:
+            linhas = con.execute("SELECT momento, usuario, acao, detalhe "
+                                 "FROM auditoria WHERE registro_id = ? "
+                                 "ORDER BY id", (id_registro,)).fetchall()
+        return [self._formatar_evento(linha) for linha in linhas]
 
     # --------------------------------------------------------------
     # Pessoas
@@ -331,13 +410,20 @@ class Banco:
             self._evento(con, autor, acao, detalhe)
 
     @staticmethod
-    def _evento(con, autor, acao, detalhe=""):
+    def _formatar_evento(linha):
+        momento, usuario, acao, detalhe = linha
+        return {"momento": datetime.strptime(momento, "%Y-%m-%d %H:%M:%S")
+                .strftime("%d/%m/%Y %H:%M:%S"),
+                "usuario": usuario, "acao": acao, "detalhe": detalhe}
+
+    @staticmethod
+    def _evento(con, autor, acao, detalhe="", registro_id=None):
         """Grava no histórico dentro da mesma transação da operação."""
         if autor:
-            con.execute("INSERT INTO auditoria (momento, usuario, acao, detalhe) "
-                        "VALUES (?, ?, ?, ?)",
+            con.execute("INSERT INTO auditoria (momento, usuario, acao, detalhe, "
+                        "registro_id) VALUES (?, ?, ?, ?, ?)",
                         (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), autor,
-                         acao, detalhe))
+                         acao, detalhe, registro_id))
 
     def listar_eventos(self, limite=200):
         """Últimos eventos, do mais recente para o mais antigo."""
@@ -345,10 +431,7 @@ class Banco:
             linhas = con.execute("SELECT momento, usuario, acao, detalhe "
                                  "FROM auditoria ORDER BY id DESC LIMIT ?",
                                  (limite,)).fetchall()
-        return [{"momento": datetime.strptime(m, "%Y-%m-%d %H:%M:%S")
-                 .strftime("%d/%m/%Y %H:%M:%S"),
-                 "usuario": u, "acao": a, "detalhe": d}
-                for m, u, a, d in linhas]
+        return [self._formatar_evento(linha) for linha in linhas]
 
     # --------------------------------------------------------------
     # Migração do JSON da versão 1

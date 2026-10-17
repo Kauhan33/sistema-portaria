@@ -49,6 +49,7 @@ class BaseInterface(unittest.TestCase):
         for alvo, falso in [("portaria.interface.messagebox", self.msg),
                             ("portaria.tela_usuarios.messagebox", self.msg),
                             ("portaria.tela_pessoas.messagebox", self.msg),
+                            ("portaria.tela_edicao.messagebox", self.msg),
                             ("portaria.tela_usuarios.simpledialog", self.dialogo)]:
             patcher = mock.patch(alvo, falso)
             patcher.start()
@@ -571,6 +572,109 @@ class TestSaidaRapida(BaseInterface):
 
     def test_f2_vai_para_a_saida_rapida(self):
         self.assertTrue(self.janela.bind("<F2>"))
+
+
+class TestCorrigirRegistro(BaseInterface):
+    entrar_como = "porteiro"
+
+    def setUp(self):
+        super().setUp()
+        self.hoje = self.banco.inserir(dict(VISITA_ANTIGA, entrada=ha_uma_hora(),
+                                            saida=""), autor="paulo")
+        self.antigo = self.banco.inserir(dict(VISITA_ANTIGA, nome="Ana Silva",
+                                              cpf="52998224725"))
+        self.app.registros = self.banco.listar()
+        self.app.atualizar_tabela()
+
+    def abrir(self, id_):
+        self.app.tabela.selection_set(str(id_))
+        self.app.editar_selecionado()
+        janela = getattr(self.app, "janela_edicao", None)
+        if janela:
+            janela.janela.withdraw()
+        return janela
+
+    def trocar(self, campo, valor):
+        campo.delete(0, tk.END)
+        campo.insert(0, valor)
+
+    def test_porteiro_corrige_registro_de_hoje(self):
+        edicao = self.abrir(self.hoje)
+        self.assertEqual(edicao.nome.get(), "Beto Rocha")
+        self.trocar(edicao.nome, "Roberto Rocha")
+        edicao.salvar()
+        self.assertEqual(self.banco.buscar(self.hoje)["nome"], "Roberto Rocha")
+        self.assertFalse(edicao.janela.winfo_exists())
+        self.assertIn("corrigido", self.app.lbl_aviso.cget("text"))
+        evento = self.banco.eventos_do_registro(self.hoje)[-1]
+        self.assertEqual((evento["usuario"], evento["acao"]),
+                         (self.app.usuario["login"], "Registro corrigido"))
+        self.assertIn("Nome: Beto Rocha → Roberto Rocha", evento["detalhe"])
+        linha = self.app.tabela.item(str(self.hoje))["values"]
+        self.assertEqual(linha[0], "Roberto Rocha")
+
+    def test_janela_mostra_o_historico_do_registro(self):
+        edicao = self.abrir(self.hoje)
+        acoes = [edicao.historico.item(i)["values"][2]
+                 for i in edicao.historico.get_children()]
+        self.assertEqual(acoes, ["Cadastro de entrada"])
+        edicao.historico.selection_set(edicao.historico.get_children()[0])
+        edicao._mostrar_detalhe()
+        self.assertIn("Cadastro de entrada por paulo",
+                      edicao.lbl_detalhe.cget("text"))
+
+    def test_porteiro_nao_corrige_registro_antigo(self):  # RN11
+        self.app.janela_edicao = None
+        self.assertIsNone(self.abrir(self.antigo))
+        self.assertIn("últimas 24 horas",
+                      self.msg.showerror.call_args[0][1])
+
+    def test_porteiro_nao_move_registro_para_outro_dia(self):
+        edicao = self.abrir(self.hoje)
+        self.trocar(edicao.entrada, "10/10/2026 08:00")
+        edicao.salvar()
+        self.assertIn("últimas 24 horas", self.msg.showerror.call_args[0][1])
+        self.assertTrue(edicao.janela.winfo_exists())
+
+    def test_sem_alteracao_avisa(self):
+        edicao = self.abrir(self.hoje)
+        edicao.salvar()
+        self.assertEqual(self.msg.showinfo.call_args[0][1], "Nada foi alterado.")
+
+    def test_correcao_passa_pelas_mesmas_validacoes(self):
+        edicao = self.abrir(self.hoje)
+        self.trocar(edicao.nome, "Beto 123")
+        edicao.salvar()
+        self.assertIn("apenas letras", self.msg.showerror.call_args[0][1])
+        self.assertEqual(self.banco.buscar(self.hoje)["nome"], "Beto Rocha")
+
+    def test_nao_pode_colocar_saida_antes_da_entrada(self):
+        edicao = self.abrir(self.hoje)
+        self.trocar(edicao.saida, "01/01/2026 00:00")
+        edicao.salvar()
+        self.assertIn("anterior à entrada", self.msg.showerror.call_args[0][1])
+
+    def test_selecionar_varios_avisa(self):
+        self.app.tabela.selection_set([str(self.hoje), str(self.antigo)])
+        self.app.editar_selecionado()
+        self.assertIn("um registro só", self.msg.showwarning.call_args[0][1])
+
+
+class TestCorrigirComoAdmin(TestCorrigirRegistro):
+    entrar_como = "admin"
+
+    def test_porteiro_nao_corrige_registro_antigo(self):
+        pass   # vale só para o porteiro
+
+    def test_porteiro_nao_move_registro_para_outro_dia(self):
+        pass   # vale só para o porteiro
+
+    def test_admin_corrige_registro_antigo_e_cpf(self):
+        edicao = self.abrir(self.antigo)
+        self.trocar(edicao.cpf, "39053344705")
+        edicao.salvar()
+        self.assertEqual(self.banco.buscar(self.antigo)["cpf"], "39053344705")
+        self.assertIsNone(self.banco.buscar_pessoa("52998224725"))
 
 
 if __name__ == "__main__":

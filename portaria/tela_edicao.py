@@ -111,7 +111,7 @@ class JanelaEdicao:
                                     font=("Segoe UI", 9), wraplength=640,
                                     justify="left")
         self.lbl_detalhe.pack(anchor="w", pady=(4, 0))
-        self.historico.bind("<<TreeviewSelect>>", self._mostrar_detalhe)
+        self.historico.bind("<<TreeviewSelect>>", self.mostrar_detalhe)
         ok, eventos = self.app.tentar(self.app.banco.eventos_do_registro,
                                       self.original["id"])
         for e in eventos if ok else []:
@@ -121,7 +121,7 @@ class JanelaEdicao:
             self.historico.insert("", "end", values=(
                 "—", "—", "Sem histórico", "registro anterior ao histórico"))
 
-    def _mostrar_detalhe(self, event=None):
+    def mostrar_detalhe(self, event=None):
         selecao = self.historico.selection()
         if selecao:
             valores = self.historico.item(selecao[0])["values"]

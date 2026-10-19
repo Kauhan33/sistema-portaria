@@ -494,7 +494,7 @@ class AppPortaria:
         self._montar_dashboard()
         self.tela_pessoas = AbaPessoas(self.aba_pessoas, self)
         self.tela_bloqueios = AbaBloqueios(self.aba_bloqueios, self)
-        self.abas.bind("<<NotebookTabChanged>>", self._ao_trocar_aba)
+        self.abas.bind("<<NotebookTabChanged>>", self.ao_trocar_aba)
 
         if pode_gerenciar_usuarios(self.usuario):
             self.aba_usuarios = tk.Frame(self.abas, bg=FUNDO)
@@ -511,7 +511,7 @@ class AppPortaria:
         self.limpar()
         self.atualizar_tabela()
 
-    def _ao_trocar_aba(self, event=None):
+    def ao_trocar_aba(self, event=None):
         aba = self.abas.select()
         if aba == str(self.aba_pessoas):
             self.tela_pessoas.atualizar()

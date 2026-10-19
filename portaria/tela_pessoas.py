@@ -59,7 +59,7 @@ class AbaPessoas:
         self.tabela.configure(yscrollcommand=rolagem.set)
         self.tabela.pack(side="left", fill="both", expand=True)
         rolagem.pack(side="right", fill="y")
-        self.tabela.bind("<<TreeviewSelect>>", self._ao_selecionar)
+        self.tabela.bind("<<TreeviewSelect>>", self.ao_selecionar)
         self.tabela.bind("<Double-1>", lambda e: self.registrar_entrada())
 
         self.lbl_total = tk.Label(self.aba, text="", bg=FUNDO, fg="#444",
@@ -144,7 +144,7 @@ class AbaPessoas:
         self.lbl_total.config(text=f"Pessoas cadastradas: {len(pessoas)}   |   "
                                    f"No campus agora: {dentro}")
 
-    def _ao_selecionar(self, event=None):
+    def ao_selecionar(self, event=None):
         selecao = self.tabela.selection()
         if not selecao:
             return
@@ -183,7 +183,7 @@ class AbaPessoas:
         if not ok:
             return
         self.atualizar()
-        self._ao_selecionar()
+        self.ao_selecionar()
         messagebox.showinfo("Pessoas", "Dados atualizados com sucesso!")
 
     def registrar_entrada(self):

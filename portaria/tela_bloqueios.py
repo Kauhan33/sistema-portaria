@@ -5,8 +5,9 @@ fica guardado com quem removeu e quando.
 """
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk
 
+from . import mensagens
 from .consultas import encontrar_dentro
 from .estilo import BORDA, FUNDO, VERMELHO, botao, fonte_lbl
 from .usuarios import pode_gerenciar_bloqueios
@@ -128,8 +129,8 @@ class AbaBloqueios:
     # --------------------------------------------------------------
     def _exigir_admin(self):
         if not self.admin:
-            messagebox.showerror("Acesso negado", "Somente o administrador "
-                                                  "gerencia a lista de bloqueio.")
+            mensagens.erro("Acesso negado", "Somente o administrador "
+                                            "gerencia a lista de bloqueio.")
         return self.admin
 
     def bloquear(self):
@@ -143,10 +144,10 @@ class AbaBloqueios:
             return
         ok, msg = validar_bloqueio(tipo, valor, motivo, ativos)
         if not ok:
-            messagebox.showerror("Dados inválidos", msg)
+            mensagens.erro("Dados inválidos", msg)
             return
         rotulo = formatar_bloqueio(tipo, valor)
-        if not messagebox.askyesno(
+        if not mensagens.confirmar(
                 "Confirmar bloqueio", f"Bloquear {COM_ARTIGO[tipo]} {rotulo}?\n"
                 f"Motivo: {motivo}\n\n"
                 "A entrada será recusada até um administrador remover o bloqueio."):
@@ -161,24 +162,24 @@ class AbaBloqueios:
         dentro = encontrar_dentro(self.app.registros, valor)
         if dentro:
             nomes = ", ".join(r["nome"] for r in dentro)
-            messagebox.showinfo("Atenção", f"{TIPOS_BLOQUEIO[tipo]} {rotulo} "
-                                           f"{BLOQUEADO[tipo]}.\n\nNo campus "
-                                           f"agora: {nomes}.\nO bloqueio vale "
-                                           "para as próximas entradas.")
+            mensagens.info("Atenção", f"{TIPOS_BLOQUEIO[tipo]} {rotulo} "
+                                      f"{BLOQUEADO[tipo]}.\n\nNo campus "
+                                      f"agora: {nomes}.\nO bloqueio vale "
+                                      "para as próximas entradas.")
 
     def remover(self):
         if not self._exigir_admin():
             return
         selecao = self.tabela.selection()
         if not selecao:
-            messagebox.showwarning("Atenção", "Selecione um bloqueio na lista.")
+            mensagens.aviso("Atenção", "Selecione um bloqueio na lista.")
             return
         b = next(b for b in self.bloqueios if b["id"] == int(selecao[0]))
         if not b["ativo"]:
-            messagebox.showinfo("Aviso", "Este bloqueio já foi removido.")
+            mensagens.info("Aviso", "Este bloqueio já foi removido.")
             return
         rotulo = formatar_bloqueio(b["tipo"], b["valor"])
-        if not messagebox.askyesno("Remover bloqueio",
+        if not mensagens.confirmar("Remover bloqueio",
                                    f"Remover o bloqueio {COM_DE[b['tipo']]} "
                                    f"{rotulo}?\n"
                                    "A entrada volta a ser permitida."):

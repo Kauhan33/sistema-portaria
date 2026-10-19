@@ -4,8 +4,9 @@ ou desativar, redefinir senha e ver o histórico de ações do sistema.
 """
 
 import tkinter as tk
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import ttk
 
+from . import mensagens
 from .estilo import FUNDO, botao, cartao, fonte_lbl
 from .usuarios import (PERFIS, gerar_hash, normalizar_login, pode_desativar,
                        validar_novo_usuario, validar_senha)
@@ -133,7 +134,7 @@ class AbaUsuarios:
     def _selecionado(self):
         selecao = self.tabela.selection()
         if not selecao:
-            messagebox.showwarning("Atenção", "Selecione um usuário na lista.")
+            mensagens.aviso("Atenção", "Selecione um usuário na lista.")
             return None
         return next(u for u in self.usuarios if u["id"] == int(selecao[0]))
 
@@ -148,7 +149,7 @@ class AbaUsuarios:
         ok, msg = validar_novo_usuario(nome, login, senha, self.confirmacao.get(),
                                        perfil, {u["login"] for u in self.usuarios})
         if not ok:
-            messagebox.showerror("Dados inválidos", msg)
+            mensagens.erro("Dados inválidos", msg)
             return
         ok, _ = self.app.tentar(self.app.banco.criar_usuario, nome, login, perfil,
                                 gerar_hash(senha), autor=self._autor())
@@ -158,7 +159,7 @@ class AbaUsuarios:
             campo.delete(0, tk.END)
         self.perfil.set(PERFIS["porteiro"])
         self.atualizar()
-        messagebox.showinfo("Usuários", f"Usuário {login} criado com sucesso!")
+        mensagens.info("Usuários", f"Usuário {login} criado com sucesso!")
 
     def alternar_ativo(self):
         alvo = self._selecionado()
@@ -169,9 +170,9 @@ class AbaUsuarios:
                          if u["perfil"] == "admin" and u["ativo"])
             ok, msg = pode_desativar(alvo, self.app.usuario, admins)
             if not ok:
-                messagebox.showerror("Não permitido", msg)
+                mensagens.erro("Não permitido", msg)
                 return
-            if not messagebox.askyesno(
+            if not mensagens.confirmar(
                     "Confirmar", f"Desativar o usuário {alvo['login']}?\n"
                                  "Ele não conseguirá mais entrar no sistema."):
                 return
@@ -183,23 +184,22 @@ class AbaUsuarios:
         alvo = self._selecionado()
         if alvo is None:
             return
-        senha = simpledialog.askstring(
+        senha = mensagens.pedir_senha(
             "Redefinir senha", f"Nova senha para {alvo['login']}:",
-            show="•", parent=self.aba)
+            parent=self.aba)
         if senha is None:
             return
-        confirmacao = simpledialog.askstring(
-            "Redefinir senha", "Digite a nova senha de novo:",
-            show="•", parent=self.aba)
+        confirmacao = mensagens.pedir_senha(
+            "Redefinir senha", "Digite a nova senha de novo:", parent=self.aba)
         if confirmacao is None:
             return
         ok, msg = validar_senha(senha, confirmacao)
         if not ok:
-            messagebox.showerror("Dados inválidos", msg)
+            mensagens.erro("Dados inválidos", msg)
             return
         ok, _ = self.app.tentar(self.app.banco.definir_senha, alvo["id"],
                                 gerar_hash(senha), autor=self._autor())
         if ok:
             self.atualizar()
-            messagebox.showinfo("Usuários",
-                                f"Senha de {alvo['login']} redefinida.")
+            mensagens.info("Usuários",
+                           f"Senha de {alvo['login']} redefinida.")

@@ -5,8 +5,9 @@ o histórico daquele registro (quem cadastrou, deu saída, corrigiu e o quê).
 
 import tkinter as tk
 from datetime import datetime
-from tkinter import messagebox, ttk
+from tkinter import ttk
 
+from . import mensagens
 from .consultas import descrever_alteracoes
 from .estilo import FUNDO, botao, cartao
 from .usuarios import pode_editar
@@ -138,8 +139,8 @@ class JanelaEdicao:
                           self.entrada.get(), self.saida.get())
         alteracoes = descrever_alteracoes(self.original, novo)
         if not alteracoes:
-            messagebox.showinfo("Corrigir registro", "Nada foi alterado.",
-                                parent=self.janela)
+            mensagens.info("Corrigir registro", "Nada foi alterado.",
+                           parent=self.janela)
             return
         # o porteiro também não pode mover o registro para outro dia
         ok, msg = pode_editar(self.app.usuario, novo, datetime.now())
@@ -148,14 +149,14 @@ class JanelaEdicao:
                       if r["id"] != self.original["id"]]
             ok, msg = validar(novo, outros)
         if not ok:
-            messagebox.showerror("Dados inválidos", msg, parent=self.janela)
+            mensagens.erro("Dados inválidos", msg, parent=self.janela)
             return
         ok, ativos = self.app.tentar(self.app.banco.listar_bloqueios)
         if not ok:
             return
         ok, msg = checar_bloqueio_correcao(self.original, novo, ativos)
         if not ok:
-            messagebox.showerror("Acesso negado", msg, parent=self.janela)
+            mensagens.erro("Acesso negado", msg, parent=self.janela)
             return
         ok, _ = self.app.tentar(self.app.banco.editar, self.original["id"], novo,
                                 alteracoes, autor=self.app.usuario["login"])

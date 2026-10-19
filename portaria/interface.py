@@ -9,9 +9,9 @@ e os números em consultas.py — aqui só se monta a tela e se reage aos botõe
 
 import tkinter as tk
 from datetime import datetime
-from tkinter import messagebox, ttk
+from tkinter import ttk
 
-from . import dados
+from . import dados, mensagens
 from .consultas import encontrar_dentro, filtrar, formatar_duracao, resumo
 from .estilo import FUNDO, VERMELHO, botao, fonte_dica, fonte_lbl
 from .tela_edicao import JanelaEdicao
@@ -85,17 +85,17 @@ class AppPortaria:
                      if self.json_antigo else "")
         except dados.ErroDados as e:
             self.banco = None
-            messagebox.showerror("Erro", str(e))
+            mensagens.erro("Erro", str(e))
             return
         if aviso:
-            messagebox.showinfo("Banco de dados", aviso)
+            mensagens.info("Banco de dados", aviso)
 
     def tentar(self, operacao, *args, **kwargs):
         """Executa no banco; devolve (True, resultado) ou avisa e (False, None)."""
         try:
             return True, operacao(*args, **kwargs)
         except dados.ErroDados as e:
-            messagebox.showerror("Erro", str(e))
+            mensagens.erro("Erro", str(e))
             return False, None
 
     def _gravar(self, operacao, *args):
@@ -166,17 +166,17 @@ class AppPortaria:
                 detalhe += f", placa {registro['placa']}"
             self.tentar(self.banco.registrar_evento, self.usuario["login"],
                         "Entrada recusada (bloqueio)", detalhe)
-            messagebox.showerror("Acesso negado", msg)
+            mensagens.erro("Acesso negado", msg)
             return
         ok, msg = validar(registro, self.registros)
         if not ok:
-            messagebox.showerror("Dados inválidos", msg)
+            mensagens.erro("Dados inválidos", msg)
             return
         if not self._gravar(self.banco.inserir, registro):
             return
         self.atualizar_tabela(self.busca.get())
         self.limpar()
-        messagebox.showinfo("Cadastro", "Registro cadastrado com sucesso!")
+        mensagens.info("Cadastro", "Registro cadastrado com sucesso!")
 
     def limpar(self):
         self._auto = None
@@ -286,29 +286,29 @@ class AppPortaria:
         """Abre a janela para corrigir o registro selecionado (RN11)."""
         selecionado = self.tabela.selection()
         if not selecionado:
-            messagebox.showwarning("Atenção", "Selecione um registro na tabela.")
+            mensagens.aviso("Atenção", "Selecione um registro na tabela.")
             return
         if len(selecionado) > 1:
-            messagebox.showwarning("Atenção",
-                                   "Selecione um registro só para corrigir.")
+            mensagens.aviso("Atenção",
+                            "Selecione um registro só para corrigir.")
             return
         registro = self._registro(selecionado[0])
         ok, msg = pode_editar(self.usuario, registro, datetime.now())
         if not ok:
-            messagebox.showerror("Acesso negado", msg)
+            mensagens.erro("Acesso negado", msg)
             return
         self.janela_edicao = JanelaEdicao(self, registro)
 
     def excluir_selecionado(self):
         if not pode_excluir(self.usuario):  # RN02
-            messagebox.showerror("Acesso negado",
-                                 "Somente o administrador pode excluir registros.")
+            mensagens.erro("Acesso negado",
+                           "Somente o administrador pode excluir registros.")
             return
         selecionado = self.tabela.selection()
         if not selecionado:
-            messagebox.showwarning("Atenção", "Selecione um registro na tabela.")
+            mensagens.aviso("Atenção", "Selecione um registro na tabela.")
             return
-        if not messagebox.askyesno("Confirmar", "Excluir o registro selecionado?"):
+        if not mensagens.confirmar("Confirmar", "Excluir o registro selecionado?"):
             return
         self._gravar(self.banco.excluir, [int(i) for i in selecionado])
         self.atualizar_tabela(self.busca.get())
@@ -320,7 +320,7 @@ class AppPortaria:
         """Botão: saída (data/hora atual) das linhas selecionadas."""
         selecionado = self.tabela.selection()
         if not selecionado:
-            messagebox.showwarning("Atenção", "Selecione um registro na tabela.")
+            mensagens.aviso("Atenção", "Selecione um registro na tabela.")
             return
         self._dar_saida([self._registro(i) for i in selecionado])
 
@@ -337,17 +337,17 @@ class AppPortaria:
         """Campo Saída rápida: CPF ou placa exatos + Enter."""
         texto = self.campo_saida_rapida.get().strip()
         if not texto:
-            messagebox.showwarning("Saída rápida", "Digite o CPF ou a placa.")
+            mensagens.aviso("Saída rápida", "Digite o CPF ou a placa.")
             return "break"
         encontrados = encontrar_dentro(self.registros, texto)
         if not encontrados:
-            messagebox.showerror("Saída rápida",
-                                 f"Ninguém no campus com o CPF ou a placa "
-                                 f"“{texto}”.")
+            mensagens.erro("Saída rápida",
+                           f"Ninguém no campus com o CPF ou a placa "
+                           f"“{texto}”.")
             return "break"
         if len(encontrados) > 1:
             nomes = "\n".join(f"• {r['nome']}" for r in encontrados)
-            if not messagebox.askyesno(
+            if not mensagens.confirmar(
                     "Saída rápida",
                     f"{len(encontrados)} pessoas estão no campus com essa placa:"
                     f"\n{nomes}\n\nRegistrar a saída de todas?"):
@@ -367,7 +367,7 @@ class AppPortaria:
             else:
                 recusas.append(msg)
         if not prontos:
-            messagebox.showinfo("Aviso", "\n".join(recusas))
+            mensagens.info("Aviso", "\n".join(recusas))
             return False
         ids = [r["id"] for r in prontos]
         if not self._gravar(self.banco.registrar_saidas, ids,
@@ -414,7 +414,7 @@ class AppPortaria:
         self.registros = self.tentar(self.banco.listar)[1] or self.registros
         self.atualizar_tabela(self.busca.get())
         if desfeitas < len(ids):
-            messagebox.showwarning(
+            mensagens.aviso(
                 "Desfazer", "Não foi possível desfazer a saída de quem já tem "
                             "outra entrada depois desta.")
         self._avisar("↺ Saída desfeita — a pessoa voltou a constar no campus."

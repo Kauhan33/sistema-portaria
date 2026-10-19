@@ -5,8 +5,9 @@ e começar uma nova entrada já preenchida.
 """
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk
 
+from . import mensagens
 from .consultas import filtrar
 from .estilo import BORDA, FUNDO, botao, fonte_lbl
 from .validacao import (TIPOS_ACESSO, formatar_celular, formatar_cpf,
@@ -160,7 +161,7 @@ class AbaPessoas:
 
     def _exigir_selecao(self):
         if self.selecionada is None:
-            messagebox.showwarning("Atenção", "Selecione uma pessoa na lista.")
+            mensagens.aviso("Atenção", "Selecione uma pessoa na lista.")
             return False
         return True
 
@@ -175,7 +176,7 @@ class AbaPessoas:
                            self.var_placa.get(), self.tipo.get(), "", "")
         ok, msg = validar_campos(dados)
         if not ok:
-            messagebox.showerror("Dados inválidos", msg)
+            mensagens.erro("Dados inválidos", msg)
             return
         ok, _ = self.app.tentar(self.app.banco.atualizar_pessoa, p["id"],
                                 dados["nome"], dados["celular"], dados["placa"],
@@ -184,14 +185,14 @@ class AbaPessoas:
             return
         self.atualizar()
         self.ao_selecionar()
-        messagebox.showinfo("Pessoas", "Dados atualizados com sucesso!")
+        mensagens.info("Pessoas", "Dados atualizados com sucesso!")
 
     def registrar_entrada(self):
         if not self._exigir_selecao():
             return
         p = self.selecionada
         if p["dentro_desde"]:
-            messagebox.showwarning(
+            mensagens.aviso(
                 "Atenção", f"{p['nome']} já está no campus desde "
                            f"{p['dentro_desde']}.\nRegistre a saída na aba Cadastro.")
             return

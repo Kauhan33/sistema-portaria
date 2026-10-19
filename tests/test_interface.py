@@ -63,15 +63,11 @@ class BaseInterface(unittest.TestCase):
         self.msg = mock.MagicMock()
         self.msg.askyesno.return_value = True
         self.dialogo = mock.MagicMock()
-        for alvo, falso in [("portaria.interface.messagebox", self.msg),
-                            ("portaria.tela_usuarios.messagebox", self.msg),
-                            ("portaria.tela_pessoas.messagebox", self.msg),
-                            ("portaria.tela_edicao.messagebox", self.msg),
-                            ("portaria.tela_bloqueios.messagebox", self.msg),
-                            ("portaria.tela_usuarios.simpledialog", self.dialogo)]:
-            patcher = mock.patch(alvo, falso)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        # todas as telas usam portaria.mensagens: um patch só cobre tudo
+        patcher = mock.patch.multiple("portaria.mensagens", messagebox=self.msg,
+                                      simpledialog=self.dialogo)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
         self.banco = dados.Banco(self.caminho_db)
         if self.com_usuarios:

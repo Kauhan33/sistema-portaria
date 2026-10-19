@@ -9,7 +9,7 @@ from tkinter import ttk
 
 from . import mensagens
 from .consultas import descrever_alteracoes
-from .estilo import FUNDO, botao, cartao
+from .estilo import COR, FONTE, botao, cartao
 from .usuarios import pode_editar
 from .validacao import (FORMATO_EXIBICAO, TIPOS_ACESSO,
                         checar_bloqueio_correcao, normalizar, validar)
@@ -22,26 +22,26 @@ class JanelaEdicao:
 
         self.janela = tk.Toplevel(app.janela)
         self.janela.title(f"Corrigir registro #{registro['id']}")
-        self.janela.configure(bg=FUNDO)
+        self.janela.configure(bg=COR["fundo"])
         self.janela.resizable(False, False)
         self.janela.transient(app.janela)
 
         caixa, miolo = cartao(self.janela)
         caixa.pack(fill="both", expand=True, padx=16, pady=16)
-        tk.Label(miolo, text="Corrigir registro", bg="white", fg="#222",
-                 font=("Segoe UI", 14, "bold")).pack(anchor="w")
+        tk.Label(miolo, text="Corrigir registro", bg=COR["superficie"], fg=COR["texto"],
+                 font=FONTE["titulo_dialogo"]).pack(anchor="w")
         tk.Label(miolo, text=f"Entrada de {registro['nome']} em "
                              f"{registro['entrada']}. Toda correção fica "
                              "registrada no histórico abaixo.",
-                 bg="white", fg="#666", font=("Segoe UI", 9)
+                 bg=COR["superficie"], fg=COR["texto_3"], font=FONTE["legenda"]
                  ).pack(anchor="w", pady=(0, 8))
 
         self._montar_campos(miolo)
 
-        linha = tk.Frame(miolo, bg="white")
+        linha = tk.Frame(miolo, bg=COR["superficie"])
         linha.pack(fill="x", pady=(12, 0))
-        botao(linha, "Salvar correção", "#0a9a5a", self.salvar)
-        botao(linha, "Cancelar", "#5a6b7b", self.fechar)
+        botao(linha, "Salvar correção", COR["primario"], self.salvar)
+        botao(linha, "Cancelar", COR["neutro"], self.fechar)
 
         self._montar_historico(miolo)
 
@@ -56,16 +56,16 @@ class JanelaEdicao:
             pass                       # janela ainda não visível (ex.: testes)
 
     def _montar_campos(self, miolo):
-        form = tk.Frame(miolo, bg="white")
+        form = tk.Frame(miolo, bg=COR["superficie"])
         form.pack(fill="x")
         form.columnconfigure((0, 1), weight=1, uniform="e")
         r = self.original
 
         def campo(rotulo, linha, coluna, valor, **kw):
-            tk.Label(form, text=rotulo, bg="white", fg="#333",
-                     font=("Segoe UI", 9, "bold")
+            tk.Label(form, text=rotulo, bg=COR["superficie"], fg=COR["texto_2"],
+                     font=FONTE["rotulo"]
                      ).grid(row=linha, column=coluna, sticky="w", pady=(6, 2))
-            entrada = ttk.Entry(form, font=("Segoe UI", 10), width=30, **kw)
+            entrada = ttk.Entry(form, font=FONTE["corpo"], width=30, **kw)
             entrada.grid(row=linha + 1, column=coluna, sticky="ew",
                          padx=(0, 10) if coluna == 0 else 0)
             if valor:
@@ -81,11 +81,11 @@ class JanelaEdicao:
             if self.var_placa.get() != self.var_placa.get().upper() else None)
         campo("Placa do veículo", 2, 1, "", textvariable=self.var_placa)
 
-        tk.Label(form, text="Tipo de acesso", bg="white", fg="#333",
-                 font=("Segoe UI", 9, "bold")
+        tk.Label(form, text="Tipo de acesso", bg=COR["superficie"], fg=COR["texto_2"],
+                 font=FONTE["rotulo"]
                  ).grid(row=4, column=0, sticky="w", pady=(6, 2))
         self.tipo = ttk.Combobox(form, values=TIPOS_ACESSO, state="readonly",
-                                 font=("Segoe UI", 10))
+                                 font=FONTE["corpo"])
         self.tipo.set(r["tipo"])
         self.tipo.grid(row=5, column=0, sticky="ew", padx=(0, 10))
 
@@ -94,8 +94,8 @@ class JanelaEdicao:
                            6, 1, r["saida"])
 
     def _montar_historico(self, miolo):
-        tk.Label(miolo, text="Histórico deste registro", bg="white", fg="#222",
-                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(14, 4))
+        tk.Label(miolo, text="Histórico deste registro", bg=COR["superficie"], fg=COR["texto"],
+                 font=FONTE["rotulo_secao"]).pack(anchor="w", pady=(14, 4))
         self.historico = ttk.Treeview(miolo, show="headings", height=5,
                                       columns=("momento", "usuario", "acao",
                                                "detalhe"))
@@ -108,8 +108,8 @@ class JanelaEdicao:
         self.historico.pack(fill="x")
         # detalhe completo da linha clicada (a coluna corta textos longos)
         self.lbl_detalhe = tk.Label(miolo, text="Clique numa linha para ver "
-                                    "o detalhe completo.", bg="white", fg="#666",
-                                    font=("Segoe UI", 9), wraplength=640,
+                                    "o detalhe completo.", bg=COR["superficie"], fg=COR["texto_3"],
+                                    font=FONTE["legenda"], wraplength=640,
                                     justify="left")
         self.lbl_detalhe.pack(anchor="w", pady=(4, 0))
         self.historico.bind("<<TreeviewSelect>>", self.mostrar_detalhe)
@@ -128,7 +128,7 @@ class JanelaEdicao:
             valores = self.historico.item(selecao[0])["values"]
             momento, usuario, acao, detalhe = valores
             self.lbl_detalhe.config(text=f"{acao} por {usuario} em {momento}: "
-                                         f"{detalhe}", fg="#222")
+                                         f"{detalhe}", fg=COR["texto"])
 
     # --------------------------------------------------------------
     # Ações

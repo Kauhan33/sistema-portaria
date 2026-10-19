@@ -9,7 +9,7 @@ from tkinter import ttk
 
 from . import mensagens
 from .consultas import filtrar
-from .estilo import BORDA, FUNDO, botao, fonte_lbl
+from .estilo import COR, FONTE, botao
 from .validacao import (TIPOS_ACESSO, formatar_celular, formatar_cpf,
                         formatar_placa, normalizar, validar_campos)
 
@@ -36,25 +36,25 @@ class AbaPessoas:
     # Montagem
     # --------------------------------------------------------------
     def _montar_busca(self):
-        barra = tk.Frame(self.aba, bg=FUNDO)
+        barra = tk.Frame(self.aba, bg=COR["fundo"])
         barra.pack(fill="x", padx=20, pady=(14, 4))
         tk.Label(barra, text="Buscar pessoa (nome, CPF, celular, placa ou tipo):",
-                 bg=FUNDO, font=fonte_lbl).pack(side="left")
-        self.busca = ttk.Entry(barra, font=("Segoe UI", 10))
+                 bg=COR["fundo"], font=FONTE["rotulo_secao"]).pack(side="left")
+        self.busca = ttk.Entry(barra, font=FONTE["corpo"])
         self.busca.pack(side="left", fill="x", expand=True, padx=8)
         self.busca.bind("<KeyRelease>", lambda e: self.atualizar())
         self.busca.bind("<Return>", lambda e: "break")
 
     def _montar_tabela(self):
-        quadro = tk.Frame(self.aba, bg=FUNDO)
+        quadro = tk.Frame(self.aba, bg=COR["fundo"])
         quadro.pack(fill="both", expand=True, padx=20)
         self.tabela = ttk.Treeview(quadro, show="headings", selectmode="browse",
                                    columns=[c[0] for c in COLUNAS])
         for col, titulo, larg, anc in COLUNAS:
             self.tabela.heading(col, text=titulo)
             self.tabela.column(col, width=larg, anchor=anc)
-        self.tabela.tag_configure("dentro", foreground="#0a8a50")
-        self.tabela.tag_configure("bloqueado", foreground="#d9001b")
+        self.tabela.tag_configure("dentro", foreground=COR["sucesso"])
+        self.tabela.tag_configure("bloqueado", foreground=COR["erro"])
         rolagem = ttk.Scrollbar(quadro, orient="vertical",
                                 command=self.tabela.yview)
         self.tabela.configure(yscrollcommand=rolagem.set)
@@ -63,37 +63,37 @@ class AbaPessoas:
         self.tabela.bind("<<TreeviewSelect>>", self.ao_selecionar)
         self.tabela.bind("<Double-1>", lambda e: self.registrar_entrada())
 
-        self.lbl_total = tk.Label(self.aba, text="", bg=FUNDO, fg="#444",
-                                  font=("Segoe UI", 9), anchor="w")
+        self.lbl_total = tk.Label(self.aba, text="", bg=COR["fundo"], fg=COR["texto_status"],
+                                  font=FONTE["legenda"], anchor="w")
         self.lbl_total.pack(fill="x", padx=20, pady=(4, 0))
 
     def _montar_formulario(self):
-        caixa = tk.Frame(self.aba, bg="white", highlightbackground=BORDA,
+        caixa = tk.Frame(self.aba, bg=COR["superficie"], highlightbackground=COR["borda"],
                          highlightthickness=1)
         caixa.pack(fill="x", padx=20, pady=(6, 14))
-        form = tk.Frame(caixa, bg="white")
+        form = tk.Frame(caixa, bg=COR["superficie"])
         form.pack(fill="x", padx=16, pady=12)
         form.columnconfigure((0, 1, 2, 3), weight=1, uniform="p")
 
         self.lbl_titulo = tk.Label(form, text="Selecione uma pessoa na lista",
-                                   bg="white", fg="#222",
-                                   font=("Segoe UI", 11, "bold"))
+                                   bg=COR["superficie"], fg=COR["texto"],
+                                   font=FONTE["titulo_secao"])
         self.lbl_titulo.grid(row=0, column=0, columnspan=4, sticky="w",
                              pady=(0, 6))
 
         def rotulo(texto, coluna):
-            tk.Label(form, text=texto, bg="white", fg="#333",
-                     font=("Segoe UI", 9, "bold")
+            tk.Label(form, text=texto, bg=COR["superficie"], fg=COR["texto_2"],
+                     font=FONTE["rotulo"]
                      ).grid(row=1, column=coluna, sticky="w")
 
         rotulo("Nome completo", 0)
-        self.nome = ttk.Entry(form, font=("Segoe UI", 10))
+        self.nome = ttk.Entry(form, font=FONTE["corpo"])
         self.nome.grid(row=2, column=0, columnspan=2, sticky="ew", padx=(0, 10))
 
         rotulo("Celular", 2)
         so_numeros = self.app.janela.register(
             lambda p: p == "" or (p.isascii() and p.isdigit() and len(p) <= 11))
-        self.celular = ttk.Entry(form, font=("Segoe UI", 10), validate="key",
+        self.celular = ttk.Entry(form, font=FONTE["corpo"], validate="key",
                                  validatecommand=(so_numeros, "%P"))
         self.celular.grid(row=2, column=2, sticky="ew", padx=(0, 10))
 
@@ -102,20 +102,20 @@ class AbaPessoas:
         self.var_placa.trace_add("write", lambda *a: self.var_placa.set(
             self.var_placa.get().upper())
             if self.var_placa.get() != self.var_placa.get().upper() else None)
-        ttk.Entry(form, font=("Segoe UI", 10), textvariable=self.var_placa
+        ttk.Entry(form, font=FONTE["corpo"], textvariable=self.var_placa
                   ).grid(row=2, column=3, sticky="ew")
 
-        tk.Label(form, text="Tipo de acesso", bg="white", fg="#333",
-                 font=("Segoe UI", 9, "bold")
+        tk.Label(form, text="Tipo de acesso", bg=COR["superficie"], fg=COR["texto_2"],
+                 font=FONTE["rotulo"]
                  ).grid(row=3, column=0, sticky="w", pady=(8, 0))
         self.tipo = ttk.Combobox(form, values=TIPOS_ACESSO, state="readonly",
-                                 font=("Segoe UI", 10))
+                                 font=FONTE["corpo"])
         self.tipo.grid(row=4, column=0, sticky="ew", padx=(0, 10))
 
-        botoes = tk.Frame(form, bg="white")
+        botoes = tk.Frame(form, bg=COR["superficie"])
         botoes.grid(row=4, column=1, columnspan=3, sticky="e")
-        botao(botoes, "Salvar alterações", "#1f6fd1", self.salvar)
-        botao(botoes, "→ Registrar entrada", "#0a9a5a", self.registrar_entrada)
+        botao(botoes, "Salvar alterações", COR["secundario"], self.salvar)
+        botao(botoes, "→ Registrar entrada", COR["primario"], self.registrar_entrada)
 
     # --------------------------------------------------------------
     # Dados

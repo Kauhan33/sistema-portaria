@@ -7,7 +7,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from . import mensagens
-from .estilo import FUNDO, botao, cartao, fonte_lbl
+from .estilo import COR, FONTE, botao, cartao
 from .usuarios import (PERFIS, gerar_hash, normalizar_login, pode_desativar,
                        validar_novo_usuario, validar_senha)
 
@@ -22,7 +22,7 @@ class AbaUsuarios:
 
         # Em cima: formulário + lista (altura fixa); embaixo o histórico
         # ocupa o espaço que sobrar.
-        topo = tk.Frame(aba, bg=FUNDO)
+        topo = tk.Frame(aba, bg=COR["fundo"])
         topo.pack(fill="x", padx=20, pady=(14, 6))
         topo.columnconfigure(1, weight=1)
 
@@ -37,13 +37,13 @@ class AbaUsuarios:
     def _montar_formulario(self, topo):
         caixa, miolo = cartao(topo)
         caixa.grid(row=0, column=0, sticky="ns")
-        tk.Label(miolo, text="Novo usuário", bg="white", fg="#222",
-                 font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0, 4))
+        tk.Label(miolo, text="Novo usuário", bg=COR["superficie"], fg=COR["texto"],
+                 font=FONTE["titulo_cartao"]).pack(anchor="w", pady=(0, 4))
 
         def campo(rotulo, senha=False):
-            tk.Label(miolo, text=rotulo, bg="white", fg="#333",
-                     font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(6, 2))
-            entrada = ttk.Entry(miolo, font=("Segoe UI", 10), width=28,
+            tk.Label(miolo, text=rotulo, bg=COR["superficie"], fg=COR["texto_2"],
+                     font=FONTE["rotulo"]).pack(anchor="w", pady=(6, 2))
+            entrada = ttk.Entry(miolo, font=FONTE["corpo"], width=28,
                                 show="•" if senha else "")
             entrada.pack(fill="x")
             return entrada
@@ -52,22 +52,22 @@ class AbaUsuarios:
         self.login = campo("Usuário (ex.: maria.souza)")
         self.senha = campo("Senha", senha=True)
         self.confirmacao = campo("Confirmar senha", senha=True)
-        tk.Label(miolo, text="Perfil", bg="white", fg="#333",
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(6, 2))
+        tk.Label(miolo, text="Perfil", bg=COR["superficie"], fg=COR["texto_2"],
+                 font=FONTE["rotulo"]).pack(anchor="w", pady=(6, 2))
         self.perfil = ttk.Combobox(miolo, values=list(PERFIL_POR_NOME),
-                                   state="readonly", font=("Segoe UI", 10))
+                                   state="readonly", font=FONTE["corpo"])
         self.perfil.set(PERFIS["porteiro"])
         self.perfil.pack(fill="x")
 
-        linha = tk.Frame(miolo, bg="white")
+        linha = tk.Frame(miolo, bg=COR["superficie"])
         linha.pack(fill="x", pady=(14, 0))
-        botao(linha, "+ Criar usuário", "#0a9a5a", self.criar)
+        botao(linha, "+ Criar usuário", COR["primario"], self.criar)
 
     def _montar_lista(self, topo):
-        lado = tk.Frame(topo, bg=FUNDO)
+        lado = tk.Frame(topo, bg=COR["fundo"])
         lado.grid(row=0, column=1, sticky="nsew", padx=(16, 0))
-        tk.Label(lado, text="Usuários do sistema", bg=FUNDO,
-                 font=fonte_lbl).pack(anchor="w", pady=(0, 4))
+        tk.Label(lado, text="Usuários do sistema", bg=COR["fundo"],
+                 font=FONTE["rotulo_secao"]).pack(anchor="w", pady=(0, 4))
         self.tabela = ttk.Treeview(lado, show="headings", selectmode="browse",
                                    columns=("login", "nome", "perfil", "situacao"),
                                    height=6)
@@ -79,19 +79,19 @@ class AbaUsuarios:
             self.tabela.column(col, width=larg,
                                anchor="w" if col in ("login", "nome") else "center")
         self.tabela.pack(fill="both", expand=True)
-        self.tabela.tag_configure("inativo", foreground="#999")
+        self.tabela.tag_configure("inativo", foreground=COR["desativado"])
 
-        botoes = tk.Frame(lado, bg=FUNDO)
+        botoes = tk.Frame(lado, bg=COR["fundo"])
         botoes.pack(fill="x", pady=(8, 0))
-        botao(botoes, "Ativar / desativar", "#e08a00", self.alternar_ativo)
-        botao(botoes, "Redefinir senha", "#1f6fd1", self.redefinir_senha)
+        botao(botoes, "Ativar / desativar", COR["atencao"], self.alternar_ativo)
+        botao(botoes, "Redefinir senha", COR["secundario"], self.redefinir_senha)
 
     def _montar_historico(self, aba):
-        baixo = tk.Frame(aba, bg=FUNDO)
+        baixo = tk.Frame(aba, bg=COR["fundo"])
         baixo.pack(fill="both", expand=True, padx=20, pady=(6, 14))
         tk.Label(baixo, text="Histórico de ações (mais recentes primeiro)",
-                 bg=FUNDO, font=fonte_lbl).pack(anchor="w", pady=(0, 4))
-        quadro = tk.Frame(baixo, bg=FUNDO)
+                 bg=COR["fundo"], font=FONTE["rotulo_secao"]).pack(anchor="w", pady=(0, 4))
+        quadro = tk.Frame(baixo, bg=COR["fundo"])
         quadro.pack(fill="both", expand=True)
         self.historico = ttk.Treeview(quadro, show="headings", height=4,
                                       columns=("momento", "usuario", "acao",

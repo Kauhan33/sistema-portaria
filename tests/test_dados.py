@@ -189,6 +189,38 @@ class TestEdicao(BaseTemp):
             self.banco.editar(999, registro(), ["x"], autor="paulo")
 
 
+class TestBloqueiosNoBanco(BaseTemp):
+    def test_bloquear_listar_e_remover(self):
+        self.banco.inserir(registro())                      # pessoa conhecida
+        id_ = self.banco.bloquear("cpf", "52998224725", " Furto ", "ana")
+        b = self.banco.listar_bloqueios()[0]
+        self.assertEqual((b["id"], b["tipo"], b["valor"], b["motivo"], b["nome"],
+                          b["criado_por"], b["ativo"]),
+                         (id_, "cpf", "52998224725", "Furto", "João Ávila",
+                          "ana", True))
+        self.banco.desbloquear(id_, "bia")
+        self.assertEqual(self.banco.listar_bloqueios(), [])
+        removido = self.banco.listar_bloqueios(incluir_removidos=True)[0]
+        self.assertEqual((removido["ativo"], removido["removido_por"]),
+                         (False, "bia"))
+        self.assertEqual([e["acao"] for e in self.banco.listar_eventos()][:2],
+                         ["Bloqueio removido", "Bloqueio criado"])
+
+    def test_nao_bloqueia_duas_vezes_mas_pode_bloquear_de_novo(self):
+        id_ = self.banco.bloquear("placa", "ABC1D23", "Motivo um", "ana")
+        with self.assertRaises(dados.ErroDados):
+            self.banco.bloquear("placa", "ABC1D23", "Motivo dois", "ana")
+        self.banco.desbloquear(id_, "ana")
+        self.banco.bloquear("placa", "ABC1D23", "Motivo três", "ana")
+        self.assertEqual(len(self.banco.listar_bloqueios(True)), 2)
+
+    def test_remover_bloqueio_ja_removido(self):
+        id_ = self.banco.bloquear("cpf", "52998224725", "Motivo um", "ana")
+        self.banco.desbloquear(id_, "ana")
+        with self.assertRaises(dados.ErroDados):
+            self.banco.desbloquear(id_, "ana")
+
+
 class TestUsuariosNoBanco(BaseTemp):
     def test_criar_listar_e_buscar(self):
         self.assertFalse(self.banco.tem_usuarios())

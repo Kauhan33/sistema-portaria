@@ -24,8 +24,8 @@ padrão). Depois disso abre sempre na tela de login.
 
 | Perfil | Pode |
 |---|---|
-| Porteiro | Cadastrar entradas, registrar saídas, corrigir registros com entrada nas últimas 24 horas, buscar, ver e corrigir o cadastro de pessoas, ver o dashboard |
-| Administrador | Tudo do porteiro + corrigir registros de qualquer data + **excluir registros** + aba **Usuários** (criar, ativar/desativar, redefinir senha, ver o histórico de ações) |
+| Porteiro | Cadastrar entradas, registrar saídas, corrigir registros com entrada nas últimas 24 horas, buscar, ver e corrigir o cadastro de pessoas, ver a lista de bloqueio e o dashboard |
+| Administrador | Tudo do porteiro + corrigir registros de qualquer data + **excluir registros** + criar e remover **bloqueios** + aba **Usuários** (criar, ativar/desativar, redefinir senha, ver o histórico de ações) |
 
 ## Testes automatizados
 
@@ -33,9 +33,9 @@ padrão). Depois disso abre sempre na tela de login.
 python -m unittest -v
 ```
 
-177 testes (biblioteca padrão `unittest`) cobrindo validações, regras de negócio,
+199 testes (biblioteca padrão `unittest`) cobrindo validações, regras de negócio,
 login, senhas, permissões, cadastro de pessoas e preenchimento automático, saída
-rápida e desfazer, correção de registros, banco
+rápida e desfazer, correção de registros, lista de bloqueio, banco
 de dados, histórico, migração do JSON, busca, dashboard e a própria tela (preenche campos e clica nos botões com a janela oculta).
 
 ## O que o sistema faz hoje
@@ -55,6 +55,12 @@ de dados, histórico, migração do JSON, busca, dashboard e a própria tela (pr
   que mudou ("Nome: Beto Roxa → Beto Rocha") e quem mudou; a janela mostra o
   histórico daquele registro. Se o CPF estava errado, a visita passa para a
   pessoa certa e o cadastro criado pelo erro é removido se ficar sem visitas.
+- **Lista de bloqueio** (aba Bloqueios): CPFs e placas com acesso negado e o
+  motivo. Ao digitar um CPF ou placa bloqueados, o Cadastro mostra um alerta
+  vermelho; ao cadastrar, a entrada é **recusada** (antes das outras validações) e
+  a tentativa fica no histórico. Todos veem a lista; só o administrador cria ou
+  remove bloqueios — remover não apaga, guarda quem removeu e quando. A aba
+  Pessoas marca quem está bloqueado.
 - Aba **Pessoas**: todos que já passaram pela portaria, com nº de visitas, última
   visita e quem está no campus; dá para corrigir os dados e começar uma nova
   entrada já preenchida (botão ou duplo clique).
@@ -87,6 +93,7 @@ de dados, histórico, migração do JSON, busca, dashboard e a própria tela (pr
 | `portaria/usuarios.py` | Senhas (hash), perfis, permissões e bloqueio por tentativas |
 | `portaria/interface.py` | Janela principal, sessão, abas Cadastro e Dashboard |
 | `portaria/tela_login.py` | Tela de login e de primeiro acesso |
+| `portaria/tela_bloqueios.py` | Aba Bloqueios (lista de CPFs e placas com acesso negado) |
 | `portaria/tela_edicao.py` | Janela "Corrigir registro" com o histórico do registro |
 | `portaria/tela_pessoas.py` | Aba Pessoas (lista, busca, correção de dados, nova entrada) |
 | `portaria/tela_usuarios.py` | Aba Usuários e histórico de ações (só administrador) |

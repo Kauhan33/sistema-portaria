@@ -53,6 +53,7 @@ class AbaPessoas:
             self.tabela.heading(col, text=titulo)
             self.tabela.column(col, width=larg, anchor=anc)
         self.tabela.tag_configure("dentro", foreground="#0a8a50")
+        self.tabela.tag_configure("bloqueado", foreground="#d9001b")
         rolagem = ttk.Scrollbar(quadro, orient="vertical",
                                 command=self.tabela.yview)
         self.tabela.configure(yscrollcommand=rolagem.set)
@@ -123,15 +124,20 @@ class AbaPessoas:
         if not ok:
             return
         self.pessoas = pessoas
+        ok, bloqueios = self.app.tentar(self.app.banco.listar_bloqueios)
+        bloqueados = {b["valor"] for b in (bloqueios or []) if b["tipo"] == "cpf"}
         selecao = self.tabela.selection()
         self.tabela.delete(*self.tabela.get_children())
         for p in filtrar(pessoas, self.busca.get()):
+            situacao = "No campus" if p["dentro_desde"] else "—"
+            tags = ("dentro",) if p["dentro_desde"] else ()
+            if p["cpf"] in bloqueados:
+                situacao = ("No campus · " if p["dentro_desde"] else "") + "BLOQUEADO"
+                tags = ("bloqueado",)
             self.tabela.insert("", "end", iid=str(p["id"]), values=(
                 p["nome"], formatar_cpf(p["cpf"]), formatar_celular(p["celular"]),
                 formatar_placa(p["placa"]) or "—", p["tipo"], p["visitas"],
-                p["ultima_visita"] or "—",
-                "No campus" if p["dentro_desde"] else "—"),
-                tags=("dentro",) if p["dentro_desde"] else ())
+                p["ultima_visita"] or "—", situacao), tags=tags)
         if selecao and self.tabela.exists(selecao[0]):
             self.tabela.selection_set(selecao[0])
         dentro = sum(1 for p in pessoas if p["dentro_desde"])

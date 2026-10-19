@@ -50,6 +50,7 @@ class BaseInterface(unittest.TestCase):
                             ("portaria.tela_usuarios.messagebox", self.msg),
                             ("portaria.tela_pessoas.messagebox", self.msg),
                             ("portaria.tela_edicao.messagebox", self.msg),
+                            ("portaria.tela_bloqueios.messagebox", self.msg),
                             ("portaria.tela_usuarios.simpledialog", self.dialogo)]:
             patcher = mock.patch(alvo, falso)
             patcher.start()
@@ -675,6 +676,127 @@ class TestCorrigirComoAdmin(TestCorrigirRegistro):
         edicao.salvar()
         self.assertEqual(self.banco.buscar(self.antigo)["cpf"], "39053344705")
         self.assertIsNone(self.banco.buscar_pessoa("52998224725"))
+
+
+class TestBloqueioNoCadastro(BaseInterface):
+    entrar_como = "porteiro"
+
+    def setUp(self):
+        super().setUp()
+        self.banco.inserir(dict(VISITA_ANTIGA))
+        self.banco.bloquear("cpf", "11144477735", "Ameaçou um aluno", "ana.admin")
+        self.banco.bloquear("placa", "XYZ9A87", "Veículo furtado", "ana.admin")
+
+    def test_alerta_ao_digitar_cpf_bloqueado(self):
+        self.app.cpf.insert(0, "11144477735")
+        dica = self.app.lbl_pessoa.cget("text")
+        self.assertIn("CPF BLOQUEADO — Ameaçou um aluno", dica)
+        self.assertEqual(self.app.nome.get(), "Beto Rocha")   # ainda preenche
+
+    def test_alerta_ao_digitar_placa_bloqueada(self):
+        self.app.var_placa.set("xyz9a87")
+        self.assertIn("PLACA BLOQUEADA — Veículo furtado",
+                      self.app.lbl_dica_placa.cget("text"))
+        self.app.var_placa.set("XYZ9A8")                       # apagou um
+        self.assertIn("ABC1234 ou ABC1D23", self.app.lbl_dica_placa.cget("text"))
+
+    def test_cadastro_de_cpf_bloqueado_e_recusado_e_registrado(self):  # RN12
+        self.app.cpf.insert(0, "11144477735")
+        self.app.cadastrar()
+        titulo, msg = self.msg.showerror.call_args[0]
+        self.assertEqual(titulo, "Acesso negado")
+        self.assertIn("Ameaçou um aluno", msg)
+        self.assertEqual(len(self.no_banco()), 1)             # só a visita antiga
+        self.assertIn(("paulo", "Entrada recusada (bloqueio)"), self.acoes())
+
+    def test_bloqueio_vem_antes_das_outras_validacoes(self):
+        self.app.var_placa.set("XYZ9A87")                      # só a placa
+        self.app.cadastrar()
+        self.assertEqual(self.msg.showerror.call_args[0][0], "Acesso negado")
+
+    def test_pessoa_bloqueada_aparece_na_aba_pessoas(self):
+        self.app.tela_pessoas.atualizar()
+        id_ = str(self.banco.buscar_pessoa("11144477735")["id"])
+        self.assertEqual(self.app.tela_pessoas.tabela.item(id_)["values"][-1],
+                         "BLOQUEADO")
+
+    def test_porteiro_ve_a_lista_mas_nao_gerencia(self):
+        aba = self.app.tela_bloqueios
+        self.app.abas.select(self.app.aba_bloqueios)
+        self.app._ao_trocar_aba()                 # abrir a aba recarrega
+        self.assertIsNone(aba.form)
+        self.assertEqual(len(aba.tabela.get_children()), 2)
+        aba.bloquear()
+        self.assertIn("Somente o administrador", self.msg.showerror.call_args[0][1])
+
+
+class TestAbaBloqueios(BaseInterface):
+    def setUp(self):
+        super().setUp()
+        self.aba = self.app.tela_bloqueios
+
+    def preencher(self, tipo, valor, motivo):
+        self.aba.tipo.set(tipo)
+        self.aba.valor.delete(0, tk.END)
+        self.aba.valor.insert(0, valor)
+        self.aba.motivo.delete(0, tk.END)
+        self.aba.motivo.insert(0, motivo)
+        self.aba.bloquear()
+
+    def test_admin_bloqueia_cpf(self):
+        self.preencher("CPF", "111.444.777-35", "Ameaçou um aluno")
+        self.assertIn("Bloquear o CPF 111.444.777-35",
+                      self.msg.askyesno.call_args[0][1])
+        b = self.banco.listar_bloqueios()[0]
+        self.assertEqual((b["valor"], b["criado_por"]), ("11144477735", "ana.admin"))
+        self.assertEqual(len(self.aba.tabela.get_children()), 1)
+        self.assertEqual(self.aba.valor.get(), "")
+
+    def test_cancelar_a_confirmacao_nao_bloqueia(self):
+        self.msg.askyesno.return_value = False
+        self.preencher("Placa", "abc-1234", "Estacionou em local proibido")
+        self.assertEqual(self.banco.listar_bloqueios(), [])
+
+    def test_dados_invalidos(self):
+        self.preencher("CPF", "111.444.777-35", "ab")
+        self.assertIn("motivo", self.msg.showerror.call_args[0][1])
+        self.preencher("Placa", "AB1", "Motivo válido")
+        self.assertIn("Placa inválida", self.msg.showerror.call_args[0][1])
+
+    def test_bloqueio_repetido(self):
+        self.preencher("Placa", "ABC1234", "Motivo válido")
+        self.preencher("Placa", "abc-1234", "Outro motivo")
+        self.assertIn("Esta placa já está bloqueada", self.msg.showerror.call_args[0][1])
+
+    def test_avisa_se_a_pessoa_bloqueada_esta_no_campus(self):
+        self.banco.inserir(dict(VISITA_ANTIGA, entrada=ha_uma_hora(), saida=""))
+        self.app.registros = self.banco.listar()
+        self.preencher("CPF", "11144477735", "Ameaçou um aluno")
+        self.assertIn("No campus agora: Beto Rocha",
+                      self.msg.showinfo.call_args[0][1])
+
+    def test_remover_bloqueio_e_ver_removidos(self):
+        self.preencher("CPF", "11144477735", "Ameaçou um aluno")
+        id_ = self.aba.tabela.get_children()[0]
+        self.aba.tabela.selection_set(id_)
+        self.aba.remover()
+        self.assertEqual(self.aba.tabela.get_children(), ())
+        self.aba.ver_removidos.set(True)
+        self.aba.atualizar()
+        situacao = self.aba.tabela.item(id_)["values"][-1]
+        self.assertTrue(situacao.startswith("Removido"))
+        self.assertIn(("ana.admin", "Bloqueio removido"), self.acoes())
+
+    def test_depois_de_remover_a_entrada_volta_a_ser_aceita(self):
+        self.preencher("CPF", "52998224725", "Motivo válido")
+        self.aba.tabela.selection_set(self.aba.tabela.get_children()[0])
+        self.aba.remover()
+        self.app.cpf.insert(0, "52998224725")
+        self.app.nome.insert(0, "Ana Silva")
+        self.app.celular.insert(0, "31987654321")
+        self.app.tipo.set("Visitante")
+        self.app.cadastrar()
+        self.assertEqual(len(self.no_banco()), 1)
 
 
 if __name__ == "__main__":

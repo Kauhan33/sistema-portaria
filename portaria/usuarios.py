@@ -101,6 +101,7 @@ def eh_admin(usuario):
 
 pode_excluir = eh_admin
 pode_gerenciar_usuarios = eh_admin
+pode_gerenciar_bloqueios = eh_admin
 
 
 def pode_editar(usuario, registro, agora):

@@ -69,7 +69,10 @@ Ordem pensada para cada etapa já deixar algo entregável.
   era "só de hoje", mas travava o turno da noite depois da meia-noite);
   histórico "antes → depois" ligado a cada registro (esquema v4); CPF errado
   migra a visita para a pessoa certa. 177 testes.
-- **Lista de bloqueio**: CPF/placa com acesso negado e motivo; alerta ao cadastrar.
+- ✅ **Lista de bloqueio** (17/10/2026): CPF ou placa com motivo (esquema v5);
+  alerta ao digitar; entrada recusada e registrada no histórico (RN12); só admin
+  cria/remove, porteiro vê; remoção guardada; marcação na aba Pessoas. 199 testes.
+  Ideia futura: "liberar uma vez" pelo admin sem remover o bloqueio.
 - **Visitante**: campos "quem vai visitar / setor" e "motivo"; crachá numerado.
 - **Alerta de permanência**: destacar visitante/entregador dentro há mais de X horas
   e listar quem ainda está no campus no fim do expediente.
@@ -127,4 +130,5 @@ aberta · RN04 saída não anterior à entrada · RN05 um CPF não pode ter duas
 abertas · RN06 CPF/celular/placa válidos · RN07 entrada não pode ser no futuro ·
 RN08 sempre existe ao menos um administrador ativo · RN09 usuário desativado não
 entra · RN10 5 senhas erradas bloqueiam o login por 30 s · RN11 porteiro corrige só registros com
-entrada nas últimas 24 h; administrador corrige qualquer um, sempre com histórico.
+entrada nas últimas 24 h; administrador corrige qualquer um, sempre com histórico ·
+RN12 CPF ou placa na lista de bloqueio não entra; só o administrador bloqueia e desbloqueia.

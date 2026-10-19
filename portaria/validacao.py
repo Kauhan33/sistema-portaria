@@ -162,6 +162,67 @@ def validar_campos(registro):
     return True, ""
 
 
+# ------------------------------------------------------------------
+# Lista de bloqueio (RN12: CPF ou placa bloqueados não entram)
+# ------------------------------------------------------------------
+TIPOS_BLOQUEIO = {"cpf": "CPF", "placa": "Placa"}
+MOTIVO_MINIMO = 5
+# concordância nas mensagens: "o CPF ... bloqueado" / "a placa ... bloqueada"
+COM_ARTIGO = {"cpf": "o CPF", "placa": "a placa"}
+COM_DE = {"cpf": "do CPF", "placa": "da placa"}
+BLOQUEADO = {"cpf": "bloqueado", "placa": "bloqueada"}
+
+
+def normalizar_bloqueio(tipo, valor):
+    """CPF só com números; placa maiúscula, sem hífen nem espaços."""
+    if tipo == "cpf":
+        return so_digitos(valor)
+    return re.sub(r"[\s\-]", "", valor).upper()
+
+
+def formatar_bloqueio(tipo, valor):
+    return formatar_cpf(valor) if tipo == "cpf" else formatar_placa(valor)
+
+
+def validar_bloqueio(tipo, valor, motivo, ativos):
+    """Retorna (ok, mensagem) para criar um bloqueio. `valor` já normalizado."""
+    if tipo not in TIPOS_BLOQUEIO:
+        return False, "Escolha se o bloqueio é de CPF ou de placa."
+    if tipo == "cpf" and not cpf_valido(valor):
+        return False, "CPF inválido.\nDigite os 11 números."
+    if tipo == "placa" and not placa_valida(valor):
+        return False, "Placa inválida.\nUse ABC1234 ou ABC1D23."
+    if len(motivo.strip()) < MOTIVO_MINIMO:
+        return False, ("Informe o motivo do bloqueio "
+                       f"(pelo menos {MOTIVO_MINIMO} caracteres).")
+    if any(b["tipo"] == tipo and b["valor"] == valor for b in ativos):
+        esse = "Este CPF" if tipo == "cpf" else "Esta placa"
+        return False, f"{esse} já está {BLOQUEADO[tipo]}."
+    return True, ""
+
+
+def bloqueios_do_registro(registro, ativos):
+    """Bloqueios ativos que pegam o CPF ou a placa deste registro."""
+    return [b for b in ativos
+            if (b["tipo"] == "cpf" and b["valor"] == registro.get("cpf"))
+            or (b["tipo"] == "placa" and registro.get("placa")
+                and b["valor"] == registro["placa"])]
+
+
+def checar_bloqueio(registro, ativos):  # VERIFICAÇÃO SEMÂNTICA 5
+    """Retorna (ok, mensagem): a entrada é recusada se houver bloqueio."""
+    achados = bloqueios_do_registro(registro, ativos)
+    if not achados:
+        return True, ""
+    linhas = [f"{TIPOS_BLOQUEIO[b['tipo']]} "
+              f"{formatar_bloqueio(b['tipo'], b['valor'])} "
+              f"{BLOQUEADO[b['tipo']]} em "
+              f"{b['criado_em']} por {b['criado_por']}.\nMotivo: {b['motivo']}"
+              for b in achados]
+    return False, ("Acesso negado.\n\n" + "\n\n".join(linhas) +
+                   "\n\nSó um administrador pode remover o bloqueio.")
+
+
 def checar_saida(registro, agora=None):
     """Pode registrar a saída agora? Retorna (ok, mensagem)."""
     agora = agora or datetime.now()

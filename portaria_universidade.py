@@ -64,6 +64,8 @@ if __name__ == "__main__":
 #    verificadores; o celular tiver o 9 após o DDD; o nome tiver só letras;
 #    e o mesmo CPF não estiver no campus duas vezes ao mesmo tempo
 #    (entrada aberta ou períodos que se cruzam).
+#    Em validacao.checar_bloqueio(): o registro pode estar perfeito, mas a
+#    entrada não faz sentido se o CPF ou a placa estiverem bloqueados (RN12).
 #    Outro exemplo, em interface.excluir_selecionado(): a chamada
 #    self.banco.excluir(...) é válida, mas só faz sentido se
 #    usuarios.pode_excluir(self.usuario) for verdadeiro (RN02).

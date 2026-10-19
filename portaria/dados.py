@@ -22,7 +22,8 @@ from .validacao import FORMATO
 FORMATO_ISO = "%Y-%m-%d %H:%M"
 # 1: registros | 2: + usuarios e auditoria | 3: + pessoas
 # 4: auditoria ligada ao registro (histórico de cada visita)
-VERSAO_ESQUEMA = 4
+# 5: + bloqueios (lista de CPFs e placas com acesso negado)
+VERSAO_ESQUEMA = 5
 
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS registros (
@@ -65,6 +66,22 @@ CREATE TABLE IF NOT EXISTS auditoria (
     detalhe  TEXT NOT NULL DEFAULT '',
     registro_id INTEGER                 -- visita afetada, quando houver
 );
+
+CREATE TABLE IF NOT EXISTS bloqueios (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    tipo         TEXT NOT NULL CHECK (tipo IN ('cpf', 'placa')),
+    valor        TEXT NOT NULL CHECK (valor <> ''),
+    motivo       TEXT NOT NULL CHECK (motivo <> ''),
+    criado_em    TEXT NOT NULL,         -- ISO
+    criado_por   TEXT NOT NULL,
+    ativo        INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
+    removido_em  TEXT NOT NULL DEFAULT '',
+    removido_por TEXT NOT NULL DEFAULT ''
+);
+-- um mesmo CPF/placa só pode ter um bloqueio ativo por vez;
+-- os removidos ficam guardados como histórico
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bloqueio_ativo
+    ON bloqueios (tipo, valor) WHERE ativo = 1;
 """
 
 
@@ -313,6 +330,51 @@ class Banco:
                                  "FROM auditoria WHERE registro_id = ? "
                                  "ORDER BY id", (id_registro,)).fetchall()
         return [self._formatar_evento(linha) for linha in linhas]
+
+    # --------------------------------------------------------------
+    # Lista de bloqueio
+    # --------------------------------------------------------------
+    def listar_bloqueios(self, incluir_removidos=False):
+        """Bloqueios (ativos primeiro, mais recentes primeiro) com o nome da
+        pessoa quando o CPF já é conhecido."""
+        filtro = "" if incluir_removidos else "WHERE b.ativo = 1"
+        with self._conexao() as con:
+            linhas = con.execute(
+                "SELECT b.id, b.tipo, b.valor, b.motivo, b.criado_em, "
+                "b.criado_por, b.ativo, b.removido_em, b.removido_por, "
+                "COALESCE(p.nome, '') FROM bloqueios b "
+                "LEFT JOIN pessoas p ON b.tipo = 'cpf' AND p.cpf = b.valor "
+                f"{filtro} ORDER BY b.ativo DESC, b.id DESC").fetchall()
+        return [{"id": i, "tipo": tipo, "valor": valor, "motivo": motivo,
+                 "criado_em": de_iso(criado), "criado_por": por,
+                 "ativo": bool(ativo), "removido_em": de_iso(removido),
+                 "removido_por": removido_por, "nome": nome}
+                for (i, tipo, valor, motivo, criado, por, ativo, removido,
+                     removido_por, nome) in linhas]
+
+    def bloquear(self, tipo, valor, motivo, autor):
+        agora = datetime.now().strftime(FORMATO_ISO)
+        with self._conexao() as con:
+            cursor = con.execute(
+                "INSERT INTO bloqueios (tipo, valor, motivo, criado_em, criado_por) "
+                "VALUES (?, ?, ?, ?, ?)", (tipo, valor, motivo.strip(), agora, autor))
+            self._evento(con, autor, "Bloqueio criado",
+                         f"{tipo.upper()} {valor} — {motivo.strip()}")
+            return cursor.lastrowid
+
+    def desbloquear(self, id_bloqueio, autor):
+        agora = datetime.now().strftime(FORMATO_ISO)
+        with self._conexao() as con:
+            linha = con.execute("SELECT tipo, valor FROM bloqueios "
+                                "WHERE id = ? AND ativo = 1",
+                                (id_bloqueio,)).fetchone()
+            if linha is None:
+                raise ErroDados("Este bloqueio não está mais ativo.")
+            con.execute("UPDATE bloqueios SET ativo = 0, removido_em = ?, "
+                        "removido_por = ? WHERE id = ?",
+                        (agora, autor, id_bloqueio))
+            self._evento(con, autor, "Bloqueio removido",
+                         f"{linha[0].upper()} {linha[1]}")
 
     # --------------------------------------------------------------
     # Pessoas

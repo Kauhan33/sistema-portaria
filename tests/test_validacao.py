@@ -1,7 +1,9 @@
 import unittest
 from datetime import datetime
 
-from portaria.validacao import (celular_valido, checar_saida, cpf_valido,
+from portaria.validacao import (celular_valido, checar_bloqueio,
+                                checar_saida, cpf_valido,
+                                normalizar_bloqueio, validar_bloqueio,
                                 formatar_celular,
                                 formatar_cpf, formatar_placa, nome_valido,
                                 normalizar, placa_valida, validar,
@@ -164,6 +166,54 @@ class TestChecarSaida(unittest.TestCase):
         ok, msg = checar_saida(salvo(CPF_ANA, "16/10/2026 13:00"), AGORA)
         self.assertFalse(ok)
         self.assertIn("anterior à entrada", msg)
+
+
+def bloqueio(tipo, valor, motivo="Agrediu o porteiro"):
+    return {"tipo": tipo, "valor": valor, "motivo": motivo,
+            "criado_em": "10/10/2026 08:00", "criado_por": "ana"}
+
+
+class TestBloqueio(unittest.TestCase):
+    def test_normalizar(self):
+        self.assertEqual(normalizar_bloqueio("cpf", "529.982.247-25"), CPF_ANA)
+        self.assertEqual(normalizar_bloqueio("placa", " abc-1234 "), "ABC1234")
+
+    def test_validar_bloqueio(self):
+        ativos = [bloqueio("cpf", CPF_BETO)]
+        self.assertEqual(validar_bloqueio("cpf", CPF_ANA, "Furto na biblioteca",
+                                          ativos), (True, ""))
+        self.assertEqual(validar_bloqueio("placa", "ABC1D23", "Estacionou na "
+                                          "vaga de ambulância", ativos), (True, ""))
+        casos = {
+            "tipo vazio": (("", CPF_ANA, "Motivo qualquer"), "CPF ou de placa"),
+            "cpf inválido": (("cpf", "12345678900", "Motivo qualquer"), "CPF inválido"),
+            "placa inválida": (("placa", "AB12", "Motivo qualquer"), "Placa inválida"),
+            "sem motivo": (("cpf", CPF_ANA, "  ab "), "motivo"),
+            "já bloqueado": (("cpf", CPF_BETO, "Motivo qualquer"), "já está bloqueado"),
+        }
+        for caso, (args, trecho) in casos.items():
+            with self.subTest(caso):
+                ok, msg = validar_bloqueio(*args, ativos)
+                self.assertFalse(ok)
+                self.assertIn(trecho, msg)
+
+    def test_entrada_de_cpf_bloqueado_e_recusada(self):  # RN12
+        ok, msg = checar_bloqueio(registro(), [bloqueio("cpf", CPF_ANA)])
+        self.assertFalse(ok)
+        self.assertIn("Acesso negado", msg)
+        self.assertIn("Motivo: Agrediu o porteiro", msg)
+        self.assertIn("CPF 529.982.247-25 bloqueado", msg)
+
+    def test_entrada_com_placa_bloqueada_e_recusada(self):
+        ok, msg = checar_bloqueio(registro(placa="abc1d23"),
+                                  [bloqueio("placa", "ABC1D23")])
+        self.assertFalse(ok)
+        self.assertIn("Placa ABC1D23 bloqueada", msg)
+
+    def test_sem_bloqueio_ou_a_pe(self):
+        ativos = [bloqueio("cpf", CPF_BETO), bloqueio("placa", "ABC1D23")]
+        self.assertEqual(checar_bloqueio(registro(), ativos), (True, ""))
+        self.assertEqual(checar_bloqueio(registro(placa=""), []), (True, ""))
 
 
 if __name__ == "__main__":

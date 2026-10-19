@@ -16,14 +16,16 @@ from .consultas import encontrar_dentro, filtrar, formatar_duracao, resumo
 from .estilo import FUNDO, VERMELHO, botao, fonte_dica, fonte_lbl
 from .tela_edicao import JanelaEdicao
 from .tela_login import TelaLogin
+from .tela_bloqueios import AbaBloqueios
 from .tela_pessoas import AbaPessoas
 from .tela_usuarios import AbaUsuarios
 from .usuarios import (PERFIS, ControleTentativas, pode_editar,
                        pode_excluir, pode_gerenciar_usuarios)
 from .validacao import (FORMATO, FORMATO_EXIBICAO, PLACA_OBRIGATORIA,
-                        TIPOS_ACESSO, checar_saida, cpf_valido,
-                        formatar_celular, formatar_cpf, formatar_placa,
-                        normalizar, so_digitos, validar)
+                        TIPOS_ACESSO, checar_bloqueio, checar_saida,
+                        cpf_valido, formatar_celular, formatar_cpf,
+                        formatar_placa, normalizar, placa_valida, so_digitos,
+                        validar)
 
 CORES_TIPO = {"Aluno": "#1f6fd1", "Professor": "#7a3fd1",
               "Funcionário": "#0a9a5a", "Visitante": "#e08a00",
@@ -37,6 +39,7 @@ PLURAL_TIPO = {"Aluno": "Alunos", "Professor": "Professores",
 DICA_CPF = "Digite o CPF primeiro: quem já veio tem os dados preenchidos sozinhos."
 SEGUNDOS_PARA_DESFAZER = 10
 TECLAS_DA_SESSAO = ("<Return>", "<KP_Enter>", "<F2>")
+DICA_PLACA = "ABC1234 ou ABC1D23 (deixe vazio se a pé)"
 
 
 def agora():
@@ -152,6 +155,19 @@ class AppPortaria:
                               self.celular.get(), self.var_placa.get(),
                               self.tipo.get(), self.entrada.get(),
                               self.saida.get())
+        # RN12: bloqueio primeiro, para não preencher a ficha à toa
+        ok, ativos = self.tentar(self.banco.listar_bloqueios)
+        if not ok:
+            return
+        ok, msg = checar_bloqueio(registro, ativos)
+        if not ok:
+            detalhe = f"{registro['nome'] or '?'}, CPF {formatar_cpf(registro['cpf'])}"
+            if registro["placa"]:
+                detalhe += f", placa {registro['placa']}"
+            self.tentar(self.banco.registrar_evento, self.usuario["login"],
+                        "Entrada recusada (bloqueio)", detalhe)
+            messagebox.showerror("Acesso negado", msg)
+            return
         ok, msg = validar(registro, self.registros)
         if not ok:
             messagebox.showerror("Dados inválidos", msg)
@@ -210,8 +226,29 @@ class AppPortaria:
             return
         if pessoa is None:
             self._dica_pessoa("Pessoa nova — preencha os dados abaixo.", "#1f6fd1")
-            return
-        self._preencher_automatico(pessoa)
+        else:
+            self._preencher_automatico(pessoa)
+        bloqueio = self._bloqueio_ativo("cpf", cpf)
+        if bloqueio:
+            self._dica_pessoa(f"CPF BLOQUEADO — {bloqueio['motivo']}. "
+                              "A entrada será recusada.", VERMELHO)
+
+    def _bloqueio_ativo(self, tipo, valor):
+        ok, ativos = self.tentar(self.banco.listar_bloqueios)
+        return next((b for b in (ativos or [])
+                     if b["tipo"] == tipo and b["valor"] == valor), None)
+
+    def _ao_digitar_placa(self, *args):
+        """Placa completa e bloqueada: troca a dica por um alerta vermelho."""
+        placa = self.var_placa.get().strip().upper()
+        bloqueio = (self._bloqueio_ativo("placa", placa)
+                    if placa_valida(placa) else None)
+        if bloqueio:
+            self.lbl_dica_placa.config(
+                text=f"PLACA BLOQUEADA — {bloqueio['motivo']}", fg=VERMELHO,
+                font=("Segoe UI", 8, "bold"))
+        else:
+            self.lbl_dica_placa.config(text=DICA_PLACA, fg="#666", font=fonte_dica)
 
     def _preencher_automatico(self, pessoa):
         preenchidos = {}
@@ -446,14 +483,17 @@ class AppPortaria:
         self.aba_cad = tk.Frame(self.abas, bg=FUNDO)
         self.aba_dash = tk.Frame(self.abas, bg=FUNDO)
         self.aba_pessoas = tk.Frame(self.abas, bg=FUNDO)
+        self.aba_bloqueios = tk.Frame(self.abas, bg=FUNDO)
         self.abas.add(self.aba_cad, text="  📋 Cadastro  ")
         self.abas.add(self.aba_pessoas, text="  👥 Pessoas  ")
+        self.abas.add(self.aba_bloqueios, text="  🚫 Bloqueios  ")
         self.abas.add(self.aba_dash, text="  📊 Dashboard  ")
         self.cards = {}
         self.aba_usuarios = self.tela_usuarios = None
         self._montar_cadastro()
         self._montar_dashboard()
         self.tela_pessoas = AbaPessoas(self.aba_pessoas, self)
+        self.tela_bloqueios = AbaBloqueios(self.aba_bloqueios, self)
         self.abas.bind("<<NotebookTabChanged>>", self._ao_trocar_aba)
 
         if pode_gerenciar_usuarios(self.usuario):
@@ -475,6 +515,8 @@ class AppPortaria:
         aba = self.abas.select()
         if aba == str(self.aba_pessoas):
             self.tela_pessoas.atualizar()
+        elif aba == str(self.aba_bloqueios):
+            self.tela_bloqueios.atualizar()
         elif self.aba_usuarios is not None and aba == str(self.aba_usuarios):
             self.tela_usuarios.atualizar()
 
@@ -494,8 +536,10 @@ class AppPortaria:
                      ).grid(row=linha, column=coluna, sticky="w", **kw)
 
         def dica(texto, linha, coluna, cor="#666"):
-            tk.Label(form, text=texto, bg=FUNDO, fg=cor, font=fonte_dica
-                     ).grid(row=linha, column=coluna, sticky="w")
+            rotulo_dica = tk.Label(form, text=texto, bg=FUNDO, fg=cor,
+                                   font=fonte_dica)
+            rotulo_dica.grid(row=linha, column=coluna, sticky="w")
+            return rotulo_dica
 
         # Linha 0-2: CPF primeiro (é por ele que a pessoa é reconhecida)
         # e nome nas outras duas colunas
@@ -538,7 +582,7 @@ class AppPortaria:
         self.tipo.grid(row=4, column=2, sticky="ew")
 
         dica("Ex.: 31912345678 (DDD + 9 + 8 dígitos)", 5, 0)
-        dica("ABC1234 ou ABC1D23 (deixe vazio se a pé)", 5, 1)
+        self.lbl_dica_placa = dica(DICA_PLACA, 5, 1)
 
         # Linha 6-8: entrada e saída
         rotulo(f"Entrada ({FORMATO_EXIBICAO}): *", 6, 0, pady=(8, 0))
@@ -549,8 +593,10 @@ class AppPortaria:
         dica("Saída em branco = pessoa ainda no campus.", 8, 1)
         dica("* campos obrigatórios", 8, 0, cor=VERMELHO)
 
-        # Liga o preenchimento automático só depois de tudo montado
+        # Liga o preenchimento automático e os alertas de bloqueio só
+        # depois de tudo montado
         self.var_cpf.trace_add("write", self._ao_digitar_cpf)
+        self.var_placa.trace_add("write", self._ao_digitar_placa)
 
         # Botões
         botoes = tk.Frame(self.aba_cad, bg=FUNDO)

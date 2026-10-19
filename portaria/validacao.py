@@ -223,6 +223,21 @@ def checar_bloqueio(registro, ativos):  # VERIFICAÇÃO SEMÂNTICA 5
                    "\n\nSó um administrador pode remover o bloqueio.")
 
 
+def checar_bloqueio_correcao(original, novo, ativos):
+    """
+    Correção de registro (RN12): recusa se a mudança coloca um CPF ou placa
+    bloqueados no campus — trocar para um CPF/placa bloqueado ou reabrir a
+    visita (apagar a saída). Corrigir o nome de uma visita encerrada de
+    alguém bloqueado depois continua permitido.
+    """
+    trocou = (novo["cpf"] != original["cpf"]
+              or novo.get("placa", "") != original.get("placa", ""))
+    reabriu = not novo["saida"] and bool(original["saida"])
+    if not (trocou or reabriu):
+        return True, ""
+    return checar_bloqueio(novo, ativos)
+
+
 def checar_saida(registro, agora=None):
     """Pode registrar a saída agora? Retorna (ok, mensagem)."""
     agora = agora or datetime.now()

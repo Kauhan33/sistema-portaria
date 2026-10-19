@@ -10,7 +10,8 @@ from tkinter import messagebox, ttk
 from .consultas import descrever_alteracoes
 from .estilo import FUNDO, botao, cartao
 from .usuarios import pode_editar
-from .validacao import FORMATO_EXIBICAO, TIPOS_ACESSO, normalizar, validar
+from .validacao import (FORMATO_EXIBICAO, TIPOS_ACESSO,
+                        checar_bloqueio_correcao, normalizar, validar)
 
 
 class JanelaEdicao:
@@ -148,6 +149,13 @@ class JanelaEdicao:
             ok, msg = validar(novo, outros)
         if not ok:
             messagebox.showerror("Dados inválidos", msg, parent=self.janela)
+            return
+        ok, ativos = self.app.tentar(self.app.banco.listar_bloqueios)
+        if not ok:
+            return
+        ok, msg = checar_bloqueio_correcao(self.original, novo, ativos)
+        if not ok:
+            messagebox.showerror("Acesso negado", msg, parent=self.janela)
             return
         ok, _ = self.app.tentar(self.app.banco.editar, self.original["id"], novo,
                                 alteracoes, autor=self.app.usuario["login"])

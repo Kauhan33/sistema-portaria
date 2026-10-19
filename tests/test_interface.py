@@ -655,6 +655,16 @@ class TestCorrigirRegistro(BaseInterface):
         edicao.salvar()
         self.assertIn("anterior à entrada", self.msg.showerror.call_args[0][1])
 
+    def test_nao_burla_o_bloqueio_pela_correcao(self):  # S01 da revisão
+        self.banco.bloquear("cpf", "39053344705", "Ameaçou um aluno", "ana.admin")
+        edicao = self.abrir(self.hoje)
+        self.trocar(edicao.cpf, "39053344705")
+        edicao.salvar()
+        titulo, msg = self.msg.showerror.call_args[0]
+        self.assertEqual(titulo, "Acesso negado")
+        self.assertIn("Ameaçou um aluno", msg)
+        self.assertEqual(self.banco.buscar(self.hoje)["cpf"], "11144477735")
+
     def test_selecionar_varios_avisa(self):
         self.app.tabela.selection_set([str(self.hoje), str(self.antigo)])
         self.app.editar_selecionado()

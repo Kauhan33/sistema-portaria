@@ -2,6 +2,7 @@ import unittest
 from datetime import datetime
 
 from portaria.validacao import (celular_valido, checar_bloqueio,
+                                checar_bloqueio_correcao,
                                 checar_saida, cpf_valido,
                                 normalizar_bloqueio, validar_bloqueio,
                                 formatar_celular,
@@ -209,6 +210,26 @@ class TestBloqueio(unittest.TestCase):
                                   [bloqueio("placa", "ABC1D23")])
         self.assertFalse(ok)
         self.assertIn("Placa ABC1D23 bloqueada", msg)
+
+    def test_correcao_nao_pode_colocar_bloqueado_no_campus(self):  # S01
+        ativos = [bloqueio("cpf", CPF_ANA), bloqueio("placa", "ABC1D23")]
+        livre = registro(cpf=CPF_BETO)
+        trocou_cpf = registro()
+        trocou_placa = registro(cpf=CPF_BETO, placa="ABC1D23")
+        self.assertFalse(checar_bloqueio_correcao(livre, trocou_cpf, ativos)[0])
+        self.assertFalse(checar_bloqueio_correcao(livre, trocou_placa, ativos)[0])
+        encerrada = registro(saida="16/10/2026 09:00")
+        reaberta = registro(saida="")
+        self.assertFalse(checar_bloqueio_correcao(encerrada, reaberta, ativos)[0])
+
+    def test_correcao_de_nome_de_quem_foi_bloqueado_depois(self):
+        ativos = [bloqueio("cpf", CPF_ANA)]
+        for saida in ["16/10/2026 09:00", ""]:          # encerrada ou aberta
+            with self.subTest(saida=saida):
+                antes = registro(saida=saida)
+                depois = registro(nome="Ana Silva Costa", saida=saida)
+                self.assertEqual(checar_bloqueio_correcao(antes, depois, ativos),
+                                 (True, ""))
 
     def test_sem_bloqueio_ou_a_pe(self):
         ativos = [bloqueio("cpf", CPF_BETO), bloqueio("placa", "ABC1D23")]

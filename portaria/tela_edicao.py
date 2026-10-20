@@ -1,6 +1,10 @@
 """
 Janela "Corrigir registro": corrige erro de digitação numa visita e mostra
 o histórico daquele registro (quem cadastrou, deu saída, corrigiu e o quê).
+
+Privacidade: o porteiro vê o CPF mascarado (***.982.247-**) e somente
+leitura. Para corrigir um CPF digitado errado ele clica no lápis do campo
+e digita o número inteiro de novo (com o documento em mãos).
 """
 
 import tkinter as tk
@@ -10,10 +14,11 @@ from . import mensagens
 from .componentes import (Aviso, Campo, Dialogo, preencher_eventos,
                           rotulo_campo, tabela_eventos)
 from .consultas import descrever_alteracoes
-from .estilo import COR, FONTE, px
-from .usuarios import pode_editar
+from .estilo import COR, FONTE, ICONE, px
+from .usuarios import eh_admin, pode_editar
 from .validacao import (FORMATO_EXIBICAO, TIPOS_ACESSO,
-                        checar_bloqueio_correcao, normalizar, validar)
+                        checar_bloqueio_correcao, mascarar_cpf, normalizar,
+                        validar)
 
 SEM_HISTORICO = {"momento": "—", "usuario": "—", "acao": "Sem histórico",
                  "detalhe": "registro anterior ao histórico"}
@@ -24,6 +29,7 @@ class JanelaEdicao(Dialogo):
     def __init__(self, app, registro):
         self.app = app
         self.original = registro
+        self.cpf_oculto = not eh_admin(app.usuario)   # porteiro: mascarado
         super().__init__(app.janela, f"Corrigir registro #{registro['id']}",
                          f"Entrada de {registro['nome']} em {registro['entrada']}."
                          " Toda correção fica no histórico.", largura=780,
@@ -54,7 +60,14 @@ class JanelaEdicao(Dialogo):
 
         # Q04: CPF, celular e placa com as mesmas restrições da Entrada e
         # saída. Duas linhas de 4 colunas: cabe num notebook 1366x768 a 125%
-        self.cpf = novo("CPF", 0, 0, r["cpf"], numeros=11).entrada
+        if self.cpf_oculto:
+            self.cpf = novo("CPF", 0, 0, mascarar_cpf(r["cpf"]), "lápis = trocar",
+                            numeros=11, icone=ICONE["editar"],
+                            acao_icone=self.liberar_cpf).entrada
+            self.cpf.config(state="readonly", fg=COR["texto_2"],
+                            readonlybackground=COR["superficie"])
+        else:
+            self.cpf = novo("CPF", 0, 0, r["cpf"], numeros=11).entrada
         self.nome = novo("Nome completo", 0, 1, r["nome"], juntas=2).entrada
         self.celular = novo("Celular", 0, 3, r["celular"], "só números",
                             numeros=11).entrada
@@ -100,8 +113,22 @@ class JanelaEdicao(Dialogo):
     # --------------------------------------------------------------
     # Ações
     # --------------------------------------------------------------
+    def liberar_cpf(self):
+        """Lápis do campo CPF (porteiro): apaga o CPF mascarado e deixa
+        digitar o número certo."""
+        if not self.cpf_oculto:
+            return
+        self.cpf_oculto = False
+        self.cpf.config(state="normal", fg=COR["texto"])
+        self.cpf.delete(0, tk.END)
+        # o Tk desliga a validação quando recebe um texto que não passaria
+        # nela (a máscara): religa a regra "só dígitos"
+        self.cpf.config(validate="key")
+        self.cpf.focus_set()
+
     def salvar(self):
-        novo = normalizar(self.nome.get(), self.cpf.get(), self.celular.get(),
+        cpf = self.original["cpf"] if self.cpf_oculto else self.cpf.get()
+        novo = normalizar(self.nome.get(), cpf, self.celular.get(),
                           self.var_placa.get(), self.tipo.get(),
                           self.entrada.get(), self.saida.get())
         alteracoes = descrever_alteracoes(self.original, novo)

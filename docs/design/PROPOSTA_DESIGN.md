@@ -376,6 +376,7 @@ verdade (banco temporário com dados de exemplo, escala 125%, relógio fixo em
 | Painel | `final/painel.png` |
 | Usuários | `final/usuarios.png` |
 | Diálogos: Corrigir, Trocar senha, Novo usuário, Exportar CSV | `final/corrigir.png`, `final/trocar_senha.png`, `final/novo_usuario.png`, `final/exportar_csv.png` |
+| Corrigir visto pelo porteiro (CPF mascarado; o lápis libera digitar outro) | `final/corrigir_porteiro.png` |
 
 Diferenças conscientes em relação ao protótipo:
 

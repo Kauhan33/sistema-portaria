@@ -1319,6 +1319,7 @@ class CasosCorrigir:
 
     def test_cpf_celular_e_placa_so_aceitam_o_formato(self):  # Q04
         edicao = self.abrir(self.hoje)
+        edicao.liberar_cpf()                 # porteiro: clica no lápis
         for campo, digitado, esperado in [
                 (edicao.cpf, "1a1.4", "114"), (edicao.celular, "31x9", "319")]:
             campo.delete(0, tk.END)
@@ -1351,6 +1352,7 @@ class CasosCorrigir:
     def test_nao_burla_o_bloqueio_pela_correcao(self):  # S01 da revisão
         self.banco.bloquear("cpf", "39053344705", "Ameaçou um aluno", "ana.admin")
         edicao = self.abrir(self.hoje)
+        edicao.liberar_cpf()
         self.trocar(edicao.cpf, "39053344705")
         edicao.salvar()
         titulo, msg = self.msg.showerror.call_args[0]
@@ -1367,6 +1369,23 @@ class CasosCorrigir:
 
 class TestCorrigirComoPorteiro(CasosCorrigir, BaseInterface):
     entrar_como = "porteiro"
+
+    def test_porteiro_ve_o_cpf_mascarado_e_somente_leitura(self):  # N02
+        edicao = self.abrir(self.hoje)
+        self.assertEqual(edicao.cpf.get(), "***.444.777-**")
+        self.assertEqual(str(edicao.cpf.cget("state")), "readonly")
+        self.trocar(edicao.nome, "Roberto Rocha")     # CPF fica como estava
+        edicao.salvar()
+        self.assertEqual(self.banco.buscar(self.hoje)["cpf"], "11144477735")
+        self.assertEqual(self.banco.buscar(self.hoje)["nome"], "Roberto Rocha")
+
+    def test_porteiro_corrige_o_cpf_pelo_lapis(self):  # N02
+        edicao = self.abrir(self.hoje)
+        edicao.liberar_cpf()
+        self.assertEqual(edicao.cpf.get(), "")
+        self.trocar(edicao.cpf, "39053344705")
+        edicao.salvar()
+        self.assertEqual(self.banco.buscar(self.hoje)["cpf"], "39053344705")
 
     def test_porteiro_nao_corrige_registro_antigo(self):  # RN11
         self.assertIsNone(self.abrir(self.antigo))

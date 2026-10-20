@@ -4,13 +4,34 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
+**Versão atual: 2.0** — veja [Versões](#versões).
+
+![Tela Entrada e saída](docs/design/final/cadastro_campus.png)
+
 ## Como executar
 
-Requer só o Python 3 (Tkinter já vem na instalação padrão do Windows).
+**Sem instalar nada:** baixe o `Portaria.exe` na página de
+[Releases](https://github.com/Kauhan33/sistema-portaria/releases), coloque numa
+pasta e abra. O banco, os backups e o log são criados ao lado do `.exe`.
+
+**Pelo código-fonte:** requer só o Python 3 (Tkinter já vem na instalação padrão
+do Windows).
 
 ```bash
 python portaria_universidade.py
 ```
+
+### Gerar o executável
+
+```bash
+pip install pyinstaller
+python build_exe.py
+```
+
+Gera `dist/Portaria.exe` (arquivo único, sem janela de console, com o ícone da
+cancela). O PyInstaller só é necessário para gerar o `.exe`; o programa continua
+usando apenas a biblioteca padrão. O ícone fica em `assets/portaria.ico`
+(`assets/gerar_icone.py` refaz o ícone, se o símbolo mudar).
 
 Os registros ficam no banco SQLite `portaria.db` (módulo `sqlite3`, já incluso
 no Python), criado ao lado do programa. Se houver um `registros_portaria.json` da
@@ -49,6 +70,31 @@ banco de dados, histórico, migração do JSON, busca, backup, exportação, Pai
 a própria tela (preenche campos e clica nos botões com a janela oculta),
 inclusive a sessão que expira com uma confirmação aberta e o tamanho de um
 notebook 1366×768 a 125%.
+
+## Galeria
+
+| | |
+|---|---|
+| ![Login](docs/design/final/login.png) | ![Primeiro acesso](docs/design/final/primeiro_acesso.png) |
+| **Login** — painel da guarita com relógio | **Primeiro acesso** — cria o administrador (sem senha padrão) |
+| ![Pessoa já cadastrada](docs/design/final/cadastro_ok.png) | ![CPF bloqueado](docs/design/final/cadastro_bloqueado.png) |
+| **Entrada e saída** — quem já veio tem os dados preenchidos | **CPF bloqueado** — a entrada é recusada |
+| ![Visão do porteiro](docs/design/final/cadastro_porteiro.png) | ![Layout compacto](docs/design/final/cadastro_compacto.png) |
+| **Visão do porteiro** — CPF mascarado, sem Excluir | **Notebook 1366×768** — layout compacto |
+| ![Pessoas](docs/design/final/pessoas.png) | ![Bloqueios](docs/design/final/bloqueios_admin.png) |
+| **Pessoas** — lista e ficha com a placa | **Bloqueios** — CPFs e placas com acesso negado |
+| ![Painel](docs/design/final/painel.png) | ![Exportar CSV](docs/design/final/exportar_csv.png) |
+| **Painel** — números do dia e gráficos | **Exportar CSV** — só administrador |
+| ![Usuários](docs/design/final/usuarios.png) | ![Corrigir registro](docs/design/final/corrigir.png) |
+| **Usuários** — contas e atividade do sistema | **Corrigir registro** — com o histórico do registro |
+
+**Antes × depois** (a mesma tela na versão 1 e na 2.0):
+
+| Versão 1 | Versão 2.0 |
+|---|---|
+| ![Antes](docs/design/antes/2_cadastro.png) | ![Depois](docs/design/final/cadastro_campus.png) |
+
+Todos os prints usam dados fictícios. Mais telas em `docs/design/final/`.
 
 ## Telas e funcionalidades
 
@@ -208,8 +254,37 @@ danificado):
 | `portaria/tela_edicao.py` | Janela "Corrigir registro" com o histórico do registro |
 | `portaria/tela_senha.py` | Janela "Trocar minha senha" |
 | `docs/design/` | Proposta de design, protótipo e prints (antes, protótipo e final) |
+| `docs/revisao/` | Relatórios das revisões de segurança, código e backend (antes e depois da reforma) |
+| `build_exe.py` | Gera o `dist/Portaria.exe` com o PyInstaller |
+| `assets/` | Ícone do programa (`portaria.ico`) e o script que o gera |
 | `tests/` | Testes automatizados |
 | `IDEIAS_E_MELHORIAS.md` | Análise do código, falhas encontradas e roteiro de melhorias |
 | `versoes/v1_original/` | Cópia da versão feita no Claude gratuito, para comparar antes × depois |
 | `material_aula/` | Slides da disciplina (enunciado do exercício e guia de documentação) — local, fora do git |
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
+
+## Versões
+
+**2.0** (20/10/2026) — reforma completa, feita com um time de agentes de IA
+(design, segurança, código, backend) e revisada antes de publicar:
+
+- visual novo "Guarita" (barra lateral, login com relógio, texto nítido em
+  telas com escala, layout compacto para notebook);
+- tela principal rápida mesmo com anos de dados (só o movimento do dia + quem
+  está no campus; a busca procura no histórico inteiro);
+- regras garantidas também no banco (uma entrada aberta por CPF, permissões),
+  migrações seguras com backup antes;
+- backup diário automático, exportação para CSV e log de erros;
+- login mais seguro (tentativas gravadas, espera crescente, senha mínima de 8,
+  troca da própria senha, sessão que expira por inatividade);
+- privacidade: CPF mascarado para o porteiro e no histórico;
+- correções achadas na revisão final (ação após a sessão expirar, notebook
+  1366×768, saída em linha desatualizada, falha de backup);
+- executável `Portaria.exe` e 359 testes automatizados.
+
+Relatórios e decisões: `docs/revisao/` e `docs/design/PROPOSTA_DESIGN.md`.
+
+**1.x** (16 a 17/10/2026) — organização da versão feita no Claude gratuito:
+módulos e testes, SQLite, login, cadastro de pessoas, saída rápida, correção de
+registro e lista de bloqueio. A versão original, de um arquivo só, está em
+`versoes/v1_original/`.

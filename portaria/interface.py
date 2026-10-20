@@ -41,6 +41,8 @@ A Entrada e saída é montada no login; as outras páginas na primeira vez que
 são abertas ou usadas (app.tela_pessoas etc. — ver PAGINAS_SOB_DEMANDA).
 """
 
+import os
+import sys
 import tkinter as tk
 from datetime import datetime, timedelta
 from tkinter import ttk
@@ -369,9 +371,22 @@ class AppPortaria:
     # --------------------------------------------------------------
     # Montagem da janela, da barra lateral e das páginas
     # --------------------------------------------------------------
+    def _aplicar_icone(self):
+        """Ícone da cancela na janela e nos diálogos (no lugar da pena do Tk)."""
+        # no .exe o PyInstaller descompacta os arquivos em sys._MEIPASS
+        base = getattr(sys, "_MEIPASS",
+                       os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        icone = os.path.join(base, "assets", "portaria.ico")
+        if os.path.exists(icone):
+            try:
+                self.janela.iconbitmap(default=icone)
+            except tk.TclError:
+                pass   # sem ícone não é erro: fica o padrão do Tk
+
     def _montar_janela(self):
         janela = self.janela
         janela.title("Portaria da Universidade")
+        self._aplicar_icone()
         janela.geometry(f"{px(1180)}x{px(760)}")
         # cabe num notebook 1366x768 a 125% (área útil ~1366x670 px): abaixo
         # de uns 740 px lógicos a Entrada e saída usa o layout compacto

@@ -1,10 +1,15 @@
+import hashlib
 import json
 import os
 import sqlite3
 import tempfile
 import unittest
+from datetime import date, datetime, timedelta
+from unittest import mock
 
 from portaria import dados
+from portaria.consultas import filtrar, resumo
+from portaria.validacao import FORMATO
 
 
 def registro(**mudancas):
@@ -24,6 +29,14 @@ class BaseTemp(unittest.TestCase):
 
     def tearDown(self):
         self.pasta.cleanup()   # falha se alguma conexão ficou aberta
+
+    def criar_equipe(self):
+        """ana e bia (administradoras) e paulo (porteiro): as operações
+        com autor conferem o perfil dele no banco."""
+        for nome, login, perfil in [("Ana Admin", "ana", "admin"),
+                                    ("Bia Admin", "bia", "admin"),
+                                    ("Paulo Porteiro", "paulo", "porteiro")]:
+            self.banco.criar_usuario(nome, login, perfil, "hash-falso")
 
     def escrever_json(self, conteudo):
         with open(self.caminho_json, "w", encoding="utf-8") as f:
@@ -52,7 +65,8 @@ class TestBanco(BaseTemp):
 
     def test_lista_na_ordem_de_cadastro(self):
         self.banco.inserir(registro(nome="Primeiro Cadastro", entrada="16/10/2026 10:00"))
-        self.banco.inserir(registro(nome="Segundo Cadastro", entrada="15/10/2026 10:00"))
+        self.banco.inserir(registro(nome="Segundo Cadastro", cpf="11144477735",
+                                    entrada="15/10/2026 10:00"))
         nomes = [r["nome"] for r in self.banco.listar()]
         self.assertEqual(nomes, ["Primeiro Cadastro", "Segundo Cadastro"])
 
@@ -126,12 +140,16 @@ class TestSaidas(BaseTemp):
 
 
 class TestEdicao(BaseTemp):
+    def setUp(self):
+        super().setUp()
+        self.criar_equipe()
+
     def corrigir(self, id_, **mudancas):
         antes = self.banco.buscar(id_)
         novo = {k: v for k, v in antes.items() if k != "id"}
         novo.update(mudancas)
         self.banco.editar(id_, novo, [f"{k} alterado" for k in mudancas],
-                          autor="paulo")
+                          autor="ana")
         return self.banco.buscar(id_)
 
     def test_corrige_e_guarda_no_historico_do_registro(self):
@@ -186,10 +204,14 @@ class TestEdicao(BaseTemp):
 
     def test_registro_que_nao_existe(self):
         with self.assertRaises(dados.ErroDados):
-            self.banco.editar(999, registro(), ["x"], autor="paulo")
+            self.banco.editar(999, registro(), ["x"], autor="ana")
 
 
 class TestBloqueiosNoBanco(BaseTemp):
+    def setUp(self):
+        super().setUp()
+        self.criar_equipe()
+
     def test_bloquear_listar_e_remover(self):
         self.banco.inserir(registro())                      # pessoa conhecida
         id_ = self.banco.bloquear("cpf", "52998224725", " Furto ", "ana")
@@ -252,12 +274,13 @@ class TestAuditoria(BaseTemp):
         return [(e["usuario"], e["acao"]) for e in self.banco.listar_eventos()]
 
     def test_operacoes_com_autor_ficam_no_historico(self):
+        self.criar_equipe()
         id_ = self.banco.inserir(registro(), autor="paulo")
         self.banco.registrar_saida(id_, "16/10/2026 09:00", autor="paulo")
         self.banco.excluir([id_], autor="ana")
-        self.assertEqual(self.acoes(), [("ana", "Exclusão de registro"),
-                                        ("paulo", "Saída registrada"),
-                                        ("paulo", "Cadastro de entrada")])
+        self.assertEqual(self.acoes()[:3], [("ana", "Exclusão de registro"),
+                                            ("paulo", "Saída registrada"),
+                                            ("paulo", "Cadastro de entrada")])
         detalhe = self.banco.listar_eventos()[0]["detalhe"]
         self.assertIn("João Ávila", detalhe)
         self.assertIn("16/10/2026 08:00", detalhe)
@@ -267,6 +290,7 @@ class TestAuditoria(BaseTemp):
         self.assertEqual(self.banco.listar_eventos(), [])
 
     def test_criar_usuario_registra_quem_criou(self):
+        self.banco.criar_usuario("Ana Admin", "ana", "admin", "h")
         self.banco.criar_usuario("Paulo Porteiro", "paulo", "porteiro", "h",
                                  autor="ana")
         evento = self.banco.listar_eventos()[0]
@@ -483,6 +507,406 @@ class TestMigracao(BaseTemp):
     def test_json_que_nao_e_lista_conta_como_danificado(self):
         self.escrever_json({"nome": "Ana"})
         self.assertIn("danificado", self.banco.importar_json(self.caminho_json))
+
+
+def agora_menos(**delta):
+    return (datetime.now() - timedelta(**delta)).strftime(FORMATO)
+
+
+def rebaixar_para_v5(caminho):
+    """Deixa um banco como a versão 5 deixava (sem o que a v6 criou)."""
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        DROP INDEX idx_um_aberto_por_cpf;
+        DROP INDEX idx_registros_entrada;
+        DROP INDEX idx_pessoas_nome;
+        DROP INDEX idx_auditoria_momento;
+        DROP TABLE tentativas_login;
+        PRAGMA user_version = 5;""")
+    con.close()
+
+
+def objetos_do_banco(caminho):
+    con = sqlite3.connect(caminho)
+    nomes = {n for (n,) in con.execute("SELECT name FROM sqlite_master")}
+    con.close()
+    return nomes
+
+
+def versao_do_arquivo(caminho):
+    con = sqlite3.connect(caminho)
+    versao = con.execute("PRAGMA user_version").fetchone()[0]
+    con.close()
+    return versao
+
+
+class TestIntegridade(BaseTemp):
+    def test_segunda_visita_aberta_do_mesmo_cpf_e_recusada_pelo_banco(self):
+        # duas estações: a segunda tinha a lista antiga e não viu a entrada
+        outra_estacao = dados.Banco(self.caminho_db)
+        self.banco.inserir(registro())
+        with self.assertRaises(dados.ErroDados) as erro:
+            outra_estacao.inserir(registro(entrada="16/10/2026 09:00"))
+        self.assertIn("entrada sem saída", str(erro.exception))
+        self.assertEqual(len(self.banco.listar()), 1)
+
+    def test_visita_encerrada_do_mesmo_cpf_continua_aceita(self):
+        self.banco.inserir(registro(entrada="15/10/2026 08:00",
+                                    saida="15/10/2026 09:00"))
+        self.banco.inserir(registro())
+        self.assertEqual(len(self.banco.listar()), 2)
+
+    def test_erro_tecnico_vira_mensagem_amigavel(self):
+        self.banco.inserir(registro())
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.inserir(registro(entrada="16/10/2026 09:00"))
+        mensagem = str(erro.exception)
+        for tecnico in ("constraint", "UNIQUE", "registros", "sqlite"):
+            self.assertNotIn(tecnico, mensagem)
+        self.assertIn("UNIQUE constraint failed", erro.exception.detalhe)
+
+    def test_login_repetido_tem_mensagem_propria(self):
+        self.banco.criar_usuario("Ana Admin", "ana", "admin", "h")
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.criar_usuario("Outra Ana", "ana", "porteiro", "h")
+        self.assertEqual(str(erro.exception), "Já existe um usuário com esse login.")
+
+    def test_erro_vai_para_o_log_sem_ir_para_a_tela(self):
+        self.banco.inserir(registro())
+        with self.assertLogs("portaria.dados", level="ERROR") as registro_log:
+            with self.assertRaises(dados.ErroDados):
+                self.banco.inserir(registro(entrada="16/10/2026 09:00"))
+        self.assertIn("UNIQUE constraint failed", registro_log.output[0])
+
+    def test_chaves_estrangeiras_valem(self):
+        with self.banco._conexao() as con:
+            self.assertEqual(con.execute("PRAGMA foreign_keys").fetchone()[0], 1)
+            self.assertEqual(con.execute("PRAGMA busy_timeout").fetchone()[0],
+                             dados.SEGUNDOS_ESPERA * 1000)
+        with self.assertRaises(dados.ErroDados):
+            with self.banco._conexao() as con:
+                con.execute("INSERT INTO registros (nome, cpf, celular, tipo, "
+                            "entrada, pessoa_id) VALUES ('A B', '52998224725', "
+                            "'31987654321', 'Aluno', '2026-10-16 08:00', 99999)")
+
+    def test_modo_wal_ligado(self):
+        con = sqlite3.connect(self.caminho_db)
+        modo = con.execute("PRAGMA journal_mode").fetchone()[0]
+        con.close()
+        self.assertEqual(modo, "wal")
+
+    def test_banco_de_versao_mais_nova_e_recusado_sem_alterar_nada(self):
+        con = sqlite3.connect(self.caminho_db)
+        con.execute("PRAGMA journal_mode = DELETE")
+        con.execute("PRAGMA user_version = 99")
+        con.close()
+        with open(self.caminho_db, "rb") as f:
+            antes = hashlib.sha256(f.read()).hexdigest()
+        with self.assertRaises(dados.ErroDados) as erro:
+            dados.Banco(self.caminho_db)
+        self.assertIn("versão mais nova", str(erro.exception))
+        with open(self.caminho_db, "rb") as f:
+            self.assertEqual(hashlib.sha256(f.read()).hexdigest(), antes)
+        self.assertEqual(versao_do_arquivo(self.caminho_db), 99)
+
+    def test_visita_retroativa_nao_sobrescreve_a_pessoa(self):
+        self.banco.inserir(registro())                       # visita de hoje
+        self.banco.inserir(registro(nome="João Velho", celular="31911112222",
+                                    tipo="Visitante", placa="XYZ9A87",
+                                    entrada="10/10/2026 08:00",
+                                    saida="10/10/2026 09:00"))
+        p = self.banco.buscar_pessoa("52998224725")
+        self.assertEqual((p["nome"], p["celular"], p["tipo"], p["placa"]),
+                         ("João Ávila", "31987654321", "Funcionário", "ABC1D23"))
+        self.assertEqual(p["visitas"], 2)
+
+    def test_visita_retroativa_de_pessoa_nova_cria_a_pessoa(self):
+        self.banco.inserir(registro(entrada="10/10/2026 08:00",
+                                    saida="10/10/2026 09:00"))
+        self.assertEqual(self.banco.buscar_pessoa("52998224725")["nome"],
+                         "João Ávila")
+
+    def test_de_iso_por_fatiamento_igual_ao_strptime(self):
+        for iso in ("2026-10-16 08:05", "2026-01-31 23:59", "1999-12-01 00:00"):
+            esperado = datetime.strptime(iso, dados.FORMATO_ISO).strftime(FORMATO)
+            self.assertEqual(dados.de_iso(iso), esperado)
+        self.assertEqual(dados.de_iso(""), "")
+
+
+class TestMigracaoV6(unittest.TestCase):
+    def setUp(self):
+        self.pasta = tempfile.TemporaryDirectory()
+        self.caminho = os.path.join(self.pasta.name, "portaria.db")
+
+    def tearDown(self):
+        self.pasta.cleanup()
+
+    def test_v5_vira_v6_com_indices_e_backup_antes(self):
+        dados.Banco(self.caminho).inserir(registro())
+        rebaixar_para_v5(self.caminho)
+        banco = dados.Banco(self.caminho)
+        self.assertEqual(versao_do_arquivo(self.caminho), 6)
+        self.assertLessEqual({"idx_um_aberto_por_cpf", "idx_registros_entrada",
+                              "idx_auditoria_momento", "tentativas_login"},
+                             objetos_do_banco(self.caminho))
+        backups = os.listdir(os.path.join(self.pasta.name, "backups"))
+        self.assertEqual(len(backups), 1)
+        self.assertIn("antes-v6-de-v5", backups[0])
+        self.assertEqual(len(banco.listar()), 1)
+        self.assertEqual(banco.avisos, [])
+
+    def test_erro_no_meio_da_migracao_desfaz_o_passo_inteiro(self):
+        dados.Banco(self.caminho)
+        rebaixar_para_v5(self.caminho)
+
+        def passo_que_falha(banco, con, versao):
+            dados._passo_v6(banco, con, versao)    # cria índices e tabela...
+            raise RuntimeError("falta de energia simulada")   # ...e cai
+
+        with mock.patch.object(dados, "MIGRACOES",
+                               [(5, dados._passo_v5), (6, passo_que_falha)]):
+            with self.assertRaises(RuntimeError):
+                dados.Banco(self.caminho)
+        self.assertEqual(versao_do_arquivo(self.caminho), 5)
+        objetos = objetos_do_banco(self.caminho)
+        self.assertNotIn("idx_um_aberto_por_cpf", objetos)
+        self.assertNotIn("tentativas_login", objetos)
+        dados.Banco(self.caminho)                   # na próxima vez, migra
+        self.assertEqual(versao_do_arquivo(self.caminho), 6)
+
+    def test_banco_com_visitas_abertas_duplicadas_abre_e_corrige(self):
+        dados.Banco(self.caminho)
+        rebaixar_para_v5(self.caminho)
+        con = sqlite3.connect(self.caminho)
+        con.executemany(
+            "INSERT INTO registros (nome, cpf, celular, tipo, entrada, saida) "
+            "VALUES (?, ?, '31987654321', 'Aluno', ?, '')",
+            [("Ana Silva", "52998224725", "2026-10-16 08:00"),
+             ("Ana Silva", "52998224725", "2026-10-16 10:00"),
+             ("Ana Silva", "52998224725", "2026-10-16 11:30"),
+             ("Beto Rocha", "11144477735", "2026-10-16 09:00")])
+        con.commit()
+        con.close()
+
+        banco = dados.Banco(self.caminho)
+        saidas = {r["entrada"]: r["saida"] for r in banco.listar()
+                  if r["cpf"] == "52998224725"}
+        self.assertEqual(saidas, {"16/10/2026 08:00": "16/10/2026 10:00",
+                                  "16/10/2026 10:00": "16/10/2026 11:30",
+                                  "16/10/2026 11:30": ""})
+        self.assertEqual(len(banco.avisos), 1)
+        self.assertIn("2 visita(s)", banco.avisos[0])
+        eventos = [e for e in banco.listar_eventos()
+                   if e["acao"] == "Saída automática (atualização)"]
+        self.assertEqual(len(eventos), 2)
+        self.assertEqual(eventos[0]["usuario"], dados.AUTOR_SISTEMA)
+        self.assertIn("idx_um_aberto_por_cpf", objetos_do_banco(self.caminho))
+
+
+class TestConsultasNoBanco(BaseTemp):
+    """As consultas novas no SQL dão o mesmo resultado das antigas em Python."""
+
+    HOJE = date(2026, 10, 16)
+
+    def setUp(self):
+        super().setUp()
+        cpfs = ["52998224725", "11144477735", "39053344705", "16899535009",
+                "86288366757", "71428793860"]
+        self.banco.inserir(registro(cpf=cpfs[0], entrada="15/10/2026 07:00",
+                                    saida="15/10/2026 08:30"))   # ontem, saiu
+        self.banco.inserir(registro(nome="Beto Rocha", cpf=cpfs[1], placa="",
+                                    tipo="Professor",
+                                    entrada="14/10/2026 22:00"))  # dentro há dias
+        self.banco.inserir(registro(nome="JOSÉ ÉRICO", cpf=cpfs[2], placa="QWE1234",
+                                    celular="11998765432", tipo="Visitante",
+                                    entrada="16/10/2026 09:00",
+                                    saida="16/10/2026 09:47"))    # hoje, saiu
+        self.banco.inserir(registro(cpf=cpfs[0], entrada="16/10/2026 10:00"))
+        self.banco.inserir(registro(nome="Duda Reis", cpf=cpfs[3], tipo="Outro",
+                                    entrada="09/10/2026 10:00",
+                                    saida="09/10/2026 10:01"))    # há 7 dias
+        self.banco.inserir(registro(nome="Eva Lima", cpf=cpfs[4], tipo="Aluno",
+                                    entrada="17/10/2026 08:00",
+                                    saida="17/10/2026 18:59"))    # amanhã
+        self.banco.inserir(registro(nome="Fábio Melo", cpf=cpfs[5], tipo="Aluno",
+                                    entrada="16/10/2026 00:00",
+                                    saida="16/10/2026 00:00"))
+
+    def test_movimento_e_hoje_mais_quem_esta_dentro(self):
+        movimento = self.banco.listar_movimento(self.HOJE)
+        self.assertEqual([(r["nome"], r["entrada"]) for r in movimento], [
+            ("João Ávila", "16/10/2026 10:00"),
+            ("JOSÉ ÉRICO", "16/10/2026 09:00"),
+            ("Fábio Melo", "16/10/2026 00:00"),
+            ("Beto Rocha", "14/10/2026 22:00")])
+
+    def test_buscar_registros_igual_ao_filtrar(self):
+        todos = self.banco.listar()
+        mais_recentes_primeiro = sorted(
+            todos, key=lambda r: (dados.para_iso(r["entrada"]), r["id"]),
+            reverse=True)
+        for texto in ["", "  ", "ana", "JOÃO", "josé", "érico", "529.982",
+                      "119987", "qwe", "aluno", "outro", "x", "16/10", "9"]:
+            with self.subTest(texto=texto):
+                self.assertEqual(self.banco.buscar_registros(texto),
+                                 filtrar(mais_recentes_primeiro, texto))
+
+    def test_buscar_registros_respeita_o_limite(self):
+        self.assertEqual(len(self.banco.buscar_registros("", limite=3)), 3)
+
+    def test_resumo_no_sql_igual_ao_resumo_em_python(self):
+        todos = self.banco.listar()
+        for hoje in (self.HOJE, date(2026, 10, 17), date(2026, 10, 1),
+                     datetime(2026, 10, 16, 15, 0)):
+            with self.subTest(hoje=hoje):
+                dia = hoje.date() if isinstance(hoje, datetime) else hoje
+                self.assertEqual(self.banco.resumo_painel(hoje),
+                                 resumo(todos, dia))
+
+    def test_resumo_de_banco_vazio(self):
+        vazio = dados.Banco(os.path.join(self.pasta.name, "vazio.db"))
+        self.assertEqual(vazio.resumo_painel(self.HOJE), resumo([], self.HOJE))
+
+    def test_buscar_um_e_listar_por_cpf(self):
+        primeiro = self.banco.listar()[0]
+        self.assertEqual(self.banco.buscar(primeiro["id"]), primeiro)
+        self.assertIsNone(self.banco.buscar(9999))
+        self.assertEqual([r["entrada"] for r in
+                          self.banco.listar_por_cpf("52998224725")],
+                         ["15/10/2026 07:00", "16/10/2026 10:00"])
+
+    def test_buscar_pessoas_igual_ao_filtrar(self):
+        pessoas = self.banco.listar_pessoas()
+        for texto in ["", "o", "JOSÉ", "beto", "111.444", "aluno", "zz"]:
+            with self.subTest(texto=texto):
+                self.assertEqual(self.banco.buscar_pessoas(texto),
+                                 filtrar(pessoas, texto))
+
+
+class TestPermissoesNoBanco(BaseTemp):
+    """S04: a camada de dados confere o perfil de quem faz (quando informado)."""
+
+    def setUp(self):
+        super().setUp()
+        self.criar_equipe()
+        self.ids = {u["login"]: u["id"] for u in self.banco.listar_usuarios()}
+
+    def test_porteiro_nao_exclui_registro(self):  # RN02
+        id_ = self.banco.inserir(registro())
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.excluir([id_], autor="paulo")
+        self.assertIn("Somente o administrador", str(erro.exception))
+        self.assertEqual(len(self.banco.listar()), 1)
+        self.banco.excluir([id_], autor="ana")
+        self.assertEqual(self.banco.listar(), [])
+
+    def test_porteiro_nao_mexe_na_lista_de_bloqueio(self):  # RN12
+        with self.assertRaises(dados.ErroDados):
+            self.banco.bloquear("cpf", "52998224725", "Motivo qualquer", "paulo")
+        id_ = self.banco.bloquear("cpf", "52998224725", "Motivo qualquer", "ana")
+        with self.assertRaises(dados.ErroDados):
+            self.banco.desbloquear(id_, "paulo")
+        self.assertEqual(len(self.banco.listar_bloqueios()), 1)
+
+    def test_porteiro_nao_gerencia_usuarios(self):
+        with self.assertRaises(dados.ErroDados):
+            self.banco.criar_usuario("Novo Admin", "novo", "admin", "h",
+                                     autor="paulo")
+        with self.assertRaises(dados.ErroDados):
+            self.banco.definir_ativo(self.ids["ana"], False, autor="paulo")
+        with self.assertRaises(dados.ErroDados):
+            self.banco.definir_senha(self.ids["ana"], "outro-hash", autor="paulo")
+        self.assertIsNone(self.banco.buscar_usuario("novo"))
+        ana = self.banco.buscar_usuario("ana")
+        self.assertEqual((ana["ativo"], ana["senha"]), (True, "hash-falso"))
+
+    def test_cada_um_troca_a_propria_senha_e_admin_redefine(self):
+        self.banco.definir_senha(self.ids["paulo"], "h-paulo", autor="paulo")
+        self.banco.definir_senha(self.ids["paulo"], "h-admin", autor="ana")
+        self.assertEqual(self.banco.buscar_usuario("paulo")["senha"], "h-admin")
+        acoes = [(e["usuario"], e["acao"]) for e in self.banco.listar_eventos()]
+        self.assertEqual(acoes[:2], [("ana", "Senha redefinida"),
+                                     ("paulo", "Senha alterada")])
+
+    def test_porteiro_corrige_so_registro_recente(self):  # RN11
+        recente = self.banco.inserir(registro(entrada=agora_menos(hours=1)))
+        antigo = self.banco.inserir(registro(cpf="11144477735",
+                                             entrada=agora_menos(hours=30)))
+        novo = dict(self.banco.buscar(recente), nome="João Ávila Neto")
+        self.banco.editar(recente, novo, ["Nome"], autor="paulo")
+        for id_, mudanca in [(antigo, {"nome": "Beto Rocha"}),
+                             (recente, {"entrada": agora_menos(hours=30)})]:
+            with self.subTest(id_=id_), self.assertRaises(dados.ErroDados) as e:
+                self.banco.editar(id_, dict(self.banco.buscar(id_), **mudanca),
+                                  ["x"], autor="paulo")
+            self.assertIn("24 horas", str(e.exception))
+        self.banco.editar(antigo, dict(self.banco.buscar(antigo), nome="Beto Rocha"),
+                          ["Nome"], autor="ana")
+        self.assertEqual(self.banco.buscar(antigo)["nome"], "Beto Rocha")
+
+    def test_autor_desativado_ou_inexistente_e_recusado(self):
+        self.banco.definir_ativo(self.ids["bia"], False, autor="ana")
+        id_ = self.banco.inserir(registro())
+        for autor in ("bia", "fantasma"):
+            with self.subTest(autor=autor), self.assertRaises(dados.ErroDados):
+                self.banco.excluir([id_], autor=autor)
+        self.assertEqual(len(self.banco.listar()), 1)
+
+    def test_sem_autor_continua_aceito_chamada_interna(self):
+        # limitação documentada: autor=None não confere perfil
+        id_ = self.banco.inserir(registro())
+        self.banco.excluir([id_])
+        self.assertEqual(self.banco.listar(), [])
+
+    def test_porteiro_nao_exporta_registros(self):
+        with self.assertRaises(dados.ErroDados):
+            self.banco.registros_do_periodo(date(2026, 10, 1), date(2026, 10, 31),
+                                            autor="paulo")
+
+
+class TestPrivacidadeNoHistorico(BaseTemp):
+    """S08/S11: o histórico não guarda CPF completo nem texto de senha."""
+
+    def setUp(self):
+        super().setUp()
+        self.criar_equipe()
+
+    def detalhes(self):
+        return " | ".join(e["detalhe"] for e in self.banco.listar_eventos())
+
+    def test_exclusao_grava_cpf_mascarado(self):
+        id_ = self.banco.inserir(registro(), autor="paulo")
+        self.banco.excluir([id_], autor="ana")
+        detalhe = self.banco.listar_eventos()[0]["detalhe"]
+        self.assertIn("***.982.247-**", detalhe)
+        self.assertNotIn("52998224725", detalhe)
+        self.assertNotIn("529.982.247-25", detalhe)
+
+    def test_cpf_em_qualquer_detalhe_e_mascarado(self):
+        # como a tela registra a "Entrada recusada (bloqueio)" e a correção
+        self.banco.registrar_evento("paulo", "Entrada recusada (bloqueio)",
+                                    "Ana Silva, CPF 529.982.247-25, placa ABC1D23")
+        self.banco.bloquear("cpf", "11144477735", "Ameaçou alguém", "ana")
+        id_ = self.banco.inserir(registro(), autor="paulo")
+        novo = dict(self.banco.buscar(id_), cpf="39053344705")
+        self.banco.editar(id_, novo, ["CPF: 529.982.247-25 → 390.533.447-05"],
+                          autor="ana")
+        detalhes = self.detalhes()
+        for cpf in ("52998224725", "529.982.247-25", "11144477735",
+                    "39053344705", "390.533.447-05"):
+            self.assertNotIn(cpf, detalhes)
+        self.assertIn("***.982.247-** → ***.533.447-**", detalhes)
+        self.assertIn("CPF ***.444.777-**", detalhes)
+
+    def test_login_recusado_de_login_inexistente_nao_grava_o_texto(self):  # S11
+        self.banco.registrar_evento("minhasenha#2026", "Login recusado")
+        self.banco.registrar_evento("ana", "Login recusado")
+        usuarios = [e["usuario"] for e in self.banco.listar_eventos()]
+        self.assertEqual(usuarios[:2], ["ana", "(login inexistente)"])
+        con = sqlite3.connect(self.caminho_db)
+        tudo = str(con.execute("SELECT * FROM auditoria").fetchall())
+        con.close()
+        self.assertNotIn("minhasenha", tudo)
 
 
 if __name__ == "__main__":

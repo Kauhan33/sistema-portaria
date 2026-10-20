@@ -6,8 +6,9 @@ Tela de login. No primeiro uso (banco sem usuários) vira a tela de
 import tkinter as tk
 from tkinter import ttk
 
+from .componentes import cartao, entrada, novo_botao, rotulo
 from .dados import ErroDados
-from .estilo import COR, FONTE, cartao
+from .estilo import COR, FONTE
 from .usuarios import (SENHA_MINIMA, autenticar, gerar_hash, normalizar_login,
                        validar_novo_usuario)
 
@@ -46,16 +47,12 @@ class TelaLogin:
             self.campo_senha = self._campo("Senha", senha=True)
             acao, texto = self.entrar, "Entrar"
 
-        self.lbl_erro = tk.Label(self.miolo, text="", bg=COR["superficie"], fg=COR["erro"],
-                                 font=FONTE["legenda"], wraplength=300,
-                                 justify="left")
+        self.lbl_erro = tk.Label(self.miolo, text="", bg=COR["superficie"],
+                                 fg=COR["erro"], font=FONTE["legenda"],
+                                 wraplength=300, justify="left")
         self.lbl_erro.pack(anchor="w", pady=(4, 0))
-        self.btn_acao = tk.Button(self.miolo, text=texto, command=acao,
-                                  bg=COR["primario"], fg=COR["texto_invertido"],
-                                  activebackground=COR["primario"],
-                                  activeforeground=COR["texto_invertido"], relief="flat",
-                                  cursor="hand2", font=FONTE["botao"],
-                                  pady=7)
+        self.btn_acao = novo_botao(self.miolo, texto, acao, COR["primario"],
+                                   pady=7)
         self.btn_acao.pack(fill="x", pady=(10, 0))
 
         # Enter em qualquer campo confirma
@@ -67,17 +64,17 @@ class TelaLogin:
         primeiro.focus_set()
 
     def _titulo(self, titulo, subtitulo):
-        tk.Label(self.miolo, text=titulo, bg=COR["superficie"], fg=COR["texto"],
-                 font=FONTE["titulo_login"]).pack(anchor="w")
-        tk.Label(self.miolo, text=subtitulo, bg=COR["superficie"], fg=COR["texto_3"],
-                 font=FONTE["legenda"]).pack(anchor="w", pady=(0, 10))
+        tk.Label(self.miolo, text=titulo, bg=COR["superficie"],
+                 fg=COR["texto"], font=FONTE["titulo_login"]).pack(anchor="w")
+        tk.Label(self.miolo, text=subtitulo, bg=COR["superficie"],
+                 fg=COR["texto_3"], font=FONTE["legenda"]
+                 ).pack(anchor="w", pady=(0, 10))
 
-    def _campo(self, rotulo, senha=False):
-        tk.Label(self.miolo, text=rotulo, bg=COR["superficie"], fg=COR["texto_2"],
-                 font=FONTE["rotulo"]).pack(anchor="w", pady=(6, 2))
+    def _campo(self, texto, senha=False):
+        rotulo(self.miolo, texto).pack(anchor="w", pady=(6, 2))
         # RNF02: a senha aparece como •••• enquanto é digitada
-        campo = ttk.Entry(self.miolo, font=FONTE["corpo_grande"], width=32,
-                          show="•" if senha else "")
+        campo = entrada(self.miolo, font=FONTE["corpo_grande"], width=32,
+                        show="•" if senha else "")
         campo.pack(fill="x")
         return campo
 

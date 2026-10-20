@@ -13,8 +13,11 @@ from tkinter import ttk
 
 from . import dados, mensagens
 from .consultas import encontrar_dentro, filtrar, formatar_duracao, resumo
+from .componentes import (barra_busca, botao, botao_link, botao_pequeno,
+                          combo, dica, entrada, entrada_numeros, entrada_placa,
+                          rotulo_secao, tabela)
 from .estilo import (COR, COR_GRAFICO_DIAS, CORES_RESUMO, CORES_TIPO, FONTE,
-                     aplicar_tema, botao)
+                     aplicar_tema)
 from .tela_edicao import JanelaEdicao
 from .tela_login import TelaLogin
 from .tela_bloqueios import AbaBloqueios
@@ -38,6 +41,12 @@ DICA_CPF = "Digite o CPF primeiro: quem já veio tem os dados preenchidos sozinh
 SEGUNDOS_PARA_DESFAZER = 10
 TECLAS_DA_SESSAO = ("<Return>", "<KP_Enter>", "<F2>")
 DICA_PLACA = "ABC1234 ou ABC1D23 (deixe vazio se a pé)"
+COLUNAS_REGISTROS = [("Nome", "Nome", 170, "w"), ("CPF", "CPF", 105, "center"),
+                     ("Celular", "Celular", 115, "center"),
+                     ("Placa", "Placa", 75, "center"),
+                     ("Tipo", "Tipo de acesso", 120, "w"),
+                     ("Entrada", "Entrada", 130, "center"),
+                     ("Saida", "Saída", 130, "center")]
 
 
 def agora():
@@ -465,11 +474,9 @@ class AppPortaria:
                                     fg=COR["texto_invertido"],
                                     font=FONTE["corpo_semi"])
         self.lbl_usuario.pack(side="left", padx=(0, 12))
-        tk.Button(self.sessao, text="Sair", command=self.sair, bg=COR["superficie"],
-                  fg=COR["marca"], activebackground=COR["marca_tinta"],
-                  activeforeground=COR["marca"], relief="flat", cursor="hand2",
-                  font=FONTE["botao_pequeno"], padx=12, pady=3
-                  ).pack(side="left")
+        botao_pequeno(self.sessao, "Sair", self.sair, COR["superficie"],
+                      cor_texto=COR["marca"], cor_ativa=COR["marca_tinta"],
+                      padx=12, pady=3).pack(side="left")
 
     def _montar_principal(self):
         """Abas que aparecem depois do login."""
@@ -499,7 +506,6 @@ class AppPortaria:
         # Tecla ENTER cadastra (exceto na caixa de busca)
         self.janela.bind("<Return>", self.cadastrar)
         self.janela.bind("<KP_Enter>", self.cadastrar)
-        self.busca.bind("<Return>", lambda e: "break")
         self.janela.bind("<F2>", lambda e: self.campo_saida_rapida.focus_set())
 
         self.registros = self.tentar(self.banco.listar)[1] or []
@@ -515,24 +521,17 @@ class AppPortaria:
         elif self.aba_usuarios is not None and aba == str(self.aba_usuarios):
             self.tela_usuarios.atualizar()
 
-    def _so_numeros(self, limite):
-        """Validação de digitação: só números, com limite de tamanho."""
-        return (self.janela.register(
-            lambda p: p == "" or (p.isascii() and p.isdigit() and len(p) <= limite)),
-            "%P")
-
     def _montar_cadastro(self):
         form = tk.Frame(self.aba_cad, bg=COR["fundo"])
         form.pack(fill="x", padx=20, pady=14)
         form.columnconfigure((0, 1, 2), weight=1, uniform="col")
 
         def rotulo(texto, linha, coluna, **kw):
-            tk.Label(form, text=texto, bg=COR["fundo"], font=FONTE["rotulo_secao"]
-                     ).grid(row=linha, column=coluna, sticky="w", **kw)
+            rotulo_secao(form, texto).grid(row=linha, column=coluna,
+                                           sticky="w", **kw)
 
-        def dica(texto, linha, coluna, cor=COR["texto_3"]):
-            rotulo_dica = tk.Label(form, text=texto, bg=COR["fundo"], fg=cor,
-                                   font=FONTE["dica"])
+        def nova_dica(texto, linha, coluna, cor=COR["texto_3"]):
+            rotulo_dica = dica(form, texto, cor=cor)
             rotulo_dica.grid(row=linha, column=coluna, sticky="w")
             return rotulo_dica
 
@@ -541,13 +540,11 @@ class AppPortaria:
         rotulo("CPF (somente números): *", 0, 0)
         self._auto = None   # o que foi preenchido sozinho, para poder desfazer
         self.var_cpf = tk.StringVar()
-        self.cpf = ttk.Entry(form, font=FONTE["corpo"], validate="key",
-                             textvariable=self.var_cpf,
-                             validatecommand=self._so_numeros(11))
+        self.cpf = entrada_numeros(form, 11, textvariable=self.var_cpf)
         self.cpf.grid(row=1, column=0, sticky="ew", padx=(0, 10))
 
         rotulo("Nome completo: *", 0, 1)
-        self.nome = ttk.Entry(form, font=FONTE["corpo"])
+        self.nome = entrada(form)
         self.nome.grid(row=1, column=1, columnspan=2, sticky="ew")
 
         self.lbl_pessoa = tk.Label(form, text=DICA_CPF, bg=COR["fundo"],
@@ -558,27 +555,20 @@ class AppPortaria:
 
         # Linha 3-5: celular, placa e tipo
         rotulo("Celular com DDD (somente números): *", 3, 0)
-        self.celular = ttk.Entry(form, font=FONTE["corpo"], validate="key",
-                                 validatecommand=self._so_numeros(11))
+        self.celular = entrada_numeros(form, 11)
         self.celular.grid(row=4, column=0, sticky="ew", padx=(0, 10))
 
         # Placa: letras/números, máximo 7, sempre maiúscula
         rotulo("Placa do veículo:" + (" *" if PLACA_OBRIGATORIA else ""), 3, 1)
-        self.var_placa = tk.StringVar()
-        self.var_placa.trace_add("write", self._placa_maiuscula)
-        placa_ok = self.janela.register(
-            lambda p: p == "" or (p.isascii() and p.isalnum() and len(p) <= 7))
-        ttk.Entry(form, font=FONTE["corpo"], textvariable=self.var_placa,
-                  validate="key", validatecommand=(placa_ok, "%P")
-                  ).grid(row=4, column=1, sticky="ew", padx=(0, 10))
+        caixa_placa, self.var_placa = entrada_placa(form)
+        caixa_placa.grid(row=4, column=1, sticky="ew", padx=(0, 10))
 
         rotulo("Tipo de acesso: *", 3, 2)
-        self.tipo = ttk.Combobox(form, values=TIPOS_ACESSO, state="readonly",
-                                 font=FONTE["corpo"])
+        self.tipo = combo(form, TIPOS_ACESSO)
         self.tipo.grid(row=4, column=2, sticky="ew")
 
-        dica("Ex.: 31912345678 (DDD + 9 + 8 dígitos)", 5, 0)
-        self.lbl_dica_placa = dica(DICA_PLACA, 5, 1)
+        nova_dica("Ex.: 31912345678 (DDD + 9 + 8 dígitos)", 5, 0)
+        self.lbl_dica_placa = nova_dica(DICA_PLACA, 5, 1)
 
         # Linha 6-8: entrada e saída
         rotulo(f"Entrada ({FORMATO_EXIBICAO}): *", 6, 0, pady=(8, 0))
@@ -586,8 +576,8 @@ class AppPortaria:
         rotulo(f"Saída ({FORMATO_EXIBICAO}):", 6, 1, pady=(8, 0))
         self.saida = self._campo_data(form, 7, 1)
 
-        dica("Saída em branco = pessoa ainda no campus.", 8, 1)
-        dica("* campos obrigatórios", 8, 0, cor=COR["marca"])
+        nova_dica("Saída em branco = pessoa ainda no campus.", 8, 1)
+        nova_dica("* campos obrigatórios", 8, 0, cor=COR["erro"])
 
         # Liga o preenchimento automático e os alertas de bloqueio só
         # depois de tudo montado
@@ -603,66 +593,40 @@ class AppPortaria:
         botao(botoes, "✎ Corrigir", COR["neutro"], self.editar_selecionado)
         self.btn_excluir = None
         if pode_excluir(self.usuario):  # RN02: o porteiro nem vê o botão
-            self.btn_excluir = botao(botoes, "✕ Excluir selecionado", COR["perigo"],
-                                     self.excluir_selecionado, lado="right")
+            self.btn_excluir = botao(botoes, "✕ Excluir selecionado",
+                                     COR["perigo"], self.excluir_selecionado,
+                                     lado="right")
 
         # Saída rápida: CPF ou placa + Enter (F2 leva o cursor para cá)
         barra_saida = tk.Frame(self.aba_cad, bg=COR["fundo"])
         barra_saida.pack(fill="x", padx=20, pady=(12, 0))
-        tk.Label(barra_saida, text="Saída rápida (F2) — CPF ou placa:",
-                 bg=COR["fundo"], font=FONTE["rotulo_secao"]).pack(side="left")
-        self.campo_saida_rapida = ttk.Entry(barra_saida, font=FONTE["corpo"],
-                                            width=18)
+        rotulo_secao(barra_saida, "Saída rápida (F2) — CPF ou placa:"
+                     ).pack(side="left")
+        self.campo_saida_rapida = entrada(barra_saida, width=18)
         self.campo_saida_rapida.pack(side="left", padx=8)
         self.campo_saida_rapida.bind("<Return>", self.saida_rapida)
         self.campo_saida_rapida.bind("<KP_Enter>", self.saida_rapida)
-        tk.Button(barra_saida, text="Registrar", command=self.saida_rapida,
-                  bg=COR["atencao"], fg=COR["texto_invertido"], activebackground=COR["atencao"],
-                  activeforeground=COR["texto_invertido"], relief="flat", cursor="hand2",
-                  font=FONTE["botao_pequeno"], padx=10, pady=2
-                  ).pack(side="left")
+        botao_pequeno(barra_saida, "Registrar", self.saida_rapida,
+                      COR["atencao"], padx=10, pady=2).pack(side="left")
         self.lbl_aviso = tk.Label(barra_saida, text="", bg=COR["fundo"],
                                   fg=COR["sucesso"], font=FONTE["aviso"])
         self.lbl_aviso.pack(side="left", padx=(16, 0))
-        self.btn_desfazer = tk.Button(barra_saida, text="Desfazer",
-                                      command=self.desfazer_saida, bg=COR["fundo"],
-                                      fg=COR["foco"], activebackground=COR["fundo"],
-                                      relief="flat", cursor="hand2",
-                                      font=FONTE["link"])
+        self.btn_desfazer = botao_link(barra_saida, "Desfazer",
+                                       self.desfazer_saida)
         self._timer_aviso = None
         self._para_desfazer = None
 
         # Busca
-        barra_busca = tk.Frame(self.aba_cad, bg=COR["fundo"])
-        barra_busca.pack(fill="x", padx=20, pady=(8, 4))
-        tk.Label(barra_busca, text="Buscar (nome, CPF, celular, placa ou tipo):",
-                 bg=COR["fundo"], font=FONTE["rotulo_secao"]).pack(side="left")
-        self.busca = ttk.Entry(barra_busca, font=FONTE["corpo"])
-        self.busca.pack(side="left", fill="x", expand=True, padx=8)
+        barra, self.busca = barra_busca(
+            self.aba_cad, "Buscar (nome, CPF, celular, placa ou tipo):")
+        barra.pack(fill="x", padx=20, pady=(8, 4))
         self.busca.bind("<KeyRelease>",
                         lambda e: self.atualizar_tabela(self.busca.get()))
 
         # Tabela
-        quadro = tk.Frame(self.aba_cad, bg=COR["fundo"])
+        quadro, self.tabela = tabela(self.aba_cad, COLUNAS_REGISTROS,
+                                     selecao="extended")
         quadro.pack(fill="both", expand=True, padx=20, pady=(0, 6))
-        self.tabela = ttk.Treeview(
-            quadro, show="headings", selectmode="extended",
-            columns=("Nome", "CPF", "Celular", "Placa", "Tipo", "Entrada",
-                     "Saida"))
-        for col, titulo, larg, anc in [
-                ("Nome", "Nome", 170, "w"), ("CPF", "CPF", 105, "center"),
-                ("Celular", "Celular", 115, "center"),
-                ("Placa", "Placa", 75, "center"),
-                ("Tipo", "Tipo de acesso", 120, "w"),
-                ("Entrada", "Entrada", 130, "center"),
-                ("Saida", "Saída", 130, "center")]:
-            self.tabela.heading(col, text=titulo)
-            self.tabela.column(col, width=larg, anchor=anc)
-        rolagem = ttk.Scrollbar(quadro, orient="vertical",
-                                command=self.tabela.yview)
-        self.tabela.configure(yscrollcommand=rolagem.set)
-        self.tabela.pack(side="left", fill="both", expand=True)
-        rolagem.pack(side="right", fill="y")
         self.tabela.bind("<Double-1>", self._ao_duplo_clique)
 
         self.lbl_status = tk.Label(self.aba_cad, text="", bg=COR["fundo"],
@@ -670,16 +634,11 @@ class AppPortaria:
                                    anchor="w")
         self.lbl_status.pack(fill="x", padx=20, pady=(0, 8))
 
-    def _placa_maiuscula(self, *args):
-        texto = self.var_placa.get()
-        if texto != texto.upper():
-            self.var_placa.set(texto.upper())
-
     def _campo_data(self, form, linha, coluna):
         """Campo de data/hora com o botão 'Agora' ao lado."""
         caixa = tk.Frame(form, bg=COR["fundo"])
         caixa.grid(row=linha, column=coluna, sticky="ew", padx=(0, 10))
-        campo = ttk.Entry(caixa, font=FONTE["corpo"])
+        campo = entrada(caixa)
         campo.pack(side="left", fill="x", expand=True)
         ttk.Button(caixa, text="Agora", width=7,
                    command=lambda: (campo.delete(0, tk.END),

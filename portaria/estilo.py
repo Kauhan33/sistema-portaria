@@ -4,10 +4,10 @@ Cores e fontes do sistema, num lugar só (tokens com nome).
 As telas nunca escrevem "#d9001b" nem ("Segoe UI", 10): usam COR["marca"],
 FONTE["corpo"] etc. Os nomes seguem o sistema de design "Guarita"
 (docs/design/PROPOSTA_DESIGN.md); os valores ainda são os da tela atual.
-Para mudar o visual, muda-se este arquivo.
+Para mudar o visual, muda-se este arquivo (e componentes.py, que monta
+as peças com estes valores).
 """
 
-import tkinter as tk
 from tkinter import ttk
 
 COR = {
@@ -84,21 +84,3 @@ def aplicar_tema(janela):
     estilo.configure("TNotebook", background=COR["fundo"], borderwidth=0)
     estilo.configure("TNotebook.Tab", font=FONTE["aba"], padding=[18, 7])
 
-
-def botao(pai, texto, cor, comando, lado="left"):
-    b = tk.Button(pai, text=texto, bg=cor, fg=COR["texto_invertido"],
-                  activebackground=cor, activeforeground=COR["texto_invertido"],
-                  relief="flat", cursor="hand2", font=FONTE["botao"],
-                  padx=14, pady=6, command=comando)
-    b.pack(side=lado, padx=(0, 8))
-    return b
-
-
-def cartao(pai):
-    """Caixa branca com borda e faixa vermelha no topo; devolve (caixa, miolo)."""
-    caixa = tk.Frame(pai, bg=COR["superficie"], highlightbackground=COR["borda"],
-                     highlightthickness=1)
-    tk.Frame(caixa, bg=COR["marca"], height=4).pack(fill="x")
-    miolo = tk.Frame(caixa, bg=COR["superficie"])
-    miolo.pack(fill="both", expand=True, padx=24, pady=(16, 20))
-    return caixa, miolo

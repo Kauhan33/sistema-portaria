@@ -4,14 +4,19 @@ ou desativar, redefinir senha e ver o histórico de ações do sistema.
 """
 
 import tkinter as tk
-from tkinter import ttk
 
 from . import mensagens
-from .estilo import COR, FONTE, botao, cartao
+from .componentes import (botao, campo, cartao, combo, grupo_campo,
+                          preencher_eventos, rotulo_secao, tabela,
+                          tabela_eventos)
+from .estilo import COR, FONTE
 from .usuarios import (PERFIS, gerar_hash, normalizar_login, pode_desativar,
                        validar_novo_usuario, validar_senha)
 
 PERFIL_POR_NOME = {nome: chave for chave, nome in PERFIS.items()}
+COLUNAS = [("login", "Usuário", 110, "w"), ("nome", "Nome", 200, "w"),
+           ("perfil", "Perfil", 110, "center"),
+           ("situacao", "Situação", 90, "center")]
 
 
 class AbaUsuarios:
@@ -37,25 +42,23 @@ class AbaUsuarios:
     def _montar_formulario(self, topo):
         caixa, miolo = cartao(topo)
         caixa.grid(row=0, column=0, sticky="ns")
-        tk.Label(miolo, text="Novo usuário", bg=COR["superficie"], fg=COR["texto"],
-                 font=FONTE["titulo_cartao"]).pack(anchor="w", pady=(0, 4))
+        tk.Label(miolo, text="Novo usuário", bg=COR["superficie"],
+                 fg=COR["texto"], font=FONTE["titulo_cartao"]
+                 ).pack(anchor="w", pady=(0, 4))
 
-        def campo(rotulo, senha=False):
-            tk.Label(miolo, text=rotulo, bg=COR["superficie"], fg=COR["texto_2"],
-                     font=FONTE["rotulo"]).pack(anchor="w", pady=(6, 2))
-            entrada = ttk.Entry(miolo, font=FONTE["corpo"], width=28,
-                                show="•" if senha else "")
-            entrada.pack(fill="x")
-            return entrada
+        def novo_campo(texto, senha=False):
+            grupo, caixa_texto = campo(miolo, texto, width=28,
+                                       show="•" if senha else "")
+            grupo.pack(fill="x")
+            return caixa_texto
 
-        self.nome = campo("Nome completo")
-        self.login = campo("Usuário (ex.: maria.souza)")
-        self.senha = campo("Senha", senha=True)
-        self.confirmacao = campo("Confirmar senha", senha=True)
-        tk.Label(miolo, text="Perfil", bg=COR["superficie"], fg=COR["texto_2"],
-                 font=FONTE["rotulo"]).pack(anchor="w", pady=(6, 2))
-        self.perfil = ttk.Combobox(miolo, values=list(PERFIL_POR_NOME),
-                                   state="readonly", font=FONTE["corpo"])
+        self.nome = novo_campo("Nome completo")
+        self.login = novo_campo("Usuário (ex.: maria.souza)")
+        self.senha = novo_campo("Senha", senha=True)
+        self.confirmacao = novo_campo("Confirmar senha", senha=True)
+        grupo = grupo_campo(miolo, "Perfil")
+        grupo.pack(fill="x")
+        self.perfil = combo(grupo, PERFIL_POR_NOME)
         self.perfil.set(PERFIS["porteiro"])
         self.perfil.pack(fill="x")
 
@@ -66,19 +69,9 @@ class AbaUsuarios:
     def _montar_lista(self, topo):
         lado = tk.Frame(topo, bg=COR["fundo"])
         lado.grid(row=0, column=1, sticky="nsew", padx=(16, 0))
-        tk.Label(lado, text="Usuários do sistema", bg=COR["fundo"],
-                 font=FONTE["rotulo_secao"]).pack(anchor="w", pady=(0, 4))
-        self.tabela = ttk.Treeview(lado, show="headings", selectmode="browse",
-                                   columns=("login", "nome", "perfil", "situacao"),
-                                   height=6)
-        for col, titulo, larg in [("login", "Usuário", 110),
-                                  ("nome", "Nome", 200),
-                                  ("perfil", "Perfil", 110),
-                                  ("situacao", "Situação", 90)]:
-            self.tabela.heading(col, text=titulo)
-            self.tabela.column(col, width=larg,
-                               anchor="w" if col in ("login", "nome") else "center")
-        self.tabela.pack(fill="both", expand=True)
+        rotulo_secao(lado, "Usuários do sistema").pack(anchor="w", pady=(0, 4))
+        quadro, self.tabela = tabela(lado, COLUNAS, altura=6, rolagem=False)
+        quadro.pack(fill="both", expand=True)
         self.tabela.tag_configure("inativo", foreground=COR["desativado"])
 
         botoes = tk.Frame(lado, bg=COR["fundo"])
@@ -89,24 +82,11 @@ class AbaUsuarios:
     def _montar_historico(self, aba):
         baixo = tk.Frame(aba, bg=COR["fundo"])
         baixo.pack(fill="both", expand=True, padx=20, pady=(6, 14))
-        tk.Label(baixo, text="Histórico de ações (mais recentes primeiro)",
-                 bg=COR["fundo"], font=FONTE["rotulo_secao"]).pack(anchor="w", pady=(0, 4))
-        quadro = tk.Frame(baixo, bg=COR["fundo"])
+        rotulo_secao(baixo, "Histórico de ações (mais recentes primeiro)"
+                     ).pack(anchor="w", pady=(0, 4))
+        quadro, self.historico = tabela_eventos(baixo, (140, 100, 160, 420),
+                                                altura=4)
         quadro.pack(fill="both", expand=True)
-        self.historico = ttk.Treeview(quadro, show="headings", height=4,
-                                      columns=("momento", "usuario", "acao",
-                                               "detalhe"))
-        for col, titulo, larg in [("momento", "Data e hora", 140),
-                                  ("usuario", "Usuário", 100),
-                                  ("acao", "Ação", 160),
-                                  ("detalhe", "Detalhe", 420)]:
-            self.historico.heading(col, text=titulo)
-            self.historico.column(col, width=larg, anchor="w")
-        rolagem = ttk.Scrollbar(quadro, orient="vertical",
-                                command=self.historico.yview)
-        self.historico.configure(yscrollcommand=rolagem.set)
-        self.historico.pack(side="left", fill="both", expand=True)
-        rolagem.pack(side="right", fill="y")
 
     # --------------------------------------------------------------
     # Dados
@@ -123,10 +103,7 @@ class AbaUsuarios:
                     tags=() if u["ativo"] else ("inativo",))
         ok, eventos = self.app.tentar(self.app.banco.listar_eventos)
         if ok:
-            self.historico.delete(*self.historico.get_children())
-            for e in eventos:
-                self.historico.insert("", "end", values=(
-                    e["momento"], e["usuario"], e["acao"], e["detalhe"]))
+            preencher_eventos(self.historico, eventos)
 
     def _autor(self):
         return self.app.usuario["login"]

@@ -5,14 +5,18 @@ o histórico daquele registro (quem cadastrou, deu saída, corrigiu e o quê).
 
 import tkinter as tk
 from datetime import datetime
-from tkinter import ttk
 
 from . import mensagens
+from .componentes import (botao, campo, cartao, combo, entrada_placa,
+                          grupo_campo, preencher_eventos, tabela_eventos)
 from .consultas import descrever_alteracoes
-from .estilo import COR, FONTE, botao, cartao
+from .estilo import COR, FONTE
 from .usuarios import pode_editar
 from .validacao import (FORMATO_EXIBICAO, TIPOS_ACESSO,
                         checar_bloqueio_correcao, normalizar, validar)
+
+SEM_HISTORICO = {"momento": "—", "usuario": "—", "acao": "Sem histórico",
+                 "detalhe": "registro anterior ao histórico"}
 
 
 class JanelaEdicao:
@@ -28,8 +32,9 @@ class JanelaEdicao:
 
         caixa, miolo = cartao(self.janela)
         caixa.pack(fill="both", expand=True, padx=16, pady=16)
-        tk.Label(miolo, text="Corrigir registro", bg=COR["superficie"], fg=COR["texto"],
-                 font=FONTE["titulo_dialogo"]).pack(anchor="w")
+        tk.Label(miolo, text="Corrigir registro", bg=COR["superficie"],
+                 fg=COR["texto"], font=FONTE["titulo_dialogo"]
+                 ).pack(anchor="w")
         tk.Label(miolo, text=f"Entrada de {registro['nome']} em "
                              f"{registro['entrada']}. Toda correção fica "
                              "registrada no histórico abaixo.",
@@ -61,66 +66,59 @@ class JanelaEdicao:
         form.columnconfigure((0, 1), weight=1, uniform="e")
         r = self.original
 
-        def campo(rotulo, linha, coluna, valor, **kw):
-            tk.Label(form, text=rotulo, bg=COR["superficie"], fg=COR["texto_2"],
-                     font=FONTE["rotulo"]
-                     ).grid(row=linha, column=coluna, sticky="w", pady=(6, 2))
-            entrada = ttk.Entry(form, font=FONTE["corpo"], width=30, **kw)
-            entrada.grid(row=linha + 1, column=coluna, sticky="ew",
-                         padx=(0, 10) if coluna == 0 else 0)
+        def posicionar(grupo, linha, coluna):
+            grupo.grid(row=linha, column=coluna, sticky="ew",
+                       padx=(0, 10) if coluna == 0 else 0)
+
+        def novo_campo(texto, linha, coluna, valor):
+            grupo, caixa = campo(form, texto, width=30)
+            posicionar(grupo, linha, coluna)
             if valor:
-                entrada.insert(0, valor)
-            return entrada
+                caixa.insert(0, valor)
+            return caixa
 
-        self.cpf = campo("CPF (somente números)", 0, 0, r["cpf"])
-        self.nome = campo("Nome completo", 0, 1, r["nome"])
-        self.celular = campo("Celular com DDD", 2, 0, r["celular"])
-        self.var_placa = tk.StringVar(value=r.get("placa", ""))
-        self.var_placa.trace_add("write", lambda *a: self.var_placa.set(
-            self.var_placa.get().upper())
-            if self.var_placa.get() != self.var_placa.get().upper() else None)
-        campo("Placa do veículo", 2, 1, "", textvariable=self.var_placa)
+        self.cpf = novo_campo("CPF (somente números)", 0, 0, r["cpf"])
+        self.nome = novo_campo("Nome completo", 0, 1, r["nome"])
+        self.celular = novo_campo("Celular com DDD", 1, 0, r["celular"])
+        grupo = grupo_campo(form, "Placa do veículo")
+        posicionar(grupo, 1, 1)
+        # Q04: aqui a placa ainda aceita qualquer tecla (como antes)
+        caixa_placa, self.var_placa = entrada_placa(
+            grupo, tk.StringVar(value=r.get("placa", "")), restringir=False,
+            width=30)
+        caixa_placa.pack(fill="x")
 
-        tk.Label(form, text="Tipo de acesso", bg=COR["superficie"], fg=COR["texto_2"],
-                 font=FONTE["rotulo"]
-                 ).grid(row=4, column=0, sticky="w", pady=(6, 2))
-        self.tipo = ttk.Combobox(form, values=TIPOS_ACESSO, state="readonly",
-                                 font=FONTE["corpo"])
+        grupo = grupo_campo(form, "Tipo de acesso")
+        posicionar(grupo, 2, 0)
+        self.tipo = combo(grupo, TIPOS_ACESSO)
         self.tipo.set(r["tipo"])
-        self.tipo.grid(row=5, column=0, sticky="ew", padx=(0, 10))
+        self.tipo.pack(fill="x")
 
-        self.entrada = campo(f"Entrada ({FORMATO_EXIBICAO})", 6, 0, r["entrada"])
-        self.saida = campo(f"Saída ({FORMATO_EXIBICAO}) — vazio = no campus",
-                           6, 1, r["saida"])
+        self.entrada = novo_campo(f"Entrada ({FORMATO_EXIBICAO})", 3, 0,
+                                  r["entrada"])
+        self.saida = novo_campo(
+            f"Saída ({FORMATO_EXIBICAO}) — vazio = no campus", 3, 1, r["saida"])
 
     def _montar_historico(self, miolo):
-        tk.Label(miolo, text="Histórico deste registro", bg=COR["superficie"], fg=COR["texto"],
-                 font=FONTE["rotulo_secao"]).pack(anchor="w", pady=(14, 4))
-        self.historico = ttk.Treeview(miolo, show="headings", height=5,
-                                      columns=("momento", "usuario", "acao",
-                                               "detalhe"))
-        for col, titulo, larg in [("momento", "Data e hora", 130),
-                                  ("usuario", "Usuário", 80),
-                                  ("acao", "Ação", 130),
-                                  ("detalhe", "Detalhe", 320)]:
-            self.historico.heading(col, text=titulo)
-            self.historico.column(col, width=larg, anchor="w")
-        self.historico.pack(fill="x")
+        tk.Label(miolo, text="Histórico deste registro", bg=COR["superficie"],
+                 fg=COR["texto"], font=FONTE["rotulo_secao"]
+                 ).pack(anchor="w", pady=(14, 4))
+        quadro, self.historico = tabela_eventos(
+            miolo, (130, 80, 130, 320), altura=5, rolagem=False,
+            fundo=COR["superficie"])
+        quadro.pack(fill="x")
         # detalhe completo da linha clicada (a coluna corta textos longos)
-        self.lbl_detalhe = tk.Label(miolo, text="Clique numa linha para ver "
-                                    "o detalhe completo.", bg=COR["superficie"], fg=COR["texto_3"],
-                                    font=FONTE["legenda"], wraplength=640,
-                                    justify="left")
+        self.lbl_detalhe = tk.Label(
+            miolo, text="Clique numa linha para ver o detalhe completo.",
+            bg=COR["superficie"], fg=COR["texto_3"], font=FONTE["legenda"],
+            wraplength=640, justify="left")
         self.lbl_detalhe.pack(anchor="w", pady=(4, 0))
         self.historico.bind("<<TreeviewSelect>>", self.mostrar_detalhe)
         ok, eventos = self.app.tentar(self.app.banco.eventos_do_registro,
                                       self.original["id"])
-        for e in eventos if ok else []:
-            self.historico.insert("", "end", values=(
-                e["momento"], e["usuario"], e["acao"], e["detalhe"]))
-        if ok and not eventos:
-            self.historico.insert("", "end", values=(
-                "—", "—", "Sem histórico", "registro anterior ao histórico"))
+        if not ok:
+            return
+        preencher_eventos(self.historico, eventos or [SEM_HISTORICO])
 
     def mostrar_detalhe(self, event=None):
         selecao = self.historico.selection()

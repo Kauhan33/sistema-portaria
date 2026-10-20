@@ -39,7 +39,7 @@ import tkinter as tk
 from datetime import datetime, timedelta
 from tkinter import ttk
 
-from . import dados, mensagens
+from . import backup, dados, mensagens
 from .componentes import Avatar, BotaoIcone, ItemMenu, marca_cancela
 from .estilo import (COR, FONTE, ICONE, LARGURA_LATERAL, aplicar_tema,
                      carregar_fontes, px)
@@ -102,6 +102,7 @@ class AppPortaria:
         self.tela_cadastro = self.tela_dashboard = None
         self.janela_senha = None
         self.itens_menu = {}
+        self.avisos_admin = []      # migração do banco e backup: só o admin vê
         self.ultimo_uso = self.relogio()
         self._timer_inatividade = None
 
@@ -143,6 +144,29 @@ class AppPortaria:
             return
         if aviso:
             mensagens.info("Banco de dados", aviso)
+        self.avisos_admin = list(self.banco.avisos)
+        try:   # uma cópia por dia, guardando as 30 mais recentes
+            backup.backup_diario(self.caminho_banco)
+        except (dados.ErroDados, OSError) as e:
+            dados.log.error("Backup diário não realizado: %s",
+                            getattr(e, "detalhe", "") or e)
+            self.avisos_admin.append("O backup diário do banco não foi feito "
+                                     f"hoje.\n{e}")
+
+    def mostrar_avisos(self):
+        """Avisos da atualização do banco e do backup, uma vez, ao
+        administrador que entrar."""
+        if self.avisos_admin and eh_admin(self.usuario):
+            mensagens.aviso("Avisos do sistema", "\n\n".join(self.avisos_admin))
+            self.avisos_admin = []
+
+    def _erro_inesperado(self, tipo, erro, rastro):
+        """Erro de programação numa ação da tela: o detalhe vai para o log
+        (portaria.log), o usuário vê uma mensagem simples."""
+        dados.log.error("Erro inesperado na tela", exc_info=(tipo, erro, rastro))
+        mensagens.erro("Erro inesperado",
+                       "Algo deu errado nesta ação e ela não foi concluída.\n"
+                       "Tente de novo; se continuar, avise o administrador.")
 
     @property
     def autor(self):
@@ -154,6 +178,9 @@ class AppPortaria:
         try:
             return True, operacao(*args, **kwargs)
         except dados.ErroDados as e:
+            if e.detalhe:      # o técnico vai para o log, não para a tela
+                dados.log.warning("%s | detalhe: %s", str(e).splitlines()[0],
+                                  e.detalhe)
             mensagens.erro("Erro", str(e))
             return False, None
 
@@ -228,6 +255,7 @@ class AppPortaria:
         self._montar_principal()
         self.registrar_uso()
         self._vigiar_inatividade()
+        self.mostrar_avisos()
 
     def sair(self, inatividade=False):
         if self.usuario:
@@ -280,6 +308,7 @@ class AppPortaria:
         janela.geometry(f"{px(1180)}x{px(760)}")
         janela.minsize(px(1000), px(640))
         janela.configure(bg=COR["fundo"])
+        janela.report_callback_exception = self._erro_inesperado
         carregar_fontes(janela)
         aplicar_tema(janela)
         # qualquer tecla ou mouse dentro da janela conta como uso

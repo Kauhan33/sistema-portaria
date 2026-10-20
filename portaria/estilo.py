@@ -257,23 +257,3 @@ def aplicar_tema(janela):
                 tabmargins=0)
     return s
 
-
-# ----------------------------------------------------------------------
-# LEGADO (telas ainda não redesenhadas). Sai quando a última tela migrar.
-# ----------------------------------------------------------------------
-COR.update({"marca_tinta": "#FDECEE", "texto_status": COR["texto_2"],
-            "texto_rotulo": COR["texto_2"], "texto_apoio": COR["texto_3"],
-            "texto_vazio": COR["texto_3"], "desativado": COR["texto_3"],
-            "linha_grafico": COR["borda"], "secundario": COR["primario"],
-            "atencao": COR["primario"], "neutro": COR["texto_2"],
-            "perigo": COR["erro"]})
-CORES_RESUMO = {"total": COR["texto"], "dentro": COR["sucesso"],
-                "hoje": COR["info"], "veiculos": COR["alerta"],
-                "permanencia": CORES_TIPO["Professor"]}
-COR_GRAFICO_DIAS = COR["barra"]
-_LEGADO_FONTE = {"titulo_login": "titulo_dialogo", "titulo_secao": "titulo_cartao",
-                 "rotulo_secao": "corpo_semi", "legenda": "dica",
-                 "aviso": "corpo_semi", "dica_forte": "rotulo",
-                 "botao_pequeno": "rotulo", "aba": "corpo_semi",
-                 "cabecalho_tabela": "rotulo"}
-FONTE.update({velho: FONTE[novo] for velho, novo in _LEGADO_FONTE.items()})

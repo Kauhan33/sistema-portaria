@@ -8,7 +8,7 @@ troca todas as caixas por falsas (assim nenhuma janela trava o teste).
 caixa aparece sobre a janela principal.
 """
 
-from tkinter import messagebox, simpledialog
+from tkinter import filedialog, messagebox, simpledialog
 
 
 def _dono(parent):
@@ -35,3 +35,11 @@ def confirmar(titulo, texto, parent=None):
 def pedir_senha(titulo, texto, parent=None):
     """Pede um texto escondido (••••); devolve None se cancelar."""
     return simpledialog.askstring(titulo, texto, show="•", **_dono(parent))
+
+
+def salvar_como(titulo, nome_inicial, parent=None):
+    """Diálogo "Salvar como" de planilha CSV; devolve o caminho ou "" se
+    cancelar."""
+    return filedialog.asksaveasfilename(
+        title=titulo, initialfile=nome_inicial, defaultextension=".csv",
+        filetypes=[("Planilha (CSV)", "*.csv")], **_dono(parent)) or ""

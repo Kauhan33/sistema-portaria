@@ -33,6 +33,7 @@ Testes automatizados: python -m unittest
 import os
 import sys
 
+from portaria.dados import configurar_log
 from portaria.estilo import ligar_nitidez
 from portaria.interface import AppPortaria, ajustar_ao_monitor
 
@@ -46,8 +47,10 @@ def pasta_do_programa():
 
 BANCO = os.path.join(pasta_do_programa(), "portaria.db")
 JSON_ANTIGO = os.path.join(pasta_do_programa(), "registros_portaria.json")
+LOG = os.path.join(pasta_do_programa(), "portaria.log")   # erros técnicos
 
 if __name__ == "__main__":
+    configurar_log(LOG)    # detalhes técnicos dos erros (o usuário vê o simples)
     ligar_nitidez()        # texto nítido com escala de tela 125%/150% (DPI)
     app = AppPortaria(BANCO, json_antigo=JSON_ANTIGO)
     ajustar_ao_monitor(app.janela)

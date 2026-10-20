@@ -5,7 +5,7 @@ import os
 import tempfile
 import tkinter as tk
 import unittest
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from unittest import mock
 
 from portaria import dados
@@ -72,9 +72,11 @@ class BaseInterface(unittest.TestCase):
         self.msg = mock.MagicMock()
         self.msg.askyesno.return_value = True
         self.dialogo = mock.MagicMock()
+        self.arquivo = mock.MagicMock()           # "Salvar como"
         # todas as telas usam portaria.mensagens: um patch só cobre tudo
         patcher = mock.patch.multiple("portaria.mensagens", messagebox=self.msg,
-                                      simpledialog=self.dialogo)
+                                      simpledialog=self.dialogo,
+                                      filedialog=self.arquivo)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -278,30 +280,63 @@ class TestDashboard(BaseInterface):
         return self.app.cards[chave][1].cget("text")
 
     def test_sem_registros_mostra_zeros(self):
-        self.assertEqual(self.valor("total"), "0")
+        self.assertEqual(set(self.app.cards),
+                         {"dentro", "hoje", "permanencia", "veiculos"})
         self.assertEqual(self.valor("dentro"), "0")
-        self.assertEqual(self.valor("Aluno"), "0")
+        self.assertEqual(self.valor("hoje"), "0")
         self.assertEqual(self.valor("permanencia"), "—")
         self.assertEqual(self.apoio("permanencia"), "sem saídas registradas")
+        self.assertIn("0 registros desde o início",
+                      self.app.tela_dashboard.lbl_subtitulo.cget("text"))
 
     def test_numeros_acompanham_os_registros(self):
         self.banco.inserir(dict(VISITA_ANTIGA))                  # 5 h, com placa
         self.banco.inserir({"nome": "Ana Silva", "cpf": "52998224725",
                             "celular": "31987654321", "placa": "",
-                            "tipo": "Visitante", "entrada": ha_uma_hora(),
+                            "tipo": "Visitante", "entrada": agora_menos(1),
                             "saida": ""})
-        self.app.registros = self.banco.listar()
         self.app.atualizar_tabela()
-        self.assertEqual(self.valor("total"), "2")
         self.assertEqual(self.valor("dentro"), "1")
-        self.assertEqual(self.apoio("dentro"), "1 já saíram")
+        self.assertEqual(self.valor("hoje"), "1")
         self.assertEqual(self.valor("veiculos"), "1")
+        self.assertEqual(self.apoio("veiculos"), "de 2 registros")
         self.assertEqual(self.valor("permanencia"), "5h 00min")
-        self.assertEqual(self.apoio("permanencia"), "1 saídas")
-        self.assertEqual(self.valor("Visitante"), "1")
-        self.assertEqual(self.apoio("Visitante"), "1 dentro agora")
-        self.assertEqual(self.valor("Professor"), "1")
-        self.assertEqual(self.apoio("Professor"), "0 dentro agora")
+        self.assertEqual(self.apoio("permanencia"), "em 1 visita encerrada")
+        self.assertIn("2 registros desde o início",
+                      self.app.tela_dashboard.lbl_subtitulo.cget("text"))
+        # os seis cartões por tipo viraram o gráfico "Pessoas por tipo"
+        tipos = {rotulo: (total, extra) for rotulo, total, extra
+                 in self.app.tela_dashboard.dados["tipos"]}
+        self.assertEqual(tipos["Visitantes"], (1, "1 no campus"))
+        self.assertEqual(tipos["Professores"], (1, "0 no campus"))
+        self.assertEqual(tipos["Alunos"], (0, "0 no campus"))
+        dias = self.app.tela_dashboard.dados["dias"]
+        self.assertEqual(len(dias), 7)
+        self.assertEqual(dias[-1][1], 1)                         # hoje
+
+    def test_exportar_csv(self):
+        self.banco.inserir(dict(VISITA_ANTIGA))
+        caminho = os.path.join(self.pasta.name, "saida.csv")
+        self.arquivo.asksaveasfilename.return_value = caminho
+        dialogo = self.app.tela_dashboard.abrir_exportacao()
+        dialogo.janela.withdraw()
+        dialogo.periodo(date(2026, 10, 1), date(2026, 10, 31))
+        dialogo.exportar()
+        with open(caminho, encoding="utf-8-sig") as f:
+            linhas = f.read().splitlines()
+        self.assertEqual(len(linhas), 2)                 # cabeçalho + 1 visita
+        self.assertIn("111.444.777-35", linhas[1])
+        self.assertIn("1 registro exportado", self.msg.showinfo.call_args[0][1])
+        self.assertIn(("ana.admin", "Exportação de registros"), self.acoes())
+
+    def test_exportar_com_data_invalida_nao_pede_arquivo(self):
+        dialogo = self.app.tela_dashboard.abrir_exportacao()
+        dialogo.janela.withdraw()
+        dialogo.desde.delete(0, tk.END)
+        dialogo.desde.insert(0, "31/02/2026")
+        dialogo.exportar()
+        self.assertIn("Data inválida", dialogo.lbl_erro.cget("text"))
+        self.arquivo.asksaveasfilename.assert_not_called()
 
 
 class TestPorteiro(BaseInterface):
@@ -321,6 +356,13 @@ class TestPorteiro(BaseInterface):
         self.assertNotIn("Excluir", botoes)
         self.assertIsNone(self.app.aba_usuarios)
         self.assertIsNone(self.app.tela_usuarios)
+
+    def test_porteiro_nao_exporta_csv(self):
+        self.assertIsNone(self.app.tela_dashboard.btn_exportar)
+        self.assertNotIn("Exportar CSV", self.botoes(self.app.aba_dash))
+        self.assertIsNone(self.app.tela_dashboard.abrir_exportacao())
+        self.assertIn("Somente o administrador", self.msg.showerror.call_args[0][1])
+        self.arquivo.asksaveasfilename.assert_not_called()
 
     def test_porteiro_ve_a_aba_pessoas(self):
         self.assertIsNotNone(self.app.tela_pessoas)
@@ -542,6 +584,56 @@ class TestSessao(BaseInterface):
     def test_teclado_e_mouse_contam_como_uso(self):
         self.assertTrue(self.janela.bind("<KeyPress>"))
         self.assertTrue(self.janela.bind("<Motion>"))
+
+
+class TestAbertura(BaseInterface):
+    """Backup diário, avisos para o administrador e log de erros."""
+    entrar_como = None
+
+    def test_backup_diario_criado_na_abertura(self):
+        nome = f"portaria-{date.today():%Y-%m-%d}.db"
+        self.assertTrue(os.path.exists(
+            os.path.join(self.pasta.name, "backups", nome)))
+
+    def entrar(self, login, senha):
+        tela = self.app.tela_login
+        tela.campo_login.insert(0, login)
+        tela.campo_senha.insert(0, senha)
+        tela.entrar()
+
+    def test_avisos_da_migracao_aparecem_so_para_o_admin(self):
+        self.app.avisos_admin = ["2 visita(s) receberam saída automática."]
+        self.entrar("paulo", "senha456")
+        self.msg.showwarning.assert_not_called()
+        self.app.sair()
+        self.entrar("ana.admin", "senha123")
+        self.assertIn("saída automática", self.msg.showwarning.call_args[0][1])
+        self.app.sair()
+        self.msg.showwarning.reset_mock()
+        self.entrar("ana.admin", "senha123")            # só uma vez
+        self.msg.showwarning.assert_not_called()
+
+    def test_erro_do_banco_mostra_o_simples_e_loga_o_detalhe(self):
+        def falha():
+            raise dados.ErroDados("Erro no banco de dados.", detalhe="disk I/O error")
+        with self.assertLogs("portaria.dados", "WARNING") as log:
+            ok, _ = self.app.tentar(falha)
+        self.assertFalse(ok)
+        self.msg.showerror.assert_called_with("Erro", "Erro no banco de dados.")
+        self.assertIn("disk I/O error", "\n".join(log.output))
+
+    def test_erro_inesperado_na_tela_vai_para_o_log(self):
+        try:
+            raise ZeroDivisionError("divisão por zero")
+        except ZeroDivisionError as e:
+            erro = e
+        with self.assertLogs("portaria.dados", "ERROR") as log:
+            self.janela.report_callback_exception(ZeroDivisionError, erro,
+                                                  erro.__traceback__)
+        titulo, texto = self.msg.showerror.call_args[0]
+        self.assertEqual(titulo, "Erro inesperado")
+        self.assertNotIn("ZeroDivision", texto)
+        self.assertIn("ZeroDivisionError", "\n".join(log.output))
 
 
 class TestAbaUsuarios(BaseInterface):

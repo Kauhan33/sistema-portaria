@@ -537,9 +537,9 @@ class AbaCadastro:
             return
         if not mensagens.confirmar(
                 "Excluir registro",
-                plural(len(selecionado), "registro selecionado",
-                       "registros selecionados") + " será(ão) apagado(s).\n"
-                "A exclusão fica no histórico. Continuar?"):
+                "Excluir " + plural(len(selecionado), "registro selecionado",
+                                    "registros selecionados") + "?\n"
+                "A exclusão fica registrada no histórico."):
             return
         self.app.gravar(self.app.banco.excluir, [int(i) for i in selecionado])
         self.app.atualizar_tabela()

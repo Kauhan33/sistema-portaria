@@ -270,6 +270,15 @@ class TestLogin(BaseInterface):
         self.assertEqual(self.app.tela_login.campo_senha.get(), "")
         self.assertIn(("ana.admin", "Login recusado"), self.acoes())
 
+    def test_enter_em_qualquer_campo_confirma(self):  # Q13
+        tela = self.app.tela_login
+        self.assertEqual(tela.campos, [tela.campo_login, tela.campo_senha])
+        # vale mesmo com cada campo dentro do seu próprio Frame
+        for caixa in tela.campos:
+            self.assertIsNot(caixa.master, tela.miolo)
+            self.assertTrue(caixa.bind("<Return>"))
+            self.assertTrue(caixa.bind("<KP_Enter>"))
+
     def test_usuario_desativado_nao_entra(self):
         self.banco.definir_ativo(self.porteiro["id"], False)
         self.tentar_login("paulo", "senha456")
@@ -311,7 +320,11 @@ class TestPrimeiroAcesso(BaseInterface):
         tela.criar_administrador()
 
     def test_banco_vazio_pede_para_criar_o_administrador(self):
-        self.assertTrue(self.app.tela_login.primeiro_acesso)
+        tela = self.app.tela_login
+        self.assertTrue(tela.primeiro_acesso)
+        self.assertEqual(tela.campos, [tela.campo_nome, tela.campo_login,
+                                       tela.campo_senha, tela.campo_confirmacao])
+        self.assertTrue(all(c.bind("<Return>") for c in tela.campos))
 
     def test_senha_curta_e_recusada(self):
         self.preencher_admin(senha="123", confirmacao="123")

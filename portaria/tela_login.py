@@ -4,9 +4,8 @@ Tela de login. No primeiro uso (banco sem usuários) vira a tela de
 """
 
 import tkinter as tk
-from tkinter import ttk
 
-from .componentes import cartao, entrada, novo_botao, rotulo
+from .componentes import campo, cartao, novo_botao
 from .dados import ErroDados
 from .estilo import COR, FONTE
 from .usuarios import (SENHA_MINIMA, autenticar, gerar_hash, normalizar_login,
@@ -19,6 +18,8 @@ class TelaLogin:
         self.banco = banco
         self.tentativas = tentativas
         self.ao_entrar = ao_entrar
+        self.campos = []                 # caixas de texto, na ordem da tela
+        self.primeiro_acesso = False
 
         caixa, self.miolo = cartao(pai)
         caixa.place(relx=0.5, rely=0.45, anchor="center")
@@ -56,12 +57,10 @@ class TelaLogin:
         self.btn_acao.pack(fill="x", pady=(10, 0))
 
         # Enter em qualquer campo confirma
-        for campo in self.miolo.winfo_children():
-            if isinstance(campo, ttk.Entry):
-                campo.bind("<Return>", lambda e: acao())
-                campo.bind("<KP_Enter>", lambda e: acao())
-        primeiro = self.campo_nome if self.primeiro_acesso else self.campo_login
-        primeiro.focus_set()
+        for caixa_texto in self.campos:
+            caixa_texto.bind("<Return>", lambda e: acao())
+            caixa_texto.bind("<KP_Enter>", lambda e: acao())
+        self.campos[0].focus_set()
 
     def _titulo(self, titulo, subtitulo):
         tk.Label(self.miolo, text=titulo, bg=COR["superficie"],
@@ -71,12 +70,13 @@ class TelaLogin:
                  ).pack(anchor="w", pady=(0, 10))
 
     def _campo(self, texto, senha=False):
-        rotulo(self.miolo, texto).pack(anchor="w", pady=(6, 2))
         # RNF02: a senha aparece como •••• enquanto é digitada
-        campo = entrada(self.miolo, font=FONTE["corpo_grande"], width=32,
-                        show="•" if senha else "")
-        campo.pack(fill="x")
-        return campo
+        grupo, caixa_texto = campo(self.miolo, texto, width=32,
+                                   font=FONTE["corpo_grande"],
+                                   show="•" if senha else "")
+        grupo.pack(fill="x")
+        self.campos.append(caixa_texto)
+        return caixa_texto
 
     def erro(self, texto):
         self.lbl_erro.config(text=texto)

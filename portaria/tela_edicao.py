@@ -1,6 +1,10 @@
 """
 Janela "Corrigir registro": corrige erro de digitação numa visita e mostra
 o histórico daquele registro (quem cadastrou, deu saída, corrigiu e o quê).
+
+Privacidade: o porteiro vê o CPF mascarado (***.982.247-**) e somente
+leitura. Para corrigir um CPF digitado errado ele clica no lápis do campo
+e digita o número inteiro de novo (com o documento em mãos).
 """
 
 import tkinter as tk
@@ -10,10 +14,11 @@ from . import mensagens
 from .componentes import (Aviso, Campo, Dialogo, preencher_eventos,
                           rotulo_campo, tabela_eventos)
 from .consultas import descrever_alteracoes
-from .estilo import COR, FONTE, px
-from .usuarios import pode_editar
+from .estilo import COR, FONTE, ICONE, px
+from .usuarios import eh_admin, pode_editar
 from .validacao import (FORMATO_EXIBICAO, TIPOS_ACESSO,
-                        checar_bloqueio_correcao, normalizar, validar)
+                        checar_bloqueio_correcao, mascarar_cpf, normalizar,
+                        validar)
 
 SEM_HISTORICO = {"momento": "—", "usuario": "—", "acao": "Sem histórico",
                  "detalhe": "registro anterior ao histórico"}
@@ -24,9 +29,10 @@ class JanelaEdicao(Dialogo):
     def __init__(self, app, registro):
         self.app = app
         self.original = registro
+        self.cpf_oculto = not eh_admin(app.usuario)   # porteiro: mascarado
         super().__init__(app.janela, f"Corrigir registro #{registro['id']}",
                          f"Entrada de {registro['nome']} em {registro['entrada']}."
-                         " Toda correção fica no histórico.", largura=640,
+                         " Toda correção fica no histórico.", largura=780,
                          ao_usar=app.registrar_uso)
         self._montar_campos()
         self._montar_historico()
@@ -38,31 +44,40 @@ class JanelaEdicao(Dialogo):
     def _montar_campos(self):
         form = tk.Frame(self.miolo, bg=COR["superficie"])
         form.pack(fill="x")
-        form.columnconfigure((0, 1, 2), weight=1, uniform="e")
+        form.columnconfigure((0, 1, 2, 3), weight=1, uniform="e")
         r = self.original
 
         def novo(texto, linha, coluna, valor, apoio="", juntas=1, **opcoes):
+            espaco = (0, px(12)) if coluna + juntas < 4 else 0
             frame, _ = rotulo_campo(form, texto, apoio)
-            frame.grid(row=linha, column=coluna, sticky="w", pady=(0, px(4)))
+            frame.grid(row=linha, column=coluna, sticky="w", pady=(0, px(4)),
+                       padx=espaco)
             campo = Campo(form, **opcoes)
             campo.grid(row=linha + 1, column=coluna, columnspan=juntas,
-                       sticky="ew", pady=(0, px(12)),
-                       padx=(0, px(12)) if coluna + juntas < 3 else 0)
+                       sticky="ew", pady=(0, px(12)), padx=espaco)
             campo.var.set(valor or "")      # valor do banco, sem passar pela digitação
             return campo
 
-        # Q04: CPF, celular e placa com as mesmas restrições da Entrada e saída
-        self.cpf = novo("CPF", 0, 0, r["cpf"], numeros=11).entrada
+        # Q04: CPF, celular e placa com as mesmas restrições da Entrada e
+        # saída. Duas linhas de 4 colunas: cabe num notebook 1366x768 a 125%
+        if self.cpf_oculto:
+            self.cpf = novo("CPF", 0, 0, mascarar_cpf(r["cpf"]), "lápis = trocar",
+                            numeros=11, icone=ICONE["editar"],
+                            acao_icone=self.liberar_cpf).entrada
+            self.cpf.config(state="readonly", fg=COR["texto_2"],
+                            readonlybackground=COR["superficie"])
+        else:
+            self.cpf = novo("CPF", 0, 0, r["cpf"], numeros=11).entrada
         self.nome = novo("Nome completo", 0, 1, r["nome"], juntas=2).entrada
-        self.celular = novo("Celular", 2, 0, r["celular"], "só números",
+        self.celular = novo("Celular", 0, 3, r["celular"], "só números",
                             numeros=11).entrada
-        campo_placa = novo("Placa", 2, 1, r.get("placa", ""), "opcional",
+        campo_placa = novo("Placa", 2, 0, r.get("placa", ""), "opcional",
                            placa=True)
         self.var_placa, self.caixa_placa = campo_placa.var, campo_placa.entrada
-        self.tipo = novo("Tipo de acesso", 2, 2, r["tipo"],
+        self.tipo = novo("Tipo de acesso", 2, 1, r["tipo"],
                          opcoes=TIPOS_ACESSO).entrada
-        self.entrada = novo("Entrada", 4, 0, r["entrada"], FORMATO_EXIBICAO).entrada
-        self.saida = novo("Saída", 4, 1, r["saida"], "vazio = no campus").entrada
+        self.entrada = novo("Entrada", 2, 2, r["entrada"], FORMATO_EXIBICAO).entrada
+        self.saida = novo("Saída", 2, 3, r["saida"], "vazio = no campus").entrada
         self.cpf.config(font=FONTE["cpf"])
 
     def _montar_historico(self):
@@ -73,7 +88,7 @@ class JanelaEdicao(Dialogo):
                            highlightbackground=COR["borda"], highlightthickness=1)
         moldura.pack(fill="x")
         quadro, self.historico = tabela_eventos(
-            moldura, (140, 80, 160, 260), altura=3, compacta=True)
+            moldura, (140, 80, 160, 260), altura=2, compacta=True)
         quadro.pack(fill="x")
         # detalhe completo da linha clicada (a coluna corta textos longos)
         self.faixa = Aviso(self.miolo)
@@ -98,8 +113,22 @@ class JanelaEdicao(Dialogo):
     # --------------------------------------------------------------
     # Ações
     # --------------------------------------------------------------
+    def liberar_cpf(self):
+        """Lápis do campo CPF (porteiro): apaga o CPF mascarado e deixa
+        digitar o número certo."""
+        if not self.cpf_oculto:
+            return
+        self.cpf_oculto = False
+        self.cpf.config(state="normal", fg=COR["texto"])
+        self.cpf.delete(0, tk.END)
+        # o Tk desliga a validação quando recebe um texto que não passaria
+        # nela (a máscara): religa a regra "só dígitos"
+        self.cpf.config(validate="key")
+        self.cpf.focus_set()
+
     def salvar(self):
-        novo = normalizar(self.nome.get(), self.cpf.get(), self.celular.get(),
+        cpf = self.original["cpf"] if self.cpf_oculto else self.cpf.get()
+        novo = normalizar(self.nome.get(), cpf, self.celular.get(),
                           self.var_placa.get(), self.tipo.get(),
                           self.entrada.get(), self.saida.get())
         alteracoes = descrever_alteracoes(self.original, novo)

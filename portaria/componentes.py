@@ -26,6 +26,8 @@ from .estilo import (ALTURA_CAMPO, COR, ESTADO, FONTE, ICONE, MARGEM,
                      fonte_icone, px)
 
 TAMANHO_PLACA = 7
+# Na tela pequena as colunas das tabelas encolhem até 85% da largura de projeto
+ENCOLHER_ATE = 0.85
 COLUNAS_EVENTOS = [("momento", "Data e hora"), ("usuario", "Usuário"),
                    ("acao", "Ação"), ("detalhe", "Detalhe")]
 DIAS = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira",
@@ -568,7 +570,8 @@ class Aviso(tk.Frame):
         self._ao_redimensionar()
 
     def _ao_redimensionar(self, event=None):
-        largura = self.cv.winfo_width() - px(80)
+        # menos as margens internas e o ícone
+        largura = self.cv.winfo_width() - px(60)
         if self.acao is not None:
             largura -= self.acao.winfo_reqwidth()
         self.lbl.config(wraplength=max(largura, px(120)))
@@ -785,15 +788,21 @@ def tabela(pai, colunas, situacao=None, mostrar=None, altura=None,
                        show="tree headings" if situacao else "headings",
                        selectmode=selecao, columns=[c[0] for c in colunas],
                        **opcoes)
+    larguras = {}                       # largura de projeto de cada coluna
     if situacao:
         tab.heading("#0", text=situacao, anchor="w")
+        larguras["#0"] = px(112)
         tab.column("#0", width=px(112), minwidth=px(90), stretch=False,
                    anchor="w")
     for col, titulo, largura, ancora in colunas:
         tab.heading(col, text=titulo, anchor="w" if ancora == "w" else ancora)
-        tab.column(col, width=px(largura), minwidth=px(40), anchor=ancora)
+        larguras[col] = px(largura)
+        tab.column(col, width=px(largura), minwidth=px(40), stretch=False,
+                   anchor=ancora)
     if mostrar:
         tab.configure(displaycolumns=mostrar)
+    tab.bind("<Configure>", lambda e: _encaixar_colunas(tab, larguras),
+             add="+")
     tab.tag_configure("zebra", background=COR["superficie_2"])
     tab.tag_configure("apagado", foreground=COR["texto_3"])
     tab.pack(side="left", fill="both", expand=True)
@@ -803,6 +812,26 @@ def tabela(pai, colunas, situacao=None, mostrar=None, altura=None,
         tab.configure(yscrollcommand=barra.set)
         barra.pack(side="right", fill="y", padx=(px(2), px(4)))
     return quadro, tab
+
+
+def _encaixar_colunas(tab, larguras):
+    """As colunas visíveis dividem a largura da tabela na proporção do
+    projeto (o Treeview sozinho não encolhe as colunas): sobra espaço na tela
+    grande, e na pequena elas encolhem até ENCOLHER_ATE do projeto, para o
+    texto (ex.: o CPF) não ser cortado; abaixo disso a última fica cortada."""
+    visiveis = list(tab["displaycolumns"])
+    if visiveis in (["#all"], []):
+        visiveis = list(tab["columns"])
+    if tab["show"] and "tree" in str(tab["show"]):
+        visiveis.insert(0, "#0")
+    total = sum(larguras.get(c, 0) for c in visiveis)
+    disponivel = tab.winfo_width() - px(2)
+    if total <= 0 or disponivel <= 1:
+        return
+    escala = max(disponivel / total, ENCOLHER_ATE)
+    for c in visiveis:
+        minimo = int(tab.column(c, "minwidth"))
+        tab.column(c, width=max(minimo, int(larguras.get(c, 0) * escala)))
 
 
 def inserir_linha(tab, indice, values, iid=None, situacao=None, cor=None,

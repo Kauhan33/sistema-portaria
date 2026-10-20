@@ -122,14 +122,14 @@ class TestAutenticar(unittest.TestCase):
         self.assertIsNone(autenticar(self.banco, "ninguem", "segredo1"))
 
     def test_usuario_desativado_nao_entra(self):
-        self.banco.definir_ativo(self.id, False)
+        self.banco.definir_ativo(self.id, False, autor="ana")
         self.assertIsNone(autenticar(self.banco, "ana", "segredo1"))
 
     def test_hash_antigo_continua_entrando_e_e_atualizado(self):  # S15
         # o padrão antigo tinha menos iterações (200 mil); nos testes o
         # "atual" é ITERACOES (baixado), então o antigo aqui é menor ainda
         antigo = gerar_hash("segredo1", iteracoes=usuarios.ITERACOES // 5)
-        self.banco.definir_senha(self.id, antigo)
+        self.banco.definir_senha(self.id, antigo, autor="ana")
         self.assertIsNotNone(autenticar(self.banco, "ana", "segredo1"))
         novo = self.banco.buscar_usuario("ana")["senha"]
         self.assertNotEqual(novo, antigo)
@@ -138,7 +138,7 @@ class TestAutenticar(unittest.TestCase):
 
     def test_senha_errada_nao_atualiza_o_hash(self):
         antigo = gerar_hash("segredo1", iteracoes=usuarios.ITERACOES // 5)
-        self.banco.definir_senha(self.id, antigo)
+        self.banco.definir_senha(self.id, antigo, autor="ana")
         self.assertIsNone(autenticar(self.banco, "ana", "errada"))
         self.assertEqual(self.banco.buscar_usuario("ana")["senha"], antigo)
 
@@ -154,7 +154,7 @@ class TestEntrar(unittest.TestCase):
         self.banco = dados.Banco(self.caminho)
         self.banco.criar_usuario("Ana Admin", "ana", "admin", gerar_hash("segredo1"))
         self.banco.criar_usuario("Paulo Porteiro", "paulo", "porteiro",
-                                 gerar_hash("segredo2"))
+                                 gerar_hash("segredo2"), autor="ana")
 
     def tearDown(self):
         self.pasta.cleanup()
@@ -226,7 +226,7 @@ class TestEntrar(unittest.TestCase):
         self.assertNotIn("minhasenha", tudo.lower())
 
     def test_usuario_desativado_nao_entra(self):
-        self.banco.definir_ativo(2, False)
+        self.banco.definir_ativo(2, False, autor="ana")
         usuario, motivo = entrar(self.banco, "paulo", "segredo2", self.AGORA)
         self.assertIsNone(usuario)
         self.assertEqual(motivo, "Usuário ou senha incorretos.")

@@ -32,11 +32,13 @@ class BaseTemp(unittest.TestCase):
 
     def criar_equipe(self):
         """ana e bia (administradoras) e paulo (porteiro): as operações
-        com autor conferem o perfil dele no banco."""
-        for nome, login, perfil in [("Ana Admin", "ana", "admin"),
-                                    ("Bia Admin", "bia", "admin"),
+        com autor conferem o perfil dele no banco. A ana é o primeiro
+        acesso (sem autor); ela cria as outras."""
+        self.banco.criar_usuario("Ana Admin", "ana", "admin", "hash-falso")
+        for nome, login, perfil in [("Bia Admin", "bia", "admin"),
                                     ("Paulo Porteiro", "paulo", "porteiro")]:
-            self.banco.criar_usuario(nome, login, perfil, "hash-falso")
+            self.banco.criar_usuario(nome, login, perfil, "hash-falso",
+                                     autor="ana")
 
     def escrever_json(self, conteudo):
         with open(self.caminho_json, "w", encoding="utf-8") as f:
@@ -76,9 +78,10 @@ class TestBanco(BaseTemp):
         self.assertEqual(self.banco.listar()[0]["saida"], "16/10/2026 11:15")
 
     def test_excluir_varios(self):
+        self.criar_equipe()
         ids = [self.banco.inserir(registro(cpf=c))
                for c in ("52998224725", "11144477735", "39053344705")]
-        self.banco.excluir(ids[:2])
+        self.banco.excluir(ids[:2], autor="ana")
         self.assertEqual([r["id"] for r in self.banco.listar()], [ids[2]])
 
     def test_banco_recusa_saida_antes_da_entrada(self):
@@ -97,25 +100,33 @@ class TestBanco(BaseTemp):
 
 
 class TestSaidas(BaseTemp):
+    def setUp(self):
+        super().setUp()
+        self.criar_equipe()
+
     def entrar(self, cpf, entrada="16/10/2026 08:00"):
         return self.banco.inserir(registro(cpf=cpf, entrada=entrada))
 
     def saidas(self):
         return {r["id"]: r["saida"] for r in self.banco.listar()}
 
+    def eventos_de_saida(self):
+        return sum(1 for e in self.banco.listar_eventos()
+                   if e["acao"] == "Saída registrada")
+
     def test_saida_de_varios_de_uma_vez(self):
         a, b = self.entrar("52998224725"), self.entrar("11144477735")
         self.banco.registrar_saidas([a, b], "16/10/2026 09:00", autor="paulo")
         self.assertEqual(self.saidas(), {a: "16/10/2026 09:00",
                                          b: "16/10/2026 09:00"})
-        self.assertEqual(len(self.banco.listar_eventos()), 2)
+        self.assertEqual(self.eventos_de_saida(), 2)
 
     def test_nao_sobrescreve_saida_ja_registrada(self):
         a = self.entrar("52998224725")
         self.banco.registrar_saida(a, "16/10/2026 09:00", autor="paulo")
         self.banco.registrar_saida(a, "16/10/2026 10:00", autor="paulo")
         self.assertEqual(self.saidas()[a], "16/10/2026 09:00")
-        self.assertEqual(len(self.banco.listar_eventos()), 1)
+        self.assertEqual(self.eventos_de_saida(), 1)
 
     def test_desfazer_saida(self):
         a = self.entrar("52998224725")
@@ -130,6 +141,25 @@ class TestSaidas(BaseTemp):
         self.entrar("52998224725", entrada="16/10/2026 09:05")
         self.assertEqual(self.banco.desfazer_saidas([a]), 0)
         self.assertEqual(self.saidas()[a], "16/10/2026 09:00")
+
+    def test_saida_devolve_so_os_ids_que_gravou(self):  # B3
+        a, b = self.entrar("52998224725"), self.entrar("11144477735")
+        self.banco.registrar_saida(a, "16/10/2026 09:00", autor="bia")  # outra estação
+        self.banco.excluir([b], autor="bia")
+        c = self.entrar("39053344705")
+        self.assertEqual(self.banco.registrar_saidas([a, b, c], "16/10/2026 10:00",
+                                                     autor="paulo"), [c])
+        self.assertFalse(self.banco.registrar_saida(a, "16/10/2026 10:30"))
+        self.assertEqual(self.saidas()[a], "16/10/2026 09:00")
+
+    def test_desfazer_so_a_saida_com_o_horario_gravado(self):  # B3
+        a = self.entrar("52998224725")
+        self.banco.registrar_saida(a, "16/10/2026 09:00", autor="bia")
+        self.assertEqual(self.banco.desfazer_saidas(
+            [a], autor="paulo", saida="16/10/2026 10:00"), 0)
+        self.assertEqual(self.saidas()[a], "16/10/2026 09:00")
+        self.assertEqual(self.banco.desfazer_saidas(
+            [a], autor="bia", saida="16/10/2026 09:00"), 1)
 
     def test_nao_desfaz_se_ha_visita_encerrada_depois(self):
         a = self.entrar("52998224725")
@@ -257,15 +287,17 @@ class TestUsuariosNoBanco(BaseTemp):
     def test_login_repetido_e_perfil_invalido_sao_recusados(self):
         self.banco.criar_usuario("Ana Admin", "ana", "admin", "h")
         with self.assertRaises(dados.ErroDados):
-            self.banco.criar_usuario("Outra Ana", "ana", "porteiro", "h")
+            self.banco.criar_usuario("Outra Ana", "ana", "porteiro", "h",
+                                     autor="ana")
         with self.assertRaises(dados.ErroDados):
-            self.banco.criar_usuario("Chefe Geral", "chefe", "chefe", "h")
+            self.banco.criar_usuario("Chefe Geral", "chefe", "chefe", "h",
+                                     autor="ana")
 
     def test_ativar_desativar_e_trocar_senha(self):
         id_ = self.banco.criar_usuario("Ana Admin", "ana", "admin", "h1")
-        self.banco.definir_ativo(id_, False)
+        self.banco.definir_senha(id_, "h2", autor="ana")
+        self.banco.definir_ativo(id_, False, autor="ana")
         self.assertFalse(self.banco.buscar_usuario("ana")["ativo"])
-        self.banco.definir_senha(id_, "h2")
         self.assertEqual(self.banco.buscar_usuario("ana")["senha"], "h2")
 
 
@@ -304,6 +336,10 @@ class TestAuditoria(BaseTemp):
 
 
 class TestPessoas(BaseTemp):
+    def setUp(self):
+        super().setUp()
+        self.criar_equipe()
+
     def test_primeira_visita_cria_a_pessoa(self):
         self.banco.inserir(registro())
         p = self.banco.buscar_pessoa("52998224725")
@@ -357,7 +393,7 @@ class TestPessoas(BaseTemp):
 
     def test_excluir_visita_mantem_a_pessoa(self):
         id_ = self.banco.inserir(registro())
-        self.banco.excluir([id_])
+        self.banco.excluir([id_], autor="ana")
         p = self.banco.buscar_pessoa("52998224725")
         self.assertEqual((p["visitas"], p["ultima_visita"]), (0, ""))
 
@@ -440,6 +476,7 @@ class TestAtualizacaoDoEsquema(unittest.TestCase):
         with tempfile.TemporaryDirectory() as pasta:
             caminho = os.path.join(pasta, "portaria.db")
             banco = dados.Banco(caminho)
+            banco.criar_usuario("Paulo Porteiro", "paulo", "porteiro", "h")
             id_ = banco.inserir(registro(), autor="paulo")
             banco.registrar_saida(id_, "16/10/2026 09:00", autor="paulo")
             banco.registrar_evento("paulo", "Entrou no sistema")
@@ -568,7 +605,8 @@ class TestIntegridade(BaseTemp):
     def test_login_repetido_tem_mensagem_propria(self):
         self.banco.criar_usuario("Ana Admin", "ana", "admin", "h")
         with self.assertRaises(dados.ErroDados) as erro:
-            self.banco.criar_usuario("Outra Ana", "ana", "porteiro", "h")
+            self.banco.criar_usuario("Outra Ana", "ana", "porteiro", "h",
+                                     autor="ana")
         self.assertEqual(str(erro.exception), "Já existe um usuário com esse login.")
 
     def test_erro_vai_para_o_log_sem_ir_para_a_tela(self):
@@ -654,6 +692,19 @@ class TestMigracaoV6(unittest.TestCase):
         self.assertIn("antes-v6-de-v5", backups[0])
         self.assertEqual(len(banco.listar()), 1)
         self.assertEqual(banco.avisos, [])
+
+    def test_sem_conseguir_o_backup_nao_migra_e_explica(self):  # B4
+        dados.Banco(self.caminho).inserir(registro())
+        rebaixar_para_v5(self.caminho)
+        # um arquivo chamado "backups" impede criar a pasta (como uma pasta
+        # sem permissão de gravação)
+        with open(os.path.join(self.pasta.name, "backups"), "w") as f:
+            f.write("não é pasta")
+        with self.assertRaises(dados.ErroDados) as erro:
+            dados.Banco(self.caminho)
+        self.assertIn("cópia de segurança", str(erro.exception))
+        self.assertIn("Nada foi alterado", str(erro.exception))
+        self.assertEqual(versao_do_arquivo(self.caminho), 5)
 
     def test_erro_no_meio_da_migracao_desfaz_o_passo_inteiro(self):
         dados.Banco(self.caminho)
@@ -861,11 +912,85 @@ class TestPermissoesNoBanco(BaseTemp):
                 self.banco.excluir([id_], autor=autor)
         self.assertEqual(len(self.banco.listar()), 1)
 
-    def test_sem_autor_continua_aceito_chamada_interna(self):
-        # limitação documentada: autor=None não confere perfil
+    def test_operacao_sensivel_sem_autor_e_recusada(self):  # N01
+        # a sessão que expirou com a caixa aberta chega aqui com autor=None
         id_ = self.banco.inserir(registro())
-        self.banco.excluir([id_])
-        self.assertEqual(self.banco.listar(), [])
+        bloqueio = self.banco.bloquear("placa", "ABC1234", "Motivo válido", "ana")
+        antes = len(self.banco.listar_eventos())
+        operacoes = [
+            ("excluir", lambda: self.banco.excluir([id_], None)),
+            ("editar", lambda: self.banco.editar(
+                id_, dict(self.banco.buscar(id_), nome="Outro Nome"), ["x"], None)),
+            ("exportar", lambda: self.banco.registros_do_periodo(
+                date(2026, 10, 1), date(2026, 10, 31), None)),
+            ("bloquear", lambda: self.banco.bloquear(
+                "cpf", "11144477735", "Motivo válido", None)),
+            ("desbloquear", lambda: self.banco.desbloquear(bloqueio, None)),
+            ("desativar", lambda: self.banco.definir_ativo(
+                self.ids["paulo"], False, None)),
+            ("senha", lambda: self.banco.definir_senha(
+                self.ids["paulo"], "outro-hash", None)),
+            ("criar", lambda: self.banco.criar_usuario(      # N03: já há
+                "Novo Admin", "novo", "admin", "h")),         # usuários
+        ]
+        for nome, operacao in operacoes:
+            with self.subTest(nome), self.assertRaises(dados.ErroDados):
+                operacao()
+        self.assertEqual(self.banco.buscar(id_)["nome"], "João Ávila")
+        self.assertEqual(len(self.banco.listar_bloqueios()), 1)
+        self.assertIsNone(self.banco.buscar_usuario("novo"))
+        paulo = self.banco.buscar_usuario("paulo")
+        self.assertEqual((paulo["ativo"], paulo["senha"]), (True, "hash-falso"))
+        self.assertEqual(len(self.banco.listar_eventos()), antes)
+
+    def test_mensagem_de_sessao_encerrada(self):
+        id_ = self.banco.inserir(registro())
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.excluir([id_], None)
+        self.assertEqual(str(erro.exception),
+                         "A sessão foi encerrada. Entre novamente.")
+
+    def test_usuario_desativado_nao_continua_operando(self):  # B5
+        self.banco.definir_ativo(self.ids["paulo"], False, autor="ana")
+        id_ = self.banco.inserir(registro(), autor="ana")
+        pessoa = self.banco.buscar_pessoa("52998224725")["id"]
+        operacoes = [
+            ("inserir", lambda: self.banco.inserir(
+                registro(cpf="11144477735"), autor="paulo")),
+            ("saida", lambda: self.banco.registrar_saidas(
+                [id_], "16/10/2026 09:00", autor="paulo")),
+            ("pessoa", lambda: self.banco.atualizar_pessoa(
+                pessoa, "Outro Nome", "31987654321", "", "Aluno", autor="paulo")),
+            ("inexistente", lambda: self.banco.inserir(
+                registro(cpf="39053344705"), autor="fantasma")),
+        ]
+        for nome, operacao in operacoes:
+            with self.subTest(nome), self.assertRaises(dados.ErroDados):
+                operacao()
+        self.assertEqual(len(self.banco.listar()), 1)
+        self.assertEqual(self.banco.buscar(id_)["saida"], "")
+        self.banco.registrar_saida(id_, "16/10/2026 09:00", autor="ana")
+        with self.assertRaises(dados.ErroDados):
+            self.banco.desfazer_saidas([id_], autor="paulo")
+        self.assertEqual(self.banco.buscar(id_)["saida"], "16/10/2026 09:00")
+
+    def test_primeiro_acesso_so_com_a_tabela_vazia(self):  # N03
+        vazio = dados.Banco(os.path.join(self.pasta.name, "outro.db"))
+        vazio.criar_usuario("Ana Admin", "ana", "admin", "h")
+        with self.assertRaises(dados.ErroDados) as erro:
+            vazio.criar_usuario("Intruso Silva", "intruso", "admin", "h")
+        self.assertIn("primeiro usuário já foi criado", str(erro.exception))
+        self.assertEqual([u["login"] for u in vazio.listar_usuarios()], ["ana"])
+
+    def test_admin_redefine_senha_e_libera_o_login_travado(self):  # B7
+        self.banco.gravar_tentativas_login("paulo", 0, 3,
+                                           datetime.now() + timedelta(minutes=5))
+        self.banco.gravar_tentativas_login("bia", 2, 0, None)
+        self.banco.definir_senha(self.ids["paulo"], "h-nova", autor="ana")
+        self.assertEqual(self.banco.ler_tentativas_login("paulo"), (0, 0, None))
+        # trocar a própria senha não zera a contagem de quem errou
+        self.banco.definir_senha(self.ids["bia"], "h-bia", autor="bia")
+        self.assertEqual(self.banco.ler_tentativas_login("bia")[0], 2)
 
     def test_porteiro_nao_exporta_registros(self):
         with self.assertRaises(dados.ErroDados):

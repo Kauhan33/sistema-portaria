@@ -2,6 +2,8 @@
 
 import json
 import os
+import shutil
+import sqlite3
 import tempfile
 import tkinter as tk
 import unittest
@@ -32,8 +34,13 @@ def agora_menos(minutos):
     return momento.strftime(FORMATO)
 
 
-def criar_usuario(banco, nome, login, perfil, senha):
-    id_ = banco.criar_usuario(nome, login, perfil, gerar_hash(senha))
+def agora_texto():
+    return datetime.now().strftime(FORMATO)
+
+
+def criar_usuario(banco, nome, login, perfil, senha, autor=None):
+    """Sem autor só cria o primeiro usuário (primeiro acesso)."""
+    id_ = banco.criar_usuario(nome, login, perfil, gerar_hash(senha), autor)
     return {"id": id_, "login": login, "nome": nome, "perfil": perfil}
 
 
@@ -85,7 +92,7 @@ class BaseInterface(unittest.TestCase):
             self.admin = criar_usuario(self.banco, "Ana Admin", "ana.admin",
                                        "admin", "senha123")
             self.porteiro = criar_usuario(self.banco, "Paulo Porteiro", "paulo",
-                                          "porteiro", "senha456")
+                                          "porteiro", "senha456", "ana.admin")
         usuario = {"admin": getattr(self, "admin", None),
                    "porteiro": getattr(self, "porteiro", None)}.get(self.entrar_como)
         self.app = AppPortaria(self.caminho_db, self.janela,
@@ -209,6 +216,124 @@ class TestCadastroComoAdmin(BaseInterface):
         self.msg.showinfo.assert_not_called()
 
 
+class TestLinhaDesatualizada(BaseInterface):
+    """B3: outra estação já deu a saída (ou excluiu) e esta tela não sabe."""
+
+    def setUp(self):
+        super().setUp()
+        self.preencher()
+        self.app.cadastrar()
+        self.preencher(nome="Beto Rocha", cpf="11144477735")
+        self.app.cadastrar()
+        self.ana, self.beto = sorted(r["id"] for r in self.no_banco())
+
+    def test_saida_ja_dada_em_outra_estacao(self):
+        self.banco.registrar_saida(self.ana, agora_texto(), autor="paulo")
+        tela = self.app.tela_cadastro
+        tela.avisar("")
+        tela.registrar_saida_da_linha(str(self.ana))
+        self.assertIn("já tinha saída ou foi excluída em outra estação",
+                      self.msg.showwarning.call_args[0][1])
+        self.assertNotIn("registrada", self.app.lbl_aviso.cget("text"))
+        self.assertIsNone(tela._para_desfazer)
+        self.assertEqual(self.app.tabela.item(str(self.ana))["text"], "Saiu")
+
+    def test_registro_excluido_em_outra_estacao(self):
+        self.banco.excluir([self.ana], autor="ana.admin")
+        self.app.tela_cadastro.registrar_saida_da_linha(str(self.ana))
+        self.assertIn("foi excluída em outra estação",
+                      self.msg.showwarning.call_args[0][1])
+        self.assertFalse(self.app.tabela.exists(str(self.ana)))
+
+    def test_desfazer_so_o_que_esta_estacao_gravou(self):
+        saida_da_outra = agora_texto()
+        self.banco.registrar_saida(self.ana, saida_da_outra, autor="paulo")
+        self.app.tabela.selection_set([str(self.ana), str(self.beto)])
+        tela = self.app.tela_cadastro
+        tela.registrar_saida()
+        self.assertIn("Saída de Beto registrada", self.app.lbl_aviso.cget("text"))
+        self.assertEqual(tela._para_desfazer, [self.beto])
+        tela.desfazer_saida()
+        self.assertEqual(self.banco.buscar(self.ana)["saida"], saida_da_outra)
+        self.assertEqual(self.banco.buscar(self.beto)["saida"], "")
+
+    def test_enter_com_o_foco_na_tabela_nao_cadastra(self):
+        # a tecla vai para quem tem o foco: a janela precisa estar visível
+        self.app.janela.deiconify()
+        self.app.janela.update()
+        self.app.tabela.focus_force()
+        self.app.janela.update()
+        self.app.tabela.event_generate("<Return>")
+        self.app.janela.withdraw()
+        self.msg.showerror.assert_not_called()
+        self.assertEqual(len(self.no_banco()), 2)
+
+
+class TestTelaPequena(BaseInterface):
+    """
+    B2: notebook 1366x768 com escala 125%: a área útil da janela maximizada
+    tem ~1366x670 px reais = 1093x536 px lógicos (os testes rodam com
+    escala 1, então o tamanho lógico é o que vale aqui).
+    """
+    PEQUENA, GRANDE = "1093x536", "1180x760"
+
+    def setUp(self):
+        super().setUp()
+        for i, cpf in enumerate(("52998224725", "11144477735", "39053344705",
+                                 "15350946056", "71428793860")):
+            self.banco.inserir(dict(VISITA_ANTIGA, cpf=cpf, saida="",
+                                    entrada=agora_menos(10 * i + 5)))
+        self.app.atualizar_tabela()
+        self.janela.deiconify()
+
+    def tamanho(self, geometria):
+        self.janela.geometry(geometria)
+        self.janela.update()
+
+    def linhas_visiveis(self):
+        tabela = self.app.tabela
+        return sum(1 for i in tabela.get_children() if tabela.bbox(i))
+
+    def test_minimo_da_janela_cabe_na_tela_pequena(self):
+        largura, altura = self.janela.minsize()
+        self.assertLessEqual(largura, 1093)
+        self.assertLessEqual(altura, 536)
+
+    def test_movimento_mostra_ao_menos_4_linhas(self):
+        self.tamanho(self.PEQUENA)
+        self.assertTrue(self.app.tela_cadastro.compacta)
+        self.assertGreaterEqual(self.linhas_visiveis(), 4)
+        botao = self.app.tela_cadastro.btn_cadastrar
+        self.assertTrue(botao.winfo_ismapped())
+        self.assertLessEqual(botao.winfo_rooty() + botao.winfo_height(),
+                             self.janela.winfo_rooty() + 536)
+
+    def test_tela_grande_volta_ao_layout_normal(self):
+        self.tamanho(self.PEQUENA)
+        self.tamanho(self.GRANDE)
+        tela = self.app.tela_cadastro
+        self.assertFalse(tela.compacta)
+        self.assertTrue(tela.ficha.winfo_ismapped())
+        self.assertEqual(tela.btn_limpar.texto, "Limpar formulário")
+        self.assertGreaterEqual(self.linhas_visiveis(), 4)
+
+    def test_janela_corrigir_cabe_com_os_botoes(self):
+        self.tamanho(self.PEQUENA)
+        self.app.tabela.selection_set(self.app.tabela.get_children()[0])
+        self.app.editar_selecionado()
+        dialogo = self.app.tela_cadastro.janela_edicao.janela
+        dialogo.update()
+        self.assertLessEqual(dialogo.winfo_reqheight(), 536 - 30)  # - barra
+        self.assertLessEqual(dialogo.winfo_reqwidth(), 1093)
+
+    def test_colunas_do_movimento_cabem_na_largura(self):
+        self.tamanho(self.PEQUENA)
+        tabela = self.app.tabela
+        colunas = ["#0", *tabela["displaycolumns"]]
+        soma = sum(int(tabela.column(c, "width")) for c in colunas)
+        self.assertLessEqual(soma, tabela.winfo_width())
+
+
 class TestMovimento(BaseInterface):
     """A tabela mostra o dia (hoje + quem está no campus); a busca vai ao
     histórico inteiro."""
@@ -231,7 +356,8 @@ class TestMovimento(BaseInterface):
 
     def test_tabela_tem_so_o_movimento_do_dia(self):
         self.assertEqual(self.linhas(), {str(self.aberta), str(self.hoje)})
-        self.assertIn("2 registros hoje", self.app.lbl_status.cget("text"))
+        # B9: "hoje" conta só as entradas de hoje (a aberta é de 15/10)
+        self.assertIn("1 entrada hoje", self.app.lbl_status.cget("text"))
 
     def test_busca_acha_registro_antigo(self):
         self.buscar("beto")
@@ -416,7 +542,7 @@ class TestLogin(BaseInterface):
             self.assertTrue(caixa.bind("<KP_Enter>"))
 
     def test_usuario_desativado_nao_entra(self):
-        self.banco.definir_ativo(self.porteiro["id"], False)
+        self.banco.definir_ativo(self.porteiro["id"], False, "ana.admin")
         self.tentar_login("paulo", "senha456")
         self.assertIsNone(self.app.usuario)
 
@@ -602,6 +728,108 @@ class TestSessao(BaseInterface):
         self.assertTrue(self.janela.bind("<Motion>"))
 
 
+class TestSessaoExpiraComCaixaAberta(BaseInterface):
+    """
+    B1/N01: o tempo de inatividade corre enquanto uma caixa nativa (Sim/Não,
+    "Salvar como", senha) está aberta. Aqui a caixa falsa encerra a sessão
+    (como o temporizador faria) e só então responde. Nada pode ser gravado.
+    """
+
+    def expirar_e_responder(self, resposta):
+        def caixa(*args, **kwargs):
+            self.app.sair(inatividade=True)
+            return resposta
+        return caixa
+
+    def assert_sessao_encerrada_avisada(self):
+        self.assertIsNone(self.app.usuario)
+        self.assertIn(mock.call("Sessão encerrada",
+                                "A sessão foi encerrada. Entre novamente."),
+                      self.msg.showwarning.call_args_list)
+
+    def test_excluir(self):
+        linha = self.cadastrar_um()
+        self.app.tabela.selection_set(linha)
+        tela = self.app.tela_cadastro
+        self.msg.askyesno.side_effect = self.expirar_e_responder(True)
+        tela.excluir_selecionado()
+        self.assertEqual(len(self.no_banco()), 1)
+        self.assertNotIn("Exclusão de registro", [a for _, a in self.acoes()])
+        self.assert_sessao_encerrada_avisada()
+
+    def test_desativar_usuario(self):
+        aba = self.app.tela_usuarios
+        aba.tabela.selection_set(str(self.porteiro["id"]))
+        self.msg.askyesno.side_effect = self.expirar_e_responder(True)
+        aba.alternar_ativo()
+        self.assertTrue(self.banco.buscar_usuario("paulo")["ativo"])
+        self.assert_sessao_encerrada_avisada()
+
+    def test_redefinir_senha(self):
+        aba = self.app.tela_usuarios
+        aba.tabela.selection_set(str(self.porteiro["id"]))
+        self.dialogo.askstring.side_effect = self.expirar_e_responder("novasenha9")
+        aba.redefinir_senha()
+        self.assertIsNotNone(autenticar(self.banco, "paulo", "senha456"))
+        self.assert_sessao_encerrada_avisada()
+
+    def test_bloquear_e_remover_bloqueio(self):
+        aba = self.app.tela_bloqueios
+        aba.tipo.set("Placa")
+        aba.valor.insert(0, "ABC1234")
+        aba.motivo.insert(0, "Motivo válido")
+        self.msg.askyesno.side_effect = self.expirar_e_responder(True)
+        aba.bloquear()
+        self.assertEqual(self.banco.listar_bloqueios(), [])
+        self.assert_sessao_encerrada_avisada()
+
+        self.app.entrar(self.admin)
+        self.banco.bloquear("placa", "ABC1234", "Motivo válido", "ana.admin")
+        aba = self.app.tela_bloqueios
+        aba.atualizar()
+        aba.tabela.selection_set(aba.tabela.get_children()[0])
+        aba.remover()
+        self.assertEqual(len(self.banco.listar_bloqueios()), 1)
+
+    def test_exportar_csv(self):
+        self.banco.inserir(dict(VISITA_ANTIGA))
+        caminho = os.path.join(self.pasta.name, "saida.csv")
+        self.arquivo.asksaveasfilename.side_effect = self.expirar_e_responder(
+            caminho)
+        dialogo = self.app.tela_dashboard.abrir_exportacao()
+        dialogo.periodo(date(2026, 10, 1), date(2026, 10, 31))
+        dialogo.exportar()
+        self.assertFalse(os.path.exists(caminho))
+        self.assertNotIn("Exportação de registros", [a for _, a in self.acoes()])
+        self.assert_sessao_encerrada_avisada()
+
+    def test_saida_rapida_de_varios(self):
+        for cpf in ("52998224725", "11144477735"):
+            self.preencher(cpf=cpf, placa="ABC1234")
+            self.app.cadastrar()
+        tela = self.app.tela_cadastro
+        tela.campo_saida_rapida.insert(0, "ABC1234")
+        self.msg.askyesno.side_effect = self.expirar_e_responder(True)
+        tela.saida_rapida()
+        self.assertTrue(all(not r["saida"] for r in self.no_banco()))
+        self.assert_sessao_encerrada_avisada()
+
+    def test_inatividade_fecha_janelas_dentro_das_paginas(self):
+        # o "Redefinir senha" (simpledialog) é filho da página, não da janela
+        aba = self.app.tela_usuarios
+        filha = tk.Toplevel(aba.aba)
+        self.app.sair(inatividade=True)
+        self.assertFalse(filha.winfo_exists())
+
+    def test_sem_sessao_nada_vai_ao_banco(self):
+        self.app.sair()
+        self.assertFalse(self.app.gravar(self.banco.inserir, dict(VISITA_ANTIGA)))
+        ok, _ = self.app.tentar(self.banco.excluir, [1], autor=None)
+        self.assertFalse(ok)
+        self.assertEqual(self.no_banco(), [])
+        self.assert_sessao_encerrada_avisada()
+
+
 class TestAbertura(BaseInterface):
     """Backup diário, avisos para o administrador e log de erros."""
     entrar_como = None
@@ -610,6 +838,31 @@ class TestAbertura(BaseInterface):
         nome = f"portaria-{date.today():%Y-%m-%d}.db"
         self.assertTrue(os.path.exists(
             os.path.join(self.pasta.name, "backups", nome)))
+
+    def test_banco_v5_sem_backup_possivel_nao_derruba_o_programa(self):  # B4
+        self.app.janela.destroy()
+        dados.Banco(self.caminho_db)
+        con = sqlite3.connect(self.caminho_db)
+        con.executescript("DROP TABLE tentativas_login; PRAGMA user_version = 5;")
+        con.close()
+        shutil.rmtree(os.path.join(self.pasta.name, "backups"))
+        with open(os.path.join(self.pasta.name, "backups"), "w") as f:
+            f.write("não é pasta")
+        self.app = AppPortaria(self.caminho_db, self.nova_janela())
+        self.assertIsNone(self.app.banco)
+        self.assertIn("cópia de segurança", self.msg.showerror.call_args[0][1])
+
+    def test_backup_diario_que_falha_so_avisa_o_admin(self):  # B4
+        self.app.janela.destroy()
+        shutil.rmtree(os.path.join(self.pasta.name, "backups"))
+        with open(os.path.join(self.pasta.name, "backups"), "w") as f:
+            f.write("não é pasta")
+        self.app = AppPortaria(self.caminho_db, self.nova_janela(),
+                               usuario=self.admin)
+        self.assertIsNotNone(self.app.banco)
+        aviso = self.msg.showwarning.call_args[0][1]
+        self.assertIn("backup diário", aviso)
+        self.assertNotRegex(aviso, "Errno|WinError")   # sem o erro técnico
 
     def entrar(self, login, senha):
         tela = self.app.tela_login
@@ -632,6 +885,7 @@ class TestAbertura(BaseInterface):
     def test_erro_do_banco_mostra_o_simples_e_loga_o_detalhe(self):
         def falha():
             raise dados.ErroDados("Erro no banco de dados.", detalhe="disk I/O error")
+        self.app.entrar(self.admin)
         with self.assertLogs("portaria.dados", "WARNING") as log:
             ok, _ = self.app.tentar(falha)
         self.assertFalse(ok)
@@ -1065,6 +1319,7 @@ class CasosCorrigir:
 
     def test_cpf_celular_e_placa_so_aceitam_o_formato(self):  # Q04
         edicao = self.abrir(self.hoje)
+        edicao.liberar_cpf()                 # porteiro: clica no lápis
         for campo, digitado, esperado in [
                 (edicao.cpf, "1a1.4", "114"), (edicao.celular, "31x9", "319")]:
             campo.delete(0, tk.END)
@@ -1097,6 +1352,7 @@ class CasosCorrigir:
     def test_nao_burla_o_bloqueio_pela_correcao(self):  # S01 da revisão
         self.banco.bloquear("cpf", "39053344705", "Ameaçou um aluno", "ana.admin")
         edicao = self.abrir(self.hoje)
+        edicao.liberar_cpf()
         self.trocar(edicao.cpf, "39053344705")
         edicao.salvar()
         titulo, msg = self.msg.showerror.call_args[0]
@@ -1113,6 +1369,23 @@ class CasosCorrigir:
 
 class TestCorrigirComoPorteiro(CasosCorrigir, BaseInterface):
     entrar_como = "porteiro"
+
+    def test_porteiro_ve_o_cpf_mascarado_e_somente_leitura(self):  # N02
+        edicao = self.abrir(self.hoje)
+        self.assertEqual(edicao.cpf.get(), "***.444.777-**")
+        self.assertEqual(str(edicao.cpf.cget("state")), "readonly")
+        self.trocar(edicao.nome, "Roberto Rocha")     # CPF fica como estava
+        edicao.salvar()
+        self.assertEqual(self.banco.buscar(self.hoje)["cpf"], "11144477735")
+        self.assertEqual(self.banco.buscar(self.hoje)["nome"], "Roberto Rocha")
+
+    def test_porteiro_corrige_o_cpf_pelo_lapis(self):  # N02
+        edicao = self.abrir(self.hoje)
+        edicao.liberar_cpf()
+        self.assertEqual(edicao.cpf.get(), "")
+        self.trocar(edicao.cpf, "39053344705")
+        edicao.salvar()
+        self.assertEqual(self.banco.buscar(self.hoje)["cpf"], "39053344705")
 
     def test_porteiro_nao_corrige_registro_antigo(self):  # RN11
         self.assertIsNone(self.abrir(self.antigo))

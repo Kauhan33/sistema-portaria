@@ -72,15 +72,17 @@ if __name__ == "__main__":
 #    = (operador de atribuição), tk (identificador), . (ponto),
 #    StringVar (identificador), ( (abre parênteses), self . aba,
 #    ) (fecha parênteses).
-#    E na linha logo abaixo, com literal inteiro e argumento nomeado:
-#        self.cpf = posicionar(Campo(form, numeros=11, var=self.var_cpf), 1, 0)
-#    Tokens: self . cpf, = , posicionar, (, Campo, (, form, ",",
-#    numeros (identificador), = (sinal do argumento nomeado), 11 (literal
-#    inteiro), ",", var, =, self . var_cpf, ), ",", 1, ",", 0 (literais
-#    inteiros), ).
-#    Outro, com literal string, em portaria/estilo.py:
-#        FAMILIA = "Segoe UI"
-#    Tokens: FAMILIA (identificador), = (operador), "Segoe UI" (literal string).
+#    E na linha logo abaixo, com literais string e inteiro e argumento nomeado:
+#        self.cpf = self._peca("cpf", "CPF", Campo(form, numeros=11, var=self.var_cpf))
+#    Tokens: self . cpf, = , self . _peca, (, "cpf" e "CPF" (literais
+#    string), ",", Campo, (, form, ",", numeros (identificador), = (sinal do
+#    argumento nomeado), 11 (literal inteiro), ",", var, =, self . var_cpf,
+#    ), ).
+#    Outro, com literal string, em portaria/validacao.py:
+#        FORMATO = "%d/%m/%Y %H:%M"            # usado pelo datetime
+#    Tokens: FORMATO (identificador), = (operador de atribuição),
+#    "%d/%m/%Y %H:%M" (literal string); o comentário (# ...) é descartado
+#    pelo analisador léxico e não vira token.
 #
 # 2) VARIÁVEL DA TABELA DE SÍMBOLOS
 #    Símbolo: BANCO | Tipo: str | Valor: caminho do portaria.db | Escopo: global

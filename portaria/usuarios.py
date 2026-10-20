@@ -33,6 +33,9 @@ SEGUNDOS_BLOQUEIO_MAXIMO = 15 * 60
 HORAS_PARA_CORRIGIR = 24
 # Sessão encerrada depois deste tempo sem teclado/mouse (a tela liga)
 MINUTOS_INATIVIDADE = 10
+# Ação que chegou depois do fim da sessão (ex.: "Sim" numa caixa que ficou
+# aberta enquanto a inatividade encerrava a sessão): a tela e o banco recusam
+SESSAO_ENCERRADA = "A sessão foi encerrada. Entre novamente."
 
 # Senhas que caem primeiro numa tentativa de adivinhação
 SENHAS_COMUNS = {

@@ -24,13 +24,17 @@ padrão). Depois disso abre sempre na tela de login.
 
 | Perfil | Pode |
 |---|---|
-| Porteiro | Registrar entradas e saídas, corrigir registros com entrada nas últimas 24 horas, buscar no histórico, ver e corrigir o cadastro de pessoas, ver a lista de bloqueio e o Painel, trocar a própria senha. Nas tabelas, vê o CPF mascarado (`***.982.247-**`) |
+| Porteiro | Registrar entradas e saídas, corrigir registros com entrada nas últimas 24 horas, buscar no histórico, ver e corrigir o cadastro de pessoas, ver a lista de bloqueio e o Painel, trocar a própria senha. Nas tabelas, na ficha da pessoa e na janela Corrigir, vê o CPF mascarado (`***.982.247-**`); ver a exceção em [Segurança e LGPD](#segurança-e-lgpd) |
 | Administrador | Tudo do porteiro, com o CPF completo + corrigir registros de qualquer data + **excluir registros** + criar e remover **bloqueios** + **exportar CSV** + página **Usuários** (criar, ativar/desativar, redefinir senha, ver a atividade do sistema) |
 
 Depois de 5 senhas erradas seguidas o login fica bloqueado por 30 s (o tempo
 dobra a cada novo bloqueio, até 15 min). As tentativas ficam no banco: fechar e
-abrir o programa não zera o bloqueio. Sem teclado ou mouse por 10 minutos, a
-sessão se encerra sozinha e o sistema volta ao login.
+abrir o programa não zera o bloqueio (o administrador libera o login ao
+redefinir a senha). Sem teclado ou mouse por 10 minutos, a sessão se encerra
+sozinha e o sistema volta ao login; uma confirmação que ficou aberta nesse
+meio-tempo (ex.: "Excluir registro?") não faz mais nada: aparece "A sessão foi
+encerrada. Entre novamente." e o banco também recusa a ação sem um usuário
+logado e ativo.
 
 ## Testes automatizados
 
@@ -38,11 +42,13 @@ sessão se encerra sozinha e o sistema volta ao login.
 python -m unittest -v
 ```
 
-329 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
+359 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
 negócio, login, senhas, permissões, cadastro de pessoas e preenchimento
 automático, saída rápida e desfazer, correção de registros, lista de bloqueio,
 banco de dados, histórico, migração do JSON, busca, backup, exportação, Painel e
-a própria tela (preenche campos e clica nos botões com a janela oculta).
+a própria tela (preenche campos e clica nos botões com a janela oculta),
+inclusive a sessão que expira com uma confirmação aberta e o tamanho de um
+notebook 1366×768 a 125%.
 
 ## Telas e funcionalidades
 
@@ -52,7 +58,9 @@ importa — verde pode entrar, âmbar atenção, vermelho bloqueado. O vermelho 
 UNA aparece como identidade (símbolo, item ativo do menu, painel do login).
 Tudo em Tkinter puro: cantos arredondados, botões, placa e gráficos são
 desenhados no `Canvas`, os ícones são da fonte Segoe Fluent Icons e o texto
-fica nítido em telas com escala de 125% ou 150% (DPI). Prints em
+fica nítido em telas com escala de 125% ou 150% (DPI). Num notebook 1366×768
+a 125% a página Entrada e saída usa um layout compacto (formulário em duas
+linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
 `docs/design/final/`.
 
 - **Login**: painel vermelho com o símbolo da cancela e o relógio da guarita;
@@ -110,6 +118,72 @@ Regras e segurança:
   mais recentes). Avisos da atualização do banco ou de backup que falhou
   aparecem ao administrador. Erros técnicos vão para `portaria.log`; o usuário
   vê só uma mensagem simples.
+
+## Segurança e LGPD
+
+O sistema guarda dados pessoais (nome, CPF, celular, placa e horários de
+entrada e saída). Tudo fica no próprio computador, na pasta do programa
+(onde está o `portaria_universidade.py` ou o `.exe`):
+
+| Arquivo | O que tem |
+|---|---|
+| `portaria.db` (e, com o programa aberto, `portaria.db-wal` e `portaria.db-shm`) | O banco: pessoas, visitas, usuários (senha só como hash), histórico de ações, bloqueios e tentativas de login |
+| `backups/portaria-AAAA-MM-DD.db` | Cópia do banco feita ao abrir o programa, uma por dia; ficam as 30 mais recentes |
+| `backups/portaria-antes-v6-de-vN-....db` | Cópia feita antes de atualizar o banco para uma versão nova. **Não é apagada sozinha**: apague à mão quando a atualização estiver conferida |
+| `portaria.log` (e `.1` a `.3`) | Só erros técnicos (até 3 × 1 MB). Não guarda CPF, celular nem senha |
+| CSV exportado | Fica onde o administrador escolher no "Salvar como". Leva **CPF e celular completos** e a exportação fica no histórico |
+| `registros_portaria.json.migrado` | Só se havia a versão 1: os registros antigos, em texto |
+
+**Os backups têm tudo o que o banco tem**, inclusive os hashes de senha e os
+registros que já foram excluídos no programa (um registro excluído hoje
+continua nos backups diários por até 30 dias, e nos `portaria-antes-...` até
+alguém apagá-los). Trate a pasta de backups com o mesmo cuidado do banco.
+
+**Quem deve ter acesso** (recomendação para instalar na portaria):
+
+- a pasta do programa e a pasta `backups` só com acesso da conta do Windows
+  usada na portaria e do administrador (Propriedades → Segurança no
+  Explorador de Arquivos); o porteiro não deve ser administrador do Windows;
+- disco com **BitLocker** ligado, para os dados não serem lidos se o
+  computador ou o disco for levado;
+- de tempos em tempos, uma cópia da pasta `backups` em outro disco (pendrive
+  ou HD externo guardado com o administrador): backup no mesmo disco não
+  protege contra a falha do disco;
+- CSV exportado: guardar em pasta restrita e apagar quando não for mais útil.
+
+**Privacidade na tela:** o porteiro vê o CPF mascarado (`***.982.247-**`) nas
+tabelas, na ficha da página Pessoas e na janela Corrigir (o lápis do campo
+deixa digitar um CPF novo, sem mostrar o antigo). **Exceção:** em Pessoas →
+"Registrar entrada", o CPF completo vai para o campo CPF da Entrada e saída,
+porque é o dado necessário para registrar a entrada. O celular aparece
+completo na ficha da pessoa (é o campo para corrigi-lo). O histórico de ações
+grava os CPFs mascarados (o celular aparece completo quando uma correção o
+altera).
+
+**Como restaurar um backup** (ex.: o programa avisa que o banco está
+danificado):
+
+1. Feche o programa em todos os computadores que usam esse banco.
+2. Na pasta do programa, renomeie `portaria.db` para
+   `portaria-danificado.db` (não apague: pode ser útil depois). Se existirem
+   `portaria.db-wal` e `portaria.db-shm`, renomeie também (ex.:
+   `portaria-danificado.db-wal`), para não serem misturados com a cópia.
+3. Abra a pasta `backups` e escolha o backup mais recente que estava bom
+   (o nome tem a data: `portaria-2026-10-20.db`).
+4. Copie esse arquivo para a pasta do programa e renomeie a cópia para
+   `portaria.db`.
+5. Abra o programa e confira os registros. O que foi feito depois da data do
+   backup não está nele e precisa ser lançado de novo.
+
+**Limitações conhecidas** (registradas para as próximas versões):
+
+- O banco e os backups não são criptografados pelo programa: quem consegue
+  abrir a pasta lê os dados. A proteção depende das permissões do Windows e
+  do BitLocker (item S02 da auditoria de segurança).
+- O histórico de ações não tem trava contra alteração: quem abre o arquivo do
+  banco com outra ferramenta consegue apagar linhas sem deixar rastro (S10).
+- Ainda não há prazo de retenção nem "anonimizar pessoa": excluir uma visita
+  não apaga o cadastro da pessoa, e os dados ficam até alguém excluí-los.
 
 ## Estrutura da pasta
 

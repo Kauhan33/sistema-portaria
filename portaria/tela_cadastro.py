@@ -33,6 +33,8 @@ from .validacao import (FORMATO, FORMATO_EXIBICAO, PLACA_OBRIGATORIA,
 DICA_CPF = "Digite o CPF primeiro: quem já veio tem os dados preenchidos."
 DICA_PLACA = "obrigatória" if PLACA_OBRIGATORIA else "opcional"
 SEGUNDOS_PARA_DESFAZER = 10
+SAIDA_JA_FEITA = ("Essa visita já tinha saída ou foi excluída em outra "
+                  "estação. A tabela foi atualizada.")
 LIMITE_BUSCA = 200
 COLUNAS = [("Nome", "Nome", 170, "w"), ("CPF", "CPF", 118, "w"),
            ("Celular", "Celular", 112, "w"), ("Placa", "Placa", 86, "w"),
@@ -41,9 +43,38 @@ COLUNAS = [("Nome", "Nome", 170, "w"), ("CPF", "CPF", 118, "w"),
 # o celular continua nos values (mesma linha de antes), mas não aparece
 COLUNAS_VISIVEIS = ("Nome", "CPF", "Placa", "Tipo", "Entrada", "Saida")
 
+# Abaixo desta altura da página (px lógicos) o layout fica compacto: num
+# notebook 1366x768 a 125% a página tem uns 540 (670 px reais).
+ALTURA_CONFORTAVEL = 740
+# Posição (linha, coluna, colunas ocupadas) de cada campo, com o rótulo na
+# linha de cima: (layout normal, layout compacto)
+GRADE = {
+    "cpf": ((0, 0, 1), (0, 0, 1)),
+    "nome": ((0, 1, 2), (0, 1, 2)),
+    "celular": ((3, 0, 1), (0, 3, 1)),
+    "placa": ((3, 1, 1), (3, 0, 1)),
+    "tipo": ((3, 2, 1), (3, 1, 1)),
+    "entrada": ((5, 0, 1), (3, 2, 1)),
+    "saida": ((5, 1, 1), (3, 3, 1)),
+}
+# Espaços (px lógicos) de cada densidade
+ESPACOS = {
+    "normal": {"topo": (20, 16), "cartao": 18, "titulo": 10,
+               "movimento": (ESPACO_CARTOES, MARGEM), "miolo_mov": 8,
+               "barra": (6, 12), "rodape": (8, 2)},
+    "compacta": {"topo": (8, 8), "cartao": 12, "titulo": 6,
+                 "movimento": (8, 12), "miolo_mov": 4,
+                 "barra": (2, 6), "rodape": (4, 0)},
+}
+
 
 def agora():
     return datetime.now().strftime(FORMATO)
+
+
+def _px(par):
+    """(antes, depois) em px lógicos -> px reais."""
+    return tuple(px(n) for n in par)
 
 
 class AbaCadastro:
@@ -54,11 +85,16 @@ class AbaCadastro:
         self.mostrados = {}           # id -> registro das linhas da tabela
         self._auto = None   # o que foi preenchido sozinho, para poder desfazer
         self._timer_aviso = None
-        self._para_desfazer = None
+        self._para_desfazer = None          # ids da última saída gravada aqui
+        self._saida_para_desfazer = None    # e o horário dela
+        self.pecas, self.apoios = {}, {}    # rótulo e campo do formulário
+        self.compacta = None                # densidade em uso
 
         self._montar_cabecalho()
         self._montar_formulario()
         self._montar_movimento()
+        self._aplicar_densidade(False)
+        self.aba.bind("<Configure>", self._ao_redimensionar)
 
     # --------------------------------------------------------------
     # Montagem
@@ -89,70 +125,126 @@ class AbaCadastro:
               ).pack(side="left", padx=(px(8), 0))
 
     def _montar_formulario(self):
-        cartao = Cartao(self.aba, pad=18)
-        cartao.pack(fill="x", padx=px(MARGEM))
-        m = cartao.miolo
-        cab = tk.Frame(m, bg=COR["superficie"])
-        cab.pack(fill="x", pady=(0, px(10)))
-        titulo_cartao(cab, "Nova entrada").pack(side="left")
-        Botao(cab, "Limpar formulário", self.limpar, "fantasma",
-              altura=30).pack(side="right")
-
+        """Cartão "Nova entrada". As peças são criadas aqui e posicionadas
+        por _aplicar_densidade (normal ou compacta, conforme a altura)."""
+        self.cartao_form = Cartao(self.aba, pad=ESPACOS["normal"]["cartao"])
+        self.cartao_form.pack(fill="x", padx=px(MARGEM))
+        m = self.cartao_form.miolo
+        self.cab_form = tk.Frame(m, bg=COR["superficie"])
+        self.cab_form.pack(fill="x")
+        self.titulo_form = titulo_cartao(self.cab_form, "Nova entrada")
         corpo = tk.Frame(m, bg=COR["superficie"])
         corpo.pack(fill="x")
         self.ficha = tk.Frame(corpo, bg=COR["superficie"], width=px(214))
-        self.ficha.pack(side="right", fill="y")
-        tk.Frame(corpo, bg=COR["borda"], width=1).pack(side="right", fill="y",
-                                                       padx=px(20))
-        form = tk.Frame(corpo, bg=COR["superficie"])
+        self.divisor_ficha = tk.Frame(corpo, bg=COR["borda"], width=1)
+        self.form = form = tk.Frame(corpo, bg=COR["superficie"])
         form.pack(side="left", fill="x", expand=True)
-        form.columnconfigure((0, 1, 2), weight=1, uniform="f")
-
-        def rotulo(texto, linha, coluna, apoio=""):
-            frame, lbl_apoio = rotulo_campo(form, texto, apoio)
-            frame.grid(row=linha, column=coluna, sticky="w", pady=(0, px(4)))
-            return lbl_apoio
-
-        def posicionar(campo, linha, coluna, juntas=1):
-            campo.grid(row=linha, column=coluna, columnspan=juntas, sticky="ew",
-                       padx=(0, px(12) if coluna + juntas < 3 else 0))
-            return campo.entrada
 
         # CPF primeiro: é por ele que a pessoa é reconhecida
-        rotulo("CPF", 0, 0)
-        rotulo("Nome completo", 0, 1)
         self.var_cpf = tk.StringVar(self.aba)
-        self.cpf = posicionar(Campo(form, numeros=11, var=self.var_cpf), 1, 0)
-        self.nome = posicionar(Campo(form), 1, 1, juntas=2)
-
-        # Faixa de situação da pessoa (neutra, nova, já veio, no campus,
-        # bloqueada): o texto fica em lbl_pessoa
-        self.aviso_pessoa = Aviso(form)
-        self.aviso_pessoa.grid(row=2, column=0, columnspan=3, sticky="ew",
-                               pady=(px(10), px(14)))
-        self.lbl_pessoa = self.aviso_pessoa.lbl
-
-        rotulo("Celular com DDD", 3, 0, "só números")
-        self.lbl_dica_placa = rotulo("Placa", 3, 1, DICA_PLACA)
-        rotulo("Tipo de acesso", 3, 2)
-        self.celular = posicionar(Campo(form, numeros=11), 4, 0)
+        self.cpf = self._peca("cpf", "CPF", Campo(form, numeros=11, var=self.var_cpf))
+        self.nome = self._peca("nome", "Nome completo", Campo(form))
+        self.celular = self._peca("celular", "Celular com DDD",
+                                  Campo(form, numeros=11), "só números")
         campo_placa = Campo(form, placa=True)
         self.var_placa = campo_placa.var
-        posicionar(campo_placa, 4, 1)
-        self.tipo = posicionar(Campo(form, opcoes=TIPOS_ACESSO), 4, 2)
+        self._peca("placa", "Placa", campo_placa, DICA_PLACA)
+        self.lbl_dica_placa = self.apoios["placa"]
+        self.tipo = self._peca("tipo", "Tipo de acesso",
+                               Campo(form, opcoes=TIPOS_ACESSO))
+        self.entrada = self._peca("entrada", "Entrada", self._campo_data(form),
+                                  FORMATO_EXIBICAO)
+        self.saida = self._peca("saida", "Saída", self._campo_data(form),
+                                "vazio = no campus")
 
-        form.grid_rowconfigure(5, pad=px(14))
-        rotulo("Entrada", 5, 0, FORMATO_EXIBICAO)
-        rotulo("Saída", 5, 1, "vazio = no campus")
-        self.entrada = posicionar(self._campo_data(form), 6, 0)
-        self.saida = posicionar(self._campo_data(form), 6, 1)
-        Botao(form, "Registrar entrada", self.cadastrar, "primario",
-              dica_tecla="Enter").grid(row=6, column=2, sticky="ew")
+        # Faixa de situação da pessoa (neutra, nova, já veio, no campus,
+        # bloqueada), o botão principal e o "Limpar": filhos do cartão para
+        # poderem ir para a grade do formulário ou para a linha do título
+        self.aviso_pessoa = Aviso(m)
+        self.lbl_pessoa = self.aviso_pessoa.lbl
+        self.btn_cadastrar = Botao(m, "Registrar entrada", self.cadastrar,
+                                   "primario", dica_tecla="Enter")
+        self.btn_limpar = Botao(m, "Limpar formulário", self.limpar, "fantasma",
+                                altura=30)
 
         self._montar_ficha()
         # Liga o preenchimento automático e os alertas só depois de tudo montado
         self.var_cpf.trace_add("write", self._ao_digitar_cpf)
         self.var_placa.trace_add("write", self._ao_digitar_placa)
+
+    def _peca(self, chave, texto, campo, apoio=""):
+        """Rótulo + campo do formulário (posicionados depois, pela GRADE)."""
+        rotulo, self.apoios[chave] = rotulo_campo(self.form, texto, apoio)
+        self.pecas[chave] = (rotulo, campo)
+        return campo.entrada
+
+    # --------------------------------------------------------------
+    # Densidade: normal ou compacta (tela baixa)
+    # --------------------------------------------------------------
+    def _ao_redimensionar(self, event):
+        if event.widget is self.aba:
+            self._aplicar_densidade(event.height < px(ALTURA_CONFORTAVEL))
+
+    def _aplicar_densidade(self, compacta):
+        """
+        Normal: formulário em 3 colunas com a ficha da pessoa à direita.
+        Compacta (página baixa, ex.: notebook 1366x768 a 125%): 4 colunas,
+        sem a ficha, a faixa de situação no lugar do título do cartão,
+        espaços menores e linhas da tabela mais baixas, para o Movimento
+        continuar mostrando umas 4 linhas.
+        """
+        if compacta == self.compacta:
+            return
+        self.compacta = compacta
+        e = ESPACOS["compacta" if compacta else "normal"]
+        self.cabecalho.pack_configure(pady=_px(e["topo"]))
+        self.cartao_form.miolo.pack_configure(padx=px(e["cartao"]),
+                                              pady=px(e["cartao"]))
+        self.cab_form.pack_configure(pady=(0, px(e["titulo"])))
+        self._posicionar_formulario(compacta)
+        self.cartao_mov.pack_configure(pady=_px(e["movimento"]))
+        self.cartao_mov.miolo.pack_configure(pady=px(e["miolo_mov"]))
+        self.barra_mov.pack_configure(pady=_px(e["barra"]))
+        self.rodape_mov.pack_configure(pady=_px(e["rodape"]))
+        self.tabela.configure(style="Compacta.Tabela.Treeview" if compacta
+                              else "Tabela.Treeview")
+
+    def _posicionar_formulario(self, compacta):
+        for w in (self.titulo_form, self.btn_limpar, self.btn_cadastrar,
+                  self.aviso_pessoa, self.ficha, self.divisor_ficha):
+            w.pack_forget()
+            w.grid_forget()
+        colunas = 4 if compacta else 3
+        self.form.columnconfigure((0, 1, 2), weight=1, uniform="f")
+        self.form.columnconfigure(3, weight=1 if compacta else 0,
+                                  uniform="f" if compacta else "")
+        # espaço antes da 2ª linha de campos (compacta) ou da linha da
+        # Entrada/Saída (normal: a 2ª linha já vem depois da faixa)
+        self.form.grid_rowconfigure(3, pad=px(12) if compacta else 0)
+        self.form.grid_rowconfigure(5, pad=0 if compacta else px(14))
+        for chave, (rotulo, campo) in self.pecas.items():
+            linha, coluna, juntas = GRADE[chave][1 if compacta else 0]
+            rotulo.grid(row=linha, column=coluna, sticky="w", pady=(0, px(4)))
+            campo.grid(row=linha + 1, column=coluna, columnspan=juntas,
+                       sticky="ew",
+                       padx=(0, px(12) if coluna + juntas < colunas else 0))
+        if compacta:
+            self.btn_limpar.definir_texto("Limpar")
+            self.btn_cadastrar.pack(in_=self.cab_form, side="right")
+            self.btn_limpar.pack(in_=self.cab_form, side="right",
+                                 padx=(0, px(8)))
+            self.aviso_pessoa.pack(in_=self.cab_form, side="left", fill="x",
+                                   expand=True, padx=(0, px(16)))
+            return
+        self.titulo_form.pack(side="left")
+        self.btn_limpar.definir_texto("Limpar formulário")
+        self.btn_limpar.pack(in_=self.cab_form, side="right")
+        self.aviso_pessoa.grid(in_=self.form, row=2, column=0, columnspan=3,
+                               sticky="ew", pady=(px(10), px(14)))
+        self.btn_cadastrar.grid(in_=self.form, row=6, column=2, sticky="ew")
+        self.ficha.pack(side="right", fill="y", before=self.form)
+        self.divisor_ficha.pack(side="right", fill="y", padx=px(20),
+                                before=self.form)
 
     def _campo_data(self, form):
         """Campo de data/hora; o relógio dentro dele põe a hora de agora."""
@@ -202,13 +294,12 @@ class AbaCadastro:
         return valor
 
     def _montar_movimento(self):
-        cartao = Cartao(self.aba, pad=0)
-        cartao.pack(fill="both", expand=True, padx=px(MARGEM),
-                    pady=(px(ESPACO_CARTOES), px(MARGEM)))
-        m = cartao.miolo
-        m.pack_configure(padx=px(1), pady=px(8))
-        barra = tk.Frame(m, bg=COR["superficie"])
-        barra.pack(fill="x", padx=px(19), pady=(px(6), px(12)))
+        self.cartao_mov = Cartao(self.aba, pad=0)
+        self.cartao_mov.pack(fill="both", expand=True, padx=px(MARGEM))
+        m = self.cartao_mov.miolo
+        m.pack_configure(padx=px(1))
+        self.barra_mov = barra = tk.Frame(m, bg=COR["superficie"])
+        barra.pack(fill="x", padx=px(19))
         titulo_cartao(barra, "Movimento").pack(side="left")
         campo_busca = Campo(barra, largura=300, icone=ICONE["busca"],
                             dica_vazio="Buscar no histórico: nome, CPF, placa…")
@@ -228,8 +319,8 @@ class AbaCadastro:
         Botao(barra, "Registrar saída", self.registrar_saida, "secundario",
               icone=ICONE["seta"]).pack(side="right", padx=(0, px(8)))
 
-        rodape = tk.Frame(m, bg=COR["superficie"])
-        rodape.pack(side="bottom", fill="x", padx=px(19), pady=(px(8), px(2)))
+        self.rodape_mov = rodape = tk.Frame(m, bg=COR["superficie"])
+        rodape.pack(side="bottom", fill="x", padx=px(19))
         self.lbl_status = tk.Label(rodape, text="", font=FONTE["dica"],
                                    bg=COR["superficie"], fg=COR["texto_3"])
         self.lbl_status.pack(side="left")
@@ -249,6 +340,9 @@ class AbaCadastro:
                                      selecao="extended")
         quadro.pack(fill="both", expand=True, padx=px(12))
         self.tabela.bind("<Double-1>", self._ao_duplo_clique)
+        # Enter com o foco na tabela não cadastra (o formulário está vazio)
+        self.tabela.bind("<Return>", lambda e: "break")
+        self.tabela.bind("<KP_Enter>", lambda e: "break")
 
     # --------------------------------------------------------------
     # Tabela
@@ -289,13 +383,16 @@ class AbaCadastro:
             self.tabela.selection_set(manter)
 
         dentro = sum(1 for r in self.app.registros if not r["saida"])
+        hoje = self.app.relogio().strftime("%d/%m/%Y")
+        entradas_hoje = sum(1 for r in self.app.registros
+                            if r["entrada"].startswith(hoje))
         if texto:
             status = plural(len(registros), "registro encontrado",
                             "registros encontrados") + " no histórico"
             if len(registros) >= LIMITE_BUSCA:
                 status += f" (os {LIMITE_BUSCA} mais recentes)"
         else:
-            status = (f"{plural(len(registros), 'registro', 'registros')} hoje"
+            status = (f"{plural(entradas_hoje, 'entrada', 'entradas')} hoje"
                       f"  ·  {dentro} no campus  ·  duplo clique registra a saída")
         self.lbl_status.config(text=status)
         self.cabecalho.subtitulo.config(
@@ -535,7 +632,8 @@ class AbaCadastro:
         if not selecionado:
             mensagens.aviso("Atenção", "Selecione um registro na tabela.")
             return
-        if not mensagens.confirmar(
+        if not self.app.perguntar(
+                mensagens.confirmar,
                 "Excluir registro",
                 "Excluir " + plural(len(selecionado), "registro selecionado",
                                     "registros selecionados") + "?\n"
@@ -580,7 +678,8 @@ class AbaCadastro:
             return "break"
         if len(encontrados) > 1:
             nomes = "\n".join(f"• {r['nome']}" for r in encontrados)
-            if not mensagens.confirmar(
+            if not self.app.perguntar(
+                    mensagens.confirmar,
                     "Saída rápida",
                     f"{len(encontrados)} pessoas estão no campus com essa placa:"
                     f"\n{nomes}\n\nRegistrar a saída de todas?"):
@@ -602,28 +701,41 @@ class AbaCadastro:
         if not prontos:
             mensagens.info("Aviso", "\n".join(recusas))
             return False
-        ids = [r["id"] for r in prontos]
-        if not self.app.gravar(self.app.banco.registrar_saidas, ids,
-                               momento.strftime(FORMATO)):
+        saida = momento.strftime(FORMATO)
+        ok, gravados = self.app.tentar(
+            self.app.banco.registrar_saidas, [r["id"] for r in prontos], saida,
+            autor=self.app.autor)
+        if not ok:
             return False
+        # a linha pode estar desatualizada: só conta o que o banco gravou
         self.app.atualizar_tabela()
-        primeiros = [r["nome"].split()[0]
-                     for r in sorted(prontos, key=lambda r: r["id"])]
+        if not gravados:
+            mensagens.aviso("Saída", SAIDA_JA_FEITA)
+            return False
+        gravadas = sorted((r for r in prontos if r["id"] in gravados),
+                          key=lambda r: r["id"])
+        primeiros = [r["nome"].split()[0] for r in gravadas]
         nomes = primeiros[-1]
         if len(primeiros) > 1:
             nomes = ", ".join(primeiros[:-1]) + " e " + nomes
         texto = f"Saída de {nomes} registrada às {momento:%H:%M}."
-        if recusas:
-            texto += f" ({len(recusas)} já tinha(m) saída.)"
-        self.avisar(texto, desfazer=ids)
+        nao_gravadas = len(recusas) + len(prontos) - len(gravadas)
+        if nao_gravadas:
+            texto += (f" ({nao_gravadas} já tinha(m) saída ou foi(ram) "
+                      "excluída(s) em outra estação.)")
+        self._saida_para_desfazer = saida
+        self.avisar(texto, desfazer=gravados)
         return True
 
     def desfazer_saida(self):
+        """Desfaz só as saídas que esta tela gravou, com o horário gravado
+        (nunca a saída dada ou corrigida por outra estação)."""
         ids = self._para_desfazer
         if not ids:
             return
         ok, desfeitas = self.app.tentar(self.app.banco.desfazer_saidas, ids,
-                                        autor=self.app.autor)
+                                        autor=self.app.autor,
+                                        saida=self._saida_para_desfazer)
         if not ok:
             return
         self.app.atualizar_tabela()

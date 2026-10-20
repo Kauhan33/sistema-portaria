@@ -173,7 +173,8 @@ class AbaBloqueios:
             mensagens.erro("Dados inválidos", msg)
             return
         rotulo = formatar_bloqueio(tipo, valor)
-        if not mensagens.confirmar(
+        if not self.app.perguntar(
+                mensagens.confirmar,
                 "Confirmar bloqueio", f"Bloquear {COM_ARTIGO[tipo]} {rotulo}?\n"
                 f"Motivo: {motivo}\n\n"
                 "A entrada será recusada até um administrador remover o bloqueio."):
@@ -209,10 +210,10 @@ class AbaBloqueios:
             mensagens.info("Aviso", "Este bloqueio já foi removido.")
             return
         rotulo = formatar_bloqueio(b["tipo"], b["valor"])
-        if not mensagens.confirmar("Remover bloqueio",
-                                   f"Remover o bloqueio {COM_DE[b['tipo']]} "
-                                   f"{rotulo}?\n"
-                                   "A entrada volta a ser permitida."):
+        if not self.app.perguntar(
+                mensagens.confirmar, "Remover bloqueio",
+                f"Remover o bloqueio {COM_DE[b['tipo']]} {rotulo}?\n"
+                "A entrada volta a ser permitida."):
             return
         self.app.tentar(self.app.banco.desbloquear, b["id"], self.app.autor)
         self.atualizar()

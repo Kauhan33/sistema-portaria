@@ -370,11 +370,13 @@ verdade (banco temporário com dados de exemplo, escala 125%, relógio fixo em
 | Login e primeiro acesso | `final/login.png`, `final/primeiro_acesso.png` |
 | Entrada e saída: já cadastrado, no campus, bloqueado, pessoa nova | `final/cadastro_ok.png`, `final/cadastro_campus.png`, `final/cadastro_bloqueado.png`, `final/cadastro_novo.png` |
 | Entrada e saída vista pelo porteiro (CPF mascarado, sem Excluir) | `final/cadastro_porteiro.png` |
+| Entrada e saída no notebook 1366×768 a 125% (layout compacto) | `final/cadastro_compacto.png` |
 | Pessoas (ficha comum e bloqueada) | `final/pessoas.png`, `final/pessoas_bloqueada.png` |
 | Bloqueios (administrador e porteiro) | `final/bloqueios_admin.png`, `final/bloqueios_porteiro.png` |
 | Painel | `final/painel.png` |
 | Usuários | `final/usuarios.png` |
 | Diálogos: Corrigir, Trocar senha, Novo usuário, Exportar CSV | `final/corrigir.png`, `final/trocar_senha.png`, `final/novo_usuario.png`, `final/exportar_csv.png` |
+| Corrigir visto pelo porteiro (CPF mascarado; o lápis libera digitar outro) | `final/corrigir_porteiro.png` |
 
 Diferenças conscientes em relação ao protótipo:
 
@@ -389,6 +391,21 @@ Diferenças conscientes em relação ao protótipo:
 - Menu do usuário (Trocar minha senha, Sair) no botão de mais opções (três pontos) do rodapé da barra.
 - Painel: o total de registros foi para o subtítulo; o gráfico de 7 dias não
   tem números no eixo (o valor fica em cima de cada barra).
-- Janela Corrigir em 3 colunas para caber num notebook 1366×768 a 125%.
+- Janela Corrigir em 4 colunas (duas linhas de campos) e histórico com 2
+  linhas visíveis, para caber com os botões num notebook 1366×768 a 125%.
+- **Layout compacto da Entrada e saída** (`final/cadastro_compacto.png`):
+  quando a página fica baixa (menos de 740 px lógicos, como a janela
+  maximizada num notebook 1366×768 a 125%, ~1366×670 px reais), o formulário
+  passa a 4 colunas em duas linhas, a ficha da pessoa (placa desenhada e
+  histórico) é recolhida, a faixa de situação ocupa o lugar do título
+  "Nova entrada" ao lado de "Limpar" e "Registrar entrada", os espaços
+  diminuem e as linhas da tabela ficam com 30 px. Assim o Movimento continua
+  mostrando umas 4 linhas. Na tela grande o layout é o de sempre.
+- As colunas das tabelas dividem a largura disponível na proporção do
+  projeto (antes a última coluna ficava cortada em telas menores); na tela
+  pequena encolhem até 85% e, abaixo disso, a última fica cortada (caso da
+  lista de Pessoas a 1366 px, por causa da ficha ao lado).
+- A janela aceita ficar com até 1000×500 px lógicos (antes 1000×640, maior
+  que a área útil de um notebook 1366×768 a 125%).
 - `depois/cadastro_ok.png` era, por engano, a captura de outra janela; foi
   refeito a partir do protótipo aprovado (`prototipo.py cadastro --estado ok`).

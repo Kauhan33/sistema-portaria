@@ -53,7 +53,15 @@ def _copiar_verificado(caminho_banco, destino):
     ok, msg = verificar_banco(caminho_banco)
     if not ok:
         raise ErroDados("Backup não realizado.\n" + msg)
-    os.makedirs(os.path.dirname(os.path.abspath(destino)), exist_ok=True)
+    pasta = os.path.dirname(os.path.abspath(destino))
+    try:
+        os.makedirs(pasta, exist_ok=True)
+    except OSError as e:
+        log.error("Não foi possível criar a pasta de backup: %s", e)
+        raise ErroDados("Backup não realizado: não foi possível criar a pasta "
+                        f"{os.path.basename(pasta)} ao lado do banco.\n"
+                        "Confira a permissão da pasta do programa.",
+                        detalhe=str(e)) from e
     return copiar_banco(caminho_banco, destino)
 
 
@@ -98,12 +106,12 @@ def _celula(valor):
     return "'" + texto if texto[:1] in ("=", "+", "-", "@") else texto
 
 
-def exportar_csv(banco, caminho_csv, desde, ate, autor=None):
+def exportar_csv(banco, caminho_csv, desde, ate, autor):
     """
     Grava num CSV as visitas com entrada entre `desde` e `ate` (date,
     inclusive). Separador ';' e UTF-8 com BOM, para o Excel em português
-    abrir certo; CPF, celular e placa formatados. Só administrador (quando
-    `autor` é informado) e fica no histórico. Devolve quantos registros.
+    abrir certo; CPF, celular e placa formatados. Só administrador; fica no
+    histórico depois que o arquivo foi gravado. Devolve quantos registros.
     """
     if ate < desde:
         raise ErroDados("A data final não pode ser anterior à inicial.")
@@ -126,4 +134,7 @@ def exportar_csv(banco, caminho_csv, desde, ate, autor=None):
         raise ErroDados("Não foi possível gravar o arquivo.\n"
                         "Confira se ele não está aberto no Excel e se há "
                         "permissão na pasta.", detalhe=str(e)) from e
+    banco.registrar_evento(autor, "Exportação de registros",
+                           f"{len(registros)} registro(s) de {desde:%d/%m/%Y} "
+                           f"a {ate:%d/%m/%Y}")
     return len(registros)

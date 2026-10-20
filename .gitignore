@@ -25,3 +25,6 @@ entrega/
 build/
 dist/
 *.spec
+
+# cópias de trabalho dos agentes (git worktrees) e config local do Claude
+.claude/

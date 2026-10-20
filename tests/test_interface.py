@@ -10,7 +10,8 @@ from unittest import mock
 
 from portaria import dados
 from portaria.interface import AppPortaria
-from portaria.usuarios import LIMITE_TENTATIVAS, autenticar, gerar_hash
+from portaria.usuarios import (LIMITE_TENTATIVAS, MINUTOS_INATIVIDADE,
+                               autenticar, gerar_hash)
 from portaria.validacao import FORMATO, converter_data
 
 VISITA_ANTIGA = {"nome": "Beto Rocha", "cpf": "11144477735",
@@ -155,7 +156,8 @@ class TestCadastroComoAdmin(BaseInterface):
     def test_admin_ve_botao_excluir_e_aba_usuarios(self):
         self.assertIsNotNone(self.app.btn_excluir)
         self.assertIsNotNone(self.app.aba_usuarios)
-        self.assertIn("Administrador", self.app.lbl_usuario.cget("text"))
+        self.assertEqual(self.app.lbl_usuario.cget("text"), "Ana Admin")
+        self.assertEqual(self.app.lbl_perfil.cget("text"), "Administrador")
 
     def test_rotulo_mostra_formato_legivel(self):  # falha F4 da v1
         textos = self.textos(self.app.aba_cad)
@@ -285,16 +287,36 @@ class TestLogin(BaseInterface):
         self.assertIsNone(self.app.usuario)
 
     def test_bloqueio_depois_de_muitas_tentativas(self):
-        agora = [500.0]
-        self.app.tentativas.relogio = lambda: agora[0]
+        agora = [datetime(2026, 10, 19, 19, 0)]
+        self.app.relogio = lambda: agora[0]
         for _ in range(LIMITE_TENTATIVAS):
             self.tentar_login("ana.admin", "errada")
         self.tentar_login("ana.admin", "senha123")      # certa, mas bloqueado
         self.assertIsNone(self.app.usuario)
         self.assertIn("Aguarde", self.app.tela_login.lbl_erro.cget("text"))
-        agora[0] += 31
+        agora[0] += timedelta(seconds=31)
         self.tentar_login("ana.admin", "senha123")
         self.assertEqual(self.app.usuario["login"], "ana.admin")
+
+    def test_bloqueio_continua_ao_abrir_o_programa_de_novo(self):
+        agora = datetime.now()
+        self.app.relogio = lambda: agora
+        for _ in range(LIMITE_TENTATIVAS):
+            self.tentar_login("paulo", "errada")
+        self.app.janela.destroy()                       # fechou o programa
+        self.janela = self.nova_janela()
+        self.app = AppPortaria(self.caminho_db, self.janela,
+                               relogio=lambda: agora + timedelta(seconds=5))
+        self.tentar_login("paulo", "senha456")
+        self.assertIsNone(self.app.usuario)
+        self.assertIn("Aguarde 25 s", self.app.tela_login.lbl_erro.cget("text"))
+
+    def test_faixa_de_erro_so_aparece_com_erro(self):
+        tela = self.app.tela_login
+        self.assertEqual(tela.faixa.winfo_manager(), "")
+        self.tentar_login("", "")
+        self.assertEqual(tela.faixa.winfo_manager(), "pack")
+        self.assertIn("Informe o usuário", tela.lbl_erro.cget("text"))
 
     def test_sair_volta_para_o_login(self):
         self.tentar_login("paulo", "senha456")
@@ -348,6 +370,86 @@ class TestPrimeiroAcesso(BaseInterface):
         self.assertIn("1 registro(s)", self.msg.showinfo.call_args[0][1])
         self.preencher_admin()
         self.assertEqual(len(self.app.tabela.get_children()), 1)
+
+
+class TestSessao(BaseInterface):
+    entrar_como = "porteiro"
+
+    def test_menu_lateral_tem_as_paginas_do_perfil(self):
+        textos = [i.cget("text") for i in self.app.itens_menu.values()]
+        self.assertEqual(textos, ["Entrada e saída", "Pessoas", "Bloqueios",
+                                  "Painel"])               # porteiro: sem Usuários
+        self.assertTrue(self.app.itens_menu[str(self.app.aba_cad)].ativo)
+
+    def test_ir_para_acende_o_item_do_menu(self):
+        self.app.ir_para(self.app.aba_bloqueios)
+        self.assertEqual(self.app.abas.select(), str(self.app.aba_bloqueios))
+        ativos = [i.cget("text") for i in self.app.itens_menu.values() if i.ativo]
+        self.assertEqual(ativos, ["Bloqueios"])
+
+    def test_contadores_da_barra_lateral(self):
+        self.banco.inserir(dict(VISITA_ANTIGA))
+        self.banco.bloquear("placa", "ABC1234", "Motivo válido", "ana.admin")
+        self.app.atualizar_tabela()
+        self.assertEqual(self.app.itens_menu[str(self.app.aba_pessoas)].contador, "1")
+        self.assertEqual(self.app.itens_menu[str(self.app.aba_bloqueios)].contador,
+                         "1")
+
+    def test_f2_de_outra_pagina_volta_para_a_entrada_e_saida(self):
+        self.app.ir_para(self.app.aba_dash)
+        self.app.ir_para_saida_rapida()
+        self.assertEqual(self.app.abas.select(), str(self.app.aba_cad))
+
+    def test_trocar_minha_senha(self):
+        menu = self.app.menu_usuario
+        self.assertEqual(menu.entrycget(0, "label"), "Trocar minha senha")
+        menu.invoke(0)
+        dialogo = self.app.janela_senha
+        dialogo.janela.withdraw()
+        dialogo.atual.insert(0, "senha456")
+        dialogo.nova.insert(0, "outrasenha9")
+        dialogo.confirmacao.insert(0, "outrasenha9")
+        dialogo.salvar()
+        self.assertFalse(dialogo.janela.winfo_exists())
+        self.assertIsNotNone(autenticar(self.banco, "paulo", "outrasenha9"))
+        self.assertIn(("paulo", "Senha alterada"), self.acoes())
+
+    def test_trocar_senha_com_a_atual_errada(self):
+        dialogo = self.app.trocar_senha()
+        dialogo.janela.withdraw()
+        dialogo.atual.insert(0, "errada")
+        dialogo.nova.insert(0, "outrasenha9")
+        dialogo.confirmacao.insert(0, "outrasenha9")
+        dialogo.salvar()
+        self.assertIn("atual não confere", dialogo.lbl_erro.cget("text"))
+        self.assertTrue(dialogo.janela.winfo_exists())
+        self.assertIsNotNone(autenticar(self.banco, "paulo", "senha456"))
+
+    def test_sai_sozinho_depois_de_um_tempo_sem_uso(self):
+        agora = [datetime(2026, 10, 19, 19, 0)]
+        self.app.relogio = lambda: agora[0]
+        self.app.registrar_uso()                 # tecla ou mouse
+        agora[0] += timedelta(minutes=MINUTOS_INATIVIDADE - 1)
+        self.assertFalse(self.app.conferir_inatividade())
+        self.app.registrar_uso()                 # usou de novo: zera
+        agora[0] += timedelta(minutes=MINUTOS_INATIVIDADE - 1)
+        self.assertFalse(self.app.conferir_inatividade())
+        self.assertEqual(self.app.usuario["login"], "paulo")
+        agora[0] += timedelta(minutes=1)
+        self.assertTrue(self.app.conferir_inatividade())
+        self.assertIsNone(self.app.usuario)
+        self.assertIn("sem uso", self.app.tela_login.lbl_erro.cget("text"))
+        self.assertIn(("paulo", "Sessão encerrada por inatividade"), self.acoes())
+
+    def test_inatividade_fecha_as_janelas_abertas(self):
+        dialogo = self.app.trocar_senha()
+        self.app.relogio = lambda: datetime.now() + timedelta(hours=1)
+        self.app.conferir_inatividade()
+        self.assertFalse(dialogo.janela.winfo_exists())
+
+    def test_teclado_e_mouse_contam_como_uso(self):
+        self.assertTrue(self.janela.bind("<KeyPress>"))
+        self.assertTrue(self.janela.bind("<Motion>"))
 
 
 class TestAbaUsuarios(BaseInterface):

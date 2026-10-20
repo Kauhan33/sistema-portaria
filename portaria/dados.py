@@ -577,6 +577,18 @@ class Banco:
             "saidas": saidas,
         }
 
+    def contadores(self):
+        """Números da barra lateral: pessoas cadastradas, quem está no
+        campus e bloqueios ativos (três contagens com índice: rápido)."""
+        with self._conexao() as con:
+            pessoas, = con.execute("SELECT COUNT(*) FROM pessoas").fetchone()
+            no_campus, = con.execute("SELECT COUNT(*) FROM registros "
+                                     "WHERE saida = ''").fetchone()
+            bloqueios, = con.execute("SELECT COUNT(*) FROM bloqueios "
+                                     "WHERE ativo = 1").fetchone()
+        return {"pessoas": pessoas, "no_campus": no_campus,
+                "bloqueios": bloqueios}
+
     def inserir(self, registro, autor=None):
         """Grava um registro (datas no formato da tela) e devolve o id."""
         with self._conexao() as con:

@@ -81,11 +81,15 @@ Ordem pensada para cada etapa já deixar algo entregável.
   seletor de data.
 
 ### Etapa 3 — Relatórios e dashboard
-- Filtro por período (data inicial e final) na tabela e no dashboard.
+- ✅ **Painel** redesenhado (20/10/2026): no campus agora, entradas de hoje,
+  permanência média, com veículo; gráficos por tipo e dos últimos 7 dias,
+  calculados no banco (rápido com anos de dados).
+- ✅ **Exportar CSV** de um período (Excel), só administrador (20/10/2026).
+  Ainda não: PDF.
+- ✅ **Backup automático diário** ao abrir o programa (20/10/2026).
+- Filtro por período (data inicial e final) no Painel.
 - Gráfico de **horário de pico** (entradas por hora do dia).
 - Tempo médio de permanência por tipo; visitantes mais frequentes.
-- **Exportar** relatório do dia/período em CSV (Excel) e PDF.
-- Backup automático diário.
 
 ### Etapa 4 — Diferencial ligado a Compiladores ⭐
 **Linha de comando da portaria**: um campo onde o porteiro digita comandos curtos,
@@ -112,18 +116,42 @@ comando por **voz**, como na Lanchonete.
 ### Etapa 5 — Entrega
 - Documento Word completo (capa, RF, RNF, RN, telas com prints, fluxo, testes) na
   pasta `entrega/`.
-- Executável `.exe` com PyInstaller (já feito na Lanchonete).
-- Repositório no GitHub **sem** nome, RA ou professora (material e entrega ficam fora do git).
+- ✅ Executável `Portaria.exe` com PyInstaller (`build_exe.py`, 20/10/2026).
+- ✅ Repositório no GitHub **sem** nome, RA ou professora (material e entrega
+  ficam fora do git): github.com/Kauhan33/sistema-portaria.
+
+### Versão 2.0 — reforma com time de agentes (19 e 20/10/2026) ✅
+Quatro auditorias (design, segurança, código, backend: `docs/revisao/` e
+`docs/design/`), implementação em ondas e revisão final com correções:
+- ✅ Visual "Guarita": barra lateral, login novo, texto nítido (DPI), layout
+  compacto para notebook 1366×768, ícone próprio.
+- ✅ Desempenho: tabela principal = movimento do dia + quem está no campus;
+  busca e Painel no banco (de ~1,2 s para milissegundos com 1 ano de dados).
+- ✅ Integridade: uma entrada aberta por CPF garantida no banco, chaves
+  estrangeiras, migrações atômicas com backup antes, recusa de banco mais novo.
+- ✅ Login: tentativas gravadas e espera crescente, PBKDF2 600 mil, senha
+  mínima 8, troca da própria senha, sessão que expira em 10 min.
+- ✅ Privacidade: CPF mascarado no histórico e para o porteiro; permissões
+  conferidas também no banco.
+- ✅ Revisão final corrigida: ação depois da sessão expirada, notebook,
+  saída em linha desatualizada, falha de backup, burla do bloqueio pela correção.
+- 359 testes automatizados.
 
 ## 4. Rascunho de requisitos para o Word
 
-**RF**: RF01 cadastrar entrada · RF02 registrar saída · RF03 consultar/buscar
-histórico · RF04 excluir registro (admin) · RF05 exibir dashboard · RF06 login ·
-RF07 exportar relatório · RF08 comando digitado (Etapa 4).
+**RF**: RF01 cadastrar entrada · RF02 registrar saída (botão, duplo clique,
+saída rápida por CPF/placa) · RF03 consultar/buscar histórico · RF04 excluir
+registro (admin) · RF05 exibir Painel · RF06 login e primeiro acesso · RF07
+exportar CSV (admin) · RF08 cadastro de pessoas com preenchimento automático ·
+RF09 corrigir registro com histórico · RF10 lista de bloqueio · RF11 gerenciar
+usuários (admin) · RF12 trocar a própria senha · RF13 backup diário automático ·
+RF14 comando digitado (Etapa 4, futuro).
 
 **RNF**: RNF01 interface simples com botões identificados · RNF02 senha oculta e
-armazenada com hash · RNF03 busca responde na hora · RNF04 roda no Windows só com
-Python padrão (ou .exe) · RNF05 dados pessoais ficam só no computador da portaria (LGPD).
+armazenada com hash · RNF03 tela principal e busca respondem na hora mesmo com
+anos de dados · RNF04 roda no Windows só com Python padrão (ou .exe) · RNF05
+dados pessoais ficam só no computador da portaria (LGPD) · RNF06 texto nítido com
+escala de tela e uso em notebook 1366×768 · RNF07 contraste de cores AA (WCAG).
 
 **RN**: RN01 campos obrigatórios · RN02 só admin exclui · RN03 saída só com entrada
 aberta · RN04 saída não anterior à entrada · RN05 um CPF não pode ter duas entradas
@@ -131,4 +159,22 @@ abertas · RN06 CPF/celular/placa válidos · RN07 entrada não pode ser no futu
 RN08 sempre existe ao menos um administrador ativo · RN09 usuário desativado não
 entra · RN10 5 senhas erradas bloqueiam o login por 30 s · RN11 porteiro corrige só registros com
 entrada nas últimas 24 h; administrador corrige qualquer um, sempre com histórico ·
-RN12 CPF ou placa na lista de bloqueio não entra; só o administrador bloqueia e desbloqueia.
+RN12 CPF ou placa na lista de bloqueio não entra; só o administrador bloqueia e desbloqueia ·
+RN13 sem uso por 10 minutos a sessão se encerra · RN14 o porteiro vê o CPF mascarado
+nas listas e no histórico · RN15 senha com pelo menos 8 caracteres e diferente do login.
+(RN10 na 2.0: a espera começa em 30 s, dobra a cada bloqueio até 15 min e não zera ao
+reabrir o programa.)
+
+## 5. Pendências registradas na revisão final (para a versão 2.1+)
+
+Detalhes em `docs/revisao/REVISAO_FINAL_CODIGO.md` e `REVISAO_FINAL_SEGURANCA.md`.
+- Histórico de ações com trava contra alteração (triggers/hash) — S10.
+- Prazo de retenção e "anonimizar pessoa" (LGPD) — S08.
+- Banco e backups sem criptografia: depende de permissões do Windows/BitLocker — S02.
+- Troca de senha obrigatória no primeiro acesso; redefinição pelo admin recusar
+  senha igual ao login — S07.
+- Admin pode ser travado de propósito por tentativas erradas — N04; limite de
+  tentativas na senha atual em "Trocar minha senha" — N09.
+- Histórico gravado antes da 2.0 continua com CPF completo — B8.
+- Limpeza de código para a apresentação: ControleTentativas (não usado pelas
+  telas), listagens antigas do banco, o repasse `__getattr__`/NOMES_DO_CADASTRO.

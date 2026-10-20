@@ -1,26 +1,44 @@
 """
-Tela de login. No primeiro uso (banco sem usuários) vira a tela de
+Tela de login, dividida em duas: à esquerda o painel vermelho UNA (o único
+lugar onde o vermelho ocupa área grande) com a cancela e o relógio da
+guarita; à direita o formulário. No primeiro uso (banco sem usuários) vira
 "Primeiro acesso", que cria o administrador — não existe senha padrão.
+
+O login passa por usuarios.entrar(): as tentativas erradas ficam no banco
+e o bloqueio continua valendo mesmo fechando e abrindo o programa.
 """
 
 import tkinter as tk
-from tkinter import ttk
+from datetime import datetime
 
+from .componentes import Aviso, Botao, Campo, data_por_extenso, marca_cancela
 from .dados import ErroDados
-from .estilo import VERMELHO, cartao
-from .usuarios import (SENHA_MINIMA, autenticar, gerar_hash, normalizar_login,
+from .estilo import COR, FONTE, px
+from .usuarios import (SENHA_MINIMA, entrar, gerar_hash, normalizar_login,
                        validar_novo_usuario)
+
+SEGUNDOS_RELOGIO = 15
 
 
 class TelaLogin:
-    def __init__(self, pai, banco, tentativas, ao_entrar):
-        """ao_entrar(usuario) é chamado quando o login dá certo."""
+    def __init__(self, pai, banco, ao_entrar, relogio=None, aviso=""):
+        """
+        ao_entrar(usuario) é chamado quando o login dá certo.
+        relogio: função que devolve o datetime de agora (testes).
+        aviso: faixa informativa ao abrir (ex.: sessão encerrada).
+        """
         self.banco = banco
-        self.tentativas = tentativas
         self.ao_entrar = ao_entrar
+        self.relogio = relogio or datetime.now
+        self.campos = []                 # caixas de texto, na ordem da tela
+        self.primeiro_acesso = False
+        self._timer = None
 
-        caixa, self.miolo = cartao(pai)
-        caixa.place(relx=0.5, rely=0.45, anchor="center")
+        self._montar_painel(pai)
+        lado = tk.Frame(pai, bg=COR["superficie"])
+        lado.pack(side="left", fill="both", expand=True)
+        self.miolo = tk.Frame(lado, bg=COR["superficie"])
+        self.miolo.place(relx=0.5, rely=0.5, anchor="center", width=px(360))
 
         try:
             self.primeiro_acesso = banco is not None and not banco.tem_usuarios()
@@ -28,92 +46,138 @@ class TelaLogin:
             banco = None
         if banco is None:
             self._titulo("Banco de dados indisponível",
-                         "Feche o programa e verifique se a pasta permite gravar.")
+                         "Feche o programa e confira se a pasta permite gravar. "
+                         "Se continuar, avise o administrador.")
             return
 
         if self.primeiro_acesso:
             self._titulo("Primeiro acesso",
-                         "Crie o usuário administrador do sistema.")
+                         "Crie o usuário administrador do sistema. "
+                         "Ele cadastra os porteiros depois.")
             self.campo_nome = self._campo("Nome completo")
-            self.campo_login = self._campo("Usuário (ex.: maria.souza)")
+            self.campo_login = self._campo("Usuário", "ex.: maria.souza")
             self.campo_senha = self._campo(
-                f"Senha (mínimo {SENHA_MINIMA} caracteres)", senha=True)
+                "Senha", f"mínimo {SENHA_MINIMA} caracteres", senha=True)
             self.campo_confirmacao = self._campo("Confirmar senha", senha=True)
             acao, texto = self.criar_administrador, "Criar administrador e entrar"
         else:
-            self._titulo("Entrar", "Informe seu usuário e senha.")
+            self._titulo("Entrar", "Use o usuário e a senha que o administrador "
+                                   "cadastrou para você.")
             self.campo_login = self._campo("Usuário")
             self.campo_senha = self._campo("Senha", senha=True)
             acao, texto = self.entrar, "Entrar"
 
-        self.lbl_erro = tk.Label(self.miolo, text="", bg="white", fg=VERMELHO,
-                                 font=("Segoe UI", 9), wraplength=300,
-                                 justify="left")
-        self.lbl_erro.pack(anchor="w", pady=(4, 0))
-        self.btn_acao = tk.Button(self.miolo, text=texto, command=acao,
-                                  bg="#0a9a5a", fg="white",
-                                  activebackground="#0a9a5a",
-                                  activeforeground="white", relief="flat",
-                                  cursor="hand2", font=("Segoe UI", 10, "bold"),
-                                  pady=7)
-        self.btn_acao.pack(fill="x", pady=(10, 0))
+        # faixa de erro: só aparece quando há o que dizer
+        self.faixa = Aviso(self.miolo)
+        self.lbl_erro = self.faixa.lbl
+        self.btn_acao = Botao(self.miolo, texto, acao, "primario", altura=40,
+                              dica_tecla="Enter")
+        self.btn_acao.pack(fill="x")
+        if not self.primeiro_acesso:
+            tk.Label(self.miolo, text="Esqueceu a senha? Peça ao administrador "
+                                      "para redefinir.", font=FONTE["dica"],
+                     bg=COR["superficie"], fg=COR["texto_3"]
+                     ).pack(anchor="w", pady=(px(16), 0))
+        if aviso:
+            self._mostrar("info", aviso)
 
-        # Enter em qualquer campo confirma
-        for campo in self.miolo.winfo_children():
-            if isinstance(campo, ttk.Entry):
-                campo.bind("<Return>", lambda e: acao())
-                campo.bind("<KP_Enter>", lambda e: acao())
-        primeiro = self.campo_nome if self.primeiro_acesso else self.campo_login
-        primeiro.focus_set()
+        # Enter em qualquer campo confirma (cada campo fica no seu Frame)
+        for caixa_texto in self.campos:
+            caixa_texto.bind("<Return>", lambda e: (acao(), "break")[1])
+            caixa_texto.bind("<KP_Enter>", lambda e: (acao(), "break")[1])
+        self.campos[0].focus_set()
+
+    # --------------------------------------------------------------
+    # Montagem
+    # --------------------------------------------------------------
+    def _montar_painel(self, pai):
+        marca = COR["marca"]
+        branco = COR["texto_invertido"]
+        painel = tk.Frame(pai, bg=marca, width=px(470))
+        painel.pack(side="left", fill="y")
+        painel.pack_propagate(False)
+        dentro = tk.Frame(painel, bg=marca)
+        dentro.pack(fill="both", expand=True, padx=px(48), pady=px(48))
+        marca_cancela(dentro, marca, tamanho=56, cor=branco,
+                      traco=marca).pack(anchor="w")
+        tk.Label(dentro, text="Portaria", font=FONTE["titulo_grande"], bg=marca,
+                 fg=branco).pack(anchor="w", pady=(px(20), 0))
+        tk.Label(dentro, text="Controle de entrada e saída\ndo campus da "
+                              "universidade", font=FONTE["corpo_grande"],
+                 bg=marca, fg=branco, justify="left").pack(anchor="w",
+                                                           pady=(px(4), 0))
+        relogio = tk.Frame(dentro, bg=marca)
+        relogio.pack(side="bottom", anchor="w")
+        self.lbl_hora = tk.Label(relogio, font=FONTE["relogio"], bg=marca,
+                                 fg=branco)
+        self.lbl_hora.pack(anchor="w")
+        self.lbl_data = tk.Label(relogio, font=FONTE["corpo_grande"], bg=marca,
+                                 fg=branco)
+        self.lbl_data.pack(anchor="w")
+        self._atualizar_relogio()
+        painel.bind("<Destroy>", self._parar_relogio)
+
+    def _atualizar_relogio(self):
+        agora = self.relogio()
+        self.lbl_hora.config(text=agora.strftime("%H:%M"))
+        self.lbl_data.config(text=data_por_extenso(agora))
+        self._timer = self.lbl_hora.after(SEGUNDOS_RELOGIO * 1000,
+                                          self._atualizar_relogio)
+
+    def _parar_relogio(self, event=None):
+        if self._timer:
+            try:
+                self.lbl_hora.after_cancel(self._timer)
+            except tk.TclError:
+                pass
+            self._timer = None
 
     def _titulo(self, titulo, subtitulo):
-        tk.Label(self.miolo, text=titulo, bg="white", fg="#222",
-                 font=("Segoe UI", 16, "bold")).pack(anchor="w")
-        tk.Label(self.miolo, text=subtitulo, bg="white", fg="#666",
-                 font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 10))
+        fundo = COR["superficie"]
+        tk.Label(self.miolo, text=titulo, font=FONTE["titulo_pagina"], bg=fundo,
+                 fg=COR["texto"]).pack(anchor="w")
+        tk.Label(self.miolo, text=subtitulo, font=FONTE["corpo"], bg=fundo,
+                 fg=COR["texto_2"], wraplength=px(360), justify="left"
+                 ).pack(anchor="w", pady=(px(4), px(24)))
 
-    def _campo(self, rotulo, senha=False):
-        tk.Label(self.miolo, text=rotulo, bg="white", fg="#333",
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(6, 2))
+    def _campo(self, texto, apoio="", senha=False):
         # RNF02: a senha aparece como •••• enquanto é digitada
-        campo = ttk.Entry(self.miolo, font=("Segoe UI", 11), width=32,
-                          show="•" if senha else "")
-        campo.pack(fill="x")
-        return campo
+        fundo = COR["superficie"]
+        linha = tk.Frame(self.miolo, bg=fundo)
+        linha.pack(anchor="w", pady=(0, px(4)))
+        tk.Label(linha, text=texto, font=FONTE["rotulo"], bg=fundo,
+                 fg=COR["texto"]).pack(side="left")
+        if apoio:
+            tk.Label(linha, text=apoio, font=FONTE["dica"], bg=fundo,
+                     fg=COR["texto_3"]).pack(side="left", padx=(px(8), 0))
+        campo = Campo(self.miolo, senha=senha)
+        campo.pack(fill="x", pady=(0, px(16)))
+        self.campos.append(campo.entrada)
+        return campo.entrada
+
+    def _mostrar(self, tipo, texto):
+        self.faixa.mostrar(tipo, texto)
+        if not self.faixa.winfo_manager():
+            self.faixa.pack(fill="x", pady=(0, px(16)), before=self.btn_acao)
 
     def erro(self, texto):
-        self.lbl_erro.config(text=texto)
+        self._mostrar("erro", texto)
 
     # --------------------------------------------------------------
     # Ações
     # --------------------------------------------------------------
     def entrar(self):
-        restante = self.tentativas.segundos_restantes()
-        if restante:
-            self.erro(f"Muitas tentativas erradas. Aguarde {restante} s.")
-            return
-        login, senha = self.campo_login.get(), self.campo_senha.get()
-        if not login.strip() or not senha:
-            self.erro("Informe o usuário e a senha.")
-            return
         try:
-            usuario = autenticar(self.banco, login, senha)
-            if usuario is None:
-                self.banco.registrar_evento(normalizar_login(login)[:30],
-                                            "Login recusado")
+            usuario, motivo = entrar(self.banco, self.campo_login.get(),
+                                     self.campo_senha.get(), agora=self.relogio())
         except ErroDados as e:
             self.erro(str(e))
             return
-
         if usuario is None:
-            self.tentativas.registrar_falha()
-            self.campo_senha.delete(0, tk.END)
-            restante = self.tentativas.segundos_restantes()
-            self.erro("Usuário ou senha incorretos." + (
-                f"\nMuitas tentativas erradas. Aguarde {restante} s."
-                if restante else ""))
+            if self.campo_login.get().strip():
+                self.campo_senha.delete(0, tk.END)
+            self.erro(motivo)
             return
-        self.tentativas.registrar_sucesso()
         self.ao_entrar(usuario)
 
     def criar_administrador(self):
@@ -128,8 +192,12 @@ class TelaLogin:
             return
         try:
             self.banco.criar_usuario(nome, login, "admin", gerar_hash(senha))
-            usuario = autenticar(self.banco, login, senha)
+            usuario, motivo = entrar(self.banco, login, senha,
+                                     agora=self.relogio())
         except ErroDados as e:
             self.erro(str(e))
+            return
+        if usuario is None:
+            self.erro(motivo)
             return
         self.ao_entrar(usuario)

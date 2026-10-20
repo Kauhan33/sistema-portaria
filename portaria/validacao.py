@@ -87,6 +87,27 @@ def formatar_cpf(c):
     return f"{c[:3]}.{c[3:6]}.{c[6:9]}-{c[9:]}" if len(c) == 11 else c
 
 
+def mascarar_cpf(c):
+    """
+    CPF para o histórico e relatórios (LGPD): só os 6 dígitos do meio
+    aparecem, o bastante para conferir sem expor o número inteiro.
+    Aceita o CPF com ou sem pontuação: '529.982.247-25' → '***.982.247-**'.
+    """
+    d = so_digitos(c or "")
+    return f"***.{d[3:6]}.{d[6:9]}-**" if len(d) == 11 else ("***" if d else "")
+
+
+# CPF formatado (529.982.247-25) ou 11 dígitos logo depois da palavra "CPF"
+_CPF_NO_TEXTO = re.compile(
+    r"(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)|(?<=CPF )\d{11}(?!\d)")
+
+
+def mascarar_cpfs_no_texto(texto):
+    """Mascara os CPFs que aparecem num texto livre (detalhe do histórico).
+    Celular (11 dígitos sem a palavra CPF antes) não é confundido com CPF."""
+    return _CPF_NO_TEXTO.sub(lambda m: mascarar_cpf(m.group()), texto or "")
+
+
 def formatar_celular(c):
     return f"({c[:2]}) {c[2:7]}-{c[7:]}" if len(c) == 11 else c
 
@@ -221,6 +242,21 @@ def checar_bloqueio(registro, ativos):  # VERIFICAÇÃO SEMÂNTICA 5
               for b in achados]
     return False, ("Acesso negado.\n\n" + "\n\n".join(linhas) +
                    "\n\nSó um administrador pode remover o bloqueio.")
+
+
+def checar_bloqueio_correcao(original, novo, ativos):
+    """
+    Correção de registro (RN12): recusa se a mudança coloca um CPF ou placa
+    bloqueados no campus — trocar para um CPF/placa bloqueado ou reabrir a
+    visita (apagar a saída). Corrigir o nome de uma visita encerrada de
+    alguém bloqueado depois continua permitido.
+    """
+    trocou = (novo["cpf"] != original["cpf"]
+              or novo.get("placa", "") != original.get("placa", ""))
+    reabriu = not novo["saida"] and bool(original["saida"])
+    if not (trocou or reabriu):
+        return True, ""
+    return checar_bloqueio(novo, ativos)
 
 
 def checar_saida(registro, agora=None):

@@ -1,14 +1,17 @@
 import os
-from datetime import datetime
+import sqlite3
+from datetime import datetime, timedelta
 import tempfile
 import unittest
+from unittest import mock
 
-from portaria import dados
+from portaria import dados, usuarios
 from portaria.usuarios import (LIMITE_TENTATIVAS, SEGUNDOS_BLOQUEIO,
                                ControleTentativas, autenticar, conferir_senha,
-                               gerar_hash, pode_desativar, pode_editar,
+                               entrar, gerar_hash, pode_desativar, pode_editar,
                                pode_excluir, pode_gerenciar_bloqueios,
-                               validar_novo_usuario, validar_senha)
+                               trocar_senha, validar_novo_usuario,
+                               validar_senha, validar_troca_senha)
 
 ADMIN = {"id": 1, "login": "ana", "perfil": "admin", "ativo": True}
 ADMIN_2 = {"id": 2, "login": "bia", "perfil": "admin", "ativo": True}
@@ -40,6 +43,31 @@ class TestSenha(unittest.TestCase):
         self.assertIn("pelo menos", validar_senha("abc", "abc")[1])
         self.assertIn("confirmação", validar_senha("segredo1", "segredo2")[1])
 
+    def test_senha_minima_de_8_caracteres(self):  # S07
+        self.assertIn("pelo menos 8", validar_senha("segred7", "segred7")[1])
+        self.assertTrue(validar_senha("segredo8", "segredo8")[0])
+        longa = "a1" * 65
+        self.assertIn("no máximo", validar_senha(longa, longa)[1])
+
+    def test_senha_comum_ou_igual_ao_login_e_recusada(self):  # S07
+        for senha in ("12345678", "Senha123", "portaria123"):
+            with self.subTest(senha=senha):
+                self.assertIn("fácil", validar_senha(senha, senha)[1])
+        self.assertIn("fácil", validar_senha("maria.souza", "maria.souza",
+                                             login="maria.souza")[1])
+
+    def test_padrao_de_producao_e_600_mil_iteracoes(self):  # S15
+        self.assertGreaterEqual(usuarios.ITERACOES_PADRAO, 600_000)
+
+    def test_gerar_hash_le_as_iteracoes_na_hora(self):
+        with mock.patch.object(usuarios, "ITERACOES", 1234):
+            self.assertEqual(gerar_hash("segredo1").split("$")[1], "1234")
+        self.assertEqual(gerar_hash("segredo1").split("$")[1],
+                         str(usuarios.ITERACOES))
+
+    def test_sessao_expira_por_inatividade(self):  # S05 (a tela liga)
+        self.assertGreater(usuarios.MINUTOS_INATIVIDADE, 0)
+
 
 class TestNovoUsuario(unittest.TestCase):
     def validar(self, **mudancas):
@@ -61,6 +89,8 @@ class TestNovoUsuario(unittest.TestCase):
             "login repetido": (dict(login="ana"), "Já existe"),
             "perfil inexistente": (dict(perfil="chefe"), "perfil"),
             "senha curta": (dict(senha="123", confirmacao="123"), "pelo menos"),
+            "senha igual ao login": (dict(senha="maria.souza",
+                                          confirmacao="maria.souza"), "fácil"),
         }
         for caso, (mudanca, trecho) in casos.items():
             with self.subTest(caso):
@@ -92,8 +122,156 @@ class TestAutenticar(unittest.TestCase):
         self.assertIsNone(autenticar(self.banco, "ninguem", "segredo1"))
 
     def test_usuario_desativado_nao_entra(self):
-        self.banco.definir_ativo(self.id, False)
+        self.banco.definir_ativo(self.id, False, autor="ana")
         self.assertIsNone(autenticar(self.banco, "ana", "segredo1"))
+
+    def test_hash_antigo_continua_entrando_e_e_atualizado(self):  # S15
+        # o padrão antigo tinha menos iterações (200 mil); nos testes o
+        # "atual" é ITERACOES (baixado), então o antigo aqui é menor ainda
+        antigo = gerar_hash("segredo1", iteracoes=usuarios.ITERACOES // 5)
+        self.banco.definir_senha(self.id, antigo, autor="ana")
+        self.assertIsNotNone(autenticar(self.banco, "ana", "segredo1"))
+        novo = self.banco.buscar_usuario("ana")["senha"]
+        self.assertNotEqual(novo, antigo)
+        self.assertEqual(novo.split("$")[1], str(usuarios.ITERACOES))
+        self.assertIsNotNone(autenticar(self.banco, "ana", "segredo1"))
+
+    def test_senha_errada_nao_atualiza_o_hash(self):
+        antigo = gerar_hash("segredo1", iteracoes=usuarios.ITERACOES // 5)
+        self.banco.definir_senha(self.id, antigo, autor="ana")
+        self.assertIsNone(autenticar(self.banco, "ana", "errada"))
+        self.assertEqual(self.banco.buscar_usuario("ana")["senha"], antigo)
+
+
+class TestEntrar(unittest.TestCase):
+    """Login com tentativas guardadas no banco (S06) e sem vazar texto (S11)."""
+
+    AGORA = datetime(2026, 10, 20, 8, 0)
+
+    def setUp(self):
+        self.pasta = tempfile.TemporaryDirectory()
+        self.caminho = os.path.join(self.pasta.name, "portaria.db")
+        self.banco = dados.Banco(self.caminho)
+        self.banco.criar_usuario("Ana Admin", "ana", "admin", gerar_hash("segredo1"))
+        self.banco.criar_usuario("Paulo Porteiro", "paulo", "porteiro",
+                                 gerar_hash("segredo2"), autor="ana")
+
+    def tearDown(self):
+        self.pasta.cleanup()
+
+    def errar(self, vezes, login="ana", agora=None):
+        motivo = ""
+        for _ in range(vezes):
+            usuario, motivo = entrar(self.banco, login, "errada", agora or self.AGORA)
+            self.assertIsNone(usuario)
+        return motivo
+
+    def test_login_certo(self):
+        usuario, motivo = entrar(self.banco, " ANA ", "segredo1", self.AGORA)
+        self.assertEqual((usuario["login"], usuario["perfil"], motivo),
+                         ("ana", "admin", ""))
+        self.assertNotIn("senha", usuario)
+
+    def test_campos_vazios(self):
+        self.assertEqual(entrar(self.banco, " ", "x", self.AGORA),
+                         (None, "Informe o usuário e a senha."))
+        self.assertIsNone(entrar(self.banco, "ana", "", self.AGORA)[0])
+
+    def test_bloqueio_sobrevive_a_reabrir_o_programa(self):  # S06
+        self.errar(LIMITE_TENTATIVAS - 1)
+        self.banco = dados.Banco(self.caminho)        # fechou e abriu de novo
+        motivo = self.errar(1)
+        self.assertIn(f"Aguarde {SEGUNDOS_BLOQUEIO} s", motivo)
+        # durante o bloqueio, nem a senha certa entra
+        usuario, motivo = entrar(dados.Banco(self.caminho), "ana", "segredo1",
+                                 self.AGORA + timedelta(seconds=10))
+        self.assertIsNone(usuario)
+        self.assertIn(f"Aguarde {SEGUNDOS_BLOQUEIO - 10} s", motivo)
+        depois = self.AGORA + timedelta(seconds=SEGUNDOS_BLOQUEIO)
+        self.assertIsNotNone(entrar(self.banco, "ana", "segredo1", depois)[0])
+
+    def test_bloqueio_cresce_a_cada_vez(self):
+        self.assertIn(f"Aguarde {SEGUNDOS_BLOQUEIO} s",
+                      self.errar(LIMITE_TENTATIVAS))
+        depois = self.AGORA + timedelta(seconds=SEGUNDOS_BLOQUEIO)
+        self.assertIn(f"Aguarde {2 * SEGUNDOS_BLOQUEIO} s",
+                      self.errar(LIMITE_TENTATIVAS, agora=depois))
+        self.assertEqual(usuarios.segundos_de_bloqueio(50),
+                         usuarios.SEGUNDOS_BLOQUEIO_MAXIMO)
+
+    def test_bloqueio_e_por_login(self):
+        self.errar(LIMITE_TENTATIVAS)
+        self.assertIsNotNone(entrar(self.banco, "paulo", "segredo2", self.AGORA)[0])
+
+    def test_acerto_zera_as_falhas(self):
+        self.errar(LIMITE_TENTATIVAS - 1)
+        self.assertIsNotNone(entrar(self.banco, "ana", "segredo1", self.AGORA)[0])
+        self.assertEqual(self.errar(LIMITE_TENTATIVAS - 1),
+                         "Usuário ou senha incorretos.")
+
+    def test_login_recusado_fica_no_historico(self):
+        self.errar(1)
+        evento = self.banco.listar_eventos()[0]
+        self.assertEqual((evento["usuario"], evento["acao"]), ("ana", "Login recusado"))
+
+    def test_senha_digitada_no_campo_usuario_nao_e_gravada(self):  # S11
+        entrar(self.banco, "MinhaSenha#2026", "x", self.AGORA)
+        evento = self.banco.listar_eventos()[0]
+        self.assertEqual((evento["usuario"], evento["acao"]),
+                         (usuarios.LOGIN_INEXISTENTE, "Login recusado"))
+        con = sqlite3.connect(self.caminho)
+        tudo = str([con.execute(f"SELECT * FROM {t}").fetchall()
+                    for t in ("auditoria", "tentativas_login")])
+        con.close()
+        self.assertNotIn("minhasenha", tudo.lower())
+
+    def test_usuario_desativado_nao_entra(self):
+        self.banco.definir_ativo(2, False, autor="ana")
+        usuario, motivo = entrar(self.banco, "paulo", "segredo2", self.AGORA)
+        self.assertIsNone(usuario)
+        self.assertEqual(motivo, "Usuário ou senha incorretos.")
+
+
+class TestTrocarSenha(unittest.TestCase):
+    def setUp(self):
+        self.pasta = tempfile.TemporaryDirectory()
+        self.banco = dados.Banco(os.path.join(self.pasta.name, "portaria.db"))
+        self.banco.criar_usuario("Paulo Porteiro", "paulo", "porteiro",
+                                 gerar_hash("segredo2"))
+        self.paulo = autenticar(self.banco, "paulo", "segredo2")
+
+    def tearDown(self):
+        self.pasta.cleanup()
+
+    def test_validacao_da_troca(self):
+        guardado = gerar_hash("segredo2")
+        casos = {
+            "senha atual errada": (("errada", "nova.senha9", "nova.senha9"), "atual"),
+            "nova igual à atual": (("segredo2", "segredo2", "segredo2"), "diferente"),
+            "nova curta": (("segredo2", "abc", "abc"), "pelo menos"),
+            "nova comum": (("segredo2", "12345678", "12345678"), "fácil"),
+            "confirmação": (("segredo2", "nova.senha9", "outra"), "confirmação"),
+        }
+        for caso, (args, trecho) in casos.items():
+            with self.subTest(caso):
+                ok, msg = validar_troca_senha(guardado, *args, login="paulo")
+                self.assertFalse(ok)
+                self.assertIn(trecho, msg)
+        self.assertEqual(validar_troca_senha(guardado, "segredo2", "nova.senha9",
+                                             "nova.senha9"), (True, ""))
+
+    def test_trocar_a_propria_senha(self):
+        ok, _ = trocar_senha(self.banco, self.paulo, "errada", "nova.senha9",
+                             "nova.senha9")
+        self.assertFalse(ok)
+        ok, msg = trocar_senha(self.banco, self.paulo, "segredo2", "nova.senha9",
+                               "nova.senha9")
+        self.assertTrue(ok, msg)
+        self.assertIsNone(autenticar(self.banco, "paulo", "segredo2"))
+        self.assertIsNotNone(autenticar(self.banco, "paulo", "nova.senha9"))
+        evento = self.banco.listar_eventos()[0]
+        self.assertEqual((evento["usuario"], evento["acao"]),
+                         ("paulo", "Senha alterada"))
 
 
 class TestPermissoes(unittest.TestCase):

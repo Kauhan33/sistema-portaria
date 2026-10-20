@@ -2,10 +2,12 @@ import unittest
 from datetime import datetime
 
 from portaria.validacao import (celular_valido, checar_bloqueio,
+                                checar_bloqueio_correcao,
                                 checar_saida, cpf_valido,
                                 normalizar_bloqueio, validar_bloqueio,
                                 formatar_celular,
-                                formatar_cpf, formatar_placa, nome_valido,
+                                formatar_cpf, formatar_placa, mascarar_cpf,
+                                mascarar_cpfs_no_texto, nome_valido,
                                 normalizar, placa_valida, validar,
                                 validar_campos)
 
@@ -210,10 +212,46 @@ class TestBloqueio(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("Placa ABC1D23 bloqueada", msg)
 
+    def test_correcao_nao_pode_colocar_bloqueado_no_campus(self):  # S01
+        ativos = [bloqueio("cpf", CPF_ANA), bloqueio("placa", "ABC1D23")]
+        livre = registro(cpf=CPF_BETO)
+        trocou_cpf = registro()
+        trocou_placa = registro(cpf=CPF_BETO, placa="ABC1D23")
+        self.assertFalse(checar_bloqueio_correcao(livre, trocou_cpf, ativos)[0])
+        self.assertFalse(checar_bloqueio_correcao(livre, trocou_placa, ativos)[0])
+        encerrada = registro(saida="16/10/2026 09:00")
+        reaberta = registro(saida="")
+        self.assertFalse(checar_bloqueio_correcao(encerrada, reaberta, ativos)[0])
+
+    def test_correcao_de_nome_de_quem_foi_bloqueado_depois(self):
+        ativos = [bloqueio("cpf", CPF_ANA)]
+        for saida in ["16/10/2026 09:00", ""]:          # encerrada ou aberta
+            with self.subTest(saida=saida):
+                antes = registro(saida=saida)
+                depois = registro(nome="Ana Silva Costa", saida=saida)
+                self.assertEqual(checar_bloqueio_correcao(antes, depois, ativos),
+                                 (True, ""))
+
     def test_sem_bloqueio_ou_a_pe(self):
         ativos = [bloqueio("cpf", CPF_BETO), bloqueio("placa", "ABC1D23")]
         self.assertEqual(checar_bloqueio(registro(), ativos), (True, ""))
         self.assertEqual(checar_bloqueio(registro(placa=""), []), (True, ""))
+
+
+class TestMascararCpf(unittest.TestCase):  # S08 (LGPD)
+    def test_mostra_so_o_meio(self):
+        self.assertEqual(mascarar_cpf(CPF_ANA), "***.982.247-**")
+        self.assertEqual(mascarar_cpf("529.982.247-25"), "***.982.247-**")
+        self.assertEqual(mascarar_cpf(""), "")
+        self.assertEqual(mascarar_cpf("123"), "***")
+
+    def test_mascara_cpfs_num_texto_sem_mexer_no_celular(self):
+        texto = ("#3 Ana Silva, CPF 52998224725, celular 31987654321; "
+                 "CPF: 529.982.247-25 → 111.444.777-35")
+        self.assertEqual(mascarar_cpfs_no_texto(texto),
+                         "#3 Ana Silva, CPF ***.982.247-**, celular 31987654321; "
+                         "CPF: ***.982.247-** → ***.444.777-**")
+        self.assertEqual(mascarar_cpfs_no_texto(""), "")
 
 
 if __name__ == "__main__":

@@ -2,29 +2,45 @@
 Portaria da Universidade - Controle de entrada e saída
 UC – Teoria da Computação e Compiladores | Faculdade UNA
 
-Apenas bibliotecas padrão do Python (tkinter, sqlite3, datetime, json, os, re).
+Apenas bibliotecas padrão do Python (tkinter, sqlite3, ctypes, csv, logging...).
 Os registros são salvos automaticamente no banco SQLite 'portaria.db'.
 Se existir o 'registros_portaria.json' da versão 1, ele é importado para o
 banco na primeira execução e renomeado para '.migrado' (fica de backup).
+Ao abrir: backup do dia na pasta 'backups' e erros técnicos em 'portaria.log'.
 
-Atalho: pressione ENTER para cadastrar (na aba Cadastro).
-A aba Dashboard mostra estatísticas dos dados coletados.
+Atalhos: ENTER registra a entrada (página Entrada e saída); F2 leva à
+saída rápida de qualquer página.
 
 Organização do código (pasta portaria/):
-    validacao.py  regras de CPF, celular, placa, nome, datas e as
-                  verificações semânticas
-    dados.py      banco de dados SQLite e migração do JSON antigo
-    consultas.py  busca na tabela e números do dashboard
-    usuarios.py   senhas (hash), perfis, permissões e bloqueio de login
-    interface.py  janela principal, abas Cadastro e Dashboard
-    tela_login.py e tela_usuarios.py  login e administração de usuários
+    validacao.py       regras de CPF, celular, placa, nome, datas e as
+                       verificações semânticas
+    dados.py           banco de dados SQLite e migração do JSON antigo
+    consultas.py       busca e números do Painel (versão em Python)
+    usuarios.py        senhas (hash), perfis, permissões, login e troca de senha
+    backup.py          backup do banco e exportação para CSV
+    estilo.py          tokens do design "Guarita": cores, fontes, ícones,
+                       medidas, escala da tela (DPI) e estilos ttk
+    componentes.py     peças de tela desenhadas: cartão, botões, campo,
+                       faixa de aviso, placa Mercosul, tabela, diálogo
+    mensagens.py       caixas de mensagem e "Salvar como"
+    interface.py       janela, barra lateral, sessão e o contrato do app
+    tela_login.py      login e primeiro acesso
+    tela_cadastro.py   Entrada e saída (formulário, saída rápida, Movimento)
+    tela_pessoas.py    Pessoas (lista e ficha)
+    tela_bloqueios.py  Bloqueios (CPFs e placas barrados)
+    tela_dashboard.py  Painel e exportação; graficos.py desenha as barras
+    tela_usuarios.py   Usuários (só administrador)
+    tela_edicao.py     janela "Corrigir registro"
+    tela_senha.py      janela "Trocar minha senha"
 Testes automatizados: python -m unittest
 """
 
 import os
 import sys
 
-from portaria.interface import AppPortaria
+from portaria.dados import configurar_log
+from portaria.estilo import ligar_nitidez
+from portaria.interface import AppPortaria, ajustar_ao_monitor
 
 
 def pasta_do_programa():
@@ -36,25 +52,43 @@ def pasta_do_programa():
 
 BANCO = os.path.join(pasta_do_programa(), "portaria.db")
 JSON_ANTIGO = os.path.join(pasta_do_programa(), "registros_portaria.json")
+LOG = os.path.join(pasta_do_programa(), "portaria.log")   # erros técnicos
 
 if __name__ == "__main__":
-    AppPortaria(BANCO, json_antigo=JSON_ANTIGO).executar()
+    configurar_log(LOG)    # detalhes técnicos dos erros (o usuário vê o simples)
+    ligar_nitidez()        # texto nítido com escala de tela 125%/150% (DPI)
+    app = AppPortaria(BANCO, json_antigo=JSON_ANTIGO)
+    ajustar_ao_monitor(app.janela)
+    app.executar()
 
 
 # ==================================================================
 # RELAÇÃO COM COMPILADORES (desafio final do exercício)
 # ==================================================================
 # 1) TOKEN (análise léxica)
-#    Em portaria/interface.py, na linha:
-#        self.cpf = ttk.Entry(form, font=("Segoe UI", 10), validate="key", ...)
-#    Tokens: self (identificador), . (ponto), cpf (identificador),
-#    = (operador de atribuição), ttk (identificador), Entry (identificador),
-#    ( (abre parênteses), "Segoe UI" (literal string), 10 (literal inteiro).
+#    Em portaria/tela_cadastro.py (AbaCadastro._montar_formulario), na linha:
+#        self.var_cpf = tk.StringVar(self.aba)
+#    Tokens: self (identificador), . (ponto), var_cpf (identificador),
+#    = (operador de atribuição), tk (identificador), . (ponto),
+#    StringVar (identificador), ( (abre parênteses), self . aba,
+#    ) (fecha parênteses).
+#    E na linha logo abaixo, com literais string e inteiro e argumento nomeado:
+#        self.cpf = self._peca("cpf", "CPF", Campo(form, numeros=11, var=self.var_cpf))
+#    Tokens: self . cpf, = , self . _peca, (, "cpf" e "CPF" (literais
+#    string), ",", Campo, (, form, ",", numeros (identificador), = (sinal do
+#    argumento nomeado), 11 (literal inteiro), ",", var, =, self . var_cpf,
+#    ), ).
+#    Outro, com literal string, em portaria/validacao.py:
+#        FORMATO = "%d/%m/%Y %H:%M"            # usado pelo datetime
+#    Tokens: FORMATO (identificador), = (operador de atribuição),
+#    "%d/%m/%Y %H:%M" (literal string); o comentário (# ...) é descartado
+#    pelo analisador léxico e não vira token.
 #
 # 2) VARIÁVEL DA TABELA DE SÍMBOLOS
 #    Símbolo: BANCO | Tipo: str | Valor: caminho do portaria.db | Escopo: global
 #    (também, em validacao.py: FORMATO -> str, TIPOS_ACESSO -> list,
 #     DDDS_VALIDOS -> set, REGEX_PLACA -> re.Pattern;
+#     em estilo.py: COR -> dict, FONTE -> dict;
 #     em interface.py: self.registros -> list, atributo da AppPortaria)
 #
 # 3) VERIFICAÇÃO SEMÂNTICA
@@ -66,6 +100,7 @@ if __name__ == "__main__":
 #    (entrada aberta ou períodos que se cruzam).
 #    Em validacao.checar_bloqueio(): o registro pode estar perfeito, mas a
 #    entrada não faz sentido se o CPF ou a placa estiverem bloqueados (RN12).
-#    Outro exemplo, em interface.excluir_selecionado(): a chamada
-#    self.banco.excluir(...) é válida, mas só faz sentido se
-#    usuarios.pode_excluir(self.usuario) for verdadeiro (RN02).
+#    Outro exemplo, em tela_cadastro.AbaCadastro.excluir_selecionado(): a
+#    chamada self.app.gravar(self.app.banco.excluir, ...) é válida, mas só
+#    faz sentido se usuarios.pode_excluir(self.app.usuario) for verdadeiro
+#    (RN02).

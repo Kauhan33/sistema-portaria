@@ -1,6 +1,12 @@
 """
 Usuários do sistema: senha com hash, perfis, permissões e bloqueio por
 tentativas erradas. Como validacao.py, não depende do Tkinter.
+
+Login para a tela usar: `entrar(banco, login, senha)`. Ele confere a senha,
+guarda as tentativas erradas no banco (continuam valendo se o programa for
+fechado e aberto de novo) e registra o "Login recusado" sem gravar o texto
+digitado quando ele não é um login existente (pode ser uma senha digitada
+no campo errado).
 """
 
 import hashlib
@@ -9,27 +15,54 @@ import math
 import os
 import re
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from .validacao import converter_data, nome_valido
 
 PERFIS = {"admin": "Administrador", "porteiro": "Porteiro"}
-SENHA_MINIMA = 6
+SENHA_MINIMA = 8
+SENHA_MAXIMA = 128
 REGEX_LOGIN = re.compile(r"^[a-z0-9._]{3,20}$")
-ITERACOES = 200_000
+# Recomendação atual da OWASP para PBKDF2-SHA256. Os testes baixam
+# ITERACOES (tests/__init__.py), por isso gerar_hash lê o valor na hora.
+ITERACOES_PADRAO = 600_000
+ITERACOES = ITERACOES_PADRAO
 LIMITE_TENTATIVAS = 5
-SEGUNDOS_BLOQUEIO = 30
+SEGUNDOS_BLOQUEIO = 30           # primeiro bloqueio; dobra a cada novo
+SEGUNDOS_BLOQUEIO_MAXIMO = 15 * 60
 HORAS_PARA_CORRIGIR = 24
+# Sessão encerrada depois deste tempo sem teclado/mouse (a tela liga)
+MINUTOS_INATIVIDADE = 10
+# Ação que chegou depois do fim da sessão (ex.: "Sim" numa caixa que ficou
+# aberta enquanto a inatividade encerrava a sessão): a tela e o banco recusam
+SESSAO_ENCERRADA = "A sessão foi encerrada. Entre novamente."
+
+# Senhas que caem primeiro numa tentativa de adivinhação
+SENHAS_COMUNS = {
+    "12345678", "123456789", "1234567890", "87654321", "11111111",
+    "00000000", "12341234", "11223344", "abcd1234", "abc12345",
+    "password", "password1", "senha123", "senha1234", "mudar123",
+    "qwerty123", "qwertyui", "iloveyou", "admin123", "administrador",
+    "portaria", "portaria1", "portaria123", "porteiro", "porteiro1",
+    "universidade", "faculdade",
+}
+
+# Tentativas erradas de logins que não existem dividem um contador só, e o
+# histórico não guarda o texto digitado (pode ser a senha no campo errado).
+CHAVE_LOGIN_INEXISTENTE = "*"
+LOGIN_INEXISTENTE = "(login inexistente)"
 
 
 # ------------------------------------------------------------------
 # Senha (RNF02: nunca é guardada nem mostrada em texto aberto)
 # ------------------------------------------------------------------
-def gerar_hash(senha, sal=None, iteracoes=ITERACOES):
+def gerar_hash(senha, sal=None, iteracoes=None):
     """
     PBKDF2-SHA256 com sal aleatório. Devolve um texto único com tudo o que
     é preciso para conferir depois: 'pbkdf2_sha256$iterações$sal$hash'.
+    Sem `iteracoes`, usa o ITERACOES do módulo no momento da chamada.
     """
+    iteracoes = ITERACOES if iteracoes is None else iteracoes
     sal = sal or os.urandom(16)
     h = hashlib.pbkdf2_hmac("sha256", senha.encode("utf-8"), sal, iteracoes)
     return f"pbkdf2_sha256${iteracoes}${sal.hex()}${h.hex()}"
@@ -46,21 +79,42 @@ def conferir_senha(senha, guardado):
     return hmac.compare_digest(calculado, guardado)
 
 
+def precisa_atualizar_hash(guardado):
+    """True se o hash foi gerado com menos iterações que as atuais."""
+    try:
+        return int(guardado.split("$")[1]) < ITERACOES
+    except (ValueError, AttributeError, IndexError):
+        return False
+
+
 # Usado quando o login não existe, para a resposta demorar o mesmo tempo
-# e não revelar quais usuários existem.
-_HASH_FALSO = gerar_hash("senha-que-ninguem-usa")
+# e não revelar quais usuários existem. Gerado na primeira vez que precisa,
+# com as iterações em vigor.
+_hashes_falsos = {}
+
+
+def _hash_falso():
+    if ITERACOES not in _hashes_falsos:
+        _hashes_falsos[ITERACOES] = gerar_hash("senha-que-ninguem-usa")
+    return _hashes_falsos[ITERACOES]
 
 
 # ------------------------------------------------------------------
-# Cadastro de usuário
+# Cadastro de usuário e troca de senha
 # ------------------------------------------------------------------
 def normalizar_login(login):
     return login.strip().lower()
 
 
-def validar_senha(senha, confirmacao):
+def validar_senha(senha, confirmacao, login=""):
+    """Retorna (ok, mensagem). Com `login`, recusa também senha igual ao login."""
     if len(senha) < SENHA_MINIMA:
         return False, f"A senha deve ter pelo menos {SENHA_MINIMA} caracteres."
+    if len(senha) > SENHA_MAXIMA:
+        return False, f"A senha pode ter no máximo {SENHA_MAXIMA} caracteres."
+    if senha.lower() in SENHAS_COMUNS or (login and senha.lower() == login.lower()):
+        return False, ("Essa senha é fácil de adivinhar.\n"
+                       "Escolha outra (não use o login nem sequências).")
     if senha != confirmacao:
         return False, "A confirmação não é igual à senha."
     return True, ""
@@ -78,18 +132,116 @@ def validar_novo_usuario(nome, login, senha, confirmacao, perfil,
         return False, "Já existe um usuário com esse login."
     if perfil not in PERFIS:
         return False, "Selecione o perfil do usuário."
-    return validar_senha(senha, confirmacao)
+    return validar_senha(senha, confirmacao, login)
+
+
+def validar_troca_senha(guardado, senha_atual, nova, confirmacao, login=""):
+    """
+    Troca da própria senha. Retorna (ok, mensagem). `guardado` é o hash
+    atual do usuário (banco.buscar_usuario(login)["senha"]).
+    """
+    if not conferir_senha(senha_atual, guardado):
+        return False, "A senha atual não confere."
+    if nova == senha_atual:
+        return False, "A senha nova deve ser diferente da atual."
+    return validar_senha(nova, confirmacao, login)
+
+
+def trocar_senha(banco, usuario, senha_atual, nova, confirmacao):
+    """
+    O próprio usuário troca a senha (pede a atual). Retorna (ok, mensagem).
+    Se ok, a senha já foi gravada e o histórico registra "Senha alterada".
+    """
+    u = banco.buscar_usuario(usuario["login"])
+    if u is None or not u["ativo"]:
+        return False, "Usuário não encontrado ou desativado."
+    ok, msg = validar_troca_senha(u["senha"], senha_atual, nova, confirmacao,
+                                  u["login"])
+    if not ok:
+        return False, msg
+    banco.definir_senha(u["id"], gerar_hash(nova), autor=u["login"])
+    return True, "Senha alterada com sucesso."
+
+
+# ------------------------------------------------------------------
+# Login
+# ------------------------------------------------------------------
+def _conferir(banco, u, senha):
+    """
+    Confere a senha de `u` (ou um hash falso, se o login não existe). Se o
+    hash guardado for de um padrão antigo (menos iterações, ex.: 200 mil),
+    grava um novo com as iterações atuais: a migração acontece sozinha,
+    no primeiro login de cada usuário.
+    """
+    if u is None:
+        conferir_senha(senha, _hash_falso())
+        return False
+    if not conferir_senha(senha, u["senha"]):
+        return False
+    if precisa_atualizar_hash(u["senha"]):
+        banco.atualizar_hash_senha(u["id"], gerar_hash(senha))
+    return bool(u["ativo"])
 
 
 def autenticar(banco, login, senha):
     """Devolve o usuário (id, login, nome, perfil) ou None se não puder entrar."""
     u = banco.buscar_usuario(normalizar_login(login))
-    if u is None:
-        conferir_senha(senha, _HASH_FALSO)
-        return None
-    if not conferir_senha(senha, u["senha"]) or not u["ativo"]:
+    if not _conferir(banco, u, senha):
         return None
     return {k: u[k] for k in ("id", "login", "nome", "perfil")}
+
+
+def segundos_de_bloqueio(bloqueios_anteriores):
+    """Espera crescente: 30 s, 1 min, 2 min, 4 min... até 15 min."""
+    return min(SEGUNDOS_BLOQUEIO * 2 ** min(bloqueios_anteriores, 10),
+               SEGUNDOS_BLOQUEIO_MAXIMO)
+
+
+def entrar(banco, login, senha, agora=None):
+    """
+    Login completo para a tela. Devolve (usuario, "") ou (None, motivo).
+
+    - As tentativas erradas ficam no banco, por login. Depois de
+      LIMITE_TENTATIVAS erros seguidos o login fica bloqueado por um tempo
+      que dobra a cada novo bloqueio (segundos_de_bloqueio). Durante o
+      bloqueio a senha nem é conferida. Um acerto zera tudo.
+    - Logins inexistentes dividem um único contador, e o histórico grava
+      LOGIN_INEXISTENTE no lugar do texto digitado (S11).
+    - Hash de senha antigo é atualizado ao entrar (ver _conferir).
+    `agora` (datetime) existe para os testes; o padrão é o relógio do PC.
+    """
+    agora = agora or datetime.now()
+    login = normalizar_login(login or "")
+    if not login or not senha:
+        return None, "Informe o usuário e a senha."
+    u = banco.buscar_usuario(login)
+    chave = u["login"] if u else CHAVE_LOGIN_INEXISTENTE
+    quem = u["login"] if u else LOGIN_INEXISTENTE
+
+    falhas, bloqueios, bloqueado_ate = banco.ler_tentativas_login(chave)
+    if bloqueado_ate is not None and bloqueado_ate > agora:
+        restante = math.ceil((bloqueado_ate - agora).total_seconds())
+        return None, f"Muitas tentativas erradas. Aguarde {restante} s."
+
+    if _conferir(banco, u, senha):
+        if falhas or bloqueios:
+            banco.gravar_tentativas_login(chave, 0, 0, None)
+        return {k: u[k] for k in ("id", "login", "nome", "perfil")}, ""
+
+    falhas += 1
+    motivo = "Usuário ou senha incorretos."
+    if falhas >= LIMITE_TENTATIVAS:
+        segundos = segundos_de_bloqueio(bloqueios)
+        banco.gravar_tentativas_login(chave, 0, bloqueios + 1,
+                                      agora + timedelta(seconds=segundos))
+        banco.registrar_evento(quem, "Login recusado",
+                               f"{LIMITE_TENTATIVAS} tentativas erradas seguidas; "
+                               f"bloqueado por {segundos} s")
+        motivo += f"\nMuitas tentativas erradas. Aguarde {segundos} s."
+    else:
+        banco.gravar_tentativas_login(chave, falhas, bloqueios, None)
+        banco.registrar_evento(quem, "Login recusado")
+    return None, motivo
 
 
 # ------------------------------------------------------------------
@@ -132,10 +284,14 @@ def pode_desativar(alvo, logado, admins_ativos):
 
 
 # ------------------------------------------------------------------
-# Bloqueio por tentativas erradas
+# Bloqueio por tentativas erradas (só na memória)
 # ------------------------------------------------------------------
 class ControleTentativas:
-    """Depois de LIMITE_TENTATIVAS erros seguidos, bloqueia por alguns segundos."""
+    """
+    Depois de LIMITE_TENTATIVAS erros seguidos, bloqueia por alguns segundos.
+    Fica só na memória (zera ao fechar o programa). A versão que guarda as
+    tentativas no banco, por login, é `entrar()`.
+    """
 
     def __init__(self, relogio=time.monotonic):
         self.relogio = relogio

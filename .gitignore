@@ -8,6 +8,12 @@ venv/
 registros_portaria*
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
+*.db.tmp
+backups/
+*.csv
+*.log
 
 # material da faculdade e entrega (nome, RA, professora) ficam só no computador
 material_aula/
@@ -19,3 +25,6 @@ entrega/
 build/
 dist/
 *.spec
+
+# cópias de trabalho dos agentes (git worktrees) e config local do Claude
+.claude/

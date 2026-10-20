@@ -1,168 +1,164 @@
 """
 Janela "Corrigir registro": corrige erro de digitação numa visita e mostra
 o histórico daquele registro (quem cadastrou, deu saída, corrigiu e o quê).
+
+Privacidade: o porteiro vê o CPF mascarado (***.982.247-**) e somente
+leitura. Para corrigir um CPF digitado errado ele clica no lápis do campo
+e digita o número inteiro de novo (com o documento em mãos).
 """
 
 import tkinter as tk
 from datetime import datetime
-from tkinter import messagebox, ttk
 
+from . import mensagens
+from .componentes import (Aviso, Campo, Dialogo, preencher_eventos,
+                          rotulo_campo, tabela_eventos)
 from .consultas import descrever_alteracoes
-from .estilo import FUNDO, botao, cartao
-from .usuarios import pode_editar
-from .validacao import FORMATO_EXIBICAO, TIPOS_ACESSO, normalizar, validar
+from .estilo import COR, FONTE, ICONE, px
+from .usuarios import eh_admin, pode_editar
+from .validacao import (FORMATO_EXIBICAO, TIPOS_ACESSO,
+                        checar_bloqueio_correcao, mascarar_cpf, normalizar,
+                        validar)
+
+SEM_HISTORICO = {"momento": "—", "usuario": "—", "acao": "Sem histórico",
+                 "detalhe": "registro anterior ao histórico"}
+DICA_DETALHE = "Clique numa linha para ver o detalhe completo."
 
 
-class JanelaEdicao:
+class JanelaEdicao(Dialogo):
     def __init__(self, app, registro):
         self.app = app
         self.original = registro
+        self.cpf_oculto = not eh_admin(app.usuario)   # porteiro: mascarado
+        super().__init__(app.janela, f"Corrigir registro #{registro['id']}",
+                         f"Entrada de {registro['nome']} em {registro['entrada']}."
+                         " Toda correção fica no histórico.", largura=780,
+                         ao_usar=app.registrar_uso)
+        self._montar_campos()
+        self._montar_historico()
+        self.adicionar_botao("Salvar correção", self.salvar, "primario",
+                             dica_tecla="Enter")
+        self.adicionar_botao("Cancelar", self.fechar)
+        self.abrir(confirmar=self.salvar, foco=self.nome)
 
-        self.janela = tk.Toplevel(app.janela)
-        self.janela.title(f"Corrigir registro #{registro['id']}")
-        self.janela.configure(bg=FUNDO)
-        self.janela.resizable(False, False)
-        self.janela.transient(app.janela)
-
-        caixa, miolo = cartao(self.janela)
-        caixa.pack(fill="both", expand=True, padx=16, pady=16)
-        tk.Label(miolo, text="Corrigir registro", bg="white", fg="#222",
-                 font=("Segoe UI", 14, "bold")).pack(anchor="w")
-        tk.Label(miolo, text=f"Entrada de {registro['nome']} em "
-                             f"{registro['entrada']}. Toda correção fica "
-                             "registrada no histórico abaixo.",
-                 bg="white", fg="#666", font=("Segoe UI", 9)
-                 ).pack(anchor="w", pady=(0, 8))
-
-        self._montar_campos(miolo)
-
-        linha = tk.Frame(miolo, bg="white")
-        linha.pack(fill="x", pady=(12, 0))
-        botao(linha, "Salvar correção", "#0a9a5a", self.salvar)
-        botao(linha, "Cancelar", "#5a6b7b", self.fechar)
-
-        self._montar_historico(miolo)
-
-        self.janela.bind("<Return>", lambda e: self.salvar())
-        self.janela.bind("<KP_Enter>", lambda e: self.salvar())
-        self.janela.bind("<Escape>", lambda e: self.fechar())
-        self.janela.protocol("WM_DELETE_WINDOW", self.fechar)
-        self.nome.focus_set()
-        try:
-            self.janela.grab_set()     # modal: a janela principal espera
-        except tk.TclError:
-            pass                       # janela ainda não visível (ex.: testes)
-
-    def _montar_campos(self, miolo):
-        form = tk.Frame(miolo, bg="white")
+    def _montar_campos(self):
+        form = tk.Frame(self.miolo, bg=COR["superficie"])
         form.pack(fill="x")
-        form.columnconfigure((0, 1), weight=1, uniform="e")
+        form.columnconfigure((0, 1, 2, 3), weight=1, uniform="e")
         r = self.original
 
-        def campo(rotulo, linha, coluna, valor, **kw):
-            tk.Label(form, text=rotulo, bg="white", fg="#333",
-                     font=("Segoe UI", 9, "bold")
-                     ).grid(row=linha, column=coluna, sticky="w", pady=(6, 2))
-            entrada = ttk.Entry(form, font=("Segoe UI", 10), width=30, **kw)
-            entrada.grid(row=linha + 1, column=coluna, sticky="ew",
-                         padx=(0, 10) if coluna == 0 else 0)
-            if valor:
-                entrada.insert(0, valor)
-            return entrada
+        def novo(texto, linha, coluna, valor, apoio="", juntas=1, **opcoes):
+            espaco = (0, px(12)) if coluna + juntas < 4 else 0
+            frame, _ = rotulo_campo(form, texto, apoio)
+            frame.grid(row=linha, column=coluna, sticky="w", pady=(0, px(4)),
+                       padx=espaco)
+            campo = Campo(form, **opcoes)
+            campo.grid(row=linha + 1, column=coluna, columnspan=juntas,
+                       sticky="ew", pady=(0, px(12)), padx=espaco)
+            campo.var.set(valor or "")      # valor do banco, sem passar pela digitação
+            return campo
 
-        self.cpf = campo("CPF (somente números)", 0, 0, r["cpf"])
-        self.nome = campo("Nome completo", 0, 1, r["nome"])
-        self.celular = campo("Celular com DDD", 2, 0, r["celular"])
-        self.var_placa = tk.StringVar(value=r.get("placa", ""))
-        self.var_placa.trace_add("write", lambda *a: self.var_placa.set(
-            self.var_placa.get().upper())
-            if self.var_placa.get() != self.var_placa.get().upper() else None)
-        campo("Placa do veículo", 2, 1, "", textvariable=self.var_placa)
+        # Q04: CPF, celular e placa com as mesmas restrições da Entrada e
+        # saída. Duas linhas de 4 colunas: cabe num notebook 1366x768 a 125%
+        if self.cpf_oculto:
+            self.cpf = novo("CPF", 0, 0, mascarar_cpf(r["cpf"]), "lápis = trocar",
+                            numeros=11, icone=ICONE["editar"],
+                            acao_icone=self.liberar_cpf).entrada
+            self.cpf.config(state="readonly", fg=COR["texto_2"],
+                            readonlybackground=COR["superficie"])
+        else:
+            self.cpf = novo("CPF", 0, 0, r["cpf"], numeros=11).entrada
+        self.nome = novo("Nome completo", 0, 1, r["nome"], juntas=2).entrada
+        self.celular = novo("Celular", 0, 3, r["celular"], "só números",
+                            numeros=11).entrada
+        campo_placa = novo("Placa", 2, 0, r.get("placa", ""), "opcional",
+                           placa=True)
+        self.var_placa, self.caixa_placa = campo_placa.var, campo_placa.entrada
+        self.tipo = novo("Tipo de acesso", 2, 1, r["tipo"],
+                         opcoes=TIPOS_ACESSO).entrada
+        self.entrada = novo("Entrada", 2, 2, r["entrada"], FORMATO_EXIBICAO).entrada
+        self.saida = novo("Saída", 2, 3, r["saida"], "vazio = no campus").entrada
+        self.cpf.config(font=FONTE["cpf"])
 
-        tk.Label(form, text="Tipo de acesso", bg="white", fg="#333",
-                 font=("Segoe UI", 9, "bold")
-                 ).grid(row=4, column=0, sticky="w", pady=(6, 2))
-        self.tipo = ttk.Combobox(form, values=TIPOS_ACESSO, state="readonly",
-                                 font=("Segoe UI", 10))
-        self.tipo.set(r["tipo"])
-        self.tipo.grid(row=5, column=0, sticky="ew", padx=(0, 10))
-
-        self.entrada = campo(f"Entrada ({FORMATO_EXIBICAO})", 6, 0, r["entrada"])
-        self.saida = campo(f"Saída ({FORMATO_EXIBICAO}) — vazio = no campus",
-                           6, 1, r["saida"])
-
-    def _montar_historico(self, miolo):
-        tk.Label(miolo, text="Histórico deste registro", bg="white", fg="#222",
-                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(14, 4))
-        self.historico = ttk.Treeview(miolo, show="headings", height=5,
-                                      columns=("momento", "usuario", "acao",
-                                               "detalhe"))
-        for col, titulo, larg in [("momento", "Data e hora", 130),
-                                  ("usuario", "Usuário", 80),
-                                  ("acao", "Ação", 130),
-                                  ("detalhe", "Detalhe", 320)]:
-            self.historico.heading(col, text=titulo)
-            self.historico.column(col, width=larg, anchor="w")
-        self.historico.pack(fill="x")
+    def _montar_historico(self):
+        tk.Label(self.miolo, text="Histórico deste registro", font=FONTE["rotulo"],
+                 bg=COR["superficie"], fg=COR["texto"]
+                 ).pack(anchor="w", pady=(px(6), px(6)))
+        moldura = tk.Frame(self.miolo, bg=COR["superficie"],
+                           highlightbackground=COR["borda"], highlightthickness=1)
+        moldura.pack(fill="x")
+        quadro, self.historico = tabela_eventos(
+            moldura, (140, 80, 160, 260), altura=2, compacta=True)
+        quadro.pack(fill="x")
         # detalhe completo da linha clicada (a coluna corta textos longos)
-        self.lbl_detalhe = tk.Label(miolo, text="Clique numa linha para ver "
-                                    "o detalhe completo.", bg="white", fg="#666",
-                                    font=("Segoe UI", 9), wraplength=640,
-                                    justify="left")
-        self.lbl_detalhe.pack(anchor="w", pady=(4, 0))
-        self.historico.bind("<<TreeviewSelect>>", self._mostrar_detalhe)
+        self.faixa = Aviso(self.miolo)
+        self.faixa.mostrar("neutro", DICA_DETALHE)
+        self.faixa.pack(fill="x", pady=(px(10), 0))
+        self.lbl_detalhe = self.faixa.lbl
+        self.historico.bind("<<TreeviewSelect>>", self.mostrar_detalhe)
         ok, eventos = self.app.tentar(self.app.banco.eventos_do_registro,
                                       self.original["id"])
-        for e in eventos if ok else []:
-            self.historico.insert("", "end", values=(
-                e["momento"], e["usuario"], e["acao"], e["detalhe"]))
-        if ok and not eventos:
-            self.historico.insert("", "end", values=(
-                "—", "—", "Sem histórico", "registro anterior ao histórico"))
+        if not ok:
+            return
+        preencher_eventos(self.historico, eventos or [SEM_HISTORICO])
 
-    def _mostrar_detalhe(self, event=None):
+    def mostrar_detalhe(self, event=None):
         selecao = self.historico.selection()
         if selecao:
             valores = self.historico.item(selecao[0])["values"]
             momento, usuario, acao, detalhe = valores
-            self.lbl_detalhe.config(text=f"{acao} por {usuario} em {momento}: "
-                                         f"{detalhe}", fg="#222")
+            self.faixa.mostrar("info", f"{acao} por {usuario} em {momento}: "
+                                       f"{detalhe}")
 
     # --------------------------------------------------------------
     # Ações
     # --------------------------------------------------------------
+    def liberar_cpf(self):
+        """Lápis do campo CPF (porteiro): apaga o CPF mascarado e deixa
+        digitar o número certo."""
+        if not self.cpf_oculto:
+            return
+        self.cpf_oculto = False
+        self.cpf.config(state="normal", fg=COR["texto"])
+        self.cpf.delete(0, tk.END)
+        # o Tk desliga a validação quando recebe um texto que não passaria
+        # nela (a máscara): religa a regra "só dígitos"
+        self.cpf.config(validate="key")
+        self.cpf.focus_set()
+
     def salvar(self):
-        novo = normalizar(self.nome.get(), self.cpf.get(), self.celular.get(),
+        cpf = self.original["cpf"] if self.cpf_oculto else self.cpf.get()
+        novo = normalizar(self.nome.get(), cpf, self.celular.get(),
                           self.var_placa.get(), self.tipo.get(),
                           self.entrada.get(), self.saida.get())
         alteracoes = descrever_alteracoes(self.original, novo)
         if not alteracoes:
-            messagebox.showinfo("Corrigir registro", "Nada foi alterado.",
-                                parent=self.janela)
+            mensagens.info("Corrigir registro", "Nada foi alterado.",
+                           parent=self.janela)
             return
         # o porteiro também não pode mover o registro para outro dia
         ok, msg = pode_editar(self.app.usuario, novo, datetime.now())
         if ok:
-            outros = [r for r in self.app.registros
-                      if r["id"] != self.original["id"]]
+            ok, anteriores = self.app.tentar(self.app.banco.listar_por_cpf,
+                                             novo["cpf"])
+            if not ok:
+                return
+            outros = [r for r in anteriores if r["id"] != self.original["id"]]
             ok, msg = validar(novo, outros)
         if not ok:
-            messagebox.showerror("Dados inválidos", msg, parent=self.janela)
+            mensagens.erro("Dados inválidos", msg, parent=self.janela)
             return
-        ok, _ = self.app.tentar(self.app.banco.editar, self.original["id"], novo,
-                                alteracoes, autor=self.app.usuario["login"])
+        ok, ativos = self.app.tentar(self.app.banco.listar_bloqueios)
         if not ok:
             return
-        self.app.registros = self.app.tentar(self.app.banco.listar)[1] \
-            or self.app.registros
-        self.app.atualizar_tabela(self.app.busca.get())
-        self.app._avisar(f"✓ Registro de {novo['nome'].split()[0]} corrigido "
-                         f"({len(alteracoes)} alteração(ões)).")
+        ok, msg = checar_bloqueio_correcao(self.original, novo, ativos)
+        if not ok:
+            mensagens.erro("Acesso negado", msg, parent=self.janela)
+            return
+        if not self.app.gravar(self.app.banco.editar, self.original["id"],
+                               novo, alteracoes):
+            return
+        self.app.atualizar_tabela()
+        self.app.avisar(f"Registro de {novo['nome'].split()[0]} corrigido "
+                        f"({len(alteracoes)} alteração(ões)).")
         self.fechar()
-
-    def fechar(self):
-        try:
-            self.janela.grab_release()
-        except tk.TclError:
-            pass
-        self.janela.destroy()

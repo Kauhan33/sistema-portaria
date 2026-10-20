@@ -29,15 +29,32 @@ def criar_usuario(banco, nome, login, perfil, senha):
 
 
 class BaseInterface(unittest.TestCase):
+    """
+    Uma janela Tk (oculta) por classe de teste: criar e destruir um tk.Tk()
+    custa caro. Cada teste monta o app numa janela Toplevel nova, filha dela.
+    """
     entrar_como = "admin"      # "admin", "porteiro" ou None (abre no login)
     com_usuarios = True        # False = banco vazio (primeiro acesso)
 
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
         try:
-            self.janela = tk.Tk()
+            cls.raiz = tk.Tk()
         except tk.TclError:
-            self.skipTest("sem tela disponível para o Tkinter")
-        self.janela.withdraw()
+            raise unittest.SkipTest("sem tela disponível para o Tkinter")
+        cls.raiz.withdraw()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.raiz.destroy()
+
+    def nova_janela(self):
+        janela = tk.Toplevel(self.raiz)
+        janela.withdraw()
+        return janela
+
+    def setUp(self):
+        self.janela = self.nova_janela()
         self.pasta = tempfile.TemporaryDirectory()
         self.caminho_db = os.path.join(self.pasta.name, "portaria.db")
         self.caminho_json = os.path.join(self.pasta.name, "registros_portaria.json")
@@ -46,15 +63,11 @@ class BaseInterface(unittest.TestCase):
         self.msg = mock.MagicMock()
         self.msg.askyesno.return_value = True
         self.dialogo = mock.MagicMock()
-        for alvo, falso in [("portaria.interface.messagebox", self.msg),
-                            ("portaria.tela_usuarios.messagebox", self.msg),
-                            ("portaria.tela_pessoas.messagebox", self.msg),
-                            ("portaria.tela_edicao.messagebox", self.msg),
-                            ("portaria.tela_bloqueios.messagebox", self.msg),
-                            ("portaria.tela_usuarios.simpledialog", self.dialogo)]:
-            patcher = mock.patch(alvo, falso)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        # todas as telas usam portaria.mensagens: um patch só cobre tudo
+        patcher = mock.patch.multiple("portaria.mensagens", messagebox=self.msg,
+                                      simpledialog=self.dialogo)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
         self.banco = dados.Banco(self.caminho_db)
         if self.com_usuarios:
@@ -68,6 +81,10 @@ class BaseInterface(unittest.TestCase):
                                json_antigo=self.caminho_json, usuario=usuario)
 
     def tearDown(self):
+        # cancela os temporizadores (ex.: o aviso que some em 10 s) para não
+        # dispararem no teste seguinte, que usa a mesma janela Tk
+        for ident in self.raiz.tk.splitlist(self.raiz.tk.call("after", "info")):
+            self.raiz.tk.call("after", "cancel", ident)
         self.app.janela.destroy()
         self.pasta.cleanup()
 
@@ -90,10 +107,14 @@ class BaseInterface(unittest.TestCase):
         self.app.cadastrar()
         return self.app.tabela.get_children()[0]
 
-    def todos(self, widget):
+    def textos(self, widget):
+        """Texto de todos os widgets dentro de `widget` que têm a opção text."""
+        textos = []
         for filho in widget.winfo_children():
-            yield filho
-            yield from self.todos(filho)
+            if "text" in filho.keys():
+                textos.append(str(filho.cget("text")))
+            textos.extend(self.textos(filho))
+        return textos
 
 
 class TestCadastroComoAdmin(BaseInterface):
@@ -137,10 +158,59 @@ class TestCadastroComoAdmin(BaseInterface):
         self.assertIn("Administrador", self.app.lbl_usuario.cget("text"))
 
     def test_rotulo_mostra_formato_legivel(self):  # falha F4 da v1
-        textos = [w.cget("text") for w in self.todos(self.app.aba_cad)
-                  if isinstance(w, tk.Label)]
+        textos = self.textos(self.app.aba_cad)
         self.assertTrue(any("dd/mm/aaaa hh:mm" in t for t in textos))
         self.assertFalse(any("%d" in t for t in textos))
+
+    def test_enter_cadastra_na_aba_cadastro(self):
+        self.preencher()
+        self.app.cadastrar(event=mock.Mock())          # como se fosse o Enter
+        self.assertEqual(len(self.no_banco()), 1)
+
+    def test_enter_fora_da_aba_cadastro_nao_cadastra(self):
+        self.preencher()
+        for aba in (self.app.aba_pessoas, self.app.aba_bloqueios,
+                    self.app.aba_dash, self.app.aba_usuarios):
+            with self.subTest(aba=str(aba)):
+                self.app.abas.select(aba)
+                self.app.cadastrar(event=mock.Mock())
+                self.assertEqual(self.no_banco(), [])
+        self.msg.showerror.assert_not_called()
+        self.msg.showinfo.assert_not_called()
+
+
+class TestDashboard(BaseInterface):
+    def valor(self, chave):
+        return self.app.cards[chave][0].cget("text")
+
+    def apoio(self, chave):
+        return self.app.cards[chave][1].cget("text")
+
+    def test_sem_registros_mostra_zeros(self):
+        self.assertEqual(self.valor("total"), "0")
+        self.assertEqual(self.valor("dentro"), "0")
+        self.assertEqual(self.valor("Aluno"), "0")
+        self.assertEqual(self.valor("permanencia"), "—")
+        self.assertEqual(self.apoio("permanencia"), "sem saídas registradas")
+
+    def test_numeros_acompanham_os_registros(self):
+        self.banco.inserir(dict(VISITA_ANTIGA))                  # 5 h, com placa
+        self.banco.inserir({"nome": "Ana Silva", "cpf": "52998224725",
+                            "celular": "31987654321", "placa": "",
+                            "tipo": "Visitante", "entrada": ha_uma_hora(),
+                            "saida": ""})
+        self.app.registros = self.banco.listar()
+        self.app.atualizar_tabela()
+        self.assertEqual(self.valor("total"), "2")
+        self.assertEqual(self.valor("dentro"), "1")
+        self.assertEqual(self.apoio("dentro"), "1 já saíram")
+        self.assertEqual(self.valor("veiculos"), "1")
+        self.assertEqual(self.valor("permanencia"), "5h 00min")
+        self.assertEqual(self.apoio("permanencia"), "1 saídas")
+        self.assertEqual(self.valor("Visitante"), "1")
+        self.assertEqual(self.apoio("Visitante"), "1 dentro agora")
+        self.assertEqual(self.valor("Professor"), "1")
+        self.assertEqual(self.apoio("Professor"), "0 dentro agora")
 
 
 class TestPorteiro(BaseInterface):
@@ -156,9 +226,7 @@ class TestPorteiro(BaseInterface):
     def test_porteiro_nao_ve_botao_excluir_nem_aba_usuarios(self):  # RN02
         self.assertIsNone(self.app.btn_excluir)
         self.assertIsNone(self.app.aba_usuarios)
-        textos = [w.cget("text") for w in self.todos(self.app.aba_cad)
-                  if isinstance(w, tk.Button)]
-        self.assertFalse(any("Excluir" in t for t in textos))
+        self.assertIsNone(self.app.tela_usuarios)
 
     def test_porteiro_ve_a_aba_pessoas(self):
         self.assertIsNotNone(self.app.tela_pessoas)
@@ -202,6 +270,15 @@ class TestLogin(BaseInterface):
         self.assertEqual(self.app.tela_login.campo_senha.get(), "")
         self.assertIn(("ana.admin", "Login recusado"), self.acoes())
 
+    def test_enter_em_qualquer_campo_confirma(self):  # Q13
+        tela = self.app.tela_login
+        self.assertEqual(tela.campos, [tela.campo_login, tela.campo_senha])
+        # vale mesmo com cada campo dentro do seu próprio Frame
+        for caixa in tela.campos:
+            self.assertIsNot(caixa.master, tela.miolo)
+            self.assertTrue(caixa.bind("<Return>"))
+            self.assertTrue(caixa.bind("<KP_Enter>"))
+
     def test_usuario_desativado_nao_entra(self):
         self.banco.definir_ativo(self.porteiro["id"], False)
         self.tentar_login("paulo", "senha456")
@@ -243,7 +320,11 @@ class TestPrimeiroAcesso(BaseInterface):
         tela.criar_administrador()
 
     def test_banco_vazio_pede_para_criar_o_administrador(self):
-        self.assertTrue(self.app.tela_login.primeiro_acesso)
+        tela = self.app.tela_login
+        self.assertTrue(tela.primeiro_acesso)
+        self.assertEqual(tela.campos, [tela.campo_nome, tela.campo_login,
+                                       tela.campo_senha, tela.campo_confirmacao])
+        self.assertTrue(all(c.bind("<Return>") for c in tela.campos))
 
     def test_senha_curta_e_recusada(self):
         self.preencher_admin(senha="123", confirmacao="123")
@@ -261,8 +342,7 @@ class TestPrimeiroAcesso(BaseInterface):
             json.dump([{"nome": "Ana Silva", "cpf": "52998224725",
                         "celular": "31987654321", "placa": "", "tipo": "Aluno",
                         "entrada": "15/10/2026 08:00", "saida": ""}], f)
-        self.janela = tk.Tk()
-        self.janela.withdraw()
+        self.janela = self.nova_janela()
         self.app = AppPortaria(self.caminho_db, self.janela,
                                json_antigo=self.caminho_json)
         self.assertIn("1 registro(s)", self.msg.showinfo.call_args[0][1])
@@ -414,7 +494,7 @@ class TestAbaPessoas(BaseInterface):
 
     def selecionar(self, id_pessoa):
         self.aba.tabela.selection_set(str(id_pessoa))
-        self.aba._ao_selecionar()
+        self.aba.ao_selecionar()
 
     def valores(self, id_pessoa):
         return self.aba.tabela.item(str(id_pessoa))["values"]
@@ -505,7 +585,7 @@ class TestSaidaRapida(BaseInterface):
         return self.app.lbl_aviso.cget("text")
 
     def desfazer_visivel(self):
-        return self.app.btn_desfazer.winfo_manager() == "pack"
+        return self.app.btn_desfazer.winfo_manager() != ""   # está no layout
 
     def test_saida_pelo_cpf_formatado(self):
         resultado = self.digitar("111.444.777-35")
@@ -575,8 +655,8 @@ class TestSaidaRapida(BaseInterface):
         self.assertTrue(self.janela.bind("<F2>"))
 
 
-class TestCorrigirRegistro(BaseInterface):
-    entrar_como = "porteiro"
+class CasosCorrigir:
+    """Testes da janela Corrigir que valem para porteiro e administrador."""
 
     def setUp(self):
         super().setUp()
@@ -599,7 +679,7 @@ class TestCorrigirRegistro(BaseInterface):
         campo.delete(0, tk.END)
         campo.insert(0, valor)
 
-    def test_porteiro_corrige_registro_de_hoje(self):
+    def test_corrige_registro_de_hoje(self):
         edicao = self.abrir(self.hoje)
         self.assertEqual(edicao.nome.get(), "Beto Rocha")
         self.trocar(edicao.nome, "Roberto Rocha")
@@ -620,22 +700,9 @@ class TestCorrigirRegistro(BaseInterface):
                  for i in edicao.historico.get_children()]
         self.assertEqual(acoes, ["Cadastro de entrada"])
         edicao.historico.selection_set(edicao.historico.get_children()[0])
-        edicao._mostrar_detalhe()
+        edicao.mostrar_detalhe()
         self.assertIn("Cadastro de entrada por paulo",
                       edicao.lbl_detalhe.cget("text"))
-
-    def test_porteiro_nao_corrige_registro_antigo(self):  # RN11
-        self.app.janela_edicao = None
-        self.assertIsNone(self.abrir(self.antigo))
-        self.assertIn("últimas 24 horas",
-                      self.msg.showerror.call_args[0][1])
-
-    def test_porteiro_nao_move_registro_para_outro_dia(self):
-        edicao = self.abrir(self.hoje)
-        self.trocar(edicao.entrada, "10/10/2026 08:00")
-        edicao.salvar()
-        self.assertIn("últimas 24 horas", self.msg.showerror.call_args[0][1])
-        self.assertTrue(edicao.janela.winfo_exists())
 
     def test_sem_alteracao_avisa(self):
         edicao = self.abrir(self.hoje)
@@ -671,14 +738,24 @@ class TestCorrigirRegistro(BaseInterface):
         self.assertIn("um registro só", self.msg.showwarning.call_args[0][1])
 
 
-class TestCorrigirComoAdmin(TestCorrigirRegistro):
-    entrar_como = "admin"
+class TestCorrigirComoPorteiro(CasosCorrigir, BaseInterface):
+    entrar_como = "porteiro"
 
-    def test_porteiro_nao_corrige_registro_antigo(self):
-        pass   # vale só para o porteiro
+    def test_porteiro_nao_corrige_registro_antigo(self):  # RN11
+        self.assertIsNone(self.abrir(self.antigo))
+        self.assertIn("últimas 24 horas",
+                      self.msg.showerror.call_args[0][1])
 
     def test_porteiro_nao_move_registro_para_outro_dia(self):
-        pass   # vale só para o porteiro
+        edicao = self.abrir(self.hoje)
+        self.trocar(edicao.entrada, "10/10/2026 08:00")
+        edicao.salvar()
+        self.assertIn("últimas 24 horas", self.msg.showerror.call_args[0][1])
+        self.assertTrue(edicao.janela.winfo_exists())
+
+
+class TestCorrigirComoAdmin(CasosCorrigir, BaseInterface):
+    entrar_como = "admin"
 
     def test_admin_corrige_registro_antigo_e_cpf(self):
         edicao = self.abrir(self.antigo)
@@ -733,7 +810,7 @@ class TestBloqueioNoCadastro(BaseInterface):
     def test_porteiro_ve_a_lista_mas_nao_gerencia(self):
         aba = self.app.tela_bloqueios
         self.app.abas.select(self.app.aba_bloqueios)
-        self.app._ao_trocar_aba()                 # abrir a aba recarrega
+        self.app.ao_trocar_aba()                 # abrir a aba recarrega
         self.assertIsNone(aba.form)
         self.assertEqual(len(aba.tabela.get_children()), 2)
         aba.bloquear()
@@ -807,6 +884,25 @@ class TestAbaBloqueios(BaseInterface):
         self.app.tipo.set("Visitante")
         self.app.cadastrar()
         self.assertEqual(len(self.no_banco()), 1)
+
+
+class TestContratoDoApp(BaseInterface):
+    def test_nomes_antigos_apontam_para_a_aba_cadastro(self):
+        cadastro = self.app.tela_cadastro
+        self.assertIs(self.app.cpf, cadastro.cpf)
+        self.assertIs(self.app.tabela, cadastro.tabela)
+        self.assertEqual(self.app.cadastrar, cadastro.cadastrar)
+        self.assertIs(self.app.cards, self.app.tela_dashboard.cards)
+        with self.assertRaises(AttributeError):
+            self.app.nao_existe
+
+    def test_telas_nao_usam_nada_privado_do_app(self):  # Q10
+        pasta = os.path.dirname(dados.__file__)
+        for arquivo in os.listdir(pasta):
+            if arquivo.startswith("tela_"):
+                with self.subTest(arquivo=arquivo):
+                    with open(os.path.join(pasta, arquivo), encoding="utf-8") as f:
+                        self.assertNotRegex(f.read(), r"app\._")
 
 
 if __name__ == "__main__":

@@ -4,10 +4,10 @@ Tela de login. No primeiro uso (banco sem usuários) vira a tela de
 """
 
 import tkinter as tk
-from tkinter import ttk
 
+from .componentes import campo, cartao, novo_botao
 from .dados import ErroDados
-from .estilo import VERMELHO, cartao
+from .estilo import COR, FONTE
 from .usuarios import (SENHA_MINIMA, autenticar, gerar_hash, normalizar_login,
                        validar_novo_usuario)
 
@@ -18,6 +18,8 @@ class TelaLogin:
         self.banco = banco
         self.tentativas = tentativas
         self.ao_entrar = ao_entrar
+        self.campos = []                 # caixas de texto, na ordem da tela
+        self.primeiro_acesso = False
 
         caixa, self.miolo = cartao(pai)
         caixa.place(relx=0.5, rely=0.45, anchor="center")
@@ -46,40 +48,35 @@ class TelaLogin:
             self.campo_senha = self._campo("Senha", senha=True)
             acao, texto = self.entrar, "Entrar"
 
-        self.lbl_erro = tk.Label(self.miolo, text="", bg="white", fg=VERMELHO,
-                                 font=("Segoe UI", 9), wraplength=300,
-                                 justify="left")
+        self.lbl_erro = tk.Label(self.miolo, text="", bg=COR["superficie"],
+                                 fg=COR["erro"], font=FONTE["legenda"],
+                                 wraplength=300, justify="left")
         self.lbl_erro.pack(anchor="w", pady=(4, 0))
-        self.btn_acao = tk.Button(self.miolo, text=texto, command=acao,
-                                  bg="#0a9a5a", fg="white",
-                                  activebackground="#0a9a5a",
-                                  activeforeground="white", relief="flat",
-                                  cursor="hand2", font=("Segoe UI", 10, "bold"),
-                                  pady=7)
+        self.btn_acao = novo_botao(self.miolo, texto, acao, COR["primario"],
+                                   pady=7)
         self.btn_acao.pack(fill="x", pady=(10, 0))
 
         # Enter em qualquer campo confirma
-        for campo in self.miolo.winfo_children():
-            if isinstance(campo, ttk.Entry):
-                campo.bind("<Return>", lambda e: acao())
-                campo.bind("<KP_Enter>", lambda e: acao())
-        primeiro = self.campo_nome if self.primeiro_acesso else self.campo_login
-        primeiro.focus_set()
+        for caixa_texto in self.campos:
+            caixa_texto.bind("<Return>", lambda e: acao())
+            caixa_texto.bind("<KP_Enter>", lambda e: acao())
+        self.campos[0].focus_set()
 
     def _titulo(self, titulo, subtitulo):
-        tk.Label(self.miolo, text=titulo, bg="white", fg="#222",
-                 font=("Segoe UI", 16, "bold")).pack(anchor="w")
-        tk.Label(self.miolo, text=subtitulo, bg="white", fg="#666",
-                 font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 10))
+        tk.Label(self.miolo, text=titulo, bg=COR["superficie"],
+                 fg=COR["texto"], font=FONTE["titulo_login"]).pack(anchor="w")
+        tk.Label(self.miolo, text=subtitulo, bg=COR["superficie"],
+                 fg=COR["texto_3"], font=FONTE["legenda"]
+                 ).pack(anchor="w", pady=(0, 10))
 
-    def _campo(self, rotulo, senha=False):
-        tk.Label(self.miolo, text=rotulo, bg="white", fg="#333",
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(6, 2))
+    def _campo(self, texto, senha=False):
         # RNF02: a senha aparece como •••• enquanto é digitada
-        campo = ttk.Entry(self.miolo, font=("Segoe UI", 11), width=32,
-                          show="•" if senha else "")
-        campo.pack(fill="x")
-        return campo
+        grupo, caixa_texto = campo(self.miolo, texto, width=32,
+                                   font=FONTE["corpo_grande"],
+                                   show="•" if senha else "")
+        grupo.pack(fill="x")
+        self.campos.append(caixa_texto)
+        return caixa_texto
 
     def erro(self, texto):
         self.lbl_erro.config(text=texto)

@@ -5,18 +5,22 @@ fica guardado com quem removeu e quando.
 """
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk
 
+from . import mensagens
+from .componentes import (botao, cartao, combo, entrada, rotulo,
+                          rotulo_secao, tabela)
 from .consultas import encontrar_dentro
-from .estilo import BORDA, FUNDO, VERMELHO, botao, fonte_lbl
+from .estilo import COR, FONTE
 from .usuarios import pode_gerenciar_bloqueios
 from .validacao import (BLOQUEADO, COM_ARTIGO, COM_DE, TIPOS_BLOQUEIO,
                         formatar_bloqueio, normalizar_bloqueio,
                         validar_bloqueio)
 
 TIPO_POR_NOME = {nome: chave for chave, nome in TIPOS_BLOQUEIO.items()}
-COLUNAS = [("tipo", "Tipo", 60, "center"), ("valor", "CPF / Placa", 120, "center"),
-           ("nome", "Pessoa", 150, "w"), ("motivo", "Motivo", 220, "w"),
+COLUNAS = [("tipo", "Tipo", 60, "center"),
+           ("valor", "CPF / Placa", 120, "center"), ("nome", "Pessoa", 150, "w"),
+           ("motivo", "Motivo", 220, "w"),
            ("criado", "Bloqueado em", 125, "center"), ("por", "Por", 90, "w"),
            ("situacao", "Situação", 210, "w")]
 
@@ -34,7 +38,8 @@ class AbaBloqueios:
         else:
             tk.Label(aba, text="CPFs e placas desta lista não podem entrar. "
                                "Só um administrador cria ou remove bloqueios.",
-                     bg=FUNDO, fg=VERMELHO, font=("Segoe UI", 10, "bold")
+                     bg=COR["fundo"], fg=COR["erro"],
+                     font=FONTE["rotulo_secao"]
                      ).pack(anchor="w", padx=20, pady=(14, 0))
         self._montar_lista()
         self.atualizar()
@@ -43,65 +48,49 @@ class AbaBloqueios:
     # Montagem
     # --------------------------------------------------------------
     def _montar_formulario(self):
-        caixa = tk.Frame(self.aba, bg="white", highlightbackground=BORDA,
-                         highlightthickness=1)
+        caixa, form = cartao(self.aba, padx=16, pady=(10, 14))
         caixa.pack(fill="x", padx=20, pady=(14, 0))
-        tk.Frame(caixa, bg=VERMELHO, height=4).pack(fill="x")
-        self.form = form = tk.Frame(caixa, bg="white")
-        form.pack(fill="x", padx=16, pady=(10, 14))
+        self.form = form
         form.columnconfigure(2, weight=1)
 
-        tk.Label(form, text="Novo bloqueio", bg="white", fg="#222",
-                 font=("Segoe UI", 11, "bold")
+        tk.Label(form, text="Novo bloqueio", bg=COR["superficie"],
+                 fg=COR["texto"], font=FONTE["titulo_secao"]
                  ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
         for coluna, texto in enumerate(["Tipo", "CPF ou placa", "Motivo"]):
-            tk.Label(form, text=texto, bg="white", fg="#333",
-                     font=("Segoe UI", 9, "bold")
-                     ).grid(row=1, column=coluna, sticky="w")
-        self.tipo = ttk.Combobox(form, values=list(TIPO_POR_NOME), width=8,
-                                 state="readonly", font=("Segoe UI", 10))
+            rotulo(form, texto).grid(row=1, column=coluna, sticky="w")
+        self.tipo = combo(form, TIPO_POR_NOME, width=8)
         self.tipo.set("CPF")
         self.tipo.grid(row=2, column=0, sticky="w", padx=(0, 10))
-        self.valor = ttk.Entry(form, font=("Segoe UI", 10), width=18)
+        self.valor = entrada(form, width=18)
         self.valor.grid(row=2, column=1, sticky="w", padx=(0, 10))
-        self.motivo = ttk.Entry(form, font=("Segoe UI", 10))
+        self.motivo = entrada(form)
         self.motivo.grid(row=2, column=2, sticky="ew", padx=(0, 10))
-        botoes = tk.Frame(form, bg="white")
+        botoes = tk.Frame(form, bg=COR["superficie"])
         botoes.grid(row=2, column=3, sticky="e")
-        botao(botoes, "Bloquear", VERMELHO, self.bloquear)
+        botao(botoes, "Bloquear", COR["erro"], self.bloquear)
         self.motivo.bind("<Return>", lambda e: (self.bloquear(), "break")[1])
 
     def _montar_lista(self):
-        barra = tk.Frame(self.aba, bg=FUNDO)
+        barra = tk.Frame(self.aba, bg=COR["fundo"])
         barra.pack(fill="x", padx=20, pady=(12, 4))
-        tk.Label(barra, text="Lista de bloqueio", bg=FUNDO,
-                 font=fonte_lbl).pack(side="left")
+        rotulo_secao(barra, "Lista de bloqueio").pack(side="left")
         self.ver_removidos = tk.BooleanVar(value=False)
         ttk.Checkbutton(barra, text="Mostrar bloqueios removidos",
                         variable=self.ver_removidos,
                         command=self.atualizar).pack(side="right")
 
-        quadro = tk.Frame(self.aba, bg=FUNDO)
+        quadro, self.tabela = tabela(self.aba, COLUNAS)
         quadro.pack(fill="both", expand=True, padx=20)
-        self.tabela = ttk.Treeview(quadro, show="headings", selectmode="browse",
-                                   columns=[c[0] for c in COLUNAS])
-        for col, titulo, larg, anc in COLUNAS:
-            self.tabela.heading(col, text=titulo)
-            self.tabela.column(col, width=larg, anchor=anc)
-        self.tabela.tag_configure("removido", foreground="#999")
-        rolagem = ttk.Scrollbar(quadro, orient="vertical",
-                                command=self.tabela.yview)
-        self.tabela.configure(yscrollcommand=rolagem.set)
-        self.tabela.pack(side="left", fill="both", expand=True)
-        rolagem.pack(side="right", fill="y")
+        self.tabela.tag_configure("removido", foreground=COR["desativado"])
 
-        rodape = tk.Frame(self.aba, bg=FUNDO)
+        rodape = tk.Frame(self.aba, bg=COR["fundo"])
         rodape.pack(fill="x", padx=20, pady=(6, 14))
-        self.lbl_total = tk.Label(rodape, text="", bg=FUNDO, fg="#444",
-                                  font=("Segoe UI", 9))
+        self.lbl_total = tk.Label(rodape, text="", bg=COR["fundo"],
+                                  fg=COR["texto_status"], font=FONTE["legenda"])
         self.lbl_total.pack(side="left")
         if self.admin:
-            botao(rodape, "Remover bloqueio", "#5a6b7b", self.remover, lado="right")
+            botao(rodape, "Remover bloqueio", COR["neutro"], self.remover,
+                  lado="right")
 
     # --------------------------------------------------------------
     # Dados
@@ -128,8 +117,8 @@ class AbaBloqueios:
     # --------------------------------------------------------------
     def _exigir_admin(self):
         if not self.admin:
-            messagebox.showerror("Acesso negado", "Somente o administrador "
-                                                  "gerencia a lista de bloqueio.")
+            mensagens.erro("Acesso negado", "Somente o administrador "
+                                            "gerencia a lista de bloqueio.")
         return self.admin
 
     def bloquear(self):
@@ -143,16 +132,16 @@ class AbaBloqueios:
             return
         ok, msg = validar_bloqueio(tipo, valor, motivo, ativos)
         if not ok:
-            messagebox.showerror("Dados inválidos", msg)
+            mensagens.erro("Dados inválidos", msg)
             return
         rotulo = formatar_bloqueio(tipo, valor)
-        if not messagebox.askyesno(
+        if not mensagens.confirmar(
                 "Confirmar bloqueio", f"Bloquear {COM_ARTIGO[tipo]} {rotulo}?\n"
                 f"Motivo: {motivo}\n\n"
                 "A entrada será recusada até um administrador remover o bloqueio."):
             return
         ok, _ = self.app.tentar(self.app.banco.bloquear, tipo, valor, motivo,
-                                self.app.usuario["login"])
+                                self.app.autor)
         if not ok:
             return
         self.valor.delete(0, tk.END)
@@ -161,28 +150,28 @@ class AbaBloqueios:
         dentro = encontrar_dentro(self.app.registros, valor)
         if dentro:
             nomes = ", ".join(r["nome"] for r in dentro)
-            messagebox.showinfo("Atenção", f"{TIPOS_BLOQUEIO[tipo]} {rotulo} "
-                                           f"{BLOQUEADO[tipo]}.\n\nNo campus "
-                                           f"agora: {nomes}.\nO bloqueio vale "
-                                           "para as próximas entradas.")
+            mensagens.info("Atenção", f"{TIPOS_BLOQUEIO[tipo]} {rotulo} "
+                                      f"{BLOQUEADO[tipo]}.\n\nNo campus "
+                                      f"agora: {nomes}.\nO bloqueio vale "
+                                      "para as próximas entradas.")
 
     def remover(self):
         if not self._exigir_admin():
             return
         selecao = self.tabela.selection()
         if not selecao:
-            messagebox.showwarning("Atenção", "Selecione um bloqueio na lista.")
+            mensagens.aviso("Atenção", "Selecione um bloqueio na lista.")
             return
         b = next(b for b in self.bloqueios if b["id"] == int(selecao[0]))
         if not b["ativo"]:
-            messagebox.showinfo("Aviso", "Este bloqueio já foi removido.")
+            mensagens.info("Aviso", "Este bloqueio já foi removido.")
             return
         rotulo = formatar_bloqueio(b["tipo"], b["valor"])
-        if not messagebox.askyesno("Remover bloqueio",
+        if not mensagens.confirmar("Remover bloqueio",
                                    f"Remover o bloqueio {COM_DE[b['tipo']]} "
                                    f"{rotulo}?\n"
                                    "A entrada volta a ser permitida."):
             return
         self.app.tentar(self.app.banco.desbloquear, b["id"],
-                        self.app.usuario["login"])
+                        self.app.autor)
         self.atualizar()

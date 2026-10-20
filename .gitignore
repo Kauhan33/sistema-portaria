@@ -8,6 +8,12 @@ venv/
 registros_portaria*
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
+*.db.tmp
+backups/
+*.csv
+*.log
 
 # material da faculdade e entrega (nome, RA, professora) ficam só no computador
 material_aula/

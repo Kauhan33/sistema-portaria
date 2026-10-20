@@ -214,6 +214,59 @@ class TestCadastroComoAdmin(BaseInterface):
         self.msg.showinfo.assert_not_called()
 
 
+class TestLinhaDesatualizada(BaseInterface):
+    """B3: outra estação já deu a saída (ou excluiu) e esta tela não sabe."""
+
+    def setUp(self):
+        super().setUp()
+        self.preencher()
+        self.app.cadastrar()
+        self.preencher(nome="Beto Rocha", cpf="11144477735")
+        self.app.cadastrar()
+        self.ana, self.beto = sorted(r["id"] for r in self.no_banco())
+
+    def test_saida_ja_dada_em_outra_estacao(self):
+        self.banco.registrar_saida(self.ana, agora_texto(), autor="paulo")
+        tela = self.app.tela_cadastro
+        tela.avisar("")
+        tela.registrar_saida_da_linha(str(self.ana))
+        self.assertIn("já tinha saída ou foi excluída em outra estação",
+                      self.msg.showwarning.call_args[0][1])
+        self.assertNotIn("registrada", self.app.lbl_aviso.cget("text"))
+        self.assertIsNone(tela._para_desfazer)
+        self.assertEqual(self.app.tabela.item(str(self.ana))["text"], "Saiu")
+
+    def test_registro_excluido_em_outra_estacao(self):
+        self.banco.excluir([self.ana], autor="ana.admin")
+        self.app.tela_cadastro.registrar_saida_da_linha(str(self.ana))
+        self.assertIn("foi excluída em outra estação",
+                      self.msg.showwarning.call_args[0][1])
+        self.assertFalse(self.app.tabela.exists(str(self.ana)))
+
+    def test_desfazer_so_o_que_esta_estacao_gravou(self):
+        saida_da_outra = agora_texto()
+        self.banco.registrar_saida(self.ana, saida_da_outra, autor="paulo")
+        self.app.tabela.selection_set([str(self.ana), str(self.beto)])
+        tela = self.app.tela_cadastro
+        tela.registrar_saida()
+        self.assertIn("Saída de Beto registrada", self.app.lbl_aviso.cget("text"))
+        self.assertEqual(tela._para_desfazer, [self.beto])
+        tela.desfazer_saida()
+        self.assertEqual(self.banco.buscar(self.ana)["saida"], saida_da_outra)
+        self.assertEqual(self.banco.buscar(self.beto)["saida"], "")
+
+    def test_enter_com_o_foco_na_tabela_nao_cadastra(self):
+        # a tecla vai para quem tem o foco: a janela precisa estar visível
+        self.app.janela.deiconify()
+        self.app.janela.update()
+        self.app.tabela.focus_force()
+        self.app.janela.update()
+        self.app.tabela.event_generate("<Return>")
+        self.app.janela.withdraw()
+        self.msg.showerror.assert_not_called()
+        self.assertEqual(len(self.no_banco()), 2)
+
+
 class TestMovimento(BaseInterface):
     """A tabela mostra o dia (hoje + quem está no campus); a busca vai ao
     histórico inteiro."""
@@ -236,7 +289,8 @@ class TestMovimento(BaseInterface):
 
     def test_tabela_tem_so_o_movimento_do_dia(self):
         self.assertEqual(self.linhas(), {str(self.aberta), str(self.hoje)})
-        self.assertIn("2 registros hoje", self.app.lbl_status.cget("text"))
+        # B9: "hoje" conta só as entradas de hoje (a aberta é de 15/10)
+        self.assertIn("1 entrada hoje", self.app.lbl_status.cget("text"))
 
     def test_busca_acha_registro_antigo(self):
         self.buscar("beto")

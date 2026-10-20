@@ -33,6 +33,8 @@ from .validacao import (FORMATO, FORMATO_EXIBICAO, PLACA_OBRIGATORIA,
 DICA_CPF = "Digite o CPF primeiro: quem já veio tem os dados preenchidos."
 DICA_PLACA = "obrigatória" if PLACA_OBRIGATORIA else "opcional"
 SEGUNDOS_PARA_DESFAZER = 10
+SAIDA_JA_FEITA = ("Essa visita já tinha saída ou foi excluída em outra "
+                  "estação. A tabela foi atualizada.")
 LIMITE_BUSCA = 200
 COLUNAS = [("Nome", "Nome", 170, "w"), ("CPF", "CPF", 118, "w"),
            ("Celular", "Celular", 112, "w"), ("Placa", "Placa", 86, "w"),
@@ -54,7 +56,8 @@ class AbaCadastro:
         self.mostrados = {}           # id -> registro das linhas da tabela
         self._auto = None   # o que foi preenchido sozinho, para poder desfazer
         self._timer_aviso = None
-        self._para_desfazer = None
+        self._para_desfazer = None          # ids da última saída gravada aqui
+        self._saida_para_desfazer = None    # e o horário dela
 
         self._montar_cabecalho()
         self._montar_formulario()
@@ -249,6 +252,9 @@ class AbaCadastro:
                                      selecao="extended")
         quadro.pack(fill="both", expand=True, padx=px(12))
         self.tabela.bind("<Double-1>", self._ao_duplo_clique)
+        # Enter com o foco na tabela não cadastra (o formulário está vazio)
+        self.tabela.bind("<Return>", lambda e: "break")
+        self.tabela.bind("<KP_Enter>", lambda e: "break")
 
     # --------------------------------------------------------------
     # Tabela
@@ -289,13 +295,16 @@ class AbaCadastro:
             self.tabela.selection_set(manter)
 
         dentro = sum(1 for r in self.app.registros if not r["saida"])
+        hoje = self.app.relogio().strftime("%d/%m/%Y")
+        entradas_hoje = sum(1 for r in self.app.registros
+                            if r["entrada"].startswith(hoje))
         if texto:
             status = plural(len(registros), "registro encontrado",
                             "registros encontrados") + " no histórico"
             if len(registros) >= LIMITE_BUSCA:
                 status += f" (os {LIMITE_BUSCA} mais recentes)"
         else:
-            status = (f"{plural(len(registros), 'registro', 'registros')} hoje"
+            status = (f"{plural(entradas_hoje, 'entrada', 'entradas')} hoje"
                       f"  ·  {dentro} no campus  ·  duplo clique registra a saída")
         self.lbl_status.config(text=status)
         self.cabecalho.subtitulo.config(
@@ -604,28 +613,41 @@ class AbaCadastro:
         if not prontos:
             mensagens.info("Aviso", "\n".join(recusas))
             return False
-        ids = [r["id"] for r in prontos]
-        if not self.app.gravar(self.app.banco.registrar_saidas, ids,
-                               momento.strftime(FORMATO)):
+        saida = momento.strftime(FORMATO)
+        ok, gravados = self.app.tentar(
+            self.app.banco.registrar_saidas, [r["id"] for r in prontos], saida,
+            autor=self.app.autor)
+        if not ok:
             return False
+        # a linha pode estar desatualizada: só conta o que o banco gravou
         self.app.atualizar_tabela()
-        primeiros = [r["nome"].split()[0]
-                     for r in sorted(prontos, key=lambda r: r["id"])]
+        if not gravados:
+            mensagens.aviso("Saída", SAIDA_JA_FEITA)
+            return False
+        gravadas = sorted((r for r in prontos if r["id"] in gravados),
+                          key=lambda r: r["id"])
+        primeiros = [r["nome"].split()[0] for r in gravadas]
         nomes = primeiros[-1]
         if len(primeiros) > 1:
             nomes = ", ".join(primeiros[:-1]) + " e " + nomes
         texto = f"Saída de {nomes} registrada às {momento:%H:%M}."
-        if recusas:
-            texto += f" ({len(recusas)} já tinha(m) saída.)"
-        self.avisar(texto, desfazer=ids)
+        nao_gravadas = len(recusas) + len(prontos) - len(gravadas)
+        if nao_gravadas:
+            texto += (f" ({nao_gravadas} já tinha(m) saída ou foi(ram) "
+                      "excluída(s) em outra estação.)")
+        self._saida_para_desfazer = saida
+        self.avisar(texto, desfazer=gravados)
         return True
 
     def desfazer_saida(self):
+        """Desfaz só as saídas que esta tela gravou, com o horário gravado
+        (nunca a saída dada ou corrigida por outra estação)."""
         ids = self._para_desfazer
         if not ids:
             return
         ok, desfeitas = self.app.tentar(self.app.banco.desfazer_saidas, ids,
-                                        autor=self.app.autor)
+                                        autor=self.app.autor,
+                                        saida=self._saida_para_desfazer)
         if not ok:
             return
         self.app.atualizar_tabela()

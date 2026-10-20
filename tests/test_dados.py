@@ -142,6 +142,25 @@ class TestSaidas(BaseTemp):
         self.assertEqual(self.banco.desfazer_saidas([a]), 0)
         self.assertEqual(self.saidas()[a], "16/10/2026 09:00")
 
+    def test_saida_devolve_so_os_ids_que_gravou(self):  # B3
+        a, b = self.entrar("52998224725"), self.entrar("11144477735")
+        self.banco.registrar_saida(a, "16/10/2026 09:00", autor="bia")  # outra estação
+        self.banco.excluir([b], autor="bia")
+        c = self.entrar("39053344705")
+        self.assertEqual(self.banco.registrar_saidas([a, b, c], "16/10/2026 10:00",
+                                                     autor="paulo"), [c])
+        self.assertFalse(self.banco.registrar_saida(a, "16/10/2026 10:30"))
+        self.assertEqual(self.saidas()[a], "16/10/2026 09:00")
+
+    def test_desfazer_so_a_saida_com_o_horario_gravado(self):  # B3
+        a = self.entrar("52998224725")
+        self.banco.registrar_saida(a, "16/10/2026 09:00", autor="bia")
+        self.assertEqual(self.banco.desfazer_saidas(
+            [a], autor="paulo", saida="16/10/2026 10:00"), 0)
+        self.assertEqual(self.saidas()[a], "16/10/2026 09:00")
+        self.assertEqual(self.banco.desfazer_saidas(
+            [a], autor="bia", saida="16/10/2026 09:00"), 1)
+
     def test_nao_desfaz_se_ha_visita_encerrada_depois(self):
         a = self.entrar("52998224725")
         self.banco.registrar_saida(a, "16/10/2026 09:00")

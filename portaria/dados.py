@@ -652,10 +652,16 @@ class Banco:
                 (r["nome"], r["celular"], r["tipo"], placa, placa, pessoa))
 
     def registrar_saida(self, id_registro, saida, autor=None):
-        self.registrar_saidas([id_registro], saida, autor)
+        """Saída de uma visita; False se ela já tinha saída ou não existe."""
+        return bool(self.registrar_saidas([id_registro], saida, autor))
 
     def registrar_saidas(self, ids, saida, autor=None):
-        """Saída de uma ou várias visitas na mesma transação; só das abertas."""
+        """
+        Saída de uma ou várias visitas na mesma transação; só das abertas.
+        Devolve os ids que de fato receberam a saída (outra estação pode ter
+        dado a saída ou excluído a visita antes).
+        """
+        gravados = []
         with self._conexao() as con:
             self._conferir_autor(con, autor)
             for i in ids:
@@ -663,23 +669,30 @@ class Banco:
                                      "WHERE id = ? AND saida = ''",
                                      (para_iso(saida), i))
                 if cursor.rowcount:
+                    gravados.append(i)
                     self._evento(con, autor, "Saída registrada", f"#{i}", i)
+        return gravados
 
-    def desfazer_saidas(self, ids, autor=None):
+    def desfazer_saidas(self, ids, autor=None, saida=None):
         """
         Volta as visitas para "dentro" (botão Desfazer). Só desfaz se a pessoa
         não tiver outra visita aberta ou terminada depois desta entrada —
-        senão ficaria no campus duas vezes. Devolve quantas foram desfeitas.
+        senão ficaria no campus duas vezes. Com `saida` (formato da tela), só
+        desfaz a saída com esse horário: a que esta estação gravou, nunca
+        uma lançada ou corrigida por outra. Devolve quantas foram desfeitas.
         """
         desfeitas = 0
+        so_esta = "AND saida = ? " if saida else ""
         with self._conexao() as con:
             self._conferir_autor(con, autor)
             for i in ids:
                 cursor = con.execute(
                     "UPDATE registros SET saida = '' WHERE id = ? AND saida <> '' "
+                    + so_esta +
                     "AND NOT EXISTS (SELECT 1 FROM registros o "
                     "  WHERE o.cpf = registros.cpf AND o.id <> registros.id "
-                    "  AND (o.saida = '' OR o.saida > registros.entrada))", (i,))
+                    "  AND (o.saida = '' OR o.saida > registros.entrada))",
+                    (i, para_iso(saida)) if saida else (i,))
                 if cursor.rowcount:
                     desfeitas += 1
                     self._evento(con, autor, "Saída desfeita", f"#{i}", i)

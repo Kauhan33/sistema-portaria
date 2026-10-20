@@ -558,25 +558,47 @@ class TestAbaUsuarios(BaseInterface):
                   for i in self.aba.tabela.get_children()]
         self.assertEqual(logins, ["ana.admin", "paulo"])
 
+    def novo(self, nome, login, senha="segredo1"):
+        """Botão "Novo usuário": preenche o diálogo e cria."""
+        dialogo = self.aba.novo_usuario()
+        dialogo.janela.withdraw()
+        dialogo.nome.insert(0, nome)
+        dialogo.login.insert(0, login)
+        dialogo.senha.insert(0, senha)
+        dialogo.confirmacao.insert(0, senha)
+        dialogo.criar()
+        return dialogo
+
     def test_criar_porteiro(self):
-        self.aba.nome.insert(0, "Maria Souza")
-        self.aba.login.insert(0, "Maria.Souza")
-        self.aba.senha.insert(0, "segredo1")
-        self.aba.confirmacao.insert(0, "segredo1")
-        self.aba.criar()
+        dialogo = self.novo("Maria Souza", "Maria.Souza")
         novo = autenticar(self.banco, "maria.souza", "segredo1")
         self.assertEqual(novo["perfil"], "porteiro")
         self.linha_de("maria.souza")      # aparece na lista
-        self.assertEqual(self.aba.senha.get(), "")
+        self.assertFalse(dialogo.janela.winfo_exists())     # o diálogo fechou
         self.assertIn(("ana.admin", "Usuário criado"), self.acoes())
 
     def test_login_repetido_e_recusado(self):
-        self.aba.nome.insert(0, "Outro Paulo")
-        self.aba.login.insert(0, "paulo")
-        self.aba.senha.insert(0, "segredo1")
-        self.aba.confirmacao.insert(0, "segredo1")
-        self.aba.criar()
-        self.assertIn("Já existe", self.msg.showerror.call_args[0][1])
+        dialogo = self.novo("Outro Paulo", "paulo")
+        self.assertIn("Já existe", dialogo.lbl_erro.cget("text"))
+        self.assertTrue(dialogo.janela.winfo_exists())      # continua aberto
+
+    def test_botao_diz_desativar_ou_ativar(self):
+        self.aba.tabela.selection_set(self.linha_de("paulo"))
+        self.aba._ao_selecionar()
+        self.assertEqual(self.aba.btn_ativo.cget("text"), "Desativar")
+        self.aba.alternar_ativo()
+        self.aba.tabela.selection_set(self.linha_de("paulo"))
+        self.aba._ao_selecionar()
+        self.assertEqual(self.aba.btn_ativo.cget("text"), "Ativar")
+
+    def test_filtro_da_atividade(self):
+        self.cadastrar_um()
+        self.aba.atualizar()
+        self.aba.busca.insert(0, "cadastro de")
+        self.aba._mostrar_eventos()
+        acoes = {self.aba.historico.item(i)["values"][2]
+                 for i in self.aba.historico.get_children()}
+        self.assertEqual(acoes, {"Cadastro de entrada"})
 
     def test_admin_nao_desativa_a_si_mesmo(self):
         self.aba.tabela.selection_set(self.linha_de("ana.admin"))
@@ -587,8 +609,9 @@ class TestAbaUsuarios(BaseInterface):
         self.aba.tabela.selection_set(self.linha_de("paulo"))
         self.aba.alternar_ativo()
         self.assertIsNone(autenticar(self.banco, "paulo", "senha456"))
-        self.assertEqual(self.aba.tabela.item(self.linha_de("paulo"))["values"][3],
-                         "Desativado")
+        linha = self.aba.tabela.item(self.linha_de("paulo"))
+        self.assertEqual((linha["values"][3], linha["text"]),
+                         ("Desativado", "Desativado"))
         self.aba.tabela.selection_set(self.linha_de("paulo"))
         self.aba.alternar_ativo()
         self.assertIsNotNone(autenticar(self.banco, "paulo", "senha456"))
@@ -714,7 +737,8 @@ class TestAbaPessoas(BaseInterface):
                          (str(self.ana), str(self.beto)))   # ordem alfabética
         self.assertEqual(self.valores(self.ana)[-1], "No campus")
         self.assertEqual(self.valores(self.beto)[5:], [1, "15/10/2026 07:00", "—"])
-        self.assertIn("No campus agora: 1", self.aba.lbl_total.cget("text"))
+        self.assertIn("1 no campus agora", self.aba.lbl_total.cget("text"))
+        self.assertEqual(self.aba.tabela.item(str(self.ana))["text"], "No campus")
 
     def test_busca(self):
         self.aba.busca.insert(0, "beto")
@@ -722,10 +746,25 @@ class TestAbaPessoas(BaseInterface):
         self.assertEqual(self.aba.tabela.get_children(), (str(self.beto),))
 
     def test_selecionar_preenche_o_formulario(self):
+        self.assertEqual(self.aba.vazio.winfo_manager(), "place")  # ficha vazia
         self.selecionar(self.beto)
+        self.assertEqual(self.aba.vazio.winfo_manager(), "")
         self.assertEqual(self.aba.nome.get(), "Beto Rocha")
         self.assertEqual(self.aba.var_placa.get(), "QWE1234")
-        self.assertIn("111.444.777-35", self.aba.lbl_titulo.cget("text"))
+        self.assertEqual(self.aba.lbl_titulo.cget("text"), "Beto Rocha")
+        self.assertIn("111.444.777-35", self.aba.lbl_cpf.cget("text"))
+        self.assertEqual(self.aba.lbl_visitas.cget("text"), "1")
+        self.assertEqual(self.aba.desenho_placa.texto, "QWE1234")
+
+    def test_placa_e_celular_so_aceitam_o_formato(self):  # Q04
+        self.selecionar(self.beto)
+        for caixa, digitado, esperado in [
+                (self.aba.celular, "31a9-8", "3198"),
+                (self.aba.caixa_placa, "abc-1d234", "ABC1D23")]:
+            caixa.delete(0, tk.END)
+            for letra in digitado:
+                caixa.insert(tk.END, letra)
+            self.assertEqual(caixa.get(), esperado)
 
     def test_salvar_alteracoes(self):
         self.selecionar(self.beto)
@@ -916,6 +955,19 @@ class CasosCorrigir:
         self.assertIn("Cadastro de entrada por paulo",
                       edicao.lbl_detalhe.cget("text"))
 
+    def test_cpf_celular_e_placa_so_aceitam_o_formato(self):  # Q04
+        edicao = self.abrir(self.hoje)
+        for campo, digitado, esperado in [
+                (edicao.cpf, "1a1.4", "114"), (edicao.celular, "31x9", "319")]:
+            campo.delete(0, tk.END)
+            for letra in digitado:
+                campo.insert(tk.END, letra)
+            self.assertEqual(campo.get(), esperado)
+        edicao.caixa_placa.delete(0, tk.END)
+        for letra in "qwe-1e34x":
+            edicao.caixa_placa.insert(tk.END, letra)
+        self.assertEqual(edicao.var_placa.get(), "QWE1E34")
+
     def test_sem_alteracao_avisa(self):
         edicao = self.abrir(self.hoje)
         edicao.salvar()
@@ -1022,15 +1074,20 @@ class TestBloqueioNoCadastro(BaseInterface):
     def test_pessoa_bloqueada_aparece_na_aba_pessoas(self):
         self.app.tela_pessoas.atualizar()
         id_ = str(self.banco.buscar_pessoa("11144477735")["id"])
-        self.assertEqual(self.app.tela_pessoas.tabela.item(id_)["values"][-1],
-                         "BLOQUEADO")
+        linha = self.app.tela_pessoas.tabela.item(id_)
+        self.assertEqual((linha["values"][-1], linha["text"]),
+                         ("Bloqueado", "Bloqueado"))
+        self.assertEqual(linha["values"][1], "***.444.777-**")    # porteiro
 
     def test_porteiro_ve_a_lista_mas_nao_gerencia(self):
         aba = self.app.tela_bloqueios
         self.app.abas.select(self.app.aba_bloqueios)
         self.app.ao_trocar_aba()                 # abrir a aba recarrega
         self.assertIsNone(aba.form)
+        self.assertIsNone(aba.btn_remover)
         self.assertEqual(len(aba.tabela.get_children()), 2)
+        valores = {aba.tabela.item(i)["values"][1] for i in aba.tabela.get_children()}
+        self.assertEqual(valores, {"***.444.777-**", "XYZ9A87"})   # CPF mascarado
         aba.bloquear()
         self.assertIn("Somente o administrador", self.msg.showerror.call_args[0][1])
 
@@ -1056,6 +1113,25 @@ class TestAbaBloqueios(BaseInterface):
         self.assertEqual((b["valor"], b["criado_por"]), ("11144477735", "ana.admin"))
         self.assertEqual(len(self.aba.tabela.get_children()), 1)
         self.assertEqual(self.aba.valor.get(), "")
+
+    def test_formulario_abre_e_fecha_pelo_botao(self):
+        self.assertEqual(self.aba.form.winfo_manager(), "")
+        self.aba.alternar_formulario()
+        self.assertEqual(self.aba.form.winfo_manager(), "pack")
+        self.preencher("Placa", "ABC1234", "Motivo válido")
+        self.assertEqual(self.aba.form.winfo_manager(), "")     # fechou ao bloquear
+
+    def test_remover_so_com_bloqueio_ativo_selecionado(self):
+        self.preencher("Placa", "ABC1234", "Motivo válido")
+        self.assertEqual(self.aba.btn_remover.cget("state"), "disabled")
+        self.aba.tabela.selection_set(self.aba.tabela.get_children()[0])
+        self.aba._ao_selecionar()
+        self.assertEqual(self.aba.btn_remover.cget("state"), "normal")
+
+    def test_admin_ve_o_cpf_bloqueado_completo(self):
+        self.preencher("CPF", "111.444.777-35", "Ameaçou um aluno")
+        linha = self.aba.tabela.get_children()[0]
+        self.assertEqual(self.aba.tabela.item(linha)["values"][1], "111.444.777-35")
 
     def test_cancelar_a_confirmacao_nao_bloqueia(self):
         self.msg.askyesno.return_value = False
@@ -1088,8 +1164,10 @@ class TestAbaBloqueios(BaseInterface):
         self.assertEqual(self.aba.tabela.get_children(), ())
         self.aba.ver_removidos.set(True)
         self.aba.atualizar()
-        situacao = self.aba.tabela.item(id_)["values"][-1]
-        self.assertTrue(situacao.startswith("Removido"))
+        linha = self.aba.tabela.item(id_)
+        self.assertEqual(linha["text"], "Removido")
+        self.assertIn("por ana.admin", linha["values"][-1])
+        self.assertIn("situacao", self.aba.tabela["displaycolumns"])
         self.assertIn(("ana.admin", "Bloqueio removido"), self.acoes())
 
     def test_depois_de_remover_a_entrada_volta_a_ser_aceita(self):

@@ -783,6 +783,15 @@ class TestConsultasNoBanco(BaseTemp):
                                  filtrar(pessoas, texto))
 
 
+    def test_contadores_da_barra_lateral(self):
+        self.criar_equipe()
+        self.banco.bloquear("placa", "ABC1234", "Motivo válido", "ana")
+        id_ = self.banco.bloquear("cpf", "11144477735", "Motivo válido", "ana")
+        self.banco.desbloquear(id_, "ana")                     # removido não conta
+        self.assertEqual(self.banco.contadores(),
+                         {"pessoas": 6, "no_campus": 2, "bloqueios": 1})
+
+
 class TestPermissoesNoBanco(BaseTemp):
     """S04: a camada de dados confere o perfil de quem faz (quando informado)."""
 

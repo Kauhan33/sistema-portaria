@@ -1,28 +1,31 @@
 """
-Aba Bloqueios: CPFs e placas com acesso negado (RN12). Todos veem a lista;
-só o administrador cria ou remove bloqueios. Remover não apaga: o bloqueio
-fica guardado com quem removeu e quando.
+Página Bloqueios: CPFs e placas com acesso negado (RN12). Todos veem a
+lista; só o administrador cria ou remove bloqueios. Remover não apaga: o
+bloqueio fica guardado com quem removeu e quando ("Mostrar removidos").
 """
 
 import tkinter as tk
-from tkinter import ttk
 
 from . import mensagens
-from .componentes import (botao, cartao, combo, entrada, rotulo,
-                          rotulo_secao, tabela)
+from .componentes import (Alternador, Aviso, Botao, Cabecalho, Campo, Cartao,
+                          inserir_linha, plural, rotulo_campo, tabela,
+                          titulo_cartao)
 from .consultas import encontrar_dentro
-from .estilo import COR, FONTE
+from .estilo import COR, ESPACO_CARTOES, ICONE, MARGEM, px
 from .usuarios import pode_gerenciar_bloqueios
 from .validacao import (BLOQUEADO, COM_ARTIGO, COM_DE, TIPOS_BLOQUEIO,
                         formatar_bloqueio, normalizar_bloqueio,
                         validar_bloqueio)
 
 TIPO_POR_NOME = {nome: chave for chave, nome in TIPOS_BLOQUEIO.items()}
-COLUNAS = [("tipo", "Tipo", 60, "center"),
-           ("valor", "CPF / Placa", 120, "center"), ("nome", "Pessoa", 150, "w"),
-           ("motivo", "Motivo", 220, "w"),
-           ("criado", "Bloqueado em", 125, "center"), ("por", "Por", 90, "w"),
-           ("situacao", "Situação", 210, "w")]
+COLUNAS = [("tipo", "Tipo", 64, "w"),
+           ("valor", "CPF ou placa", 124, "w"), ("nome", "Pessoa", 150, "w"),
+           ("motivo", "Motivo", 230, "w"),
+           ("criado", "Bloqueado em", 128, "w"), ("por", "Por", 90, "w"),
+           ("situacao", "Removido em", 190, "w")]
+SEM_REMOVIDOS = tuple(c[0] for c in COLUNAS[:-1])
+AVISO_PORTEIRO = ("CPFs e placas desta lista não podem entrar. Só um "
+                  "administrador cria ou remove bloqueios.")
 
 
 class AbaBloqueios:
@@ -32,15 +35,18 @@ class AbaBloqueios:
         self.bloqueios = []
         self.admin = pode_gerenciar_bloqueios(app.usuario)
         self.form = None
+        self.btn_remover = None
 
+        cab = Cabecalho(aba, "Bloqueios").posicionar()
+        self.lbl_total = cab.subtitulo
         if self.admin:
+            Botao(cab.acoes, "Novo bloqueio", self.alternar_formulario, "perigo",
+                  icone=ICONE["mais"], fundo_pai=COR["fundo"]).pack()
             self._montar_formulario()
         else:
-            tk.Label(aba, text="CPFs e placas desta lista não podem entrar. "
-                               "Só um administrador cria ou remove bloqueios.",
-                     bg=COR["fundo"], fg=COR["erro"],
-                     font=FONTE["rotulo_secao"]
-                     ).pack(anchor="w", padx=20, pady=(14, 0))
+            faixa = Aviso(aba, fundo_pai=COR["fundo"])
+            faixa.mostrar("info", AVISO_PORTEIRO)
+            faixa.pack(fill="x", padx=px(MARGEM), pady=(0, px(ESPACO_CARTOES)))
         self._montar_lista()
         self.atualizar()
 
@@ -48,69 +54,101 @@ class AbaBloqueios:
     # Montagem
     # --------------------------------------------------------------
     def _montar_formulario(self):
-        caixa, form = cartao(self.aba, padx=16, pady=(10, 14))
-        caixa.pack(fill="x", padx=20, pady=(14, 0))
-        self.form = form
-        form.columnconfigure(2, weight=1)
-
-        tk.Label(form, text="Novo bloqueio", bg=COR["superficie"],
-                 fg=COR["texto"], font=FONTE["titulo_secao"]
-                 ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
-        for coluna, texto in enumerate(["Tipo", "CPF ou placa", "Motivo"]):
-            rotulo(form, texto).grid(row=1, column=coluna, sticky="w")
-        self.tipo = combo(form, TIPO_POR_NOME, width=8)
+        """Cartão "Novo bloqueio" (fica fechado até o botão do cabeçalho)."""
+        self.form = Cartao(self.aba, pad=18)
+        m = self.form.miolo
+        titulo_cartao(m, "Novo bloqueio").pack(anchor="w", pady=(0, px(10)))
+        linha = tk.Frame(m, bg=COR["superficie"])
+        linha.pack(fill="x")
+        linha.columnconfigure(2, weight=1)
+        for coluna, (texto, apoio) in enumerate([
+                ("Tipo", ""), ("CPF ou placa", ""),
+                ("Motivo", "aparece para o porteiro na hora da entrada")]):
+            frame, _ = rotulo_campo(linha, texto, apoio)
+            frame.grid(row=0, column=coluna, sticky="w", pady=(0, px(4)))
+        self.tipo = Campo(linha, opcoes=TIPO_POR_NOME, largura=110).entrada
+        self.tipo.master.grid(row=1, column=0, padx=(0, px(10)))
         self.tipo.set("CPF")
-        self.tipo.grid(row=2, column=0, sticky="w", padx=(0, 10))
-        self.valor = entrada(form, width=18)
-        self.valor.grid(row=2, column=1, sticky="w", padx=(0, 10))
-        self.motivo = entrada(form)
-        self.motivo.grid(row=2, column=2, sticky="ew", padx=(0, 10))
-        botoes = tk.Frame(form, bg=COR["superficie"])
-        botoes.grid(row=2, column=3, sticky="e")
-        botao(botoes, "Bloquear", COR["erro"], self.bloquear)
+        self.valor = Campo(linha, largura=170).entrada
+        self.valor.master.grid(row=1, column=1, padx=(0, px(10)))
+        self.motivo = Campo(linha).entrada
+        self.motivo.master.grid(row=1, column=2, sticky="ew", padx=(0, px(10)))
         self.motivo.bind("<Return>", lambda e: (self.bloquear(), "break")[1])
+        botoes = tk.Frame(linha, bg=COR["superficie"])
+        botoes.grid(row=1, column=3)
+        Botao(botoes, "Cancelar", self.alternar_formulario, "fantasma"
+              ).pack(side="left", padx=(0, px(8)))
+        Botao(botoes, "Bloquear", self.bloquear, "primario").pack(side="left")
+
+    def alternar_formulario(self):
+        """Abre ou fecha o cartão de novo bloqueio."""
+        if self.form.winfo_manager():
+            self.form.pack_forget()
+        else:
+            self.form.pack(fill="x", padx=px(MARGEM),
+                           pady=(0, px(ESPACO_CARTOES)), before=self.cartao_lista)
+            self.valor.focus_set()
 
     def _montar_lista(self):
-        barra = tk.Frame(self.aba, bg=COR["fundo"])
-        barra.pack(fill="x", padx=20, pady=(12, 4))
-        rotulo_secao(barra, "Lista de bloqueio").pack(side="left")
-        self.ver_removidos = tk.BooleanVar(value=False)
-        ttk.Checkbutton(barra, text="Mostrar bloqueios removidos",
-                        variable=self.ver_removidos,
-                        command=self.atualizar).pack(side="right")
-
-        quadro, self.tabela = tabela(self.aba, COLUNAS)
-        quadro.pack(fill="both", expand=True, padx=20)
-        self.tabela.tag_configure("removido", foreground=COR["desativado"])
-
-        rodape = tk.Frame(self.aba, bg=COR["fundo"])
-        rodape.pack(fill="x", padx=20, pady=(6, 14))
-        self.lbl_total = tk.Label(rodape, text="", bg=COR["fundo"],
-                                  fg=COR["texto_status"], font=FONTE["legenda"])
-        self.lbl_total.pack(side="left")
+        self.cartao_lista = Cartao(self.aba, pad=0)
+        self.cartao_lista.pack(fill="both", expand=True, padx=px(MARGEM),
+                               pady=(0, px(MARGEM)))
+        m = self.cartao_lista.miolo
+        m.pack_configure(padx=px(1), pady=px(8))
+        barra = tk.Frame(m, bg=COR["superficie"])
+        barra.pack(fill="x", padx=px(19), pady=(px(6), px(12)))
+        titulo_cartao(barra, "Lista de bloqueio").pack(side="left")
+        self.ver_removidos = tk.BooleanVar(self.aba, value=False)
+        Alternador(barra, "Mostrar removidos", self.ver_removidos,
+                   self.atualizar).pack(side="left", padx=(px(20), 0))
         if self.admin:
-            botao(rodape, "Remover bloqueio", COR["neutro"], self.remover,
-                  lado="right")
+            self.btn_remover = Botao(barra, "Remover bloqueio", self.remover,
+                                     "secundario")
+            self.btn_remover.pack(side="right")
+
+        quadro, self.tabela = tabela(m, COLUNAS, situacao="Situação",
+                                     mostrar=SEM_REMOVIDOS)
+        quadro.pack(fill="both", expand=True, padx=px(12))
+        self.tabela.bind("<<TreeviewSelect>>", lambda e: self._ao_selecionar())
 
     # --------------------------------------------------------------
     # Dados
     # --------------------------------------------------------------
     def atualizar(self):
+        removidos = self.ver_removidos.get()
         ok, bloqueios = self.app.tentar(self.app.banco.listar_bloqueios,
-                                        self.ver_removidos.get())
+                                        removidos)
         if not ok:
             return
         self.bloqueios = bloqueios
+        self.tabela.configure(displaycolumns=[c[0] for c in COLUNAS]
+                              if removidos else SEM_REMOVIDOS)
         self.tabela.delete(*self.tabela.get_children())
-        for b in bloqueios:
-            situacao = ("Ativo" if b["ativo"] else
-                        f"Removido {b['removido_em']} ({b['removido_por']})")
-            self.tabela.insert("", "end", iid=str(b["id"]), values=(
-                TIPOS_BLOQUEIO[b["tipo"]], formatar_bloqueio(b["tipo"], b["valor"]),
-                b["nome"] or "—", b["motivo"], b["criado_em"], b["criado_por"],
-                situacao), tags=() if b["ativo"] else ("removido",))
+        for i, b in enumerate(bloqueios):
+            valor = (self.app.exibir_cpf(b["valor"]) if b["tipo"] == "cpf"
+                     else formatar_bloqueio(b["tipo"], b["valor"]))
+            remocao = ("" if b["ativo"] else
+                       f"{b['removido_em']} por {b['removido_por']}")
+            inserir_linha(self.tabela, i, (
+                TIPOS_BLOQUEIO[b["tipo"]], valor, b["nome"] or "—", b["motivo"],
+                b["criado_em"], b["criado_por"], remocao), iid=str(b["id"]),
+                situacao="Ativo" if b["ativo"] else "Removido",
+                cor=COR["erro"] if b["ativo"] else COR["barra"],
+                tags=() if b["ativo"] else ("apagado",))
         ativos = sum(1 for b in bloqueios if b["ativo"])
-        self.lbl_total.config(text=f"Bloqueios ativos: {ativos}")
+        self.lbl_total.config(text=plural(ativos, "bloqueio ativo",
+                                          "bloqueios ativos")
+                              if ativos else "Nenhum bloqueio ativo")
+        self._ao_selecionar()
+
+    def _ao_selecionar(self):
+        """Remover só fica ativo com um bloqueio ativo selecionado."""
+        if self.btn_remover is None:
+            return
+        selecao = self.tabela.selection()
+        ativo = bool(selecao) and any(
+            b["ativo"] for b in self.bloqueios if str(b["id"]) == selecao[0])
+        self.btn_remover.definir_ativo(ativo)
 
     # --------------------------------------------------------------
     # Ações (só administrador)
@@ -146,7 +184,11 @@ class AbaBloqueios:
             return
         self.valor.delete(0, tk.END)
         self.motivo.delete(0, tk.END)
+        if self.form.winfo_manager():
+            self.form.pack_forget()
         self.atualizar()
+        self.app.atualizar_contadores()
+        self.app.recarregar_registros()        # quem está no campus agora
         dentro = encontrar_dentro(self.app.registros, valor)
         if dentro:
             nomes = ", ".join(r["nome"] for r in dentro)
@@ -172,6 +214,7 @@ class AbaBloqueios:
                                    f"{rotulo}?\n"
                                    "A entrada volta a ser permitida."):
             return
-        self.app.tentar(self.app.banco.desbloquear, b["id"],
-                        self.app.autor)
+        self.app.tentar(self.app.banco.desbloquear, b["id"], self.app.autor)
         self.atualizar()
+        self.app.atualizar_contadores()
+

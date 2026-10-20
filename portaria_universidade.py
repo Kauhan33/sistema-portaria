@@ -2,38 +2,45 @@
 Portaria da Universidade - Controle de entrada e saída
 UC – Teoria da Computação e Compiladores | Faculdade UNA
 
-Apenas bibliotecas padrão do Python (tkinter, sqlite3, datetime, json, os, re).
+Apenas bibliotecas padrão do Python (tkinter, sqlite3, ctypes, csv, logging...).
 Os registros são salvos automaticamente no banco SQLite 'portaria.db'.
 Se existir o 'registros_portaria.json' da versão 1, ele é importado para o
 banco na primeira execução e renomeado para '.migrado' (fica de backup).
+Ao abrir: backup do dia na pasta 'backups' e erros técnicos em 'portaria.log'.
 
-Atalho: pressione ENTER para cadastrar (na aba Cadastro).
-A aba Dashboard mostra estatísticas dos dados coletados.
+Atalhos: ENTER registra a entrada (página Entrada e saída); F2 leva à
+saída rápida de qualquer página.
 
 Organização do código (pasta portaria/):
     validacao.py       regras de CPF, celular, placa, nome, datas e as
                        verificações semânticas
     dados.py           banco de dados SQLite e migração do JSON antigo
-    consultas.py       busca na tabela e números do dashboard
-    usuarios.py        senhas (hash), perfis, permissões e bloqueio de login
-    estilo.py          cores e fontes com nome (tokens) e o tema ttk
-    componentes.py     peças de tela: campos, tabelas, botões, cartões
-    mensagens.py       caixas de mensagem (erro, aviso, confirmação)
-    interface.py       janela principal, sessão, abas e o contrato do app
+    consultas.py       busca e números do Painel (versão em Python)
+    usuarios.py        senhas (hash), perfis, permissões, login e troca de senha
+    backup.py          backup do banco e exportação para CSV
+    estilo.py          tokens do design "Guarita": cores, fontes, ícones,
+                       medidas, escala da tela (DPI) e estilos ttk
+    componentes.py     peças de tela desenhadas: cartão, botões, campo,
+                       faixa de aviso, placa Mercosul, tabela, diálogo
+    mensagens.py       caixas de mensagem e "Salvar como"
+    interface.py       janela, barra lateral, sessão e o contrato do app
     tela_login.py      login e primeiro acesso
-    tela_cadastro.py   aba Cadastro (entrada, saída, busca e tabela)
-    tela_pessoas.py    aba Pessoas
-    tela_bloqueios.py  aba Bloqueios (lista de CPFs e placas barrados)
-    tela_dashboard.py  aba Dashboard; graficos.py desenha as barras
-    tela_usuarios.py   aba Usuários (só administrador)
+    tela_cadastro.py   Entrada e saída (formulário, saída rápida, Movimento)
+    tela_pessoas.py    Pessoas (lista e ficha)
+    tela_bloqueios.py  Bloqueios (CPFs e placas barrados)
+    tela_dashboard.py  Painel e exportação; graficos.py desenha as barras
+    tela_usuarios.py   Usuários (só administrador)
     tela_edicao.py     janela "Corrigir registro"
+    tela_senha.py      janela "Trocar minha senha"
 Testes automatizados: python -m unittest
 """
 
 import os
 import sys
 
-from portaria.interface import AppPortaria
+from portaria.dados import configurar_log
+from portaria.estilo import ligar_nitidez
+from portaria.interface import AppPortaria, ajustar_ao_monitor
 
 
 def pasta_do_programa():
@@ -45,9 +52,14 @@ def pasta_do_programa():
 
 BANCO = os.path.join(pasta_do_programa(), "portaria.db")
 JSON_ANTIGO = os.path.join(pasta_do_programa(), "registros_portaria.json")
+LOG = os.path.join(pasta_do_programa(), "portaria.log")   # erros técnicos
 
 if __name__ == "__main__":
-    AppPortaria(BANCO, json_antigo=JSON_ANTIGO).executar()
+    configurar_log(LOG)    # detalhes técnicos dos erros (o usuário vê o simples)
+    ligar_nitidez()        # texto nítido com escala de tela 125%/150% (DPI)
+    app = AppPortaria(BANCO, json_antigo=JSON_ANTIGO)
+    ajustar_ao_monitor(app.janela)
+    app.executar()
 
 
 # ==================================================================
@@ -55,12 +67,17 @@ if __name__ == "__main__":
 # ==================================================================
 # 1) TOKEN (análise léxica)
 #    Em portaria/tela_cadastro.py (AbaCadastro._montar_formulario), na linha:
-#        self.cpf = entrada_numeros(form, 11, textvariable=self.var_cpf)
-#    Tokens: self (identificador), . (ponto), cpf (identificador),
-#    = (operador de atribuição), entrada_numeros (identificador),
-#    ( (abre parênteses), form (identificador), , (vírgula),
-#    11 (literal inteiro), textvariable (identificador), = (sinal do
-#    argumento nomeado), self . var_cpf, ) (fecha parênteses).
+#        self.var_cpf = tk.StringVar(self.aba)
+#    Tokens: self (identificador), . (ponto), var_cpf (identificador),
+#    = (operador de atribuição), tk (identificador), . (ponto),
+#    StringVar (identificador), ( (abre parênteses), self . aba,
+#    ) (fecha parênteses).
+#    E na linha logo abaixo, com literal inteiro e argumento nomeado:
+#        self.cpf = posicionar(Campo(form, numeros=11, var=self.var_cpf), 1, 0)
+#    Tokens: self . cpf, = , posicionar, (, Campo, (, form, ",",
+#    numeros (identificador), = (sinal do argumento nomeado), 11 (literal
+#    inteiro), ",", var, =, self . var_cpf, ), ",", 1, ",", 0 (literais
+#    inteiros), ).
 #    Outro, com literal string, em portaria/estilo.py:
 #        FAMILIA = "Segoe UI"
 #    Tokens: FAMILIA (identificador), = (operador), "Segoe UI" (literal string).

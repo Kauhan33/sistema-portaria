@@ -32,7 +32,7 @@ from tkinter import ttk
 
 from . import dados, mensagens
 from .componentes import botao_pequeno
-from .estilo import COR, FONTE, aplicar_tema
+from .estilo import COR, FONTE, aplicar_tema, carregar_fontes, px
 from .tela_bloqueios import AbaBloqueios
 from .tela_cadastro import AbaCadastro
 from .tela_dashboard import AbaDashboard
@@ -54,6 +54,16 @@ NOMES_DO_CADASTRO = {
     "registrar_saida_da_linha", "saida_rapida", "desfazer_saida",
     "editar_selecionado", "excluir_selecionado",
 }
+
+
+def ajustar_ao_monitor(janela):
+    """Tela pequena (ex.: notebook 1366x768 a 125%): abre maximizada."""
+    if (janela.winfo_screenwidth() < px(1200)
+            or janela.winfo_screenheight() < px(800)):
+        try:
+            janela.state("zoomed")
+        except tk.TclError:
+            pass
 
 
 class AppPortaria:
@@ -192,9 +202,10 @@ class AppPortaria:
     def _montar_janela(self):
         janela = self.janela
         janela.title("Portaria da Universidade")
-        janela.geometry("1020x720")
-        janela.minsize(900, 620)
+        janela.geometry(f"{px(1180)}x{px(760)}")
+        janela.minsize(px(1000), px(640))
         janela.configure(bg=COR["fundo"])
+        carregar_fontes(janela)
         aplicar_tema(janela)
 
         # Cabeçalho

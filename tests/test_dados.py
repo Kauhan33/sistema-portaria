@@ -555,6 +555,11 @@ def rebaixar_para_v6(caminho):
     con = sqlite3.connect(caminho)
     con.executescript("""
         DROP INDEX idx_registros_saida;
+        DROP TABLE funcionamento;
+        DROP TABLE feriados;
+        DROP TABLE eventos;
+        DROP TABLE regras_categoria;
+        DROP TABLE parametros;
         PRAGMA user_version = 6;""")
     con.close()
 
@@ -829,8 +834,8 @@ class TestConsultasNoBanco(BaseTemp):
             nome="Gil Prestes", cpf="12345678909", tipo="Prestador de serviço",
             entrada="15/10/2026 22:00", saida="16/10/2026 06:00"))
         self.banco.inserir(registro(
-            nome="Hugo Neves", cpf="98765432100", entrada="15/10/2026 07:00",
-            saida="17/10/2026 06:00"))                  # saiu amanhã: não
+            nome="Hugo Neves", cpf="98765432100", entrada="14/10/2026 07:00",
+            saida="15/10/2026 06:00"))                  # saiu ontem: não
         movimento = self.banco.listar_movimento(self.HOJE)
         self.assertEqual([r["id"] for r in movimento].count(id_), 1)
         self.assertNotIn("Hugo Neves", [r["nome"] for r in movimento])

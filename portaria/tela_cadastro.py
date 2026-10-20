@@ -535,7 +535,8 @@ class AbaCadastro:
         if not selecionado:
             mensagens.aviso("Atenção", "Selecione um registro na tabela.")
             return
-        if not mensagens.confirmar(
+        if not self.app.perguntar(
+                mensagens.confirmar,
                 "Excluir registro",
                 "Excluir " + plural(len(selecionado), "registro selecionado",
                                     "registros selecionados") + "?\n"
@@ -580,7 +581,8 @@ class AbaCadastro:
             return "break"
         if len(encontrados) > 1:
             nomes = "\n".join(f"• {r['nome']}" for r in encontrados)
-            if not mensagens.confirmar(
+            if not self.app.perguntar(
+                    mensagens.confirmar,
                     "Saída rápida",
                     f"{len(encontrados)} pessoas estão no campus com essa placa:"
                     f"\n{nomes}\n\nRegistrar a saída de todas?"):

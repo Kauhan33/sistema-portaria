@@ -19,8 +19,12 @@ CONTRATO DO APP — o que as telas podem usar da AppPortaria:
     app.registros                visitas do movimento: as de hoje e todas as
                                  que ainda não têm saída (banco.listar_movimento)
     app.tentar(operacao, ...)    roda no banco; (True, resultado) ou avisa
-                                 o erro e devolve (False, None)
+                                 o erro e devolve (False, None). Sem sessão
+                                 (usuário saiu ou expirou), nem roda
     app.gravar(operacao, ...)    grava em nome do usuário e recarrega a lista
+    app.perguntar(caixa, ...)    abre uma caixa que trava a tela (Sim/Não,
+                                 senha, "Salvar como") e devolve a resposta,
+                                 ou None se a sessão acabou com ela aberta
     app.recarregar_registros()   relê o movimento do banco
     app.atualizar_tabela()       relê o movimento e redesenha a Entrada e
                                  saída, o Painel e os contadores do menu
@@ -52,7 +56,8 @@ from .tela_login import TelaLogin
 from .tela_pessoas import AbaPessoas
 from .tela_senha import JanelaSenha
 from .tela_usuarios import AbaUsuarios
-from .usuarios import MINUTOS_INATIVIDADE, PERFIS, eh_admin, pode_gerenciar_usuarios
+from .usuarios import (MINUTOS_INATIVIDADE, PERFIS, SESSAO_ENCERRADA, eh_admin,
+                       pode_gerenciar_usuarios)
 from .validacao import formatar_cpf, mascarar_cpf
 
 TECLAS_DA_SESSAO = ("<Return>", "<KP_Enter>", "<F2>")
@@ -110,7 +115,8 @@ class AppPortaria:
         self.relogio = relogio or datetime.now
         self.banco = None
         self.usuario = None                       # quem está logado
-        self.corpo = None                         # login ou páginas
+        self._sessao = 0                          # muda a cada entrar/sair
+        self.corpo = None                        # login ou páginas
         self.registros = []                       # movimento mostrado na tela
         self.tela_cadastro = None                 # as outras: sob demanda
         self.janela_senha = None
@@ -190,7 +196,11 @@ class AppPortaria:
         return self.usuario["login"] if self.usuario else None
 
     def tentar(self, operacao, *args, **kwargs):
-        """Executa no banco; devolve (True, resultado) ou avisa e (False, None)."""
+        """Executa no banco; devolve (True, resultado) ou avisa e (False, None).
+        Sem ninguém logado (a sessão acabou) não executa nada."""
+        if self.usuario is None:
+            self._avisar_sessao_encerrada()
+            return False, None
         try:
             return True, operacao(*args, **kwargs)
         except dados.ErroDados as e:
@@ -199,6 +209,24 @@ class AppPortaria:
                                   e.detalhe)
             mensagens.erro("Erro", str(e))
             return False, None
+
+    def perguntar(self, caixa, *args, **kwargs):
+        """
+        Abre uma caixa que trava a tela (mensagens.confirmar, pedir_senha,
+        salvar_como) e devolve a resposta. O tempo de inatividade continua
+        correndo com ela aberta: se a sessão acabou (ou mudou) enquanto
+        isso, avisa e devolve None, e quem chamou não faz nada.
+        """
+        sessao = self._sessao
+        resposta = caixa(*args, **kwargs)
+        if self._sessao != sessao or self.usuario is None:
+            self._avisar_sessao_encerrada()
+            return None
+        return resposta
+
+    @staticmethod
+    def _avisar_sessao_encerrada():
+        mensagens.aviso("Sessão encerrada", SESSAO_ENCERRADA)
 
     def gravar(self, operacao, *args):
         """Grava em nome do usuário logado e recarrega a lista; False se falhar."""
@@ -262,6 +290,7 @@ class AppPortaria:
 
     def entrar(self, usuario):
         self.usuario = usuario
+        self._sessao += 1
         self.tentar(self.banco.registrar_evento, usuario["login"],
                     "Entrou no sistema")
         self.avatar.mostrar(usuario["nome"])
@@ -280,17 +309,29 @@ class AppPortaria:
                         "Sessão encerrada por inatividade" if inatividade
                         else "Saiu do sistema")
         self.usuario = None
+        self._sessao += 1
         if self._timer_inatividade:
             self.janela.after_cancel(self._timer_inatividade)
             self._timer_inatividade = None
-        for janela in self.janela.winfo_children():   # Corrigir, Trocar senha...
-            if isinstance(janela, tk.Toplevel):
-                janela.destroy()
+        self._fechar_janelas_da_sessao()
         for tecla in TECLAS_DA_SESSAO:
             self.janela.unbind(tecla)
         self.itens_menu = {}
         self.lateral.pack_forget()
         self.mostrar_login(AVISO_INATIVIDADE if inatividade else "")
+
+    def _fechar_janelas_da_sessao(self):
+        """Fecha as janelas próprias abertas (Corrigir, Trocar senha, Novo
+        usuário, Exportar, Redefinir senha...), em qualquer nível. As caixas
+        nativas do Windows não fecham por aqui: quem as abriu usa
+        app.perguntar e confere a sessão quando elas voltam."""
+        pendentes = list(self.janela.winfo_children())
+        while pendentes:
+            w = pendentes.pop()
+            if isinstance(w, tk.Toplevel):
+                w.destroy()
+            else:
+                pendentes.extend(w.winfo_children())
 
     def trocar_senha(self):
         """Menu do usuário → "Trocar minha senha"."""

@@ -208,8 +208,8 @@ class DialogoExportar(Dialogo):
             self.faixa.mostrar("erro", "A data final não pode ser anterior à "
                                        "inicial.")
             return
-        caminho = mensagens.salvar_como(
-            "Exportar registros",
+        caminho = self.app.perguntar(
+            mensagens.salvar_como, "Exportar registros",
             f"portaria-{desde:%Y-%m-%d}-a-{ate:%Y-%m-%d}.csv", parent=self.janela)
         if not caminho:
             return

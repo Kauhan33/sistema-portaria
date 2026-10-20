@@ -148,7 +148,8 @@ class AbaUsuarios:
             if not ok:
                 mensagens.erro("Não permitido", msg)
                 return
-            if not mensagens.confirmar(
+            if not self.app.perguntar(
+                    mensagens.confirmar,
                     "Desativar usuário", f"Desativar o usuário {alvo['login']}?\n"
                                          "Ele não conseguirá mais entrar no sistema."):
                 return
@@ -160,13 +161,14 @@ class AbaUsuarios:
         alvo = self._selecionado()
         if alvo is None:
             return
-        senha = mensagens.pedir_senha(
-            "Redefinir senha", f"Nova senha para {alvo['login']}:",
-            parent=self.aba)
+        senha = self.app.perguntar(
+            mensagens.pedir_senha, "Redefinir senha",
+            f"Nova senha para {alvo['login']}:", parent=self.aba)
         if senha is None:
             return
-        confirmacao = mensagens.pedir_senha(
-            "Redefinir senha", "Digite a nova senha de novo:", parent=self.aba)
+        confirmacao = self.app.perguntar(
+            mensagens.pedir_senha, "Redefinir senha",
+            "Digite a nova senha de novo:", parent=self.aba)
         if confirmacao is None:
             return
         ok, msg = validar_senha(senha, confirmacao)
@@ -178,7 +180,9 @@ class AbaUsuarios:
         if ok:
             self.atualizar()
             mensagens.info("Usuários",
-                           f"Senha de {alvo['login']} redefinida.")
+                           f"Senha de {alvo['login']} redefinida. Se o login "
+                           "estava travado por tentativas erradas, já foi "
+                           "liberado.")
 
 
 class DialogoUsuario(Dialogo):

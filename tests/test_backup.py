@@ -23,7 +23,8 @@ class BaseBackup(unittest.TestCase):
         self.pasta_backup = os.path.join(self.pasta.name, "backups")
         self.banco = dados.Banco(self.caminho_db)
         self.banco.criar_usuario("Ana Admin", "ana", "admin", "h")
-        self.banco.criar_usuario("Paulo Porteiro", "paulo", "porteiro", "h")
+        self.banco.criar_usuario("Paulo Porteiro", "paulo", "porteiro", "h",
+                                 autor="ana")
 
     def tearDown(self):
         self.pasta.cleanup()
@@ -135,13 +136,13 @@ class TestExportarCsv(BaseBackup):
         with self.banco._conexao() as con:     # dado vindo de fora (ex.: JSON)
             con.execute("UPDATE registros SET nome = '=HYPERLINK(1)'")
         backup.exportar_csv(self.banco, self.csv, date(2026, 10, 15),
-                            date(2026, 10, 15))
+                            date(2026, 10, 15), autor="ana")
         self.assertEqual(self.ler()[1][1][0], "'=HYPERLINK(1)")
 
     def test_periodo_invertido(self):
         with self.assertRaises(dados.ErroDados):
             backup.exportar_csv(self.banco, self.csv, date(2026, 10, 16),
-                                date(2026, 10, 15))
+                                date(2026, 10, 15), autor="ana")
 
 
 if __name__ == "__main__":

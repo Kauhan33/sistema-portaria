@@ -32,8 +32,13 @@ def agora_menos(minutos):
     return momento.strftime(FORMATO)
 
 
-def criar_usuario(banco, nome, login, perfil, senha):
-    id_ = banco.criar_usuario(nome, login, perfil, gerar_hash(senha))
+def agora_texto():
+    return datetime.now().strftime(FORMATO)
+
+
+def criar_usuario(banco, nome, login, perfil, senha, autor=None):
+    """Sem autor só cria o primeiro usuário (primeiro acesso)."""
+    id_ = banco.criar_usuario(nome, login, perfil, gerar_hash(senha), autor)
     return {"id": id_, "login": login, "nome": nome, "perfil": perfil}
 
 
@@ -85,7 +90,7 @@ class BaseInterface(unittest.TestCase):
             self.admin = criar_usuario(self.banco, "Ana Admin", "ana.admin",
                                        "admin", "senha123")
             self.porteiro = criar_usuario(self.banco, "Paulo Porteiro", "paulo",
-                                          "porteiro", "senha456")
+                                          "porteiro", "senha456", "ana.admin")
         usuario = {"admin": getattr(self, "admin", None),
                    "porteiro": getattr(self, "porteiro", None)}.get(self.entrar_como)
         self.app = AppPortaria(self.caminho_db, self.janela,
@@ -416,7 +421,7 @@ class TestLogin(BaseInterface):
             self.assertTrue(caixa.bind("<KP_Enter>"))
 
     def test_usuario_desativado_nao_entra(self):
-        self.banco.definir_ativo(self.porteiro["id"], False)
+        self.banco.definir_ativo(self.porteiro["id"], False, "ana.admin")
         self.tentar_login("paulo", "senha456")
         self.assertIsNone(self.app.usuario)
 
@@ -602,6 +607,108 @@ class TestSessao(BaseInterface):
         self.assertTrue(self.janela.bind("<Motion>"))
 
 
+class TestSessaoExpiraComCaixaAberta(BaseInterface):
+    """
+    B1/N01: o tempo de inatividade corre enquanto uma caixa nativa (Sim/Não,
+    "Salvar como", senha) está aberta. Aqui a caixa falsa encerra a sessão
+    (como o temporizador faria) e só então responde. Nada pode ser gravado.
+    """
+
+    def expirar_e_responder(self, resposta):
+        def caixa(*args, **kwargs):
+            self.app.sair(inatividade=True)
+            return resposta
+        return caixa
+
+    def assert_sessao_encerrada_avisada(self):
+        self.assertIsNone(self.app.usuario)
+        self.assertIn(mock.call("Sessão encerrada",
+                                "A sessão foi encerrada. Entre novamente."),
+                      self.msg.showwarning.call_args_list)
+
+    def test_excluir(self):
+        linha = self.cadastrar_um()
+        self.app.tabela.selection_set(linha)
+        tela = self.app.tela_cadastro
+        self.msg.askyesno.side_effect = self.expirar_e_responder(True)
+        tela.excluir_selecionado()
+        self.assertEqual(len(self.no_banco()), 1)
+        self.assertNotIn("Exclusão de registro", [a for _, a in self.acoes()])
+        self.assert_sessao_encerrada_avisada()
+
+    def test_desativar_usuario(self):
+        aba = self.app.tela_usuarios
+        aba.tabela.selection_set(str(self.porteiro["id"]))
+        self.msg.askyesno.side_effect = self.expirar_e_responder(True)
+        aba.alternar_ativo()
+        self.assertTrue(self.banco.buscar_usuario("paulo")["ativo"])
+        self.assert_sessao_encerrada_avisada()
+
+    def test_redefinir_senha(self):
+        aba = self.app.tela_usuarios
+        aba.tabela.selection_set(str(self.porteiro["id"]))
+        self.dialogo.askstring.side_effect = self.expirar_e_responder("novasenha9")
+        aba.redefinir_senha()
+        self.assertIsNotNone(autenticar(self.banco, "paulo", "senha456"))
+        self.assert_sessao_encerrada_avisada()
+
+    def test_bloquear_e_remover_bloqueio(self):
+        aba = self.app.tela_bloqueios
+        aba.tipo.set("Placa")
+        aba.valor.insert(0, "ABC1234")
+        aba.motivo.insert(0, "Motivo válido")
+        self.msg.askyesno.side_effect = self.expirar_e_responder(True)
+        aba.bloquear()
+        self.assertEqual(self.banco.listar_bloqueios(), [])
+        self.assert_sessao_encerrada_avisada()
+
+        self.app.entrar(self.admin)
+        self.banco.bloquear("placa", "ABC1234", "Motivo válido", "ana.admin")
+        aba = self.app.tela_bloqueios
+        aba.atualizar()
+        aba.tabela.selection_set(aba.tabela.get_children()[0])
+        aba.remover()
+        self.assertEqual(len(self.banco.listar_bloqueios()), 1)
+
+    def test_exportar_csv(self):
+        self.banco.inserir(dict(VISITA_ANTIGA))
+        caminho = os.path.join(self.pasta.name, "saida.csv")
+        self.arquivo.asksaveasfilename.side_effect = self.expirar_e_responder(
+            caminho)
+        dialogo = self.app.tela_dashboard.abrir_exportacao()
+        dialogo.periodo(date(2026, 10, 1), date(2026, 10, 31))
+        dialogo.exportar()
+        self.assertFalse(os.path.exists(caminho))
+        self.assertNotIn("Exportação de registros", [a for _, a in self.acoes()])
+        self.assert_sessao_encerrada_avisada()
+
+    def test_saida_rapida_de_varios(self):
+        for cpf in ("52998224725", "11144477735"):
+            self.preencher(cpf=cpf, placa="ABC1234")
+            self.app.cadastrar()
+        tela = self.app.tela_cadastro
+        tela.campo_saida_rapida.insert(0, "ABC1234")
+        self.msg.askyesno.side_effect = self.expirar_e_responder(True)
+        tela.saida_rapida()
+        self.assertTrue(all(not r["saida"] for r in self.no_banco()))
+        self.assert_sessao_encerrada_avisada()
+
+    def test_inatividade_fecha_janelas_dentro_das_paginas(self):
+        # o "Redefinir senha" (simpledialog) é filho da página, não da janela
+        aba = self.app.tela_usuarios
+        filha = tk.Toplevel(aba.aba)
+        self.app.sair(inatividade=True)
+        self.assertFalse(filha.winfo_exists())
+
+    def test_sem_sessao_nada_vai_ao_banco(self):
+        self.app.sair()
+        self.assertFalse(self.app.gravar(self.banco.inserir, dict(VISITA_ANTIGA)))
+        ok, _ = self.app.tentar(self.banco.excluir, [1], autor=None)
+        self.assertFalse(ok)
+        self.assertEqual(self.no_banco(), [])
+        self.assert_sessao_encerrada_avisada()
+
+
 class TestAbertura(BaseInterface):
     """Backup diário, avisos para o administrador e log de erros."""
     entrar_como = None
@@ -632,6 +739,7 @@ class TestAbertura(BaseInterface):
     def test_erro_do_banco_mostra_o_simples_e_loga_o_detalhe(self):
         def falha():
             raise dados.ErroDados("Erro no banco de dados.", detalhe="disk I/O error")
+        self.app.entrar(self.admin)
         with self.assertLogs("portaria.dados", "WARNING") as log:
             ok, _ = self.app.tentar(falha)
         self.assertFalse(ok)

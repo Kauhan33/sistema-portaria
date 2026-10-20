@@ -11,11 +11,18 @@ No banco as datas ficam em ISO ('2026-10-16 08:00'), que ordena e compara
 certo em SQL; para o resto do sistema elas saem no formato da tela
 ('16/10/2026 08:00').
 
-Permissões: quando `autor` (login de quem faz) é informado, as operações
-sensíveis conferem o perfil dele NO BANCO e recusam com ErroDados se não
-puder (RN02, RN11, RN12 e gestão de usuários). `autor=None` continua aceito
-para chamadas internas e testes, sem checagem e sem histórico. É uma
-limitação conhecida: quem chama o Banco direto pode omitir o autor.
+Permissões (`autor` = login de quem faz, conferido NO BANCO):
+- operações sensíveis (excluir, corrigir, exportar, bloquear, desbloquear,
+  criar, ativar ou desativar usuário e definir senha) EXIGEM um autor
+  existente, ativo e com o perfil certo (RN02, RN11, RN12 e gestão de
+  usuários). Sem autor, recusam: é o caso da sessão que expirou com uma
+  caixa de confirmação aberta. A única exceção é o primeiro acesso:
+  criar_usuario sem autor só funciona com a tabela de usuários vazia;
+- nas escritas do dia a dia (entrada, saída, desfazer saída e corrigir
+  pessoa), o autor informado precisa existir e estar ativo (usuário
+  desativado com a sessão aberta não continua operando). Sem autor elas
+  são chamadas internas (importação do JSON antigo, testes) e não vão
+  para o histórico.
 """
 
 import json
@@ -25,7 +32,7 @@ import sqlite3
 from contextlib import closing, contextmanager
 from datetime import date, datetime, timedelta
 
-from .usuarios import LOGIN_INEXISTENTE, pode_editar
+from .usuarios import LOGIN_INEXISTENTE, SESSAO_ENCERRADA, pode_editar
 from .validacao import (FORMATO, TIPOS_ACESSO, mascarar_cpf,
                         mascarar_cpfs_no_texto, so_digitos)
 
@@ -455,16 +462,16 @@ class Banco:
                        "Avise o administrador: é preciso restaurar o último backup.")
 
     # --------------------------------------------------------------
-    # Permissões (conferidas no banco quando o autor é informado)
+    # Permissões (conferidas no banco)
     # --------------------------------------------------------------
     @staticmethod
     def _exigir(con, autor, so_admin=True, para="fazer esta operação"):
         """
-        Confere o perfil de `autor` no banco. Devolve o usuário (dict) ou
-        None quando autor=None (chamada interna: sem checagem).
+        Operação sensível: `autor` é obrigatório e precisa existir, estar
+        ativo e (com so_admin) ser administrador. Devolve o usuário (dict).
         """
         if autor is None:
-            return None
+            raise ErroDados(SESSAO_ENCERRADA)
         linha = con.execute("SELECT id, perfil, ativo FROM usuarios "
                             "WHERE login = ?", (autor,)).fetchone()
         if linha is None or not linha[2]:
@@ -473,6 +480,13 @@ class Banco:
         if so_admin and linha[1] != "admin":
             raise ErroDados(f"Somente o administrador pode {para}.")
         return {"id": linha[0], "login": autor, "perfil": linha[1]}
+
+    @classmethod
+    def _conferir_autor(cls, con, autor):
+        """Escrita do dia a dia: o autor, quando informado, precisa existir
+        e estar ativo. Sem autor é chamada interna (não vai ao histórico)."""
+        if autor is not None:
+            cls._exigir(con, autor, so_admin=False)
 
     # --------------------------------------------------------------
     # Registros (visitas)
@@ -592,6 +606,7 @@ class Banco:
     def inserir(self, registro, autor=None):
         """Grava um registro (datas no formato da tela) e devolve o id."""
         with self._conexao() as con:
+            self._conferir_autor(con, autor)
             id_ = self._inserir(con, registro)
             self._evento(con, autor, "Cadastro de entrada",
                          f"#{id_} {registro['nome']} ({registro['tipo']})", id_)
@@ -642,6 +657,7 @@ class Banco:
     def registrar_saidas(self, ids, saida, autor=None):
         """Saída de uma ou várias visitas na mesma transação; só das abertas."""
         with self._conexao() as con:
+            self._conferir_autor(con, autor)
             for i in ids:
                 cursor = con.execute("UPDATE registros SET saida = ? "
                                      "WHERE id = ? AND saida = ''",
@@ -657,6 +673,7 @@ class Banco:
         """
         desfeitas = 0
         with self._conexao() as con:
+            self._conferir_autor(con, autor)
             for i in ids:
                 cursor = con.execute(
                     "UPDATE registros SET saida = '' WHERE id = ? AND saida <> '' "
@@ -668,7 +685,7 @@ class Banco:
                     self._evento(con, autor, "Saída desfeita", f"#{i}", i)
         return desfeitas
 
-    def excluir(self, ids, autor=None):
+    def excluir(self, ids, autor):
         """Apaga os registros (RN02: só administrador); o histórico guarda o
         que foi apagado, com o CPF mascarado."""
         with self._conexao() as con:
@@ -692,7 +709,7 @@ class Banco:
                                 "WHERE id = ?", (id_registro,)).fetchone()
         return _registro(linha) if linha else None
 
-    def editar(self, id_registro, novo, alteracoes, autor=None):
+    def editar(self, id_registro, novo, alteracoes, autor):
         """
         Corrige um registro e grava no histórico o que mudou (`alteracoes`,
         já descritas). Porteiro só corrige visitas com entrada (a original e
@@ -708,12 +725,11 @@ class Banco:
             if linha is None:
                 raise ErroDados("Este registro não existe mais.")
             pessoa_antiga = linha[0]
-            if usuario is not None:
-                agora = datetime.now()
-                for entrada in (de_iso(linha[2]), novo["entrada"]):
-                    ok, msg = pode_editar(usuario, {"entrada": entrada}, agora)
-                    if not ok:
-                        raise ErroDados(msg)
+            agora = datetime.now()
+            for entrada in (de_iso(linha[2]), novo["entrada"]):
+                ok, msg = pode_editar(usuario, {"entrada": entrada}, agora)
+                if not ok:
+                    raise ErroDados(msg)
             con.execute(
                 "UPDATE registros SET nome = ?, cpf = ?, celular = ?, placa = ?, "
                 "tipo = ?, entrada = ?, saida = ? WHERE id = ?",
@@ -856,6 +872,7 @@ class Banco:
     def atualizar_pessoa(self, id_pessoa, nome, celular, placa, tipo, autor=None):
         """Corrige o cadastro da pessoa (as visitas antigas não mudam)."""
         with self._conexao() as con:
+            self._conferir_autor(con, autor)
             con.execute("UPDATE pessoas SET nome = ?, celular = ?, placa = ?, "
                         "tipo = ? WHERE id = ?",
                         (nome, celular, placa, tipo, id_pessoa))
@@ -889,16 +906,30 @@ class Banco:
                 "senha": senha, "ativo": bool(ativo)}
 
     def criar_usuario(self, nome, login, perfil, senha_hash, autor=None):
-        """Sem autor = primeiro acesso (cria o primeiro administrador)."""
+        """
+        Com autor: só administrador. Sem autor = primeiro acesso, aceito só
+        com a tabela de usuários vazia. A condição fica no próprio INSERT:
+        duas estações no "Primeiro acesso" não criam dois usuários.
+        """
         with self._conexao() as con:
-            self._exigir(con, autor, para="criar usuários")
-            cursor = con.execute(
-                "INSERT INTO usuarios (login, nome, perfil, senha) VALUES (?, ?, ?, ?)",
-                (login, nome, perfil, senha_hash))
+            if autor is None:
+                cursor = con.execute(
+                    "INSERT INTO usuarios (login, nome, perfil, senha) "
+                    "SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM usuarios)",
+                    (login, nome, perfil, senha_hash))
+                if not cursor.rowcount:
+                    raise ErroDados("O primeiro usuário já foi criado (talvez "
+                                    "em outro computador).\nEntre com um "
+                                    "usuário existente.")
+            else:
+                self._exigir(con, autor, para="criar usuários")
+                cursor = con.execute(
+                    "INSERT INTO usuarios (login, nome, perfil, senha) "
+                    "VALUES (?, ?, ?, ?)", (login, nome, perfil, senha_hash))
             self._evento(con, autor or login, "Usuário criado", f"{login} ({perfil})")
             return cursor.lastrowid
 
-    def definir_ativo(self, id_usuario, ativo, autor=None):
+    def definir_ativo(self, id_usuario, ativo, autor):
         with self._conexao() as con:
             self._exigir(con, autor, para="ativar ou desativar usuários")
             con.execute("UPDATE usuarios SET ativo = ? WHERE id = ?",
@@ -906,19 +937,24 @@ class Banco:
             self._evento(con, autor, "Usuário ativado" if ativo else "Usuário desativado",
                          self._login_de(con, id_usuario))
 
-    def definir_senha(self, id_usuario, senha_hash, autor=None):
-        """Administrador redefine a senha de qualquer um; os demais só a
-        própria (troca de senha: usuarios.trocar_senha)."""
+    def definir_senha(self, id_usuario, senha_hash, autor):
+        """Administrador redefine a senha de qualquer um, e isso libera o
+        login travado por tentativas erradas; os demais só trocam a própria
+        (usuarios.trocar_senha)."""
         with self._conexao() as con:
             quem = self._exigir(con, autor, so_admin=False)
-            propria = quem is not None and quem["id"] == id_usuario
-            if quem is not None and not propria and quem["perfil"] != "admin":
+            propria = quem["id"] == id_usuario
+            if not propria and quem["perfil"] != "admin":
                 raise ErroDados("Somente o administrador pode redefinir a "
                                 "senha de outro usuário.")
             con.execute("UPDATE usuarios SET senha = ? WHERE id = ?",
                         (senha_hash, id_usuario))
+            login = self._login_de(con, id_usuario)
+            if not propria:
+                con.execute("DELETE FROM tentativas_login WHERE chave = ?",
+                            (login,))
             self._evento(con, autor, "Senha alterada" if propria
-                         else "Senha redefinida", self._login_de(con, id_usuario))
+                         else "Senha redefinida", login)
 
     def atualizar_hash_senha(self, id_usuario, senha_hash):
         """Troca o hash pelo padrão atual (mesma senha) no login. Interno:

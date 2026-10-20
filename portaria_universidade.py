@@ -59,12 +59,17 @@ if __name__ == "__main__":
 # ==================================================================
 # 1) TOKEN (análise léxica)
 #    Em portaria/tela_cadastro.py (AbaCadastro._montar_formulario), na linha:
-#        self.cpf = entrada_numeros(form, 11, textvariable=self.var_cpf)
-#    Tokens: self (identificador), . (ponto), cpf (identificador),
-#    = (operador de atribuição), entrada_numeros (identificador),
-#    ( (abre parênteses), form (identificador), , (vírgula),
-#    11 (literal inteiro), textvariable (identificador), = (sinal do
-#    argumento nomeado), self . var_cpf, ) (fecha parênteses).
+#        self.var_cpf = tk.StringVar(self.aba)
+#    Tokens: self (identificador), . (ponto), var_cpf (identificador),
+#    = (operador de atribuição), tk (identificador), . (ponto),
+#    StringVar (identificador), ( (abre parênteses), self . aba,
+#    ) (fecha parênteses).
+#    E na linha logo abaixo, com literal inteiro e argumento nomeado:
+#        self.cpf = posicionar(Campo(form, numeros=11, var=self.var_cpf), 1, 0)
+#    Tokens: self . cpf, = , posicionar, (, Campo, (, form, ",",
+#    numeros (identificador), = (sinal do argumento nomeado), 11 (literal
+#    inteiro), ",", var, =, self . var_cpf, ), ",", 1, ",", 0 (literais
+#    inteiros), ).
 #    Outro, com literal string, em portaria/estilo.py:
 #        FAMILIA = "Segoe UI"
 #    Tokens: FAMILIA (identificador), = (operador), "Segoe UI" (literal string).

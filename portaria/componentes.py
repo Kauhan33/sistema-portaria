@@ -563,8 +563,9 @@ class Aviso(tk.Frame):
         if acao:
             self.acao = link(self.interno, acao, comando or (lambda: None),
                              fundo=cor_fundo, cor=cor_texto)
-            self.acao.pack(side="right", anchor="n", padx=(px(12), 0))
-        self._desenhar()
+            self.acao.pack(side="right", anchor="n", padx=(px(12), 0),
+                           before=self.lbl)
+        self._ao_redimensionar()
 
     def _ao_redimensionar(self, event=None):
         largura = self.cv.winfo_width() - px(80)

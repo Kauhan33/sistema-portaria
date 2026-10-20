@@ -7,7 +7,7 @@ consultas.resumo(); o desenho dos gráficos fica em graficos.py.
 import tkinter as tk
 from datetime import datetime
 
-from .consultas import formatar_duracao, resumo
+from .consultas import formatar_duracao
 from .estilo import COR, CORES_RESUMO, CORES_TIPO, COR_GRAFICO_DIAS, FONTE
 from .graficos import desenhar_barras_horizontais, desenhar_barras_verticais
 from .validacao import TIPOS_ACESSO
@@ -82,7 +82,9 @@ class AbaDashboard:
     def atualizar(self):
         """Recalcula os números a partir de app.registros."""
         hoje = datetime.now().date()
-        r = resumo(self.app.registros, hoje)
+        ok, r = self.app.tentar(self.app.banco.resumo_painel, hoje)
+        if not ok:
+            return
         por_tipo = r["por_tipo"]
 
         for t in TIPOS_ACESSO:

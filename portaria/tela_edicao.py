@@ -143,8 +143,11 @@ class JanelaEdicao:
         # o porteiro também não pode mover o registro para outro dia
         ok, msg = pode_editar(self.app.usuario, novo, datetime.now())
         if ok:
-            outros = [r for r in self.app.registros
-                      if r["id"] != self.original["id"]]
+            ok, anteriores = self.app.tentar(self.app.banco.listar_por_cpf,
+                                             novo["cpf"])
+            if not ok:
+                return
+            outros = [r for r in anteriores if r["id"] != self.original["id"]]
             ok, msg = validar(novo, outros)
         if not ok:
             mensagens.erro("Dados inválidos", msg, parent=self.janela)
@@ -160,7 +163,7 @@ class JanelaEdicao:
                                novo, alteracoes):
             return
         self.app.atualizar_tabela()
-        self.app.avisar(f"✓ Registro de {novo['nome'].split()[0]} corrigido "
+        self.app.avisar(f"Registro de {novo['nome'].split()[0]} corrigido "
                         f"({len(alteracoes)} alteração(ões)).")
         self.fechar()
 

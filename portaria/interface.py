@@ -167,7 +167,8 @@ class AppPortaria:
     def recarregar_registros(self):
         """Relê o movimento (hoje + quem está no campus); se falhar, mantém
         a lista que já estava."""
-        ok, registros = self.tentar(self.banco.listar)
+        ok, registros = self.tentar(self.banco.listar_movimento,
+                                    self.relogio().date())
         if ok:
             self.registros = registros
         return ok
@@ -383,6 +384,7 @@ class AppPortaria:
         # abrir uma destas páginas relê os dados dela
         self._telas_que_recarregam = {
             str(aba): tela for aba, tela in [
+                (self.aba_cad, self.tela_cadastro),
                 (self.aba_pessoas, self.tela_pessoas),
                 (self.aba_bloqueios, self.tela_bloqueios),
                 (self.aba_dash, self.tela_dashboard),

@@ -1,25 +1,27 @@
 """
-Aba Cadastro: registrar a entrada de uma pessoa (com preenchimento
-automático pelo CPF e alerta de bloqueio), dar saída (botão, duplo clique
-ou saída rápida por CPF/placa), desfazer a saída, corrigir e excluir
-registros, e a tabela com a busca.
+Página "Entrada e saída" (antiga aba Cadastro): registrar a entrada de uma
+pessoa (com preenchimento automático pelo CPF, faixa de situação e alerta
+de bloqueio), dar saída (saída rápida F2 por CPF ou placa, botão ou duplo
+clique), desfazer a saída, corrigir e excluir registros.
+
+A tabela "Movimento" mostra o dia: as entradas de hoje e todo mundo que
+ainda está no campus (app.registros = banco.listar_movimento). Com texto na
+busca, ela procura no histórico inteiro (banco.buscar_registros).
 
 Fala com a janela principal só pelo contrato público do app (ver
-interface.py): app.banco, app.usuario, app.autor, app.registros,
-app.tentar(), app.gravar(), app.recarregar_registros() e
-app.atualizar_tabela().
+interface.py).
 """
 
 import tkinter as tk
 from datetime import datetime
-from tkinter import ttk
 
 from . import mensagens
-from .componentes import (barra_busca, botao, botao_link, botao_pequeno,
-                          combo, dica, entrada, entrada_numeros, entrada_placa,
-                          rotulo_secao, tabela)
-from .consultas import encontrar_dentro, filtrar
-from .estilo import COR, FONTE
+from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao, Placa, link,
+                          data_por_extenso, inserir_linha, plural,
+                          rotulo_campo, tabela, titulo_cartao)
+from .consultas import encontrar_dentro
+from .estilo import (COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM,
+                     fonte_icone, px)
 from .tela_edicao import JanelaEdicao
 from .usuarios import pode_editar, pode_excluir
 from .validacao import (FORMATO, FORMATO_EXIBICAO, PLACA_OBRIGATORIA,
@@ -28,15 +30,16 @@ from .validacao import (FORMATO, FORMATO_EXIBICAO, PLACA_OBRIGATORIA,
                         formatar_placa, normalizar, placa_valida, so_digitos,
                         validar)
 
-DICA_CPF = "Digite o CPF primeiro: quem já veio tem os dados preenchidos sozinhos."
-DICA_PLACA = "ABC1234 ou ABC1D23 (deixe vazio se a pé)"
+DICA_CPF = "Digite o CPF primeiro: quem já veio tem os dados preenchidos."
+DICA_PLACA = "obrigatória" if PLACA_OBRIGATORIA else "opcional"
 SEGUNDOS_PARA_DESFAZER = 10
-COLUNAS = [("Nome", "Nome", 170, "w"), ("CPF", "CPF", 105, "center"),
-           ("Celular", "Celular", 115, "center"),
-           ("Placa", "Placa", 75, "center"),
-           ("Tipo", "Tipo de acesso", 120, "w"),
-           ("Entrada", "Entrada", 130, "center"),
-           ("Saida", "Saída", 130, "center")]
+LIMITE_BUSCA = 200
+COLUNAS = [("Nome", "Nome", 170, "w"), ("CPF", "CPF", 118, "w"),
+           ("Celular", "Celular", 112, "w"), ("Placa", "Placa", 86, "w"),
+           ("Tipo", "Tipo de acesso", 150, "w"),
+           ("Entrada", "Entrada", 128, "w"), ("Saida", "Saída", 128, "w")]
+# o celular continua nos values (mesma linha de antes), mas não aparece
+COLUNAS_VISIVEIS = ("Nome", "CPF", "Placa", "Tipo", "Entrada", "Saida")
 
 
 def agora():
@@ -48,171 +51,277 @@ class AbaCadastro:
         self.aba = aba
         self.app = app
         self.janela_edicao = None     # janela "Corrigir registro" aberta
+        self.mostrados = {}           # id -> registro das linhas da tabela
         self._auto = None   # o que foi preenchido sozinho, para poder desfazer
         self._timer_aviso = None
         self._para_desfazer = None
 
+        self._montar_cabecalho()
         self._montar_formulario()
-        self._montar_botoes()
-        self._montar_saida_rapida()
-        self._montar_tabela()
+        self._montar_movimento()
 
     # --------------------------------------------------------------
     # Montagem
     # --------------------------------------------------------------
+    def _montar_cabecalho(self):
+        """Título, data e quantos estão no campus; à direita a saída rápida
+        (a ação mais usada da guarita: F2 leva o cursor até ela)."""
+        cab = Cabecalho(self.aba, "Entrada e saída").posicionar()
+        self.cabecalho = cab
+        self.lbl_no_campus = tk.Label(cab.linha, font=FONTE["corpo_semi"],
+                                      bg=COR["fundo"], fg=COR["sucesso"])
+        self.lbl_no_campus.pack(side="left")
+
+        tk.Label(cab.acoes, text="Saída rápida (F2)", font=FONTE["rotulo"],
+                 bg=COR["fundo"], fg=COR["texto_2"]).pack(anchor="w",
+                                                          pady=(0, px(4)))
+        linha = tk.Frame(cab.acoes, bg=COR["fundo"])
+        linha.pack()
+        campo = Campo(linha, fundo_pai=COR["fundo"], largura=230,
+                      icone=ICONE["busca"], acao_icone=self.saida_rapida,
+                      dica_vazio="CPF ou placa")
+        campo.pack(side="left")
+        self.campo_saida_rapida = campo.entrada
+        self.campo_saida_rapida.bind("<Return>", self.saida_rapida)
+        self.campo_saida_rapida.bind("<KP_Enter>", self.saida_rapida)
+        Botao(linha, "Registrar saída", self.saida_rapida, "secundario",
+              fundo_pai=COR["fundo"], dica_tecla="Enter"
+              ).pack(side="left", padx=(px(8), 0))
+
     def _montar_formulario(self):
-        form = tk.Frame(self.aba, bg=COR["fundo"])
-        form.pack(fill="x", padx=20, pady=14)
-        form.columnconfigure((0, 1, 2), weight=1, uniform="col")
+        cartao = Cartao(self.aba, pad=18)
+        cartao.pack(fill="x", padx=px(MARGEM))
+        m = cartao.miolo
+        cab = tk.Frame(m, bg=COR["superficie"])
+        cab.pack(fill="x", pady=(0, px(10)))
+        titulo_cartao(cab, "Nova entrada").pack(side="left")
+        Botao(cab, "Limpar formulário", self.limpar, "fantasma",
+              altura=30).pack(side="right")
 
-        def rotulo(texto, linha, coluna, **kw):
-            rotulo_secao(form, texto).grid(row=linha, column=coluna,
-                                           sticky="w", **kw)
+        corpo = tk.Frame(m, bg=COR["superficie"])
+        corpo.pack(fill="x")
+        self.ficha = tk.Frame(corpo, bg=COR["superficie"], width=px(214))
+        self.ficha.pack(side="right", fill="y")
+        tk.Frame(corpo, bg=COR["borda"], width=1).pack(side="right", fill="y",
+                                                       padx=px(20))
+        form = tk.Frame(corpo, bg=COR["superficie"])
+        form.pack(side="left", fill="x", expand=True)
+        form.columnconfigure((0, 1, 2), weight=1, uniform="f")
 
-        def nova_dica(texto, linha, coluna, cor=COR["texto_3"]):
-            rotulo_dica = dica(form, texto, cor=cor)
-            rotulo_dica.grid(row=linha, column=coluna, sticky="w")
-            return rotulo_dica
+        def rotulo(texto, linha, coluna, apoio=""):
+            frame, lbl_apoio = rotulo_campo(form, texto, apoio)
+            frame.grid(row=linha, column=coluna, sticky="w", pady=(0, px(4)))
+            return lbl_apoio
 
-        # Linha 0-2: CPF primeiro (é por ele que a pessoa é reconhecida)
-        # e nome nas outras duas colunas
-        rotulo("CPF (somente números): *", 0, 0)
-        self.var_cpf = tk.StringVar()
-        self.cpf = entrada_numeros(form, 11, textvariable=self.var_cpf)
-        self.cpf.grid(row=1, column=0, sticky="ew", padx=(0, 10))
+        def posicionar(campo, linha, coluna, juntas=1):
+            campo.grid(row=linha, column=coluna, columnspan=juntas, sticky="ew",
+                       padx=(0, px(12) if coluna + juntas < 3 else 0))
+            return campo.entrada
 
-        rotulo("Nome completo: *", 0, 1)
-        self.nome = entrada(form)
-        self.nome.grid(row=1, column=1, columnspan=2, sticky="ew")
+        # CPF primeiro: é por ele que a pessoa é reconhecida
+        rotulo("CPF", 0, 0)
+        rotulo("Nome completo", 0, 1)
+        self.var_cpf = tk.StringVar(self.aba)
+        self.cpf = posicionar(Campo(form, numeros=11, var=self.var_cpf), 1, 0)
+        self.nome = posicionar(Campo(form), 1, 1, juntas=2)
 
-        self.lbl_pessoa = tk.Label(form, text=DICA_CPF, bg=COR["fundo"],
-                                   fg=COR["texto_3"], font=FONTE["aviso"],
-                                   anchor="w")
-        self.lbl_pessoa.grid(row=2, column=0, columnspan=3, sticky="w",
-                             pady=(2, 6))
+        # Faixa de situação da pessoa (neutra, nova, já veio, no campus,
+        # bloqueada): o texto fica em lbl_pessoa
+        self.aviso_pessoa = Aviso(form)
+        self.aviso_pessoa.grid(row=2, column=0, columnspan=3, sticky="ew",
+                               pady=(px(10), px(14)))
+        self.lbl_pessoa = self.aviso_pessoa.lbl
 
-        # Linha 3-5: celular, placa e tipo
-        rotulo("Celular com DDD (somente números): *", 3, 0)
-        self.celular = entrada_numeros(form, 11)
-        self.celular.grid(row=4, column=0, sticky="ew", padx=(0, 10))
+        rotulo("Celular com DDD", 3, 0, "só números")
+        self.lbl_dica_placa = rotulo("Placa", 3, 1, DICA_PLACA)
+        rotulo("Tipo de acesso", 3, 2)
+        self.celular = posicionar(Campo(form, numeros=11), 4, 0)
+        campo_placa = Campo(form, placa=True)
+        self.var_placa = campo_placa.var
+        posicionar(campo_placa, 4, 1)
+        self.tipo = posicionar(Campo(form, opcoes=TIPOS_ACESSO), 4, 2)
 
-        # Placa: letras/números, máximo 7, sempre maiúscula
-        rotulo("Placa do veículo:" + (" *" if PLACA_OBRIGATORIA else ""), 3, 1)
-        caixa_placa, self.var_placa = entrada_placa(form)
-        caixa_placa.grid(row=4, column=1, sticky="ew", padx=(0, 10))
+        form.grid_rowconfigure(5, pad=px(14))
+        rotulo("Entrada", 5, 0, FORMATO_EXIBICAO)
+        rotulo("Saída", 5, 1, "vazio = no campus")
+        self.entrada = posicionar(self._campo_data(form), 6, 0)
+        self.saida = posicionar(self._campo_data(form), 6, 1)
+        Botao(form, "Registrar entrada", self.cadastrar, "primario",
+              dica_tecla="Enter").grid(row=6, column=2, sticky="ew")
 
-        rotulo("Tipo de acesso: *", 3, 2)
-        self.tipo = combo(form, TIPOS_ACESSO)
-        self.tipo.grid(row=4, column=2, sticky="ew")
-
-        nova_dica("Ex.: 31912345678 (DDD + 9 + 8 dígitos)", 5, 0)
-        self.lbl_dica_placa = nova_dica(DICA_PLACA, 5, 1)
-
-        # Linha 6-8: entrada e saída
-        rotulo(f"Entrada ({FORMATO_EXIBICAO}): *", 6, 0, pady=(8, 0))
-        self.entrada = self._campo_data(form, 7, 0)
-        rotulo(f"Saída ({FORMATO_EXIBICAO}):", 6, 1, pady=(8, 0))
-        self.saida = self._campo_data(form, 7, 1)
-
-        nova_dica("Saída em branco = pessoa ainda no campus.", 8, 1)
-        nova_dica("* campos obrigatórios", 8, 0, cor=COR["erro"])
-
-        # Liga o preenchimento automático e os alertas de bloqueio só
-        # depois de tudo montado
+        self._montar_ficha()
+        # Liga o preenchimento automático e os alertas só depois de tudo montado
         self.var_cpf.trace_add("write", self._ao_digitar_cpf)
         self.var_placa.trace_add("write", self._ao_digitar_placa)
 
-    @staticmethod
-    def _campo_data(form, linha, coluna):
-        """Campo de data/hora com o botão 'Agora' ao lado."""
-        caixa = tk.Frame(form, bg=COR["fundo"])
-        caixa.grid(row=linha, column=coluna, sticky="ew", padx=(0, 10))
-        campo = entrada(caixa)
-        campo.pack(side="left", fill="x", expand=True)
-        ttk.Button(caixa, text="Agora", width=7,
-                   command=lambda: (campo.delete(0, tk.END),
-                                    campo.insert(0, agora()))
-                   ).pack(side="left", padx=(6, 0))
+    def _campo_data(self, form):
+        """Campo de data/hora; o relógio dentro dele põe a hora de agora."""
+        def preencher_agora():
+            campo.entrada.delete(0, tk.END)
+            campo.entrada.insert(0, agora())
+
+        campo = Campo(form, icone=ICONE["relogio"], acao_icone=preencher_agora)
         return campo
 
-    def _montar_botoes(self):
-        botoes = tk.Frame(self.aba, bg=COR["fundo"])
-        botoes.pack(fill="x", padx=20)
-        botao(botoes, "+ Cadastrar (Enter)", COR["primario"], self.cadastrar)
-        botao(botoes, "Limpar", COR["secundario"], self.limpar)
-        botao(botoes, "Registrar saída", COR["atencao"], self.registrar_saida)
-        botao(botoes, "✎ Corrigir", COR["neutro"], self.editar_selecionado)
+    def _montar_ficha(self):
+        """Coluna da direita: a placa desenhada e o histórico da pessoa."""
+        f, fundo = self.ficha, COR["superficie"]
+        f.pack_propagate(False)
+        tk.Label(f, text="Veículo", font=FONTE["rotulo"], bg=fundo,
+                 fg=COR["texto"]).pack(anchor="w", pady=(0, px(6)))
+        self.desenho_placa = Placa(f, fundo, largura=200)
+        self.desenho_placa.pack(anchor="w")
+        self.lbl_placa_status = tk.Label(f, text="", font=FONTE["rotulo"],
+                                         bg=fundo, fg=COR["erro"],
+                                         wraplength=px(200), justify="left")
+        self.lbl_placa_status.pack(anchor="w")
+        tk.Frame(f, bg=COR["borda"], height=1).pack(fill="x", pady=px(14))
+        tk.Label(f, text="Histórico da pessoa", font=FONTE["rotulo"], bg=fundo,
+                 fg=COR["texto"]).pack(anchor="w")
+        numeros = tk.Frame(f, bg=fundo)
+        numeros.pack(anchor="w", fill="x", pady=(px(6), 0))
+        self.lbl_visitas = self._numero(numeros, "visitas")
+        self.lbl_ultima = self._numero(numeros, "última vinda")
+        self.chip_tipo = tk.Frame(f, bg=fundo)
+        self.lbl_ponto_tipo = tk.Label(self.chip_tipo, text=chr(0x25CF),
+                                       font=FONTE["dica"], bg=fundo)
+        self.lbl_ponto_tipo.pack(side="left")
+        self.lbl_tipo = tk.Label(self.chip_tipo, font=FONTE["corpo_semi"],
+                                 bg=fundo, fg=COR["texto"])
+        self.lbl_tipo.pack(side="left", padx=(px(4), 0))
+
+    @staticmethod
+    def _numero(pai, legenda):
+        bloco = tk.Frame(pai, bg=COR["superficie"])
+        bloco.pack(side="left", padx=(0, px(28)))
+        valor = tk.Label(bloco, text="—", font=FONTE["numero"],
+                         bg=COR["superficie"], fg=COR["texto"])
+        valor.pack(anchor="w")
+        tk.Label(bloco, text=legenda, font=FONTE["dica"], bg=COR["superficie"],
+                 fg=COR["texto_3"]).pack(anchor="w")
+        return valor
+
+    def _montar_movimento(self):
+        cartao = Cartao(self.aba, pad=0)
+        cartao.pack(fill="both", expand=True, padx=px(MARGEM),
+                    pady=(px(ESPACO_CARTOES), px(MARGEM)))
+        m = cartao.miolo
+        m.pack_configure(padx=px(1), pady=px(8))
+        barra = tk.Frame(m, bg=COR["superficie"])
+        barra.pack(fill="x", padx=px(19), pady=(px(6), px(12)))
+        titulo_cartao(barra, "Movimento").pack(side="left")
+        campo_busca = Campo(barra, largura=300, icone=ICONE["busca"],
+                            dica_vazio="Buscar no histórico: nome, CPF, placa…")
+        campo_busca.pack(side="left", padx=(px(16), 0))
+        self.busca = campo_busca.entrada
+        self.busca.bind("<KeyRelease>", lambda e: self.atualizar_tabela())
+        self.busca.bind("<Return>", lambda e: "break")   # Enter na busca não cadastra
+        self.busca.bind("<KP_Enter>", lambda e: "break")
+
         self.btn_excluir = None
         if pode_excluir(self.app.usuario):  # RN02: o porteiro nem vê o botão
-            self.btn_excluir = botao(botoes, "✕ Excluir selecionado",
-                                     COR["perigo"], self.excluir_selecionado,
-                                     lado="right")
+            self.btn_excluir = Botao(barra, "Excluir", self.excluir_selecionado,
+                                     "perigo", icone=ICONE["lixo"])
+            self.btn_excluir.pack(side="right")
+        Botao(barra, "Corrigir", self.editar_selecionado, "secundario",
+              icone=ICONE["editar"]).pack(side="right", padx=(0, px(8)))
+        Botao(barra, "Registrar saída", self.registrar_saida, "secundario",
+              icone=ICONE["seta"]).pack(side="right", padx=(0, px(8)))
 
-    def _montar_saida_rapida(self):
-        """Saída rápida: CPF ou placa + Enter (F2 leva o cursor para cá)."""
-        barra = tk.Frame(self.aba, bg=COR["fundo"])
-        barra.pack(fill="x", padx=20, pady=(12, 0))
-        rotulo_secao(barra, "Saída rápida (F2) — CPF ou placa:").pack(side="left")
-        self.campo_saida_rapida = entrada(barra, width=18)
-        self.campo_saida_rapida.pack(side="left", padx=8)
-        self.campo_saida_rapida.bind("<Return>", self.saida_rapida)
-        self.campo_saida_rapida.bind("<KP_Enter>", self.saida_rapida)
-        botao_pequeno(barra, "Registrar", self.saida_rapida, COR["atencao"],
-                      padx=10, pady=2).pack(side="left")
-        self.lbl_aviso = tk.Label(barra, text="", bg=COR["fundo"],
-                                  fg=COR["sucesso"], font=FONTE["aviso"])
-        self.lbl_aviso.pack(side="left", padx=(16, 0))
-        self.btn_desfazer = botao_link(barra, "Desfazer", self.desfazer_saida)
+        rodape = tk.Frame(m, bg=COR["superficie"])
+        rodape.pack(side="bottom", fill="x", padx=px(19), pady=(px(8), px(2)))
+        self.lbl_status = tk.Label(rodape, text="", font=FONTE["dica"],
+                                   bg=COR["superficie"], fg=COR["texto_3"])
+        self.lbl_status.pack(side="left")
+        # aviso que some sozinho (com o Desfazer da saída)
+        aviso = tk.Frame(rodape, bg=COR["superficie"])
+        aviso.pack(side="right")
+        self.lbl_aviso_icone = tk.Label(aviso, text="", font=fonte_icone(10),
+                                        bg=COR["superficie"], fg=COR["sucesso"])
+        self.lbl_aviso_icone.pack(side="left", padx=(0, px(6)))
+        self.lbl_aviso = tk.Label(aviso, text="", font=FONTE["corpo_semi"],
+                                  bg=COR["superficie"], fg=COR["sucesso"])
+        self.lbl_aviso.pack(side="left")
+        self.btn_desfazer = link(aviso, "Desfazer", self.desfazer_saida)
 
-    def _montar_tabela(self):
-        barra, self.busca = barra_busca(
-            self.aba, "Buscar (nome, CPF, celular, placa ou tipo):")
-        barra.pack(fill="x", padx=20, pady=(8, 4))
-        self.busca.bind("<KeyRelease>", lambda e: self.atualizar_tabela())
-
-        quadro, self.tabela = tabela(self.aba, COLUNAS, selecao="extended")
-        quadro.pack(fill="both", expand=True, padx=20, pady=(0, 6))
+        quadro, self.tabela = tabela(m, COLUNAS, situacao="Situação",
+                                     mostrar=COLUNAS_VISIVEIS,
+                                     selecao="extended")
+        quadro.pack(fill="both", expand=True, padx=px(12))
         self.tabela.bind("<Double-1>", self._ao_duplo_clique)
-
-        self.lbl_status = tk.Label(self.aba, text="", bg=COR["fundo"],
-                                   fg=COR["texto_status"], font=FONTE["legenda"],
-                                   anchor="w")
-        self.lbl_status.pack(fill="x", padx=20, pady=(0, 8))
 
     # --------------------------------------------------------------
     # Tabela
     # --------------------------------------------------------------
+    def atualizar(self):
+        """Página aberta: relê o movimento do banco."""
+        self.app.recarregar_registros()
+        self.atualizar_tabela()
+
     def atualizar_tabela(self):
-        """Mostra app.registros filtrados pela busca e o total no rodapé."""
-        registros = self.app.registros
+        """Sem busca: o movimento (hoje + no campus). Com busca: o histórico."""
+        texto = self.busca.get().strip()
+        if texto:
+            ok, registros = self.app.tentar(self.app.banco.buscar_registros,
+                                            texto, LIMITE_BUSCA)
+            if not ok:
+                return
+        else:
+            registros = self.app.registros
+        selecao = self.tabela.selection()
         self.tabela.delete(*self.tabela.get_children())
-        for r in filtrar(registros, self.busca.get()):
-            self.tabela.insert("", "end", iid=str(r["id"]), values=(
+        self.mostrados = {}
+        for i, r in enumerate(registros):
+            self.mostrados[r["id"]] = r
+            dentro = not r["saida"]
+            inserir_linha(self.tabela, i, (
                 r["nome"],
-                formatar_cpf(r.get("cpf", "")),
+                self.app.exibir_cpf(r.get("cpf", "")),
                 formatar_celular(r.get("celular", "")),
                 formatar_placa(r.get("placa", "")) or "—",
                 r["tipo"],
                 r["entrada"],
-                r["saida"] or "— dentro —"))
-        total_dentro = sum(1 for r in registros if not r["saida"])
-        self.lbl_status.config(text=f"Registros: {len(registros)}   |   "
-                                    f"Pessoas dentro agora: {total_dentro}")
+                r["saida"] or "—"), iid=str(r["id"]),
+                situacao="No campus" if dentro else "Saiu",
+                cor=COR["sucesso"] if dentro else COR["barra"])
+        manter = [i for i in selecao if self.tabela.exists(i)]
+        if manter:
+            self.tabela.selection_set(manter)
+
+        dentro = sum(1 for r in self.app.registros if not r["saida"])
+        if texto:
+            status = plural(len(registros), "registro encontrado",
+                            "registros encontrados") + " no histórico"
+            if len(registros) >= LIMITE_BUSCA:
+                status += f" (os {LIMITE_BUSCA} mais recentes)"
+        else:
+            status = (f"{plural(len(registros), 'registro', 'registros')} hoje"
+                      f"  ·  {dentro} no campus  ·  duplo clique registra a saída")
+        self.lbl_status.config(text=status)
+        self.cabecalho.subtitulo.config(
+            text=data_por_extenso(self.app.relogio()) + "  ·  ")
+        self.lbl_no_campus.config(
+            text="Ninguém no campus agora" if not dentro else
+            plural(dentro, "pessoa", "pessoas") + " no campus agora")
 
     def _registro(self, iid):
-        """Registro da tabela pela linha selecionada (iid = id no banco)."""
-        return next(r for r in self.app.registros if r["id"] == int(iid))
+        """Registro da linha da tabela (iid = id no banco). Se a linha já
+        saiu do movimento (ex.: deu saída e a entrada foi ontem), relê."""
+        registro = self.mostrados.get(int(iid))
+        if registro is None:
+            ok, registro = self.app.tentar(self.app.banco.buscar, int(iid))
+        return registro
 
     def _esta_visivel(self):
-        # a aba fica dentro do Notebook de abas (self.aba.master)
+        # a página fica dentro do Notebook de páginas (self.aba.master)
         return self.aba.master.select() == str(self.aba)
 
     # --------------------------------------------------------------
-    # Cadastrar e limpar
+    # Registrar a entrada e limpar
     # --------------------------------------------------------------
     def cadastrar(self, event=None):
         if event is not None and not self._esta_visivel():
-            return  # Enter só cadastra na aba Cadastro
+            return  # Enter só registra na página Entrada e saída
         registro = normalizar(self.nome.get(), self.cpf.get(),
                               self.celular.get(), self.var_placa.get(),
                               self.tipo.get(), self.entrada.get(),
@@ -226,7 +335,13 @@ class AbaCadastro:
             self._registrar_recusa(registro)
             mensagens.erro("Acesso negado", msg)
             return
-        ok, msg = validar(registro, self.app.registros)
+        # a sobreposição é conferida com TODAS as visitas desse CPF no banco
+        # (a tabela só tem o movimento do dia)
+        ok, anteriores = self.app.tentar(self.app.banco.listar_por_cpf,
+                                         registro["cpf"])
+        if not ok:
+            return
+        ok, msg = validar(registro, anteriores)
         if not ok:
             mensagens.erro("Dados inválidos", msg)
             return
@@ -234,7 +349,9 @@ class AbaCadastro:
             return
         self.app.atualizar_tabela()
         self.limpar()
-        mensagens.info("Cadastro", "Registro cadastrado com sucesso!")
+        hora = registro["entrada"][-5:]
+        self.avisar(f"Entrada de {registro['nome'].split()[0]} registrada "
+                    f"às {hora}.")
 
     def _registrar_recusa(self, registro):
         detalhe = f"{registro['nome'] or '?'}, CPF {formatar_cpf(registro['cpf'])}"
@@ -256,13 +373,13 @@ class AbaCadastro:
         self.cpf.focus()
 
     def preencher_pessoa(self, pessoa):
-        """Começa uma nova entrada para a pessoa (usado pela aba Pessoas)."""
+        """Começa uma nova entrada para a pessoa (usado pela página Pessoas)."""
         self.limpar()
         self.var_cpf.set(pessoa["cpf"])
         self.tipo.focus()
 
     # --------------------------------------------------------------
-    # Preenchimento automático pelo CPF e alertas de bloqueio
+    # Preenchimento automático pelo CPF, faixa de situação e bloqueios
     # --------------------------------------------------------------
     def _campos_pessoa(self):
         return {"nome": self.nome, "celular": self.celular,
@@ -276,8 +393,8 @@ class AbaCadastro:
             campo.delete(0, tk.END)
             campo.insert(0, valor)
 
-    def _dica_pessoa(self, texto, cor=COR["texto_3"]):
-        self.lbl_pessoa.config(text=texto, fg=cor)
+    def _situacao(self, tipo, texto, acao=None, comando=None):
+        self.aviso_pessoa.mostrar(tipo, texto, acao=acao, comando=comando)
 
     def _ao_digitar_cpf(self, *args):
         """Ao completar o CPF, busca a pessoa e preenche os campos vazios."""
@@ -285,25 +402,71 @@ class AbaCadastro:
         if self._auto and self._auto["cpf"] != cpf:
             self._desfazer_preenchimento()
         if len(cpf) < 11:
-            self._dica_pessoa(DICA_CPF)
+            self._situacao("neutro", DICA_CPF)
+            self._mostrar_ficha(None)
             return
         if self._auto:
             return
         if not cpf_valido(cpf):
-            self._dica_pessoa("CPF inválido — confira os números.", COR["erro"])
+            self._situacao("erro", "CPF inválido: confira os números.")
             return
         ok, pessoa = self.app.tentar(self.app.banco.buscar_pessoa, cpf)
         if not ok:
             return
-        if pessoa is None:
-            self._dica_pessoa("Pessoa nova — preencha os dados abaixo.",
-                              COR["info"])
-        else:
+        if pessoa is not None:
             self._preencher_automatico(pessoa)
+        self._mostrar_situacao(cpf, pessoa)
+
+    def _mostrar_situacao(self, cpf, pessoa):
+        """Faixa e ficha conforme a pessoa: nova, já veio, no campus ou
+        bloqueada (o bloqueio tem a palavra final)."""
+        self._mostrar_ficha(pessoa)
+        if pessoa is None:
+            self._situacao("info", "Pessoa nova: preencha os dados abaixo.")
+        elif pessoa["dentro_desde"]:
+            self._situacao(
+                "alerta", f"{pessoa['nome'].split()[0]} está no campus desde "
+                          f"{self._quando(pessoa['dentro_desde'])}. "
+                          "Registre a saída antes.",
+                "Registrar saída", lambda: self._saida_de(cpf))
+        else:
+            self._situacao("sucesso", "Já cadastrado. Confira os dados e "
+                                      "registre a entrada.")
         bloqueio = self._bloqueio_ativo("cpf", cpf)
         if bloqueio:
-            self._dica_pessoa(f"CPF BLOQUEADO — {bloqueio['motivo']}. "
-                              "A entrada será recusada.", COR["erro"])
+            self._situacao("erro", f"CPF bloqueado: {bloqueio['motivo']}. "
+                                   "A entrada será recusada.",
+                           "Ver bloqueio",
+                           lambda: self.app.ir_para(self.app.aba_bloqueios))
+
+    def _quando(self, momento):
+        """'18:14' se foi hoje; senão a data e a hora."""
+        hoje = self.app.relogio().strftime("%d/%m/%Y")
+        return momento[-5:] if momento.startswith(hoje) else momento
+
+    def _mostrar_ficha(self, pessoa):
+        if pessoa is None:
+            self.lbl_visitas.config(text="—")
+            self.lbl_ultima.config(text="—")
+            self.chip_tipo.pack_forget()
+            return
+        self.lbl_visitas.config(text=str(pessoa["visitas"]))
+        self.lbl_ultima.config(text=(pessoa["ultima_visita"] or "—")[:5])
+        if pessoa["tipo"]:
+            self.lbl_ponto_tipo.config(fg=CORES_TIPO.get(pessoa["tipo"],
+                                                         COR["texto_2"]))
+            self.lbl_tipo.config(text=pessoa["tipo"])
+            self.chip_tipo.pack(anchor="w", pady=(px(12), 0))
+
+    def _saida_de(self, cpf):
+        """Link "Registrar saída" da faixa: dá saída na visita aberta."""
+        self.app.recarregar_registros()
+        abertos = [r for r in self.app.registros
+                   if r["cpf"] == cpf and not r["saida"]]
+        if abertos and self._dar_saida(abertos):
+            ok, pessoa = self.app.tentar(self.app.banco.buscar_pessoa, cpf)
+            if ok:
+                self._mostrar_situacao(cpf, pessoa)
 
     def _bloqueio_ativo(self, tipo, valor):
         ok, ativos = self.app.tentar(self.app.banco.listar_bloqueios)
@@ -311,17 +474,22 @@ class AbaCadastro:
                      if b["tipo"] == tipo and b["valor"] == valor), None)
 
     def _ao_digitar_placa(self, *args):
-        """Placa completa e bloqueada: troca a dica por um alerta vermelho."""
+        """Placa desenhada acompanha a digitação; bloqueada fica vermelha."""
         placa = self.var_placa.get().strip().upper()
         bloqueio = (self._bloqueio_ativo("placa", placa)
                     if placa_valida(placa) else None)
+        self.desenho_placa.mostrar(placa, bloqueada=bloqueio is not None)
         if bloqueio:
-            self.lbl_dica_placa.config(
-                text=f"PLACA BLOQUEADA — {bloqueio['motivo']}", fg=COR["erro"],
-                font=FONTE["dica_forte"])
+            self.lbl_dica_placa.config(text="bloqueada", fg=COR["erro"],
+                                       font=FONTE["rotulo"])
+            self.lbl_placa_status.config(
+                text=f"Placa bloqueada: {bloqueio['motivo']}")
+            self.lbl_placa_status.pack_configure(pady=(px(6), 0))
         else:
             self.lbl_dica_placa.config(text=DICA_PLACA, fg=COR["texto_3"],
                                        font=FONTE["dica"])
+            self.lbl_placa_status.config(text="")
+            self.lbl_placa_status.pack_configure(pady=0)
 
     def _preencher_automatico(self, pessoa):
         preenchidos = {}
@@ -330,15 +498,6 @@ class AbaCadastro:
                 self._escrever(campo, pessoa[chave])
                 preenchidos[chave] = campo.get()
         self._auto = {"cpf": pessoa["cpf"], "campos": preenchidos}
-        if pessoa["dentro_desde"]:
-            primeiro_nome = pessoa["nome"].split()[0]
-            self._dica_pessoa(f"⚠ {primeiro_nome} está no campus desde "
-                              f"{pessoa['dentro_desde']} — registre a saída antes.",
-                              COR["alerta"])
-        else:
-            self._dica_pessoa(f"✓ Já cadastrado: {pessoa['visitas']} visita(s), "
-                              f"última em {pessoa['ultima_visita'] or '—'}.",
-                              COR["sucesso"])
 
     def _desfazer_preenchimento(self):
         """CPF trocado: apaga o que foi preenchido sozinho e não foi mexido."""
@@ -376,7 +535,11 @@ class AbaCadastro:
         if not selecionado:
             mensagens.aviso("Atenção", "Selecione um registro na tabela.")
             return
-        if not mensagens.confirmar("Confirmar", "Excluir o registro selecionado?"):
+        if not mensagens.confirmar(
+                "Excluir registro",
+                plural(len(selecionado), "registro selecionado",
+                       "registros selecionados") + " será(ão) apagado(s).\n"
+                "A exclusão fica no histórico. Continuar?"):
             return
         self.app.gravar(self.app.banco.excluir, [int(i) for i in selecionado])
         self.app.atualizar_tabela()
@@ -399,7 +562,9 @@ class AbaCadastro:
         return "break"
 
     def registrar_saida_da_linha(self, linha):
-        self._dar_saida([self._registro(linha)])
+        registro = self._registro(linha)
+        if registro:
+            self._dar_saida([registro])
 
     def saida_rapida(self, event=None):
         """Campo Saída rápida: CPF ou placa exatos + Enter."""
@@ -407,6 +572,7 @@ class AbaCadastro:
         if not texto:
             mensagens.aviso("Saída rápida", "Digite o CPF ou a placa.")
             return "break"
+        self.app.recarregar_registros()        # outra estação pode ter mudado
         encontrados = encontrar_dentro(self.app.registros, texto)
         if not encontrados:
             mensagens.erro("Saída rápida",
@@ -441,13 +607,14 @@ class AbaCadastro:
                                momento.strftime(FORMATO)):
             return False
         self.app.atualizar_tabela()
-        primeiros = [r["nome"].split()[0] for r in prontos]
+        primeiros = [r["nome"].split()[0]
+                     for r in sorted(prontos, key=lambda r: r["id"])]
         nomes = primeiros[-1]
         if len(primeiros) > 1:
             nomes = ", ".join(primeiros[:-1]) + " e " + nomes
-        texto = f"✓ Saída de {nomes} registrada às {momento:%H:%M}."
+        texto = f"Saída de {nomes} registrada às {momento:%H:%M}."
         if recusas:
-            texto += f"  ({len(recusas)} já tinha(m) saída.)"
+            texto += f" ({len(recusas)} já tinha(m) saída.)"
         self.avisar(texto, desfazer=ids)
         return True
 
@@ -459,25 +626,29 @@ class AbaCadastro:
                                         autor=self.app.autor)
         if not ok:
             return
-        self.app.recarregar_registros()
         self.app.atualizar_tabela()
         if desfeitas < len(ids):
             mensagens.aviso("Desfazer", "Não foi possível desfazer a saída de "
                                         "quem já tem outra entrada depois desta.")
-        self.avisar("↺ Saída desfeita — a pessoa voltou a constar no campus."
-                    if desfeitas else "")
+        if desfeitas:
+            self.avisar("Saída desfeita: a pessoa voltou a constar no campus.",
+                        icone=ICONE["desfazer"])
+        else:
+            self.avisar("")
 
     # --------------------------------------------------------------
-    # Aviso que some sozinho (com o botão Desfazer, se for o caso)
+    # Aviso que some sozinho (com o Desfazer, se for o caso)
     # --------------------------------------------------------------
-    def avisar(self, texto, desfazer=None):
-        """Mensagem que some sozinha; com `desfazer`, mostra o botão Desfazer."""
+    def avisar(self, texto, desfazer=None, icone=None):
+        """Mensagem no rodapé do Movimento que some sozinha; com `desfazer`
+        (ids), mostra o link Desfazer."""
         if self._timer_aviso:
             self.aba.after_cancel(self._timer_aviso)
         self.lbl_aviso.config(text=texto)
+        self.lbl_aviso_icone.config(text=(icone or ICONE["ok"]) if texto else "")
         self._para_desfazer = desfazer
         if desfazer:
-            self.btn_desfazer.pack(side="left", padx=(8, 0))
+            self.btn_desfazer.pack(side="left", padx=(px(10), 0))
         else:
             self.btn_desfazer.pack_forget()
         self._timer_aviso = self.aba.after(SEGUNDOS_PARA_DESFAZER * 1000,
@@ -487,4 +658,5 @@ class AbaCadastro:
         self._timer_aviso = None
         self._para_desfazer = None
         self.lbl_aviso.config(text="")
+        self.lbl_aviso_icone.config(text="")
         self.btn_desfazer.pack_forget()

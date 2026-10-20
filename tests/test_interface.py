@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from unittest import mock
 
 from portaria import dados
+from portaria.componentes import Botao
 from portaria.interface import AppPortaria
 from portaria.usuarios import (LIMITE_TENTATIVAS, MINUTOS_INATIVIDADE,
                                autenticar, gerar_hash)
@@ -22,6 +23,13 @@ VISITA_ANTIGA = {"nome": "Beto Rocha", "cpf": "11144477735",
 
 def ha_uma_hora():
     return (datetime.now() - timedelta(hours=1)).strftime(FORMATO)
+
+
+def agora_menos(minutos):
+    """Momento de hoje (não vira ontem perto da meia-noite)."""
+    momento = max(datetime.now() - timedelta(minutes=minutos),
+                  datetime.now().replace(hour=0, minute=0))
+    return momento.strftime(FORMATO)
 
 
 def criar_usuario(banco, nome, login, perfil, senha):
@@ -108,6 +116,21 @@ class BaseInterface(unittest.TestCase):
         self.app.cadastrar()
         return self.app.tabela.get_children()[0]
 
+    def botoes(self, widget):
+        """Textos de todos os botões desenhados (Botao) dentro de `widget`."""
+        achados = []
+        for filho in widget.winfo_children():
+            if isinstance(filho, Botao):
+                achados.append(filho.cget("text"))
+            achados.extend(self.botoes(filho))
+        return achados
+
+    def buscar(self, texto):
+        """Digita na busca do Movimento (procura no histórico inteiro)."""
+        self.app.busca.delete(0, tk.END)
+        self.app.busca.insert(0, texto)
+        self.app.tela_cadastro.atualizar_tabela()
+
     def textos(self, widget):
         """Texto de todos os widgets dentro de `widget` que têm a opção text."""
         textos = []
@@ -122,8 +145,9 @@ class TestCadastroComoAdmin(BaseInterface):
     def test_cadastrar_salva_no_banco_e_limpa_o_formulario(self):
         self.preencher(placa="abc1d23")
         self.app.cadastrar()
-        self.msg.showinfo.assert_called_with("Cadastro",
-                                             "Registro cadastrado com sucesso!")
+        # sem caixinha para fechar: o aviso aparece no rodapé do Movimento
+        self.msg.showinfo.assert_not_called()
+        self.assertIn("Entrada de Ana registrada", self.app.lbl_aviso.cget("text"))
         salvos = self.no_banco()
         self.assertEqual(len(salvos), 1)
         self.assertEqual(salvos[0]["placa"], "ABC1D23")
@@ -142,7 +166,8 @@ class TestCadastroComoAdmin(BaseInterface):
         self.app.tabela.selection_set(linha)
         self.app.registrar_saida()
         self.assertIsNotNone(converter_data(self.no_banco()[0]["saida"]))
-        self.assertNotEqual(self.app.tabela.item(linha)["values"][-1], "— dentro —")
+        self.assertEqual(self.app.tabela.item(linha)["text"], "Saiu")
+        self.assertNotEqual(self.app.tabela.item(linha)["values"][-1], "—")
 
         self.app.tabela.selection_set(linha)
         self.app.excluir_selecionado()
@@ -155,6 +180,7 @@ class TestCadastroComoAdmin(BaseInterface):
 
     def test_admin_ve_botao_excluir_e_aba_usuarios(self):
         self.assertIsNotNone(self.app.btn_excluir)
+        self.assertIn("Excluir", self.botoes(self.app.aba_cad))
         self.assertIsNotNone(self.app.aba_usuarios)
         self.assertEqual(self.app.lbl_usuario.cget("text"), "Ana Admin")
         self.assertEqual(self.app.lbl_perfil.cget("text"), "Administrador")
@@ -179,6 +205,69 @@ class TestCadastroComoAdmin(BaseInterface):
                 self.assertEqual(self.no_banco(), [])
         self.msg.showerror.assert_not_called()
         self.msg.showinfo.assert_not_called()
+
+
+class TestMovimento(BaseInterface):
+    """A tabela mostra o dia (hoje + quem está no campus); a busca vai ao
+    histórico inteiro."""
+    entrar_como = "porteiro"
+
+    def setUp(self):
+        super().setUp()
+        self.antiga = self.banco.inserir(dict(VISITA_ANTIGA))         # já saiu
+        self.aberta = self.banco.inserir(dict(                           # dias dentro
+            VISITA_ANTIGA, nome="Duda Reis", cpf="39053344705",
+            entrada="15/10/2026 08:00", saida=""))
+        self.hoje = self.banco.inserir({
+            "nome": "Ana Silva", "cpf": "52998224725", "celular": "31987654321",
+            "placa": "", "tipo": "Visitante", "entrada": agora_menos(minutos=2),
+            "saida": agora_menos(minutos=1)})
+        self.app.atualizar_tabela()
+
+    def linhas(self):
+        return set(self.app.tabela.get_children())
+
+    def test_tabela_tem_so_o_movimento_do_dia(self):
+        self.assertEqual(self.linhas(), {str(self.aberta), str(self.hoje)})
+        self.assertIn("2 registros hoje", self.app.lbl_status.cget("text"))
+
+    def test_busca_acha_registro_antigo(self):
+        self.buscar("beto")
+        self.assertEqual(self.linhas(), {str(self.antiga)})
+        self.assertIn("1 registro encontrado", self.app.lbl_status.cget("text"))
+        self.buscar("")
+        self.assertEqual(self.linhas(), {str(self.aberta), str(self.hoje)})
+
+    def test_validar_confere_sobreposicao_com_visita_fora_da_tabela(self):
+        # a visita antiga (15/10 07:00-12:00) não está na tabela, mas conta
+        self.preencher(nome="Beto Rocha", cpf="11144477735")
+        for campo, valor in [(self.app.entrada, "15/10/2026 08:00"),
+                             (self.app.saida, "15/10/2026 09:00")]:
+            campo.delete(0, tk.END)
+            campo.insert(0, valor)
+        self.app.cadastrar()
+        self.assertIn("já tem um registro nesse período",
+                      self.msg.showerror.call_args[0][1])
+        self.assertEqual(len(self.no_banco()), 3)
+
+    def test_porteiro_ve_o_cpf_mascarado(self):  # privacidade
+        cpf = self.app.tabela.item(str(self.hoje))["values"][1]
+        self.assertEqual(cpf, "***.982.247-**")
+
+    def test_no_formulario_o_cpf_digitado_continua_visivel(self):
+        self.app.cpf.insert(0, "52998224725")
+        self.assertEqual(self.app.cpf.get(), "52998224725")
+
+
+class TestMovimentoAdmin(BaseInterface):
+    def test_admin_ve_o_cpf_completo(self):
+        self.banco.inserir({"nome": "Ana Silva", "cpf": "52998224725",
+                            "celular": "31987654321", "placa": "",
+                            "tipo": "Visitante", "entrada": ha_uma_hora(),
+                            "saida": ""})
+        self.app.atualizar_tabela()
+        linha = self.app.tabela.get_children()[0]
+        self.assertEqual(self.app.tabela.item(linha)["values"][1], "529.982.247-25")
 
 
 class TestDashboard(BaseInterface):
@@ -227,6 +316,9 @@ class TestPorteiro(BaseInterface):
 
     def test_porteiro_nao_ve_botao_excluir_nem_aba_usuarios(self):  # RN02
         self.assertIsNone(self.app.btn_excluir)
+        botoes = self.botoes(self.app.aba_cad)     # os botões são desenhados
+        self.assertIn("Corrigir", botoes)          # (a busca enxerga Botao)
+        self.assertNotIn("Excluir", botoes)
         self.assertIsNone(self.app.aba_usuarios)
         self.assertIsNone(self.app.tela_usuarios)
 
@@ -539,7 +631,13 @@ class TestPreenchimentoAutomatico(BaseInterface):
         self.digitar_cpf("11144477735")
         self.assertEqual(self.campos(),
                          ("Beto Rocha", "31933334444", "QWE1234", "Professor"))
-        self.assertIn("Já cadastrado: 1 visita(s)", self.dica())
+        self.assertIn("Já cadastrado", self.dica())
+        cad = self.app.tela_cadastro              # ficha ao lado do formulário
+        self.assertEqual(cad.lbl_visitas.cget("text"), "1")
+        self.assertEqual(cad.lbl_ultima.cget("text"), "15/10")
+        self.assertEqual(cad.lbl_tipo.cget("text"), "Professor")
+        self.assertEqual(cad.desenho_placa.texto, "QWE1234")
+        self.assertEqual(cad.aviso_pessoa.tipo, "sucesso")
 
     def test_basta_o_cpf_para_cadastrar_a_entrada(self):
         self.digitar_cpf("11144477735")
@@ -573,6 +671,16 @@ class TestPreenchimentoAutomatico(BaseInterface):
         self.banco.inserir(dict(VISITA_ANTIGA, entrada=ha_uma_hora(), saida=""))
         self.digitar_cpf("11144477735")
         self.assertIn("está no campus desde", self.dica())
+        self.assertEqual(self.app.tela_cadastro.aviso_pessoa.tipo, "alerta")
+
+    def test_link_da_faixa_registra_a_saida(self):
+        self.banco.inserir(dict(VISITA_ANTIGA, entrada=ha_uma_hora(), saida=""))
+        self.digitar_cpf("11144477735")
+        aviso = self.app.tela_cadastro.aviso_pessoa
+        self.assertEqual(aviso.acao.cget("text"), "Registrar saída")
+        self.app.tela_cadastro._saida_de("11144477735")    # clique no link
+        self.assertTrue(all(r["saida"] for r in self.no_banco()))
+        self.assertIn("Já cadastrado", self.dica())       # pode entrar de novo
 
     def test_limpar_volta_ao_inicio(self):
         self.digitar_cpf("11144477735")
@@ -750,8 +858,8 @@ class TestSaidaRapida(BaseInterface):
         self.assertIn("Saída desfeita", self.aviso())
         self.assertFalse(self.desfazer_visivel())
         self.assertIn(("paulo", "Saída desfeita"), self.acoes())
-        linha = self.app.tabela.item(str(self.ids["Beto"]))["values"]
-        self.assertEqual(linha[-1], "— dentro —")
+        linha = self.app.tabela.item(str(self.ids["Beto"]))
+        self.assertEqual((linha["text"], linha["values"][-1]), ("No campus", "—"))
 
     def test_f2_vai_para_a_saida_rapida(self):
         self.assertTrue(self.janela.bind("<F2>"))
@@ -770,6 +878,8 @@ class CasosCorrigir:
         self.app.atualizar_tabela()
 
     def abrir(self, id_):
+        if not self.app.tabela.exists(str(id_)):
+            self.buscar("Ana Silva")     # registro antigo: só aparece buscando
         self.app.tabela.selection_set(str(id_))
         self.app.editar_selecionado()
         janela = getattr(self.app, "janela_edicao", None)
@@ -835,6 +945,7 @@ class CasosCorrigir:
         self.assertEqual(self.banco.buscar(self.hoje)["cpf"], "11144477735")
 
     def test_selecionar_varios_avisa(self):
+        self.buscar("Professor")          # os dois aparecem na busca
         self.app.tabela.selection_set([str(self.hoje), str(self.antigo)])
         self.app.editar_selecionado()
         self.assertIn("um registro só", self.msg.showwarning.call_args[0][1])
@@ -879,15 +990,20 @@ class TestBloqueioNoCadastro(BaseInterface):
     def test_alerta_ao_digitar_cpf_bloqueado(self):
         self.app.cpf.insert(0, "11144477735")
         dica = self.app.lbl_pessoa.cget("text")
-        self.assertIn("CPF BLOQUEADO — Ameaçou um aluno", dica)
+        self.assertIn("CPF bloqueado: Ameaçou um aluno", dica)
+        self.assertEqual(self.app.tela_cadastro.aviso_pessoa.tipo, "erro")
         self.assertEqual(self.app.nome.get(), "Beto Rocha")   # ainda preenche
 
     def test_alerta_ao_digitar_placa_bloqueada(self):
         self.app.var_placa.set("xyz9a87")
-        self.assertIn("PLACA BLOQUEADA — Veículo furtado",
-                      self.app.lbl_dica_placa.cget("text"))
+        self.assertEqual(self.app.lbl_dica_placa.cget("text"), "bloqueada")
+        self.assertIn("Placa bloqueada: Veículo furtado",
+                      self.app.lbl_placa_status.cget("text"))
+        self.assertTrue(self.app.tela_cadastro.desenho_placa.bloqueada)
         self.app.var_placa.set("XYZ9A8")                       # apagou um
-        self.assertIn("ABC1234 ou ABC1D23", self.app.lbl_dica_placa.cget("text"))
+        self.assertEqual(self.app.lbl_dica_placa.cget("text"), "opcional")
+        self.assertEqual(self.app.lbl_placa_status.cget("text"), "")
+        self.assertFalse(self.app.tela_cadastro.desenho_placa.bloqueada)
 
     def test_cadastro_de_cpf_bloqueado_e_recusado_e_registrado(self):  # RN12
         self.app.cpf.insert(0, "11144477735")

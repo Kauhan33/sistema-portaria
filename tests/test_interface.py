@@ -529,6 +529,22 @@ class TestSessao(BaseInterface):
         self.assertEqual(self.app.itens_menu[str(self.app.aba_bloqueios)].contador,
                          "1")
 
+    def test_paginas_montadas_na_primeira_visita(self):
+        def montadas():
+            return {n for n in ("tela_pessoas", "tela_bloqueios", "tela_dashboard")
+                    if n in vars(self.app)}
+
+        self.assertEqual(montadas(), set())         # só a Entrada e saída
+        self.app.ir_para(self.app.aba_pessoas)
+        self.assertEqual(montadas(), {"tela_pessoas"})
+        self.assertEqual(len(self.app.aba_pessoas.winfo_children()), 2)
+        self.app.ir_para(self.app.aba_cad)
+        self.app.ir_para(self.app.aba_pessoas)      # não monta de novo
+        self.assertEqual(len(self.app.aba_pessoas.winfo_children()), 2)
+        self.app.sair()
+        self.app.entrar(self.porteiro)              # nova sessão: começa do zero
+        self.assertEqual(montadas(), set())
+
     def test_f2_de_outra_pagina_volta_para_a_entrada_e_saida(self):
         self.app.ir_para(self.app.aba_dash)
         self.app.ir_para_saida_rapida()

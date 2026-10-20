@@ -356,3 +356,39 @@ Pasta completa: `depois/`
 - **ui-ux-pro-max**: confirmou o padrão "painel administrativo denso em dados", com os pontos de contraste mínimo de 4,5:1, rótulos visíveis nos campos, feedback de envio, foco visível e nada de emoji como ícone. A paleta azul/laranja e as fontes Fira sugeridas foram **descartadas**: não existem no Windows sem instalação e a marca aqui é o vermelho UNA.
 - **frontend-design**: guiou a escolha de um único elemento marcante (a placa e o relógio do login), o vermelho só como identidade, a escrita direta ("Registrar entrada", "Limpar formulário", "Esqueceu a senha? Peça ao administrador…") e a ausência de CAIXA ALTA e de rótulos decorativos.
 - **ui-design-system**: a estrutura de tokens (cores, tipo, espaço, raios) segue a skill, mas o script `design_token_generator.py` dela tem erro de sintaxe (linha 64) e não rodou. Os tokens foram montados à mão e o contraste foi verificado com `...\designer\contraste.py`.
+
+---
+
+## 9. Implementação (Onda 2)
+
+O sistema real foi redesenhado com este sistema de design. Prints do app de
+verdade (banco temporário com dados de exemplo, escala 125%, relógio fixo em
+19:14): `docs/design/final/`.
+
+| Tela | Print |
+|---|---|
+| Login e primeiro acesso | `final/login.png`, `final/primeiro_acesso.png` |
+| Entrada e saída: já cadastrado, no campus, bloqueado, pessoa nova | `final/cadastro_ok.png`, `final/cadastro_campus.png`, `final/cadastro_bloqueado.png`, `final/cadastro_novo.png` |
+| Entrada e saída vista pelo porteiro (CPF mascarado, sem Excluir) | `final/cadastro_porteiro.png` |
+| Pessoas (ficha comum e bloqueada) | `final/pessoas.png`, `final/pessoas_bloqueada.png` |
+| Bloqueios (administrador e porteiro) | `final/bloqueios_admin.png`, `final/bloqueios_porteiro.png` |
+| Painel | `final/painel.png` |
+| Usuários | `final/usuarios.png` |
+| Diálogos: Corrigir, Trocar senha, Novo usuário, Exportar CSV | `final/corrigir.png`, `final/trocar_senha.png`, `final/novo_usuario.png`, `final/exportar_csv.png` |
+
+Diferenças conscientes em relação ao protótipo:
+
+- A tabela Movimento mostra o dia (entradas de hoje + quem está no campus); a
+  busca procura no histórico inteiro. A coluna Saída mostra "—" para quem está
+  dentro (antes "— dentro —"); a situação fica na 1ª coluna.
+- A placa bloqueada aparece na própria placa desenhada (borda e letras
+  vermelhas) e numa linha abaixo dela; o apoio ao lado do rótulo "Placa" vira
+  "bloqueada".
+- Mensagens de bloqueio em caixa normal ("CPF bloqueado: motivo").
+- Registrar entrada mostra o aviso no rodapé do Movimento em vez de uma caixa.
+- Menu do usuário (Trocar minha senha, Sair) no botão "⋯" do rodapé da barra.
+- Painel: o total de registros foi para o subtítulo; o gráfico de 7 dias não
+  tem números no eixo (o valor fica em cima de cada barra).
+- Janela Corrigir em 3 colunas para caber num notebook 1366×768 a 125%.
+- `depois/cadastro_ok.png` era, por engano, a captura de outra janela; foi
+  refeito a partir do protótipo aprovado (`prototipo.py cadastro --estado ok`).

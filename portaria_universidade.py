@@ -2,31 +2,36 @@
 Portaria da Universidade - Controle de entrada e saída
 UC – Teoria da Computação e Compiladores | Faculdade UNA
 
-Apenas bibliotecas padrão do Python (tkinter, sqlite3, datetime, json, os, re).
+Apenas bibliotecas padrão do Python (tkinter, sqlite3, ctypes, csv, logging...).
 Os registros são salvos automaticamente no banco SQLite 'portaria.db'.
 Se existir o 'registros_portaria.json' da versão 1, ele é importado para o
 banco na primeira execução e renomeado para '.migrado' (fica de backup).
+Ao abrir: backup do dia na pasta 'backups' e erros técnicos em 'portaria.log'.
 
-Atalho: pressione ENTER para cadastrar (na aba Cadastro).
-A aba Dashboard mostra estatísticas dos dados coletados.
+Atalhos: ENTER registra a entrada (página Entrada e saída); F2 leva à
+saída rápida de qualquer página.
 
 Organização do código (pasta portaria/):
     validacao.py       regras de CPF, celular, placa, nome, datas e as
                        verificações semânticas
     dados.py           banco de dados SQLite e migração do JSON antigo
-    consultas.py       busca na tabela e números do dashboard
-    usuarios.py        senhas (hash), perfis, permissões e bloqueio de login
-    estilo.py          cores e fontes com nome (tokens) e o tema ttk
-    componentes.py     peças de tela: campos, tabelas, botões, cartões
-    mensagens.py       caixas de mensagem (erro, aviso, confirmação)
-    interface.py       janela principal, sessão, abas e o contrato do app
+    consultas.py       busca e números do Painel (versão em Python)
+    usuarios.py        senhas (hash), perfis, permissões, login e troca de senha
+    backup.py          backup do banco e exportação para CSV
+    estilo.py          tokens do design "Guarita": cores, fontes, ícones,
+                       medidas, escala da tela (DPI) e estilos ttk
+    componentes.py     peças de tela desenhadas: cartão, botões, campo,
+                       faixa de aviso, placa Mercosul, tabela, diálogo
+    mensagens.py       caixas de mensagem e "Salvar como"
+    interface.py       janela, barra lateral, sessão e o contrato do app
     tela_login.py      login e primeiro acesso
-    tela_cadastro.py   aba Cadastro (entrada, saída, busca e tabela)
-    tela_pessoas.py    aba Pessoas
-    tela_bloqueios.py  aba Bloqueios (lista de CPFs e placas barrados)
-    tela_dashboard.py  aba Dashboard; graficos.py desenha as barras
-    tela_usuarios.py   aba Usuários (só administrador)
+    tela_cadastro.py   Entrada e saída (formulário, saída rápida, Movimento)
+    tela_pessoas.py    Pessoas (lista e ficha)
+    tela_bloqueios.py  Bloqueios (CPFs e placas barrados)
+    tela_dashboard.py  Painel e exportação; graficos.py desenha as barras
+    tela_usuarios.py   Usuários (só administrador)
     tela_edicao.py     janela "Corrigir registro"
+    tela_senha.py      janela "Trocar minha senha"
 Testes automatizados: python -m unittest
 """
 

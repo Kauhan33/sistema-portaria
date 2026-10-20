@@ -33,6 +33,8 @@ CONTRATO DO APP — o que as telas podem usar da AppPortaria:
 Nenhuma tela mexe em atributo com "_" do app.
 
 Convenção das páginas: class AbaX com __init__(self, aba, app) e atualizar().
+A Entrada e saída é montada no login; as outras páginas na primeira vez que
+são abertas ou usadas (app.tela_pessoas etc. — ver PAGINAS_SOB_DEMANDA).
 """
 
 import tkinter as tk
@@ -72,6 +74,17 @@ NOMES_DO_CADASTRO = {
 }
 
 
+# Páginas montadas só na primeira vez que são abertas (ou usadas): o login
+# fica rápido e a janela só tem os widgets de que alguém precisou.
+# nome do atributo -> (página onde ela mora, classe)
+PAGINAS_SOB_DEMANDA = {
+    "tela_pessoas": ("aba_pessoas", AbaPessoas),
+    "tela_bloqueios": ("aba_bloqueios", AbaBloqueios),
+    "tela_dashboard": ("aba_dash", AbaDashboard),
+    "tela_usuarios": ("aba_usuarios", AbaUsuarios),
+}
+
+
 def ajustar_ao_monitor(janela):
     """Tela pequena (ex.: notebook 1366x768 a 125%): abre maximizada."""
     if (janela.winfo_screenwidth() < px(1200)
@@ -99,7 +112,7 @@ class AppPortaria:
         self.usuario = None                       # quem está logado
         self.corpo = None                         # login ou páginas
         self.registros = []                       # movimento mostrado na tela
-        self.tela_cadastro = self.tela_dashboard = None
+        self.tela_cadastro = None                 # as outras: sob demanda
         self.janela_senha = None
         self.itens_menu = {}
         self.avisos_admin = []      # migração do banco e backup: só o admin vê
@@ -120,6 +133,9 @@ class AppPortaria:
     def __getattr__(self, nome):
         # Só é chamado quando o app não tem o atributo: app.cpf, app.cadastrar
         # etc. são repassados para a Entrada e saída (ver NOMES_DO_CADASTRO).
+        # app.tela_pessoas etc. ainda não montadas são montadas agora.
+        if nome in PAGINAS_SOB_DEMANDA and "abas" in self.__dict__:
+            return self._montar_pagina(nome)
         cadastro = self.__dict__.get("tela_cadastro")
         if cadastro is not None and nome in NOMES_DO_CADASTRO:
             return getattr(cadastro, nome)
@@ -128,7 +144,7 @@ class AppPortaria:
     @property
     def cards(self):
         """Números do Painel: chave -> (rótulo do valor, rótulo de apoio)."""
-        return self.tela_dashboard.cards if self.tela_dashboard else {}
+        return self.tela_dashboard.cards if self.usuario else {}
 
     # --------------------------------------------------------------
     # Banco de dados (parte do contrato usado pelas telas)
@@ -204,7 +220,8 @@ class AppPortaria:
         """Os registros mudaram: relê e redesenha o que depende deles."""
         self.recarregar_registros()
         self.tela_cadastro.atualizar_tabela()
-        self.tela_dashboard.atualizar()
+        if "tela_dashboard" in self.__dict__:       # só se já foi montado
+            self.tela_dashboard.atualizar()
         self.atualizar_contadores()
 
     def atualizar_contadores(self):
@@ -293,6 +310,15 @@ class AppPortaria:
             return True
         return False
 
+    def _ao_fechar(self, event):
+        """Janela fechada: para de vigiar a inatividade."""
+        if event.widget is self.janela and self._timer_inatividade:
+            try:
+                self.janela.after_cancel(self._timer_inatividade)
+            except tk.TclError:
+                pass
+            self._timer_inatividade = None
+
     def _vigiar_inatividade(self):
         self._timer_inatividade = None
         if not self.conferir_inatividade() and self.usuario:
@@ -314,6 +340,7 @@ class AppPortaria:
         # qualquer tecla ou mouse dentro da janela conta como uso
         for evento in EVENTOS_DE_USO:
             janela.bind(evento, self.registrar_uso, add="+")
+        janela.bind("<Destroy>", self._ao_fechar, add="+")
         self._montar_lateral()
 
     def _montar_lateral(self):
@@ -401,23 +428,19 @@ class AppPortaria:
         self.aba_pessoas = self._nova_pagina("Pessoas", "pessoas")
         self.aba_bloqueios = self._nova_pagina("Bloqueios", "bloqueio")
         self.aba_dash = self._nova_pagina("Painel", "painel")
-        self.aba_usuarios = self.tela_usuarios = None
-        self.tela_cadastro = AbaCadastro(self.aba_cad, self)
-        self.tela_dashboard = AbaDashboard(self.aba_dash, self)
-        self.tela_pessoas = AbaPessoas(self.aba_pessoas, self)
-        self.tela_bloqueios = AbaBloqueios(self.aba_bloqueios, self)
+        self.aba_usuarios = None
         if pode_gerenciar_usuarios(self.usuario):
             self.aba_usuarios = self._nova_pagina("Usuários", "usuarios")
-            self.tela_usuarios = AbaUsuarios(self.aba_usuarios, self)
+        for nome in PAGINAS_SOB_DEMANDA:       # as da sessão anterior saem
+            self.__dict__.pop(nome, None)
+        # a Entrada e saída é a página inicial: montada já
+        self.tela_cadastro = AbaCadastro(self.aba_cad, self)
 
-        # abrir uma destas páginas relê os dados dela
-        self._telas_que_recarregam = {
-            str(aba): tela for aba, tela in [
-                (self.aba_cad, self.tela_cadastro),
-                (self.aba_pessoas, self.tela_pessoas),
-                (self.aba_bloqueios, self.tela_bloqueios),
-                (self.aba_dash, self.tela_dashboard),
-                (self.aba_usuarios, self.tela_usuarios)] if aba is not None}
+        # página -> nome da tela (abrir a página monta ou relê a tela)
+        self._paginas = {str(getattr(self, aba)): nome for nome, (aba, _)
+                         in PAGINAS_SOB_DEMANDA.items()
+                         if getattr(self, aba) is not None}
+        self._paginas[str(self.aba_cad)] = "tela_cadastro"
 
         # Enter registra a entrada (só na Entrada e saída; a busca ignora)
         self.janela.bind("<Return>", self.tela_cadastro.cadastrar)
@@ -427,6 +450,14 @@ class AppPortaria:
         self.tela_cadastro.limpar()
         self.atualizar_tabela()
         self.ao_trocar_aba()
+
+    def _montar_pagina(self, nome):
+        """Monta a página na primeira vez (a montagem já lê os dados)."""
+        nome_aba, classe = PAGINAS_SOB_DEMANDA[nome]
+        aba = self.__dict__.get(nome_aba)
+        tela = classe(aba, self) if aba is not None else None   # Usuários: só admin
+        setattr(self, nome, tela)
+        return tela
 
     def ir_para(self, aba):
         """Mostra a página e acende o item do menu (e relê os dados dela)."""
@@ -444,6 +475,8 @@ class AppPortaria:
         atual = self.abas.select()
         for aba, item in self.itens_menu.items():
             item.definir_ativo(aba == atual)
-        tela = self._telas_que_recarregam.get(atual)
-        if tela is not None:
-            tela.atualizar()
+        nome = self._paginas.get(atual)
+        if nome in self.__dict__:
+            self.__dict__[nome].atualizar()        # já montada: relê
+        elif nome is not None:
+            getattr(self, nome)                    # monta (e lê) agora

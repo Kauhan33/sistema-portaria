@@ -386,7 +386,7 @@ Diferenças conscientes em relação ao protótipo:
   "bloqueada".
 - Mensagens de bloqueio em caixa normal ("CPF bloqueado: motivo").
 - Registrar entrada mostra o aviso no rodapé do Movimento em vez de uma caixa.
-- Menu do usuário (Trocar minha senha, Sair) no botão "⋯" do rodapé da barra.
+- Menu do usuário (Trocar minha senha, Sair) no botão de mais opções (três pontos) do rodapé da barra.
 - Painel: o total de registros foi para o subtítulo; o gráfico de 7 dias não
   tem números no eixo (o valor fica em cima de cada barra).
 - Janela Corrigir em 3 colunas para caber num notebook 1366×768 a 125%.

@@ -550,8 +550,18 @@ def agora_menos(**delta):
     return (datetime.now() - timedelta(**delta)).strftime(FORMATO)
 
 
+def rebaixar_para_v6(caminho):
+    """Deixa um banco como a versão 6 deixava (sem o que a v7 criou)."""
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        DROP INDEX idx_registros_saida;
+        PRAGMA user_version = 6;""")
+    con.close()
+
+
 def rebaixar_para_v5(caminho):
-    """Deixa um banco como a versão 5 deixava (sem o que a v6 criou)."""
+    """Deixa um banco como a versão 5 deixava (sem o que a v6 e a v7 criaram)."""
+    rebaixar_para_v6(caminho)
     con = sqlite3.connect(caminho)
     con.executescript("""
         DROP INDEX idx_um_aberto_por_cpf;
@@ -683,13 +693,13 @@ class TestMigracaoV6(unittest.TestCase):
         dados.Banco(self.caminho).inserir(registro())
         rebaixar_para_v5(self.caminho)
         banco = dados.Banco(self.caminho)
-        self.assertEqual(versao_do_arquivo(self.caminho), 6)
+        self.assertEqual(versao_do_arquivo(self.caminho), dados.VERSAO_ESQUEMA)
         self.assertLessEqual({"idx_um_aberto_por_cpf", "idx_registros_entrada",
                               "idx_auditoria_momento", "tentativas_login"},
                              objetos_do_banco(self.caminho))
         backups = os.listdir(os.path.join(self.pasta.name, "backups"))
         self.assertEqual(len(backups), 1)
-        self.assertIn("antes-v6-de-v5", backups[0])
+        self.assertIn(f"antes-v{dados.VERSAO_ESQUEMA}-de-v5", backups[0])
         self.assertEqual(len(banco.listar()), 1)
         self.assertEqual(banco.avisos, [])
 
@@ -723,7 +733,7 @@ class TestMigracaoV6(unittest.TestCase):
         self.assertNotIn("idx_um_aberto_por_cpf", objetos)
         self.assertNotIn("tentativas_login", objetos)
         dados.Banco(self.caminho)                   # na próxima vez, migra
-        self.assertEqual(versao_do_arquivo(self.caminho), 6)
+        self.assertEqual(versao_do_arquivo(self.caminho), dados.VERSAO_ESQUEMA)
 
     def test_banco_com_visitas_abertas_duplicadas_abre_e_corrige(self):
         dados.Banco(self.caminho)
@@ -752,6 +762,27 @@ class TestMigracaoV6(unittest.TestCase):
         self.assertEqual(len(eventos), 2)
         self.assertEqual(eventos[0]["usuario"], dados.AUTOR_SISTEMA)
         self.assertIn("idx_um_aberto_por_cpf", objetos_do_banco(self.caminho))
+
+
+class TestMigracaoV7(unittest.TestCase):
+    def setUp(self):
+        self.pasta = tempfile.TemporaryDirectory()
+        self.caminho = os.path.join(self.pasta.name, "portaria.db")
+
+    def tearDown(self):
+        self.pasta.cleanup()
+
+    def test_v6_vira_v7_com_indice_das_saidas_e_backup_antes(self):
+        dados.Banco(self.caminho).inserir(registro())
+        rebaixar_para_v6(self.caminho)
+        self.assertNotIn("idx_registros_saida", objetos_do_banco(self.caminho))
+        banco = dados.Banco(self.caminho)
+        self.assertEqual(versao_do_arquivo(self.caminho), 7)
+        self.assertIn("idx_registros_saida", objetos_do_banco(self.caminho))
+        backups = os.listdir(os.path.join(self.pasta.name, "backups"))
+        self.assertEqual(len(backups), 1)
+        self.assertIn("antes-v7-de-v6", backups[0])
+        self.assertEqual(len(banco.listar()), 1)
 
 
 class TestConsultasNoBanco(BaseTemp):
@@ -790,6 +821,29 @@ class TestConsultasNoBanco(BaseTemp):
             ("JOSÉ ÉRICO", "16/10/2026 09:00"),
             ("Fábio Melo", "16/10/2026 00:00"),
             ("Beto Rocha", "14/10/2026 22:00")])
+
+    def test_movimento_inclui_quem_saiu_hoje_com_entrada_em_outro_dia(self):
+        # bug: entrada de outro dia (ex.: corrigida para fevereiro) e saída
+        # registrada hoje sumia do Movimento (só aparecia na busca)
+        id_ = self.banco.inserir(registro(
+            nome="Gil Prestes", cpf="12345678909", tipo="Prestador de serviço",
+            entrada="15/10/2026 22:00", saida="16/10/2026 06:00"))
+        self.banco.inserir(registro(
+            nome="Hugo Neves", cpf="98765432100", entrada="15/10/2026 07:00",
+            saida="17/10/2026 06:00"))                  # saiu amanhã: não
+        movimento = self.banco.listar_movimento(self.HOJE)
+        self.assertEqual([r["id"] for r in movimento].count(id_), 1)
+        self.assertNotIn("Hugo Neves", [r["nome"] for r in movimento])
+
+    def test_movimento_usa_indice_em_todas_as_partes(self):
+        con = sqlite3.connect(self.caminho_db)
+        plano = " ".join(str(linha[3]) for linha in con.execute(
+            "EXPLAIN QUERY PLAN SELECT id FROM registros "
+            "WHERE saida >= '2026-10-16 00:00' AND saida < '2026-10-17 00:00' "
+            "AND +entrada < '2026-10-16 00:00'"))
+        con.close()
+        self.assertIn("idx_registros_saida", plano)
+        self.assertNotIn("SCAN registros", plano)
 
     def test_buscar_registros_igual_ao_filtrar(self):
         todos = self.banco.listar()

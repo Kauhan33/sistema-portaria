@@ -43,7 +43,8 @@ FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
 # 5: + bloqueios (lista de CPFs e placas com acesso negado)
 # 6: uma visita aberta por CPF garantida no banco, índices de desempenho
 #    e tentativas de login guardadas no banco
-VERSAO_ESQUEMA = 6
+# 7: índice das saídas (o Movimento mostra também quem saiu hoje)
+VERSAO_ESQUEMA = 7
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
 
@@ -379,8 +380,19 @@ def _passo_v6(banco, con, versao):
     con.execute("ANALYZE")
 
 
+def _passo_v7(banco, con, versao):
+    """
+    Índice das saídas: o Movimento passa a mostrar também quem SAIU hoje
+    (ex.: entrada corrigida para outro dia e saída registrada agora), sem
+    varrer a tabela inteira.
+    """
+    con.execute("CREATE INDEX IF NOT EXISTS idx_registros_saida "
+                "ON registros (saida)")
+    con.execute("ANALYZE")
+
+
 # (versão alcançada, função) em ordem; uma migração nova entra no fim
-MIGRACOES = [(5, _passo_v5), (6, _passo_v6)]
+MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7)]
 
 
 class Banco:
@@ -525,23 +537,29 @@ class Banco:
 
     def listar_movimento(self, hoje):
         """
-        Tabela principal: visitas com entrada no dia `hoje` (date) mais todas
-        as ainda abertas (quem está no campus), da entrada mais recente para
-        a mais antiga. Custo constante, não cresce com o histórico.
+        Tabela principal: o movimento do dia `hoje` (date) — visitas com
+        entrada hoje, todas as ainda abertas (quem está no campus) e as que
+        tiveram SAÍDA hoje mesmo com a entrada em outro dia (ex.: entrada
+        corrigida para fevereiro e saída registrada agora) —, da entrada mais
+        recente para a mais antiga. Custo constante, não cresce com o
+        histórico: cada parte usa um índice (entrada, aberta, saída).
         """
         inicio = _dia_iso(hoje)
         fim = _dia_iso((hoje.date() if isinstance(hoje, datetime) else hoje)
                        + timedelta(days=1))
-        # UNION ALL usa os dois índices; com OR viraria varredura da tabela.
-        # O '+' impede o índice de entrada na parte das abertas (seria pior).
+        # UNION ALL usa um índice por parte; com OR viraria varredura da
+        # tabela. As três partes não se repetem: a 2ª e a 3ª só pegam
+        # entradas de outros dias. O '+' impede o índice de entrada nelas.
         with self._conexao() as con:
             linhas = con.execute(
                 f"SELECT * FROM (SELECT {COLUNAS_REGISTRO} FROM registros "
                 "WHERE entrada >= ? AND entrada < ? "
                 f"UNION ALL SELECT {COLUNAS_REGISTRO} FROM registros "
-                "WHERE saida = '' AND (+entrada < ? OR +entrada >= ?)) "
+                "WHERE saida = '' AND (+entrada < ? OR +entrada >= ?) "
+                f"UNION ALL SELECT {COLUNAS_REGISTRO} FROM registros "
+                "WHERE saida >= ? AND saida < ? AND +entrada < ?) "
                 "ORDER BY entrada DESC, id DESC",
-                (inicio, fim, inicio, fim)).fetchall()
+                (inicio, fim, inicio, fim, inicio, fim, inicio)).fetchall()
         return [_registro(linha) for linha in linhas]
 
     def buscar_registros(self, texto, limite=200):

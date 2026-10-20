@@ -269,6 +269,71 @@ class TestLinhaDesatualizada(BaseInterface):
         self.assertEqual(len(self.no_banco()), 2)
 
 
+class TestTelaPequena(BaseInterface):
+    """
+    B2: notebook 1366x768 com escala 125%: a área útil da janela maximizada
+    tem ~1366x670 px reais = 1093x536 px lógicos (os testes rodam com
+    escala 1, então o tamanho lógico é o que vale aqui).
+    """
+    PEQUENA, GRANDE = "1093x536", "1180x760"
+
+    def setUp(self):
+        super().setUp()
+        for i, cpf in enumerate(("52998224725", "11144477735", "39053344705",
+                                 "15350946056", "71428793860")):
+            self.banco.inserir(dict(VISITA_ANTIGA, cpf=cpf, saida="",
+                                    entrada=agora_menos(10 * i + 5)))
+        self.app.atualizar_tabela()
+        self.janela.deiconify()
+
+    def tamanho(self, geometria):
+        self.janela.geometry(geometria)
+        self.janela.update()
+
+    def linhas_visiveis(self):
+        tabela = self.app.tabela
+        return sum(1 for i in tabela.get_children() if tabela.bbox(i))
+
+    def test_minimo_da_janela_cabe_na_tela_pequena(self):
+        largura, altura = self.janela.minsize()
+        self.assertLessEqual(largura, 1093)
+        self.assertLessEqual(altura, 536)
+
+    def test_movimento_mostra_ao_menos_4_linhas(self):
+        self.tamanho(self.PEQUENA)
+        self.assertTrue(self.app.tela_cadastro.compacta)
+        self.assertGreaterEqual(self.linhas_visiveis(), 4)
+        botao = self.app.tela_cadastro.btn_cadastrar
+        self.assertTrue(botao.winfo_ismapped())
+        self.assertLessEqual(botao.winfo_rooty() + botao.winfo_height(),
+                             self.janela.winfo_rooty() + 536)
+
+    def test_tela_grande_volta_ao_layout_normal(self):
+        self.tamanho(self.PEQUENA)
+        self.tamanho(self.GRANDE)
+        tela = self.app.tela_cadastro
+        self.assertFalse(tela.compacta)
+        self.assertTrue(tela.ficha.winfo_ismapped())
+        self.assertEqual(tela.btn_limpar.texto, "Limpar formulário")
+        self.assertGreaterEqual(self.linhas_visiveis(), 4)
+
+    def test_janela_corrigir_cabe_com_os_botoes(self):
+        self.tamanho(self.PEQUENA)
+        self.app.tabela.selection_set(self.app.tabela.get_children()[0])
+        self.app.editar_selecionado()
+        dialogo = self.app.tela_cadastro.janela_edicao.janela
+        dialogo.update()
+        self.assertLessEqual(dialogo.winfo_reqheight(), 536 - 30)  # - barra
+        self.assertLessEqual(dialogo.winfo_reqwidth(), 1093)
+
+    def test_colunas_do_movimento_cabem_na_largura(self):
+        self.tamanho(self.PEQUENA)
+        tabela = self.app.tabela
+        colunas = ["#0", *tabela["displaycolumns"]]
+        soma = sum(int(tabela.column(c, "width")) for c in colunas)
+        self.assertLessEqual(soma, tabela.winfo_width())
+
+
 class TestMovimento(BaseInterface):
     """A tabela mostra o dia (hoje + quem está no campus); a busca vai ao
     histórico inteiro."""

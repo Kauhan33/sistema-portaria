@@ -373,7 +373,9 @@ class AppPortaria:
         janela = self.janela
         janela.title("Portaria da Universidade")
         janela.geometry(f"{px(1180)}x{px(760)}")
-        janela.minsize(px(1000), px(640))
+        # cabe num notebook 1366x768 a 125% (área útil ~1366x670 px): abaixo
+        # de uns 740 px lógicos a Entrada e saída usa o layout compacto
+        janela.minsize(px(1000), px(500))
         janela.configure(bg=COR["fundo"])
         janela.report_callback_exception = self._erro_inesperado
         carregar_fontes(janela)

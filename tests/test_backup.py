@@ -77,6 +77,13 @@ class TestBackup(BaseBackup):
         self.assertEqual(backup.backups_diarios(self.pasta_backup), [])
         self.assertFalse(backup.verificar_banco(danificado)[0])
 
+    def test_pasta_de_backup_impossivel_vira_erro_amigavel(self):  # B4
+        with open(self.pasta_backup, "w") as f:     # "backups" é um arquivo
+            f.write("não é pasta")
+        with self.assertRaises(dados.ErroDados) as erro:
+            backup.backup_diario(self.caminho_db, hoje=date(2026, 10, 20))
+        self.assertIn("Backup não realizado", str(erro.exception))
+
     def test_pasta_padrao_ao_lado_do_banco(self):
         self.assertEqual(backup.pasta_padrao(self.caminho_db), self.pasta_backup)
         self.assertTrue(backup.backup_diario(self.caminho_db)
@@ -125,6 +132,14 @@ class TestExportarCsv(BaseBackup):
         self.assertEqual((evento["usuario"], evento["acao"]),
                          ("ana", "Exportação de registros"))
         self.assertIn("2 registro(s) de 15/10/2026 a 16/10/2026", evento["detalhe"])
+
+    def test_falha_ao_gravar_nao_fica_no_historico(self):  # B6
+        sem_pasta = os.path.join(self.pasta.name, "nao-existe", "relatorio.csv")
+        with self.assertRaises(dados.ErroDados):
+            backup.exportar_csv(self.banco, sem_pasta, date(2026, 10, 15),
+                                date(2026, 10, 16), autor="ana")
+        acoes = [e["acao"] for e in self.banco.listar_eventos()]
+        self.assertNotIn("Exportação de registros", acoes)
 
     def test_porteiro_nao_exporta_e_nada_e_gravado(self):
         with self.assertRaises(dados.ErroDados):

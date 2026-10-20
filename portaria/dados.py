@@ -269,18 +269,31 @@ def copiar_banco(origem, destino):
     pela metade com o nome final.
     """
     temporario = destino + ".tmp"
-    if os.path.exists(temporario):
-        os.remove(temporario)
     try:
+        if os.path.exists(temporario):
+            os.remove(temporario)
         with closing(sqlite3.connect(origem, timeout=SEGUNDOS_ESPERA)) as src, \
                 closing(sqlite3.connect(temporario)) as dst:
             src.backup(dst)
         os.replace(temporario, destino)
     except sqlite3.Error as e:
-        if os.path.exists(temporario):
-            os.remove(temporario)
+        _apagar_se_existe(temporario)
         raise _erro(e) from e
+    except OSError as e:
+        _apagar_se_existe(temporario)
+        log.error("Erro ao gravar a cópia do banco: %s", e)
+        raise ErroDados("Não foi possível gravar a cópia de segurança do "
+                        "banco.\nConfira a permissão e o espaço livre na "
+                        "pasta backups.", detalhe=str(e)) from e
     return destino
+
+
+def _apagar_se_existe(caminho):
+    try:
+        if os.path.exists(caminho):
+            os.remove(caminho)
+    except OSError as e:
+        log.warning("Não foi possível apagar %s: %s", caminho, e)
 
 
 # ------------------------------------------------------------------
@@ -420,13 +433,25 @@ class Banco:
             con.close()
 
     def _backup_antes_de_migrar(self, versao):
-        """Cópia do banco antigo antes de mudar o esquema (pasta backups)."""
+        """Cópia do banco antigo antes de mudar o esquema (pasta backups).
+        Sem a cópia, a atualização não acontece: o banco fica como estava."""
         pasta = os.path.join(os.path.dirname(os.path.abspath(self.caminho)),
                              "backups")
-        os.makedirs(pasta, exist_ok=True)
         nome = (f"portaria-antes-v{VERSAO_ESQUEMA}-de-v{versao}-"
                 f"{datetime.now():%Y%m%d-%H%M%S}.db")
-        copiar_banco(self.caminho, os.path.join(pasta, nome))
+        try:
+            os.makedirs(pasta, exist_ok=True)
+            copiar_banco(self.caminho, os.path.join(pasta, nome))
+        except (OSError, ErroDados) as e:
+            log.error("Backup antes da atualização não realizado: %s",
+                      getattr(e, "detalhe", "") or e)
+            raise ErroDados(
+                "Este banco de dados precisa ser atualizado para esta versão "
+                "do programa, mas antes é preciso fazer uma cópia de "
+                "segurança dele (pasta backups, ao lado do banco), e isso "
+                "não foi possível.\nNada foi alterado no banco. Confira se a "
+                "pasta pode ser criada e se há espaço no disco; depois abra "
+                "o programa de novo.", detalhe=str(e)) from e
 
     @contextmanager
     def _conexao(self):
@@ -775,11 +800,12 @@ class Banco:
                                  "ORDER BY id", (id_registro,)).fetchall()
         return [self._formatar_evento(linha) for linha in linhas]
 
-    def registros_do_periodo(self, desde, ate, autor=None):
+    def registros_do_periodo(self, desde, ate, autor):
         """
         Visitas com entrada entre os dias `desde` e `ate` (date, inclusive),
         em ordem de entrada, para a exportação (backup.exportar_csv). Leva
-        CPF e celular completos: só administrador, e fica no histórico.
+        CPF e celular completos: só administrador. O evento "Exportação de
+        registros" é gravado por exportar_csv depois que o arquivo existe.
         """
         with self._conexao() as con:
             self._exigir(con, autor, para="exportar registros")
@@ -787,9 +813,6 @@ class Banco:
                 f"SELECT {COLUNAS_REGISTRO} FROM registros "
                 "WHERE entrada >= ? AND entrada < ? ORDER BY entrada, id",
                 (_dia_iso(desde), _dia_iso(ate + timedelta(days=1)))).fetchall()
-            self._evento(con, autor, "Exportação de registros",
-                         f"{len(linhas)} registro(s) de {desde:%d/%m/%Y} "
-                         f"a {ate:%d/%m/%Y}")
         return [_registro(linha) for linha in linhas]
 
     # --------------------------------------------------------------

@@ -169,9 +169,9 @@ class AppPortaria:
         self.avisos_admin = list(self.banco.avisos)
         try:   # uma cópia por dia, guardando as 30 mais recentes
             backup.backup_diario(self.caminho_banco)
-        except (dados.ErroDados, OSError) as e:
+        except dados.ErroDados as e:     # não impede o uso: só avisa o admin
             dados.log.error("Backup diário não realizado: %s",
-                            getattr(e, "detalhe", "") or e)
+                            e.detalhe or e)
             self.avisos_admin.append("O backup diário do banco não foi feito "
                                      f"hoje.\n{e}")
 

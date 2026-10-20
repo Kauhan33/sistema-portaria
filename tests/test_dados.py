@@ -693,6 +693,19 @@ class TestMigracaoV6(unittest.TestCase):
         self.assertEqual(len(banco.listar()), 1)
         self.assertEqual(banco.avisos, [])
 
+    def test_sem_conseguir_o_backup_nao_migra_e_explica(self):  # B4
+        dados.Banco(self.caminho).inserir(registro())
+        rebaixar_para_v5(self.caminho)
+        # um arquivo chamado "backups" impede criar a pasta (como uma pasta
+        # sem permissão de gravação)
+        with open(os.path.join(self.pasta.name, "backups"), "w") as f:
+            f.write("não é pasta")
+        with self.assertRaises(dados.ErroDados) as erro:
+            dados.Banco(self.caminho)
+        self.assertIn("cópia de segurança", str(erro.exception))
+        self.assertIn("Nada foi alterado", str(erro.exception))
+        self.assertEqual(versao_do_arquivo(self.caminho), 5)
+
     def test_erro_no_meio_da_migracao_desfaz_o_passo_inteiro(self):
         dados.Banco(self.caminho)
         rebaixar_para_v5(self.caminho)

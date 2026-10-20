@@ -2,6 +2,8 @@
 
 import json
 import os
+import shutil
+import sqlite3
 import tempfile
 import tkinter as tk
 import unittest
@@ -771,6 +773,31 @@ class TestAbertura(BaseInterface):
         nome = f"portaria-{date.today():%Y-%m-%d}.db"
         self.assertTrue(os.path.exists(
             os.path.join(self.pasta.name, "backups", nome)))
+
+    def test_banco_v5_sem_backup_possivel_nao_derruba_o_programa(self):  # B4
+        self.app.janela.destroy()
+        dados.Banco(self.caminho_db)
+        con = sqlite3.connect(self.caminho_db)
+        con.executescript("DROP TABLE tentativas_login; PRAGMA user_version = 5;")
+        con.close()
+        shutil.rmtree(os.path.join(self.pasta.name, "backups"))
+        with open(os.path.join(self.pasta.name, "backups"), "w") as f:
+            f.write("não é pasta")
+        self.app = AppPortaria(self.caminho_db, self.nova_janela())
+        self.assertIsNone(self.app.banco)
+        self.assertIn("cópia de segurança", self.msg.showerror.call_args[0][1])
+
+    def test_backup_diario_que_falha_so_avisa_o_admin(self):  # B4
+        self.app.janela.destroy()
+        shutil.rmtree(os.path.join(self.pasta.name, "backups"))
+        with open(os.path.join(self.pasta.name, "backups"), "w") as f:
+            f.write("não é pasta")
+        self.app = AppPortaria(self.caminho_db, self.nova_janela(),
+                               usuario=self.admin)
+        self.assertIsNotNone(self.app.banco)
+        aviso = self.msg.showwarning.call_args[0][1]
+        self.assertIn("backup diário", aviso)
+        self.assertNotRegex(aviso, "Errno|WinError")   # sem o erro técnico
 
     def entrar(self, login, senha):
         tela = self.app.tela_login

@@ -78,9 +78,11 @@ if __name__ == "__main__":
 #    numeros (identificador), = (sinal do argumento nomeado), 11 (literal
 #    inteiro), ",", var, =, self . var_cpf, ), ",", 1, ",", 0 (literais
 #    inteiros), ).
-#    Outro, com literal string, em portaria/estilo.py:
-#        FAMILIA = "Segoe UI"
-#    Tokens: FAMILIA (identificador), = (operador), "Segoe UI" (literal string).
+#    Outro, com literal string, em portaria/validacao.py:
+#        FORMATO = "%d/%m/%Y %H:%M"            # usado pelo datetime
+#    Tokens: FORMATO (identificador), = (operador de atribuição),
+#    "%d/%m/%Y %H:%M" (literal string); o comentário (# ...) é descartado
+#    pelo analisador léxico e não vira token.
 #
 # 2) VARIÁVEL DA TABELA DE SÍMBOLOS
 #    Símbolo: BANCO | Tipo: str | Valor: caminho do portaria.db | Escopo: global

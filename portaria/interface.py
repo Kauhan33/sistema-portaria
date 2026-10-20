@@ -7,9 +7,9 @@ e tela_usuarios.py (só administrador); o login fica em tela_login.py, a
 janela "Corrigir registro" em tela_edicao.py e "Trocar minha senha" em
 tela_senha.py.
 
-As regras ficam em validacao.py e usuarios.py, o banco de dados em dados.py
-e os números em consultas.py — as telas só montam widgets e reagem aos
-botões.
+As regras ficam em validacao.py e usuarios.py e o banco de dados (com os
+números do Painel, calculados no SQL) em dados.py — as telas só montam
+widgets e reagem aos botões.
 
 CONTRATO DO APP — o que as telas podem usar da AppPortaria:
     app.janela                   janela principal (Tk)

@@ -141,7 +141,7 @@ class AbaBloqueios:
                 "A entrada será recusada até um administrador remover o bloqueio."):
             return
         ok, _ = self.app.tentar(self.app.banco.bloquear, tipo, valor, motivo,
-                                self.app.usuario["login"])
+                                self.app.autor)
         if not ok:
             return
         self.valor.delete(0, tk.END)
@@ -173,5 +173,5 @@ class AbaBloqueios:
                                    "A entrada volta a ser permitida."):
             return
         self.app.tentar(self.app.banco.desbloquear, b["id"],
-                        self.app.usuario["login"])
+                        self.app.autor)
         self.atualizar()

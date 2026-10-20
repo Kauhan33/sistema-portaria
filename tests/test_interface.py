@@ -729,7 +729,6 @@ class TestCorrigirComoPorteiro(CasosCorrigir, BaseInterface):
     entrar_como = "porteiro"
 
     def test_porteiro_nao_corrige_registro_antigo(self):  # RN11
-        self.app.janela_edicao = None
         self.assertIsNone(self.abrir(self.antigo))
         self.assertIn("últimas 24 horas",
                       self.msg.showerror.call_args[0][1])
@@ -872,6 +871,25 @@ class TestAbaBloqueios(BaseInterface):
         self.app.tipo.set("Visitante")
         self.app.cadastrar()
         self.assertEqual(len(self.no_banco()), 1)
+
+
+class TestContratoDoApp(BaseInterface):
+    def test_nomes_antigos_apontam_para_a_aba_cadastro(self):
+        cadastro = self.app.tela_cadastro
+        self.assertIs(self.app.cpf, cadastro.cpf)
+        self.assertIs(self.app.tabela, cadastro.tabela)
+        self.assertEqual(self.app.cadastrar, cadastro.cadastrar)
+        self.assertIs(self.app.cards, self.app.tela_dashboard.cards)
+        with self.assertRaises(AttributeError):
+            self.app.nao_existe
+
+    def test_telas_nao_usam_nada_privado_do_app(self):  # Q10
+        pasta = os.path.dirname(dados.__file__)
+        for arquivo in os.listdir(pasta):
+            if arquivo.startswith("tela_"):
+                with self.subTest(arquivo=arquivo):
+                    with open(os.path.join(pasta, arquivo), encoding="utf-8") as f:
+                        self.assertNotRegex(f.read(), r"app\._")
 
 
 if __name__ == "__main__":

@@ -151,7 +151,7 @@ class AbaPessoas:
             return
         ok, _ = self.app.tentar(self.app.banco.atualizar_pessoa, p["id"],
                                 dados["nome"], dados["celular"], dados["placa"],
-                                dados["tipo"], autor=self.app.usuario["login"])
+                                dados["tipo"], autor=self.app.autor)
         if not ok:
             return
         self.atualizar()

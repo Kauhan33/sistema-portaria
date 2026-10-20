@@ -156,15 +156,12 @@ class JanelaEdicao:
         if not ok:
             mensagens.erro("Acesso negado", msg, parent=self.janela)
             return
-        ok, _ = self.app.tentar(self.app.banco.editar, self.original["id"], novo,
-                                alteracoes, autor=self.app.usuario["login"])
-        if not ok:
+        if not self.app.gravar(self.app.banco.editar, self.original["id"],
+                               novo, alteracoes):
             return
-        self.app.registros = self.app.tentar(self.app.banco.listar)[1] \
-            or self.app.registros
-        self.app.atualizar_tabela(self.app.busca.get())
-        self.app._avisar(f"✓ Registro de {novo['nome'].split()[0]} corrigido "
-                         f"({len(alteracoes)} alteração(ões)).")
+        self.app.atualizar_tabela()
+        self.app.avisar(f"✓ Registro de {novo['nome'].split()[0]} corrigido "
+                        f"({len(alteracoes)} alteração(ões)).")
         self.fechar()
 
     def fechar(self):

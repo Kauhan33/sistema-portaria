@@ -105,9 +105,6 @@ class AbaUsuarios:
         if ok:
             preencher_eventos(self.historico, eventos)
 
-    def _autor(self):
-        return self.app.usuario["login"]
-
     def _selecionado(self):
         selecao = self.tabela.selection()
         if not selecao:
@@ -129,7 +126,7 @@ class AbaUsuarios:
             mensagens.erro("Dados inválidos", msg)
             return
         ok, _ = self.app.tentar(self.app.banco.criar_usuario, nome, login, perfil,
-                                gerar_hash(senha), autor=self._autor())
+                                gerar_hash(senha), autor=self.app.autor)
         if not ok:
             return
         for campo in (self.nome, self.login, self.senha, self.confirmacao):
@@ -154,7 +151,7 @@ class AbaUsuarios:
                                  "Ele não conseguirá mais entrar no sistema."):
                 return
         self.app.tentar(self.app.banco.definir_ativo, alvo["id"],
-                        not alvo["ativo"], autor=self._autor())
+                        not alvo["ativo"], autor=self.app.autor)
         self.atualizar()
 
     def redefinir_senha(self):
@@ -175,7 +172,7 @@ class AbaUsuarios:
             mensagens.erro("Dados inválidos", msg)
             return
         ok, _ = self.app.tentar(self.app.banco.definir_senha, alvo["id"],
-                                gerar_hash(senha), autor=self._autor())
+                                gerar_hash(senha), autor=self.app.autor)
         if ok:
             self.atualizar()
             mensagens.info("Usuários",

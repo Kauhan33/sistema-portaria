@@ -6,7 +6,8 @@ from portaria.validacao import (celular_valido, checar_bloqueio,
                                 checar_saida, cpf_valido,
                                 normalizar_bloqueio, validar_bloqueio,
                                 formatar_celular,
-                                formatar_cpf, formatar_placa, nome_valido,
+                                formatar_cpf, formatar_placa, mascarar_cpf,
+                                mascarar_cpfs_no_texto, nome_valido,
                                 normalizar, placa_valida, validar,
                                 validar_campos)
 
@@ -235,6 +236,22 @@ class TestBloqueio(unittest.TestCase):
         ativos = [bloqueio("cpf", CPF_BETO), bloqueio("placa", "ABC1D23")]
         self.assertEqual(checar_bloqueio(registro(), ativos), (True, ""))
         self.assertEqual(checar_bloqueio(registro(placa=""), []), (True, ""))
+
+
+class TestMascararCpf(unittest.TestCase):  # S08 (LGPD)
+    def test_mostra_so_o_meio(self):
+        self.assertEqual(mascarar_cpf(CPF_ANA), "***.982.247-**")
+        self.assertEqual(mascarar_cpf("529.982.247-25"), "***.982.247-**")
+        self.assertEqual(mascarar_cpf(""), "")
+        self.assertEqual(mascarar_cpf("123"), "***")
+
+    def test_mascara_cpfs_num_texto_sem_mexer_no_celular(self):
+        texto = ("#3 Ana Silva, CPF 52998224725, celular 31987654321; "
+                 "CPF: 529.982.247-25 → 111.444.777-35")
+        self.assertEqual(mascarar_cpfs_no_texto(texto),
+                         "#3 Ana Silva, CPF ***.982.247-**, celular 31987654321; "
+                         "CPF: ***.982.247-** → ***.444.777-**")
+        self.assertEqual(mascarar_cpfs_no_texto(""), "")
 
 
 if __name__ == "__main__":

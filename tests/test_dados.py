@@ -965,6 +965,20 @@ class TestConsultasNoBanco(BaseTemp):
         self.assertIn("idx_registros_saida", plano)
         self.assertNotIn("SCAN registros", plano)
 
+    def test_busca_pelo_cpf_completo_usa_o_indice(self):
+        """QA2 M5: com 100 mil visitas a busca de um CPF varria a tabela
+        (0,25 s por consulta)."""
+        condicao, params = dados._condicao_busca(
+            "529.982.247-25", "registros", dados.COLUNAS_BUSCA)
+        con = sqlite3.connect(self.caminho_db)
+        plano = " ".join(str(linha[3]) for linha in con.execute(
+            f"EXPLAIN QUERY PLAN SELECT id FROM registros WHERE {condicao} "
+            "ORDER BY entrada DESC, id DESC LIMIT 200", params))
+        con.close()
+        self.assertIn("idx_registros_cpf", plano)
+        self.assertNotIn("SCAN registros USING INDEX idx_registros_entrada",
+                         plano)
+
     def test_buscar_registros_igual_ao_filtrar(self):
         todos = self.banco.listar()
         mais_recentes_primeiro = sorted(

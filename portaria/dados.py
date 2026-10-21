@@ -45,6 +45,7 @@ autorizada" no histórico daquela visita, na mesma transação.
 import json
 import logging
 import os
+import re
 import sqlite3
 from contextlib import closing, contextmanager
 from datetime import date, datetime, timedelta
@@ -175,6 +176,10 @@ FROM pessoas p LEFT JOIN registros r ON r.pessoa_id = p.id
 """
 
 COLUNAS_REGISTRO = "id, nome, cpf, celular, placa, tipo, entrada, saida"
+# Busca (visitas e pessoas): texto no nome, tipo e placa; dígitos no CPF
+# e no celular
+COLUNAS_BUSCA = {"texto": ("nome", "tipo", "placa"),
+                 "digitos": ("cpf", "celular")}
 
 # Estadia de veículo com o tipo de acesso do responsável (da visita de
 # origem ou, se ela foi apagada, do cadastro) e se ele está no campus
@@ -293,7 +298,7 @@ def _estadia(linha):
             "responsavel_dentro": bool(dentro)}
 
 
-def _condicao_busca(texto, colunas, so_cpf_completo=False):
+def _condicao_busca(texto, tabela, colunas, so_cpf_completo=False):
     """
     WHERE da busca com o MESMO critério de consultas.filtrar: o texto (em
     minúsculas) contido no nome, tipo ou placa, ou os dígitos dele contidos
@@ -309,6 +314,13 @@ def _condicao_busca(texto, colunas, so_cpf_completo=False):
     if not texto:
         return "", []
     numeros = so_digitos(texto)
+    if len(numeros) == 11 and re.fullmatch(r"[\d.\-\s]+", texto):
+        # CPF ou celular completo: nome, tipo e placa não têm 11 dígitos
+        # seguidos. Pelo índice do CPF (com OR o SQLite varria a tabela
+        # inteira pela ordem da entrada: 0,25 s com 100 mil visitas)
+        partes = " UNION ".join(f"SELECT id FROM {tabela} WHERE {c} = ?"
+                                for c in colunas["digitos"])
+        return f"id IN ({partes})", [numeros] * len(colunas["digitos"])
     partes = [f"instr(minusculo({c}), ?) > 0" for c in colunas["texto"]]
     params = [texto] * len(colunas["texto"])
     if numeros:
@@ -947,8 +959,7 @@ class Banco:
         mais recentes. so_cpf_completo: ver _condicao_busca (porteiro).
         """
         condicao, params = _condicao_busca(
-            texto, {"texto": ("nome", "tipo", "placa"),
-                    "digitos": ("cpf", "celular")}, so_cpf_completo)
+            texto, "registros", COLUNAS_BUSCA, so_cpf_completo)
         where = f"WHERE {condicao}" if condicao else ""
         with self._conexao() as con:
             linhas = con.execute(
@@ -1738,8 +1749,7 @@ class Banco:
         so_cpf_completo: ver _condicao_busca (porteiro).
         """
         condicao, params = _condicao_busca(
-            texto, {"texto": ("nome", "tipo", "placa"),
-                    "digitos": ("cpf", "celular")}, so_cpf_completo)
+            texto, "pessoas", COLUNAS_BUSCA, so_cpf_completo)
         where = f"WHERE {condicao}" if condicao else ""
         with self._conexao() as con:
             linhas = con.execute(

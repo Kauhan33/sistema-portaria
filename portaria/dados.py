@@ -53,7 +53,8 @@ from . import horarios
 from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
                        pode_editar)
 from .validacao import (FORMATO, TIPOS_ACESSO, formatar_placa, mascarar_cpf,
-                        mascarar_cpfs_no_texto, so_digitos)
+                        mascarar_cpfs_no_texto, normalizar, so_digitos,
+                        validar)
 
 FORMATO_ISO = "%Y-%m-%d %H:%M"
 FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
@@ -1888,6 +1889,15 @@ class Banco:
         Copia os registros do JSON antigo para o banco, numa só transação, e
         renomeia o JSON para '.migrado' (fica de backup). Devolve um aviso
         para mostrar ao usuário, ou '' se não havia o que migrar.
+
+        Cada registro passa pelas MESMAS regras do cadastro (QA2 M3):
+        validacao.validar (nome, CPF, celular, placa, tipo, datas que
+        existem, não estão no futuro e são de 2000 em diante, sem cruzar
+        outra visita do CPF) e o limite de 24 h, que aqui não tem quem
+        autorize. O que não passa é ignorado e contado no aviso, com os
+        motivos. Visita aberta com placa abre a estadia do carro. O
+        histórico ganha "Importação do arquivo antigo" com as quantidades
+        (sem dados pessoais), feita por "(sistema)".
         """
         if not os.path.exists(caminho_json):
             return ""
@@ -1895,15 +1905,21 @@ class Banco:
         if aviso:
             return aviso
 
-        # Um registro que viola as regras da tabela é recusado sozinho;
-        # os demais continuam na mesma transação.
-        ignorados = 0
+        # Um registro recusado não impede os outros (mesma transação)
+        agora = self.relogio()
+        motivos = {}
         with self._conexao() as con:
-            for r in registros:
-                try:
-                    self._inserir(con, r)
-                except (KeyError, TypeError, ValueError, sqlite3.IntegrityError):
-                    ignorados += 1
+            for bruto in registros:
+                motivo = self._importar_registro(con, bruto, agora)
+                if motivo:
+                    motivos[motivo] = motivos.get(motivo, 0) + 1
+            ignorados = sum(motivos.values())
+            resumo = "; ".join(f"{m} ({n})" for m, n in sorted(
+                motivos.items(), key=lambda par: -par[1]))
+            self._evento(con, AUTOR_SISTEMA, "Importação do arquivo antigo",
+                         f"{len(registros) - ignorados} registro(s) importado(s)"
+                         f" de {os.path.basename(caminho_json)}; {ignorados} "
+                         "ignorado(s)" + (f": {resumo}" if resumo else "."))
 
         os.replace(caminho_json, caminho_json + ".migrado")
         aviso = (f"{len(registros) - ignorados} registro(s) do arquivo antigo "
@@ -1911,8 +1927,33 @@ class Banco:
         if ignorados:
             aviso += (f"\n{ignorados} registro(s) com dados inválidos não foram "
                       "importados; eles continuam no arquivo\n"
-                      f"{os.path.basename(caminho_json)}.migrado.")
+                      f"{os.path.basename(caminho_json)}.migrado.\n"
+                      f"Motivos: {resumo}.")
         return aviso
+
+    def _importar_registro(self, con, bruto, agora):
+        """Grava um registro do JSON antigo se ele passar nas regras do
+        cadastro. Devolve '' ou o motivo da recusa (sem dados pessoais)."""
+        if not isinstance(bruto, dict):
+            return "formato desconhecido"
+        campos = ("nome", "cpf", "celular", "placa", "tipo", "entrada", "saida")
+        r = normalizar(*(str(bruto.get(c) or "") for c in campos))
+        anteriores = [_registro(linha) for linha in con.execute(
+            f"SELECT {COLUNAS_REGISTRO} FROM registros WHERE cpf = ?",
+            (r["cpf"],))]
+        ok, msg = validar(r, anteriores, agora)
+        if not ok:
+            return msg.splitlines()[0].split(" (")[0].rstrip(".")
+        if _duracao_iso(para_iso(r["entrada"]), para_iso(r["saida"])):
+            return f"visita de mais de {horarios.LIMITE_VISITA_HORAS} h"
+        try:
+            id_ = self._inserir(con, r)
+        except sqlite3.IntegrityError:
+            return "recusado pelo banco"
+        if r["placa"] and not r["saida"] and \
+                self._estadia_aberta(con, "placa", r["placa"]) is None:
+            self._abrir_estadia(con, r, id_, AUTOR_SISTEMA)
+        return ""
 
 
 def ler_json(caminho):

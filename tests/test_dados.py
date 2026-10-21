@@ -535,6 +535,30 @@ class TestMigracao(BaseTemp):
         self.assertIn("4 registro(s) com dados inválidos", aviso)
         self.assertTrue(os.path.exists(self.caminho_json + ".migrado"))
 
+    def test_importacao_aplica_as_regras_do_cadastro(self):
+        """QA2 M3: visita de 8 dias, tipo 'Hacker', CPF 000..., ano 9999
+        entravam sem validação, sem histórico e sem a estadia do carro."""
+        self.escrever_json([
+            registro(entrada="10/10/2026 08:00", saida="18/10/2026 08:00"),
+            registro(cpf="11144477735", tipo="Hacker"),
+            registro(cpf="00000000000"),
+            registro(cpf="39053344705", entrada="31/12/9999 23:00"),
+            registro(cpf="39053344705", entrada="16/10/0026 10:00"),
+            registro(entrada="16/10/2026 08:00"),            # aberta, com placa
+        ])
+        aviso = self.banco.importar_json(self.caminho_json)
+        self.assertEqual([r["cpf"] for r in self.banco.listar()],
+                         ["52998224725"])
+        self.assertIn("5 registro(s) com dados inválidos", aviso)
+        self.assertIn("visita de mais de 24 h (1)", aviso)
+        self.assertIn("A entrada não pode estar no futuro (1)", aviso)
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="ABC1D23"))
+        evento = self.banco.listar_eventos()[0]
+        self.assertEqual((evento["usuario"], evento["acao"]),
+                         (dados.AUTOR_SISTEMA, "Importação do arquivo antigo"))
+        self.assertIn("1 registro(s) importado(s)", evento["detalhe"])
+        self.assertNotIn("João", evento["detalhe"])            # sem nomes
+
     def test_json_danificado_e_guardado_e_nada_importado(self):
         self.escrever_json('[{"nome": "Ana"')   # cortado no meio
         aviso = self.banco.importar_json(self.caminho_json)

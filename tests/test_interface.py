@@ -716,6 +716,24 @@ class TestPrimeiroAcesso(BaseInterface):
         self.assertEqual(len(self.app.tabela.get_children()), 1)
 
 
+class TestDataAbsurdaNoBanco(BaseInterface):
+    def test_visita_do_ano_9999_nao_derruba_o_login_nem_o_painel(self):
+        """QA2 M3: uma linha de 31/12/9999 (importada sem validação nas
+        versões anteriores) levantava OverflowError no login e no Painel."""
+        con = sqlite3.connect(self.caminho_db)
+        with con:
+            con.execute("INSERT INTO registros (nome, cpf, celular, placa, "
+                        "tipo, entrada) VALUES ('Ana Silva', '52998224725', "
+                        "'31987654321', '', 'Aluno', '9999-12-31 23:00')")
+        con.close()
+        self.app.sair()
+        self.app.entrar(self.admin)
+        self.assertEqual(self.app.tabela.item(self.app.tabela.get_children()[0])
+                         ["text"], "No campus")
+        self.app.ir_para(self.app.aba_dash)
+        self.app.atualizar_tabela()
+
+
 class TestSessao(BaseInterface):
     entrar_como = "porteiro"
 

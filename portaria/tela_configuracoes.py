@@ -43,11 +43,10 @@ DICA_CATEGORIAS = ("Do funcionamento: De = min antes de abrir; Até = 0 (até "
 LARGURA_HORA_RELOGIO = 104    # hh:mm com o ícone do relógio
 ABERTO = {True: "Aberto", False: "Fechado"}
 NOTA_FUNCIONAMENTO = (
-    "Entrada ou saída mais antiga que esse limite, saída num horário com o "
-    f"campus fechado e visitas com mais de {horarios.LIMITE_VISITA_HORAS} h "
-    "pedem autorização do administrador. Depois do prazo do dia "
-    "(fechamento + tolerância), só com a senha dele. Feriado fecha o dia; "
-    "evento soma um horário ao dia.")
+    "Lançamento mais antigo que esse limite, saída com o campus fechado e "
+    f"visita acima de {horarios.LIMITE_VISITA_HORAS} h pedem autorização. "
+    "Depois do prazo do dia (fechamento + tolerância), só com a senha do "
+    "administrador.")
 LARGURA_NUMERO = 72           # minutos ou hh:mm na tabela de categorias
 COLUNAS_FERIADOS = [("data", "Data", 96, "w"), ("dia", "Dia", 56, "w"),
                     ("descricao", "Descrição", 200, "w")]

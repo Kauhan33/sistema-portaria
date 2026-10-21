@@ -10,7 +10,7 @@ import unittest
 from datetime import date, datetime, timedelta
 from unittest import mock
 
-from portaria import dados
+from portaria import dados, estilo
 from portaria.componentes import Botao
 from portaria.interface import AppPortaria
 from portaria.tela_autorizacao import JanelaAutorizacao
@@ -125,6 +125,15 @@ class BaseInterface(unittest.TestCase):
         patcher = mock.patch.object(JanelaVeiculo, "esperar", esperar_veiculo)
         patcher.start()
         self.addCleanup(patcher.stop)
+
+        # "Seguir o Windows" lê o registro: nos testes o Windows está sempre
+        # no claro (o resultado não depende do tema do computador) e cada
+        # teste termina com o tema claro de volta
+        patcher = mock.patch("portaria.estilo.windows_usa_tema_escuro",
+                             return_value=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(estilo.usar_tema, "claro")
 
         self.agora = AGORA
         self.banco = dados.Banco(self.caminho_db)

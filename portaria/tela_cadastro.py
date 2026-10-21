@@ -100,15 +100,22 @@ ESPACOS = {
 }
 
 
-# Situação da visita -> (cor da bolinha, marca da linha em destaque)
-APARENCIA = {horarios.NO_CAMPUS: (COR["sucesso"], None),
-             horarios.TEMPO_EXCEDIDO: (COR["alerta"], "excedido"),
-             horarios.SAIDA_PENDENTE: (COR["erro"], "pendente"),
-             horarios.SAIU: (COR["barra"], None),
-             horarios.NO_ESTACIONAMENTO: (COR["sucesso"], None),
-             horarios.VEICULO_PENDENTE: (COR["erro"], "pendente")}
+# Situação da visita -> (token da cor da bolinha, marca da linha em
+# destaque). Guarda o NOME do token: a cor depende do tema em uso.
+APARENCIA = {horarios.NO_CAMPUS: ("sucesso", None),
+             horarios.TEMPO_EXCEDIDO: ("alerta", "excedido"),
+             horarios.SAIDA_PENDENTE: ("erro", "pendente"),
+             horarios.SAIU: ("barra", None),
+             horarios.NO_ESTACIONAMENTO: ("sucesso", None),
+             horarios.VEICULO_PENDENTE: ("erro", "pendente")}
 LARGURA_SITUACAO = 140         # cabe "Saída pendente" com a bolinha
 MOSTRAR_NO_ENCERRAMENTO = 8    # nomes listados na confirmação
+
+
+def aparencia(situacao):
+    """(cor da bolinha no tema em uso, marca da linha em destaque)."""
+    token, destaque = APARENCIA[situacao]
+    return COR[token], destaque
 
 
 def _px(par):
@@ -479,7 +486,7 @@ class AbaCadastro:
             if registro is None:
                 continue
             situacao = self._situacao_da_visita(registro, agora)
-            cor, destaque = APARENCIA[situacao]
+            cor, destaque = aparencia(situacao)
             tags = (destaque,) if destaque else (("zebra",) if i % 2 else ())
             self.tabela.item(iid, text=situacao, image=bolinha(self.tabela, cor),
                              tags=tags)
@@ -488,7 +495,7 @@ class AbaCadastro:
             if estadia is None:
                 continue
             situacao = self._situacao_do_veiculo(estadia, agora)
-            cor, destaque = APARENCIA[situacao]
+            cor, destaque = aparencia(situacao)
             tags = (destaque,) if destaque else (("zebra",) if i % 2 else ())
             self.tabela_veiculos.item(iid, text=situacao, tags=tags,
                                       image=bolinha(self.tabela_veiculos, cor))
@@ -518,7 +525,7 @@ class AbaCadastro:
         for i, r in enumerate(registros):
             self.mostrados[r["id"]] = r
             situacao = self._situacao_da_visita(r, agora)
-            cor, destaque = APARENCIA[situacao]
+            cor, destaque = aparencia(situacao)
             inserir_linha(self.tabela, i, (
                 r["nome"],
                 self.app.exibir_cpf(r.get("cpf", "")),
@@ -584,7 +591,7 @@ class AbaCadastro:
         tab.delete(*tab.get_children())
         for i, e in enumerate(veiculos):
             situacao = self._situacao_do_veiculo(e, agora)
-            cor, destaque = APARENCIA[situacao]
+            cor, destaque = aparencia(situacao)
             inserir_linha(tab, i, (
                 formatar_placa(e["placa"]), e["nome"], e["tipo"] or "—",
                 self._quando(e["entrada"]),
@@ -827,6 +834,34 @@ class AbaCadastro:
         self._escrever_entrada_agora()
         self.saida.delete(0, tk.END)
         self.cpf.focus()
+
+    def ler_formulario(self):
+        """O que está digitado no formulário, na busca e a lista mostrada
+        (o app remonta a tela ao trocar o tema e devolve tudo depois).
+        Entrada None = o relógio ainda cuida dela."""
+        estado = {chave: campo.get()
+                  for chave, campo in self._campos_digitaveis().items()}
+        estado["entrada"] = (None if self.entrada_automatica()
+                             else self.entrada.get())
+        estado["busca"], estado["lista"] = self.busca.get(), self.lista
+        return estado
+
+    def restaurar_formulario(self, estado):
+        """Devolve o que ler_formulario guardou. O CPF vai por último: ao
+        completar, ele mostra de novo a situação da pessoa."""
+        for chave, campo in self._campos_digitaveis().items():
+            if chave != "cpf":
+                self._escrever(campo, estado[chave])
+        if estado["entrada"] is not None:
+            self._escrever(self.entrada, estado["entrada"])
+        self._escrever(self.busca, estado["busca"])
+        self.seletor_lista.selecionar(estado["lista"])
+        self.var_cpf.set(estado["cpf"])
+        self.atualizar_tabela()
+
+    def _campos_digitaveis(self):
+        return {**self._campos_pessoa(), "cpf": self.var_cpf,
+                "saida": self.saida}
 
     def preencher_pessoa(self, pessoa):
         """Começa uma nova entrada para a pessoa (usado pela página Pessoas)."""

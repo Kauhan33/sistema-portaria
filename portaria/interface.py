@@ -41,7 +41,16 @@ CONTRATO DO APP — o que as telas podem usar da AppPortaria:
     app.exibir_cpf(cpf)          CPF como a tabela mostra: completo para o
                                  administrador, mascarado para o porteiro
     app.registrar_uso()          conta como uso (sessão por inatividade)
+    app.trocar_tema(preferencia) "claro", "escuro" ou "sistema" (seguir o
+                                 Windows): grava no usuário e remonta a
+                                 janela sem perder a sessão
 Nenhuma tela mexe em atributo com "_" do app.
+
+Tema (claro/escuro): as cores vêm de estilo.COR, que muda de conteúdo com
+o tema. Trocar o tema = estilo.usar_tema + remontar a barra lateral e as
+páginas (as telas leem as cores na montagem), mantendo a sessão, a página
+aberta e o que estava digitado na Entrada e saída. A tela de login segue
+sempre o tema do Windows: ela é da estação, não de um usuário.
 
 Convenção das páginas: class AbaX com __init__(self, aba, app) e atualizar().
 A Entrada e saída é montada no login; as outras páginas na primeira vez que
@@ -54,10 +63,10 @@ import tkinter as tk
 from datetime import datetime, timedelta
 from tkinter import ttk
 
-from . import backup, dados, mensagens
+from . import backup, dados, estilo, mensagens
 from .componentes import Avatar, BotaoIcone, ItemMenu, marca_cancela
-from .estilo import (COR, FONTE, ICONE, LARGURA_LATERAL, aplicar_tema,
-                     carregar_fontes, px)
+from .estilo import (COR, FONTE, ICONE, LARGURA_LATERAL, PREFERENCIAS_TEMA,
+                     aplicar_tema, carregar_fontes, pintar_barra_de_titulo, px)
 from .tela_bloqueios import AbaBloqueios
 from .tela_cadastro import AbaCadastro
 from .tela_configuracoes import AbaConfiguracoes
@@ -66,8 +75,8 @@ from .tela_login import TelaLogin
 from .tela_pessoas import AbaPessoas
 from .tela_senha import JanelaSenha
 from .tela_usuarios import AbaUsuarios
-from .usuarios import (MINUTOS_INATIVIDADE, PERFIS, SESSAO_ENCERRADA, eh_admin,
-                       pode_gerenciar_usuarios)
+from .usuarios import (MINUTOS_INATIVIDADE, PERFIS, SESSAO_ENCERRADA,
+                       TEMA_PADRAO, eh_admin, pode_gerenciar_usuarios)
 from .validacao import formatar_cpf, mascarar_cpf
 
 TECLAS_DA_SESSAO = ("<Return>", "<KP_Enter>", "<F2>")
@@ -297,6 +306,7 @@ class AppPortaria:
         self.corpo.pack(side="left", fill="both", expand=True)
 
     def mostrar_login(self, aviso=""):
+        self._usar_tema(TEMA_PADRAO)        # o login segue o Windows
         self._trocar_corpo()
         self.tela_login = TelaLogin(self.corpo, self.banco, self.entrar,
                                     relogio=lambda: self.relogio(), aviso=aviso)
@@ -306,15 +316,75 @@ class AppPortaria:
         self._sessao += 1
         self.tentar(self.banco.registrar_evento, usuario["login"],
                     "Entrou no sistema")
-        self.avatar.mostrar(usuario["nome"])
-        self.lbl_usuario.config(text=usuario["nome"])
-        self.lbl_perfil.config(text=PERFIS[usuario["perfil"]])
-        self._trocar_corpo()
-        self.lateral.pack(side="left", fill="y", before=self.corpo)
-        self._montar_principal()
+        self._usar_tema(usuario.get("tema", TEMA_PADRAO))
+        self._mostrar_sessao()
         self.registrar_uso()
         self._vigiar_inatividade()
         self.mostrar_avisos()
+
+    def _mostrar_sessao(self):
+        """Barra lateral com quem está logado e as páginas (no login e ao
+        remontar a janela depois de trocar o tema)."""
+        usuario = self.usuario
+        self.avatar.mostrar(usuario["nome"])
+        self.lbl_usuario.config(text=usuario["nome"])
+        self.lbl_perfil.config(text=PERFIS[usuario["perfil"]])
+        self.var_tema.set(usuario.get("tema", TEMA_PADRAO))
+        self._trocar_corpo()
+        self.lateral.pack(side="left", fill="y", before=self.corpo)
+        self._montar_principal()
+
+    # --------------------------------------------------------------
+    # Tema: claro, escuro ou seguir o Windows (cada usuário escolhe o seu)
+    # --------------------------------------------------------------
+    def trocar_tema(self, preferencia):
+        """Menu da conta → Tema. Grava a escolha no usuário (vale nos
+        próximos logins) e, se as cores mudaram, remonta a janela agora."""
+        ok, _ = self.tentar(self.banco.definir_tema, preferencia, self.autor)
+        if not ok:
+            if self.usuario:      # o menu volta a marcar o tema de antes
+                self.var_tema.set(self.usuario.get("tema", TEMA_PADRAO))
+            return False
+        self.usuario["tema"] = preferencia
+        if self._usar_tema(preferencia):
+            self._remontar()
+        return True
+
+    def _usar_tema(self, preferencia):
+        """Põe em uso o tema da preferência; se as cores mudaram, refaz a
+        barra lateral (ainda escondida) e devolve True."""
+        if not estilo.usar_tema(estilo.resolver_tema(preferencia)):
+            return False
+        self._pintar_janela()
+        self.lateral.destroy()
+        self.menu_usuario.destroy()
+        self._montar_lateral()
+        return True
+
+    def _pintar_janela(self):
+        """Cores do tema em uso no que não é remontado: estilos ttk, cores
+        padrão do tk, fundo e barra de título da janela."""
+        aplicar_tema(self.janela)
+        self.janela.configure(bg=COR["fundo"])
+        pintar_barra_de_titulo(self.janela)
+
+    def _pagina_atual(self):
+        """Nome do atributo da página aberta (ex.: "aba_pessoas")."""
+        atual = self.abas.select()
+        nomes = ["aba_cad"] + [aba for aba, _ in PAGINAS_SOB_DEMANDA.values()]
+        return next((nome for nome in nomes
+                     if str(getattr(self, nome)) == atual), "aba_cad")
+
+    def _remontar(self):
+        """Monta de novo a barra lateral e as páginas com as cores novas,
+        voltando à mesma página e com o formulário de entrada como estava.
+        As janelas abertas da sessão (ex.: Corrigir) são fechadas."""
+        pagina = self._pagina_atual()
+        formulario = self.tela_cadastro.ler_formulario()
+        self._fechar_janelas_da_sessao()
+        self._mostrar_sessao()
+        self.tela_cadastro.restaurar_formulario(formulario)
+        self.ir_para(getattr(self, pagina))
 
     def sair(self, inatividade=False):
         if self.usuario:
@@ -407,10 +477,10 @@ class AppPortaria:
         # cabe num notebook 1366x768 a 125% (área útil ~1366x670 px): abaixo
         # de uns 740 px lógicos a Entrada e saída usa o layout compacto
         janela.minsize(px(1000), px(500))
-        janela.configure(bg=COR["fundo"])
         janela.report_callback_exception = self._erro_inesperado
         carregar_fontes(janela)
-        aplicar_tema(janela)
+        estilo.usar_tema(estilo.resolver_tema(TEMA_PADRAO))
+        self._pintar_janela()
         # qualquer tecla ou mouse dentro da janela conta como uso
         for evento in EVENTOS_DE_USO:
             janela.bind(evento, self.registrar_uso, add="+")
@@ -462,20 +532,34 @@ class AppPortaria:
                                      descricao="Opções da conta")
         self.btn_opcoes.pack(side="right")
 
-        self.menu_usuario = tk.Menu(self.janela, tearoff=0, font=FONTE["corpo"],
-                                    activebackground=COR["selecao"],
-                                    activeforeground=COR["texto"])
-        self.menu_usuario.add_command(label="Trocar minha senha",
-                                      command=self.trocar_senha)
-        self.menu_usuario.add_separator()
-        self.menu_usuario.add_command(label="Sair", command=self.sair)
+        self._montar_menu_usuario()
         for w in (self.avatar, quem, self.lbl_usuario, self.lbl_perfil):
             w.bind("<Button-1>", lambda e: self.abrir_menu_usuario())
             w.config(cursor="hand2")
 
+    def _montar_menu_usuario(self):
+        """Menu da conta (botão de mais opções no rodapé da barra lateral):
+        trocar a senha, o tema e sair."""
+        cores = {"bg": COR["superficie"], "fg": COR["texto"],
+                 "activebackground": COR["selecao"],
+                 "activeforeground": COR["texto"],
+                 "selectcolor": COR["texto"], "font": FONTE["corpo"]}
+        self.menu_usuario = tk.Menu(self.janela, tearoff=0, **cores)
+        self.menu_usuario.add_command(label="Trocar minha senha",
+                                      command=self.trocar_senha)
+        self.var_tema = tk.StringVar(self.janela)
+        self.menu_tema = tk.Menu(self.menu_usuario, tearoff=0, **cores)
+        for preferencia, texto in PREFERENCIAS_TEMA.items():
+            self.menu_tema.add_radiobutton(
+                label=texto, value=preferencia, variable=self.var_tema,
+                command=lambda p=preferencia: self.trocar_tema(p))
+        self.menu_usuario.add_cascade(label="Tema", menu=self.menu_tema)
+        self.menu_usuario.add_separator()
+        self.menu_usuario.add_command(label="Sair", command=self.sair)
+
     def abrir_menu_usuario(self):
         x = self.btn_opcoes.winfo_rootx()
-        y = self.btn_opcoes.winfo_rooty() - px(70)
+        y = self.btn_opcoes.winfo_rooty() - self.menu_usuario.winfo_reqheight()
         try:
             self.menu_usuario.tk_popup(x, y)
         finally:

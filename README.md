@@ -46,7 +46,7 @@ padrão). Depois disso abre sempre na tela de login.
 | Perfil | Pode |
 |---|---|
 | Porteiro | Registrar entradas e saídas, corrigir registros com entrada nas últimas 24 horas, buscar no histórico, ver e corrigir o cadastro de pessoas, ver a lista de bloqueio e o Painel, trocar a própria senha. Nas tabelas, na ficha da pessoa e na janela Corrigir, vê o CPF mascarado (`***.982.247-**`); ver a exceção em [Segurança e LGPD](#segurança-e-lgpd) |
-| Administrador | Tudo do porteiro, com o CPF completo + corrigir registros de qualquer data + **excluir registros** + criar e remover **bloqueios** + **exportar CSV** + página **Usuários** (criar, ativar/desativar, redefinir senha, ver a atividade do sistema) |
+| Administrador | Tudo do porteiro, com o CPF completo + corrigir registros de qualquer data + **excluir registros** + criar e remover **bloqueios** + **exportar CSV** + página **Usuários** (criar, ativar/desativar, redefinir senha, ver a atividade do sistema) + **autorizar exceções de horário** + **Encerrar o dia** + página **Configurações** (horários de acesso) |
 
 Depois de 5 senhas erradas seguidas o login fica bloqueado por 30 s (o tempo
 dobra a cada novo bloqueio, até 15 min). As tentativas ficam no banco: fechar e
@@ -63,13 +63,17 @@ logado e ativo.
 python -m unittest -v
 ```
 
-359 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
+443 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
 negócio, login, senhas, permissões, cadastro de pessoas e preenchimento
 automático, saída rápida e desfazer, correção de registros, lista de bloqueio,
-banco de dados, histórico, migração do JSON, busca, backup, exportação, Painel e
-a própria tela (preenche campos e clica nos botões com a janela oculta),
-inclusive a sessão que expira com uma confirmação aberta e o tamanho de um
-notebook 1366×768 a 125%.
+**regras de horário** (cada categoria dentro e fora da janela, feriados,
+eventos, 24 h, retroativo, tempo excedido, saída pendente, autorização do
+administrador, encerrar o dia, Configurações), banco de dados, histórico,
+migrações, busca, backup, exportação, Painel e a própria tela (preenche campos
+e clica nos botões com a janela oculta), inclusive a sessão que expira com uma
+confirmação ou a autorização aberta e o tamanho de um notebook 1366×768 a 125%.
+Os testes de tela usam um **relógio fixo** (uma quarta-feira às 10:00): o
+resultado não depende da hora em que eles rodam.
 
 ## Galeria
 
@@ -87,6 +91,10 @@ notebook 1366×768 a 125%.
 | **Painel** — números do dia e gráficos | **Exportar CSV** — só administrador |
 | ![Usuários](docs/design/final/usuarios.png) | ![Corrigir registro](docs/design/final/corrigir.png) |
 | **Usuários** — contas e atividade do sistema | **Corrigir registro** — com o histórico do registro |
+| ![Saída pendente e aviso de fechamento](docs/design/final/horarios_movimento_admin.png) | ![Autorização do administrador](docs/design/final/horarios_autorizacao_porteiro.png) |
+| **Regras de horário** — saída pendente, tempo excedido e "fecha em 20 min" | **Autorização do administrador** — exceção pedida pelo porteiro |
+| ![Configurações](docs/design/final/horarios_config_categorias.png) | ![Painel com tempo excedido](docs/design/final/horarios_painel.png) |
+| **Configurações** — regras de cada categoria | **Painel** — tempo excedido e saídas pendentes |
 
 **Antes × depois** (a mesma tela na versão 1 e na 2.0):
 
@@ -112,8 +120,9 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
 - **Login**: painel vermelho com o símbolo da cancela e o relógio da guarita;
   à direita, usuário e senha. No primeiro uso, o mesmo layout cria o
   administrador.
-- **Barra lateral**: Entrada e saída, Pessoas, Bloqueios, Painel e Usuários (só
-  administrador), com o número de pessoas cadastradas e de bloqueios ativos. No
+- **Barra lateral**: Entrada e saída, Pessoas, Bloqueios, Painel, Usuários e
+  Configurações (as duas últimas só para o administrador), com o número de
+  pessoas cadastradas e de bloqueios ativos. No
   rodapé, quem está logado, o menu da conta (**Trocar minha senha**, Sair) e o
   botão sair.
 - **Entrada e saída** (tecla **Enter** registra a entrada):
@@ -127,10 +136,16 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
   - o relógio dentro dos campos de data põe a hora de agora;
   - **Saída rápida** no topo (atalho **F2**): CPF ou placa exatos + Enter;
     pergunta antes se a placa trouxer mais de uma pessoa (carona);
-  - tabela **Movimento**: as entradas de hoje e todo mundo que ainda está no
-    campus; com texto na busca, procura no **histórico inteiro** (nome, CPF,
-    celular, placa ou tipo). Duplo clique ou "Registrar saída" dão a saída
-    (aceita várias linhas); o aviso com **Desfazer** fica 10 segundos no rodapé;
+  - tabela **Movimento**: as entradas e saídas de hoje e todo mundo que
+    ainda está no campus; com texto na busca, procura no **histórico inteiro**
+    (nome, CPF, celular, placa ou tipo). A situação de cada visita: no campus,
+    saiu, **Tempo excedido** (âmbar) ou **Saída pendente** (vermelho, em
+    destaque). Duplo clique ou "Registrar saída" dão a saída (aceita várias
+    linhas); o aviso com **Desfazer** fica 10 segundos no rodapé;
+  - faixas no topo, só quando importam: **saídas pendentes** (o administrador
+    tem o atalho **Encerrar o dia**) e, nos últimos 30 minutos antes de
+    fechar, **"Campus fecha às 23:00 (em 20 min) · 5 no campus"** (sem caixa
+    de diálogo, não atrapalha o uso);
   - "Corrigir" abre a janela **Corrigir registro** (mesmas validações do
     cadastro; o histórico guarda o que mudou e quem mudou); "Excluir" só
     aparece para o administrador (RN02).
@@ -140,12 +155,57 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
 - **Bloqueios**: CPFs e placas com acesso negado e o motivo. Todos veem; só o
   administrador cria ("Novo bloqueio") ou remove — remover não apaga, guarda
   quem removeu e quando ("Mostrar removidos").
-- **Painel**: no campus agora, entradas de hoje, permanência média e com
-  veículo; gráficos de pessoas por tipo e das entradas dos últimos 7 dias (hoje
+- **Painel**: no campus agora, entradas de hoje, permanência média, com
+  veículo e **tempo excedido** (com as saídas pendentes logo abaixo); gráficos de pessoas por tipo e das entradas dos últimos 7 dias (hoje
   em destaque). O administrador **exporta para CSV** (Excel) os registros de um
   período.
 - **Usuários** (administrador): contas (criar em diálogo, ativar/desativar,
   redefinir senha) e a atividade do sistema com filtro.
+- **Configurações** (administrador): os horários de acesso, em três seções —
+  **Funcionamento** (abre e fecha de cada dia da semana, minutos do aviso
+  antes de fechar e o limite da entrada retroativa), **Categorias** (janela de
+  entrada e permanência máxima de cada tipo de acesso) e **Feriados e eventos**
+  (adicionar e remover). Tudo é validado (hh:mm válido, fechamento depois da
+  abertura, números nos limites) e cada mudança fica no histórico.
+
+### Regras de horário de acesso
+
+Padrão do campus (tudo editável em Configurações): **segunda a sexta 06:30–23:00,
+sábado 07:00–14:00, domingo fechado**. Um **feriado** fecha o campus no dia; um
+**evento** (ex.: formatura num sábado 18:00–23:00, ou num domingo) substitui o
+horário daquela data, mesmo em feriado ou domingo.
+
+| Categoria | Pode entrar | Permanência máxima |
+|---|---|---|
+| Aluno | no funcionamento, até 30 min antes de fechar | até o fechamento |
+| Professor | de 30 min antes de abrir até o fechamento | até o fechamento + 1 h |
+| Funcionário | de 1 h antes de abrir até 1 h depois de fechar | 12 h |
+| Visitante | 08:00–18:00, só em dia de funcionamento | 4 h |
+| Entregador | 07:00–17:00, só em dia de funcionamento | 1 h |
+| Prestador de serviço | 07:00–19:00, só em dia de funcionamento | 10 h |
+
+- **Exceções** (pedem a autorização do administrador): entrada com o campus
+  fechado ou fora da janela da categoria, entrada retroativa com mais de 12 h
+  e qualquer visita com mais de **24 h**. Vale ao registrar a entrada, dar a
+  saída (botão, duplo clique ou saída rápida) e corrigir um registro (só o que
+  mudou é conferido de novo).
+- **Autorização do administrador**: um diálogo lista as regras violadas e pede
+  a **justificativa** (obrigatória). Com o porteiro logado, um administrador
+  digita o login e a senha dele (senha oculta; errar conta como tentativa de
+  login). Com o administrador logado, basta confirmar com a justificativa. O
+  histórico grava a **"Exceção autorizada"** com quem autorizou, quem operava,
+  as regras e o porquê, ligada à visita. Se a sessão expirar com o diálogo
+  aberto, nada é gravado. O banco confere de novo: visita acima de 24 h sem a
+  autorização de um administrador ativo é recusada.
+- **Tempo excedido**: visita aberta acima da permanência máxima da categoria
+  (âmbar no Movimento e um número no Painel). É só um alerta.
+- **Saída pendente**: quem não teve a saída registrada até o fechamento do dia
+  da entrada (nunca antes do fim da permanência permitida: o professor pode
+  ficar até 24:00). É calculada com o relógio, não depende de o programa estar
+  aberto às 23:00.
+- **Encerrar o dia** (administrador): dá a saída de todas as pendentes, de uma
+  vez, no horário de fechamento do dia de cada entrada, depois de confirmar;
+  cada uma fica no histórico como "Saída automática (encerramento)".
 
 Regras e segurança:
 
@@ -175,7 +235,7 @@ entrada e saída). Tudo fica no próprio computador, na pasta do programa
 |---|---|
 | `portaria.db` (e, com o programa aberto, `portaria.db-wal` e `portaria.db-shm`) | O banco: pessoas, visitas, usuários (senha só como hash), histórico de ações, bloqueios e tentativas de login |
 | `backups/portaria-AAAA-MM-DD.db` | Cópia do banco feita ao abrir o programa, uma por dia; ficam as 30 mais recentes |
-| `backups/portaria-antes-v6-de-vN-....db` | Cópia feita antes de atualizar o banco para uma versão nova. **Não é apagada sozinha**: apague à mão quando a atualização estiver conferida |
+| `backups/portaria-antes-vX-de-vN-....db` | Cópia feita antes de atualizar o banco para uma versão nova. **Não é apagada sozinha**: apague à mão quando a atualização estiver conferida |
 | `portaria.log` (e `.1` a `.3`) | Só erros técnicos (até 3 × 1 MB). Não guarda CPF, celular nem senha |
 | CSV exportado | Fica onde o administrador escolher no "Salvar como". Leva **CPF e celular completos** e a exportação fica no histórico |
 | `registros_portaria.json.migrado` | Só se havia a versão 1: os registros antigos, em texto |
@@ -237,6 +297,7 @@ danificado):
 |---|---|
 | `portaria_universidade.py` | Ponto de entrada (é o arquivo que se executa) e a relação com Compiladores |
 | `portaria/validacao.py` | Regras de CPF, celular, placa, nome, datas e verificações semânticas |
+| `portaria/horarios.py` | Regras de horário de acesso (funções puras): funcionamento, feriados, eventos, categorias, exceções, situação da visita |
 | `portaria/dados.py` | Banco SQLite (pessoas, visitas, usuários, histórico, bloqueios) e migrações |
 | `portaria/consultas.py` | Busca e números do Painel (versão em Python, usada nos testes) |
 | `portaria/usuarios.py` | Senhas (hash), perfis, permissões, login e troca de senha |
@@ -252,6 +313,8 @@ danificado):
 | `portaria/tela_dashboard.py` | Painel e exportação; `graficos.py` desenha as barras |
 | `portaria/tela_usuarios.py` | Usuários e atividade (só administrador) |
 | `portaria/tela_edicao.py` | Janela "Corrigir registro" com o histórico do registro |
+| `portaria/tela_autorizacao.py` | Diálogo "Autorização do administrador" (exceções de horário) |
+| `portaria/tela_configuracoes.py` | Configurações dos horários de acesso (só administrador) |
 | `portaria/tela_senha.py` | Janela "Trocar minha senha" |
 | `docs/design/` | Proposta de design, protótipo e prints (antes, protótipo e final) |
 | `docs/revisao/` | Relatórios das revisões de segurança, código e backend (antes e depois da reforma) |
@@ -264,6 +327,18 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**2.1** (em desenvolvimento) — regras de horário de acesso:
+
+- funcionamento por dia da semana, feriados e eventos; janela de entrada e
+  permanência máxima por categoria; limite geral de 24 h;
+- exceções com **autorização do administrador** (login e senha, justificativa,
+  histórico "Exceção autorizada"), conferidas também no banco;
+- situação **Tempo excedido** e **Saída pendente**, faixas de alerta, aviso
+  antes de fechar, **Encerrar o dia** e o número novo no Painel;
+- página **Configurações**; banco na versão 7 (migração com backup antes);
+- correção: a visita com entrada em outro dia e saída hoje sumia do Movimento;
+- 443 testes automatizados.
 
 **2.0** (20/10/2026) — reforma completa, feita com um time de agentes de IA
 (design, segurança, código, backend) e revisada antes de publicar:

@@ -1,5 +1,5 @@
 """
-Regras de horário de acesso (RN13 a RN18): funcionamento do campus por dia
+Regras de horário de acesso (RN16 a RN22): funcionamento do campus por dia
 da semana, feriados, eventos, janela de entrada e permanência máxima de
 cada categoria, limite geral de 24 h, entrada retroativa e a situação de
 cada visita aberta (no campus, tempo excedido, saída pendente).

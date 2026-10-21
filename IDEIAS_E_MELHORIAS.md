@@ -74,8 +74,9 @@ Ordem pensada para cada etapa já deixar algo entregável.
   cria/remove, porteiro vê; remoção guardada; marcação na aba Pessoas. 199 testes.
   Ideia futura: "liberar uma vez" pelo admin sem remover o bloqueio.
 - **Visitante**: campos "quem vai visitar / setor" e "motivo"; crachá numerado.
-- **Alerta de permanência**: destacar visitante/entregador dentro há mais de X horas
-  e listar quem ainda está no campus no fim do expediente.
+- ✅ **Alerta de permanência** (20/10/2026, versão 2.1): "Tempo excedido" acima
+  da permanência máxima de cada categoria e "Saída pendente" depois do
+  fechamento, com "Encerrar o dia" (ver a seção da 2.1).
 - **Estacionamento**: vagas ocupadas × capacidade.
 - **Máscara automática** nos campos (CPF vira 000.000.000-00 enquanto digita) e
   seletor de data.
@@ -137,6 +138,29 @@ Quatro auditorias (design, segurança, código, backend: `docs/revisao/` e
   saída em linha desatualizada, falha de backup, burla do bloqueio pela correção.
 - 359 testes automatizados.
 
+### Versão 2.1 — regras de horário de acesso (20/10/2026) ✅
+Decisões do aluno; modelo em `portaria/horarios.py` (funções puras, relógio
+injetado), guardado no banco (esquema v7) e editável na página Configurações.
+- ✅ Correção: visita com entrada em outro dia e saída hoje sumia do Movimento
+  (faltava a parte "saídas de hoje" na consulta; índice novo em `saida`).
+- ✅ Funcionamento por dia da semana (seg–sex 06:30–23:00, sáb 07:00–14:00,
+  dom fechado), feriados e eventos (o evento substitui o dia, até em domingo).
+- ✅ Janela de entrada e permanência por categoria: aluno, professor e
+  funcionário relativos ao funcionamento; visitante, entregador e prestador
+  com janela fixa, só em dia aberto.
+- ✅ Exceções com autorização do administrador (login e senha ou, se ele
+  estiver logado, só a confirmação), justificativa obrigatória e o evento
+  "Exceção autorizada" no histórico; o banco recusa visita acima de 24 h sem
+  autorização.
+- ✅ Tempo excedido, saída pendente, faixas de alerta, aviso antes de fechar,
+  Encerrar o dia e o número novo no Painel.
+- ✅ Página Configurações (só administrador), com validação e histórico.
+- 443 testes automatizados (relógio fixo nos testes de tela).
+- Ideias para depois: avisar o administrador por e-mail/WhatsApp das saídas
+  pendentes; "liberar uma vez" a categoria para uma pessoa (ex.: professor
+  substituto no sábado); horário por pessoa além da categoria; eventos de vários
+  dias de uma vez; relatório das exceções autorizadas no período.
+
 ## 4. Rascunho de requisitos para o Word
 
 **RF**: RF01 cadastrar entrada · RF02 registrar saída (botão, duplo clique,
@@ -145,7 +169,10 @@ registro (admin) · RF05 exibir Painel · RF06 login e primeiro acesso · RF07
 exportar CSV (admin) · RF08 cadastro de pessoas com preenchimento automático ·
 RF09 corrigir registro com histórico · RF10 lista de bloqueio · RF11 gerenciar
 usuários (admin) · RF12 trocar a própria senha · RF13 backup diário automático ·
-RF14 comando digitado (Etapa 4, futuro).
+RF14 comando digitado (Etapa 4, futuro) · RF15 configurar os horários de
+acesso: funcionamento, categorias, feriados e eventos (admin) · RF16 autorizar
+exceção de horário (admin) · RF17 encerrar o dia (admin) · RF18 alertar tempo
+excedido, saída pendente e fechamento próximo.
 
 **RNF**: RNF01 interface simples com botões identificados · RNF02 senha oculta e
 armazenada com hash · RNF03 tela principal e busca respondem na hora mesmo com
@@ -164,6 +191,21 @@ RN13 sem uso por 10 minutos a sessão se encerra · RN14 o porteiro vê o CPF ma
 nas listas e no histórico · RN15 senha com pelo menos 8 caracteres e diferente do login.
 (RN10 na 2.0: a espera começa em 30 s, dobra a cada bloqueio até 15 min e não zera ao
 reabrir o programa.)
+
+Novas na 2.1 (regras de horário):
+RN16 o campus tem horário por dia da semana; feriado fecha o dia e evento substitui o
+horário daquela data (mesmo domingo ou feriado) · RN17 cada categoria só entra na sua
+janela (aluno no funcionamento até 30 min antes de fechar; professor de 30 min antes de
+abrir até fechar; funcionário de 1 h antes a 1 h depois; visitante 08–18, entregador
+07–17 e prestador 07–19, só em dia aberto) · RN18 cada categoria tem permanência
+máxima (aluno até fechar; professor fechamento + 1 h; funcionário 12 h; visitante 4 h;
+entregador 1 h; prestador 10 h); acima dela a visita fica "Tempo excedido" · RN19
+nenhuma visita passa de 24 h · RN20 entrada fora da janela, entrada retroativa com
+mais de 12 h e visita acima de 24 h são exceções: só com autorização de um
+administrador ativo e justificativa, registradas no histórico com quem autorizou e quem
+operava · RN21 quem não teve saída até o fechamento do dia da entrada fica "Saída
+pendente"; só o administrador encerra o dia (saída automática no fechamento, registrada)
+· RN22 só o administrador altera os horários, e cada alteração fica no histórico.
 
 ## 5. Pendências registradas na revisão final (para a versão 2.1+)
 

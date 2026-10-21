@@ -173,8 +173,9 @@ class TestTemaNoBanco(unittest.TestCase):
             dados._passo_v9(banco, con, versao)
             raise sqlite3.OperationalError("falha simulada")
 
-        with mock.patch.object(dados, "MIGRACOES",
-                               dados.MIGRACOES[:-1] + [(9, passo_que_falha)]):
+        migracoes = [(alvo, passo_que_falha if alvo == 9 else passo)
+                     for alvo, passo in dados.MIGRACOES]
+        with mock.patch.object(dados, "MIGRACOES", migracoes):
             with self.assertRaises(dados.ErroDados):
                 dados.Banco(self.caminho)
         self.assertEqual(versao_do_arquivo(self.caminho), 8)

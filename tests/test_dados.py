@@ -7,7 +7,7 @@ import unittest
 from datetime import date, datetime, timedelta
 from unittest import mock
 
-from portaria import dados
+from portaria import dados, horarios
 from portaria.consultas import filtrar, resumo
 from portaria.validacao import FORMATO
 
@@ -576,8 +576,18 @@ def agora_menos(**delta):
     return (datetime.now() - timedelta(**delta)).strftime(FORMATO)
 
 
+def rebaixar_para_v9(caminho):
+    """Deixa um banco como a versão 9 deixava: sem a tabela meta."""
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        DROP TABLE IF EXISTS meta;
+        PRAGMA user_version = 9;""")
+    con.close()
+
+
 def rebaixar_para_v8(caminho):
     """Deixa um banco como a versão 8 deixava: sem o tema de cada usuário."""
+    rebaixar_para_v9(caminho)
     con = sqlite3.connect(caminho)
     con.executescript("""
         ALTER TABLE usuarios DROP COLUMN tema;
@@ -712,6 +722,60 @@ class TestIntegridade(BaseTemp):
         with open(self.caminho_db, "rb") as f:
             self.assertEqual(hashlib.sha256(f.read()).hexdigest(), antes)
         self.assertEqual(versao_do_arquivo(self.caminho_db), 99)
+
+    def test_versao_mais_nova_na_meta_e_recusada_mesmo_rebaixada(self):
+        """Proteção para o futuro: um programa antigo regrava o
+        user_version, mas a tabela meta guarda a versão de verdade."""
+        con = sqlite3.connect(self.caminho_db)
+        con.execute("PRAGMA journal_mode = DELETE")
+        con.execute("UPDATE meta SET valor = 11 WHERE chave = 'versao_esquema'")
+        con.execute("PRAGMA user_version = 5")       # o programa antigo
+        con.commit()
+        con.close()
+        with self.assertRaises(dados.ErroDados) as erro:
+            dados.Banco(self.caminho_db)
+        self.assertIn("versão mais nova", str(erro.exception))
+
+    def test_banco_rebaixado_por_programa_antigo_abre_e_avisa(self):
+        """QA2 B3: o programa da v5 regravava user_version = 5; ao reabrir,
+        a migração da v8 reinseria as estadias e falhava com "Este veículo
+        já está no estacionamento" (o programa não abria mais)."""
+        self.banco.inserir(registro())                     # carro dentro
+        con = sqlite3.connect(self.caminho_db)
+        con.execute("PRAGMA user_version = 5")
+        con.close()
+        banco = dados.Banco(self.caminho_db)
+        self.assertEqual(versao_do_arquivo(self.caminho_db),
+                         dados.VERSAO_ESQUEMA)
+        self.assertEqual(len(banco.listar_estacionamento()), 1)
+        self.assertIn("versão ANTIGA do programa", banco.avisos[0])
+        self.assertIn("v10 → v5", banco.avisos[0])
+        # a tolerância que o administrador mudou não volta ao padrão
+        self.criar_equipe()
+        regras = banco.ler_configuracao().regras
+        regras["Professor"] = horarios.RegraCategoria(
+            True, 30, 0, ate_fechamento=True, tolerancia_min=45)
+        banco.salvar_regras(regras, autor="ana")
+        con = sqlite3.connect(self.caminho_db)
+        con.execute("PRAGMA user_version = 5")
+        con.close()
+        banco = dados.Banco(self.caminho_db)
+        self.assertEqual(
+            banco.ler_configuracao().regras["Professor"].tolerancia_min, 45)
+
+    def test_migracao_recusada_diz_que_e_a_atualizacao(self):
+        def passo_que_recusa(banco, con, versao):
+            raise sqlite3.IntegrityError("UNIQUE constraint failed: "
+                                         "estadias_veiculo.placa")
+        rebaixar_para_v9(self.caminho_db)
+        migracoes = [(alvo, passo_que_recusa if alvo == 10 else passo)
+                     for alvo, passo in dados.MIGRACOES]
+        with mock.patch.object(dados, "MIGRACOES", migracoes):
+            with self.assertRaises(dados.ErroDados) as erro:
+                dados.Banco(self.caminho_db)
+        self.assertIn("Não foi possível atualizar o banco", str(erro.exception))
+        self.assertNotIn("veículo", str(erro.exception))
+        self.assertEqual(versao_do_arquivo(self.caminho_db), 9)
 
     def test_visita_retroativa_nao_sobrescreve_a_pessoa(self):
         self.banco.inserir(registro())                       # visita de hoje

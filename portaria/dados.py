@@ -70,7 +70,9 @@ FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
 #    regras de horário (ninguém entra depois de fechar, retroativo de 3 h)
 #    e as estadias de veículo (o carro tem entrada e saída próprias)
 # 9: tema (claro, escuro ou seguir o Windows) escolhido por cada usuário
-VERSAO_ESQUEMA = 9
+# 10: tabela meta com a versão do esquema, que um programa antigo não
+#     conhece: se ele rebaixar o user_version, o programa novo percebe
+VERSAO_ESQUEMA = 10
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
 REGISTRO_MUDOU = ("Este registro foi alterado em outra estação enquanto a "
@@ -601,7 +603,9 @@ ESQUEMA_V8 = [
 
 # Cada visita aberta com placa vira uma estadia aberta. Se a mesma placa
 # está em mais de uma visita aberta (caronas, antes da v8), o responsável é
-# quem entrou primeiro com ela.
+# quem entrou primeiro com ela. Pode rodar de novo (banco rebaixado por um
+# programa antigo, QA2 B3): placa já no estacionamento ou visita que já
+# tem estadia não ganham outra.
 MIGRAR_ESTADIAS = f"""
 INSERT INTO estadias_veiculo (placa, cpf, nome, pessoa_id, registro_id,
                               entrada, autor_entrada)
@@ -611,6 +615,9 @@ WHERE r.saida = '' AND r.placa <> ''
   AND r.id = (SELECT r2.id FROM registros r2
               WHERE r2.saida = '' AND r2.placa = r.placa
               ORDER BY r2.entrada, r2.id LIMIT 1)
+  AND NOT EXISTS (SELECT 1 FROM estadias_veiculo e
+                  WHERE (e.saida = '' AND e.placa = r.placa)
+                     OR e.registro_id = r.id)
 """
 
 
@@ -628,9 +635,10 @@ def _passo_v8(banco, con, versao):
         con.execute(sql)
     con.execute(MIGRAR_ESTADIAS)
     colunas = {c[1] for c in con.execute("PRAGMA table_info(regras_categoria)")}
-    if "tolerancia_min" not in colunas:
-        con.execute("ALTER TABLE regras_categoria ADD COLUMN tolerancia_min "
-                    "INTEGER NOT NULL DEFAULT 0 CHECK (tolerancia_min >= 0)")
+    if "tolerancia_min" in colunas:
+        return          # já era v8 (rebaixado por um programa antigo)
+    con.execute("ALTER TABLE regras_categoria ADD COLUMN tolerancia_min "
+                "INTEGER NOT NULL DEFAULT 0 CHECK (tolerancia_min >= 0)")
     padrao = horarios.configuracao_padrao()
     for tipo, regra in padrao.regras.items():
         if regra.tolerancia_min:
@@ -665,9 +673,41 @@ def _passo_v9(banco, con, versao):
         con.execute("UPDATE usuarios SET tema = 'claro'")
 
 
-# (versão alcançada, função) em ordem; uma migração nova entra no fim
+def _passo_v10(banco, con, versao):
+    """Tabela meta: guarda a versão do esquema num lugar que os programas
+    antigos não conhecem (eles só olham o PRAGMA user_version). O programa
+    das versões 5 e 6 regravava o user_version sem conferir; com a meta, o
+    programa novo percebe o rebaixamento (ver Banco._migrar)."""
+    con.execute("""CREATE TABLE IF NOT EXISTS meta (
+        chave TEXT PRIMARY KEY,
+        valor INTEGER NOT NULL
+    )""")
+
+
+# (versão alcançada, função) em ordem; uma migração nova entra no fim.
+# Cada passo pode rodar de novo sem estragar nada (banco rebaixado).
 MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7), (8, _passo_v8),
-             (9, _passo_v9)]
+             (9, _passo_v9), (10, _passo_v10)]
+
+VERSAO_MAIS_NOVA = ("Este banco de dados foi criado por uma versão mais nova "
+                    "do programa.\nAtualize o programa para abrir este banco "
+                    "(nada foi alterado nele).")
+REBAIXADO = ("Este banco foi aberto por uma versão ANTIGA do programa, que "
+             "rebaixou a versão dele (v{gravada} → v{versao}). O banco foi "
+             "atualizado de novo, com uma cópia em backups antes.\nConfira "
+             "os registros feitos na versão antiga e não use mais o "
+             "programa antigo neste banco.")
+
+
+def _versao_gravada(con):
+    """Versão do esquema guardada na tabela meta (0 se ainda não existe)."""
+    existe = con.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                         "AND name = 'meta'").fetchone()
+    if existe is None:
+        return 0
+    linha = con.execute("SELECT valor FROM meta WHERE chave = "
+                        "'versao_esquema'").fetchone()
+    return linha[0] if linha else 0
 
 
 class Banco:
@@ -695,32 +735,55 @@ class Banco:
             raise _erro(e) from e
         try:
             versao = con.execute("PRAGMA user_version").fetchone()[0]
-            if versao > VERSAO_ESQUEMA:
-                raise ErroDados(
-                    "Este banco de dados foi criado por uma versão mais nova "
-                    "do programa.\nAtualize o programa para abrir este banco "
-                    "(nada foi alterado nele).",
-                    detalhe=f"user_version {versao} > {VERSAO_ESQUEMA}")
+            gravada = _versao_gravada(con)
+            if max(versao, gravada) > VERSAO_ESQUEMA:
+                raise ErroDados(VERSAO_MAIS_NOVA, detalhe=(
+                    f"user_version {versao}, meta {gravada} > {VERSAO_ESQUEMA}"))
+            if gravada > versao:
+                # um programa antigo (v5/v6) regravou o user_version: os
+                # passos rodam de novo (todos podem repetir) e o admin sabe
+                log.warning("Banco rebaixado: meta v%s, user_version v%s",
+                            gravada, versao)
+                self.avisos.append(REBAIXADO.format(gravada=gravada,
+                                                    versao=versao))
             if 0 < versao < VERSAO_ESQUEMA:
                 self._backup_antes_de_migrar(versao)
             for alvo, passo in MIGRACOES:
                 if versao >= alvo:
                     continue
-                con.execute("BEGIN IMMEDIATE")
-                try:
-                    passo(self, con, versao)
-                    con.execute(f"PRAGMA user_version = {int(alvo)}")
-                    con.execute("COMMIT")
-                except BaseException:
-                    con.execute("ROLLBACK")
-                    raise
+                self._passo(con, alvo, passo, versao)
                 versao = alvo
+            if gravada != VERSAO_ESQUEMA:
+                con.execute("INSERT INTO meta (chave, valor) VALUES "
+                            "('versao_esquema', ?) ON CONFLICT (chave) "
+                            "DO UPDATE SET valor = excluded.valor",
+                            (VERSAO_ESQUEMA,))
             if wal:
                 con.execute("PRAGMA journal_mode = WAL")
         except sqlite3.Error as e:
             raise _erro(e) from e
         finally:
             con.close()
+
+    def _passo(self, con, alvo, passo, versao):
+        """Um passo da migração numa transação; se falhar, nada muda e a
+        mensagem diz que foi a atualização (não um erro de cadastro)."""
+        con.execute("BEGIN IMMEDIATE")
+        try:
+            passo(self, con, versao)
+            con.execute(f"PRAGMA user_version = {int(alvo)}")
+            con.execute("COMMIT")
+        except sqlite3.IntegrityError as e:
+            con.execute("ROLLBACK")
+            log.error("Migração para a v%s recusada: %s", alvo, e)
+            raise ErroDados(
+                f"Não foi possível atualizar o banco de dados para a versão "
+                f"{alvo} (os dados atuais não passaram nas regras novas).\n"
+                "Nada foi alterado nele; há uma cópia na pasta backups. "
+                "Avise o administrador.", detalhe=str(e)) from e
+        except BaseException:
+            con.execute("ROLLBACK")
+            raise
 
     def _backup_antes_de_migrar(self, versao):
         """Cópia do banco antigo antes de mudar o esquema (pasta backups).

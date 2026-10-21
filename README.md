@@ -10,12 +10,34 @@ relacionado com as fases de um compilador (léxica, sintática e semântica).
 
 ## Como executar
 
-**Sem instalar nada:** baixe o `Portaria.exe` na página de
-[Releases](https://github.com/Kauhan33/sistema-portaria/releases), coloque numa
-pasta e abra. O banco, os backups e o log são criados ao lado do `.exe`.
+Requisitos para usar: **Windows 10 ou 11 de 64 bits**. Não precisa instalar
+Python nem nada além do programa.
 
-**Pelo código-fonte:** requer só o Python 3 (Tkinter já vem na instalação padrão
-do Windows).
+**Com instalador (recomendado):** baixe o `Instalar_Portaria_<versão>.exe` na
+página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases) e
+siga o assistente (pede a permissão de administrador do Windows uma vez).
+
+- O programa vai para `C:\Arquivos de Programas\Portaria`, com atalho no Menu
+  Iniciar (e na Área de Trabalho, se marcar) e desinstalador em "Aplicativos
+  instalados".
+- Os dados (banco, backups e log) ficam em **`C:\ProgramData\Portaria`**, uma
+  pasta que todos os usuários do Windows daquele computador conseguem gravar
+  (a pasta Arquivos de Programas é protegida pelo Windows). **Desinstalar não
+  apaga os dados.**
+
+**Sem instalar (portátil):** baixe o `Portaria.exe`, coloque numa pasta onde
+você pode gravar (ex.: Documentos ou um pendrive) e abra. O banco, os backups e
+o log são criados ao lado do `.exe`.
+
+**Aviso "O Windows protegeu o computador":** aparece porque o programa não tem
+assinatura digital (um certificado pago). Clique em **Mais informações →
+Executar assim mesmo**. Se o antivírus apagar o arquivo baixado, é um falso
+positivo comum em programas gerados com o PyInstaller: restaure o arquivo na
+quarentena do antivírus ou use o instalador.
+
+**Pelo código-fonte:** requer o Python 3 instalado (Tkinter já vem na instalação
+padrão do Windows). Baixar o código pelo botão "Code" e dar dois cliques no
+`.py` não funciona num computador sem Python.
 
 ```bash
 python portaria_universidade.py
@@ -33,8 +55,23 @@ cancela). O PyInstaller só é necessário para gerar o `.exe`; o programa conti
 usando apenas a biblioteca padrão. O ícone fica em `assets/portaria.ico`
 (`assets/gerar_icone.py` refaz o ícone, se o símbolo mudar).
 
+### Gerar o instalador
+
+```bash
+winget install JRSoftware.InnoSetup
+python build_instalador.py
+```
+
+Gera o `.exe` e, em seguida, `dist/Instalar_Portaria_<versão>.exe` com o
+**Inno Setup 6** (gratuito), a partir de `instalador/portaria.iss`. A versão
+vem de `portaria/__init__.py` (`VERSAO`). O instalador grava, ao lado do
+programa, um `instalado.ini` dizendo onde ficam os dados
+(`C:\ProgramData\Portaria`); sem esse arquivo (o `.exe` portátil ou o
+código-fonte), os dados ficam ao lado do programa — veja `portaria/caminhos.py`.
+
 Os registros ficam no banco SQLite `portaria.db` (módulo `sqlite3`, já incluso
-no Python), criado ao lado do programa. Se houver um `registros_portaria.json` da
+no Python), criado na pasta de dados (instalado: `C:\ProgramData\Portaria`;
+portátil ou pelo código: ao lado do programa). Se houver um `registros_portaria.json` da
 versão 1 na mesma pasta, ele é importado na primeira execução e renomeado para
 `registros_portaria.json.migrado`, que fica como backup.
 
@@ -346,8 +383,9 @@ Regras e segurança:
 ## Segurança e LGPD
 
 O sistema guarda dados pessoais (nome, CPF, celular, placa e horários de
-entrada e saída). Tudo fica no próprio computador, na pasta do programa
-(onde está o `portaria_universidade.py` ou o `.exe`):
+entrada e saída). Tudo fica no próprio computador, na **pasta de dados**:
+`C:\ProgramData\Portaria` quando instalado; ao lado do programa no `.exe`
+portátil ou rodando pelo código:
 
 | Arquivo | O que tem |
 |---|---|
@@ -365,7 +403,7 @@ alguém apagá-los). Trate a pasta de backups com o mesmo cuidado do banco.
 
 **Quem deve ter acesso** (recomendação para instalar na portaria):
 
-- a pasta do programa e a pasta `backups` só com acesso da conta do Windows
+- a pasta de dados e a pasta `backups` só com acesso da conta do Windows
   usada na portaria e do administrador (Propriedades → Segurança no
   Explorador de Arquivos); o porteiro não deve ser administrador do Windows;
 - disco com **BitLocker** ligado, para os dados não serem lidos se o
@@ -388,13 +426,13 @@ altera).
 danificado):
 
 1. Feche o programa em todos os computadores que usam esse banco.
-2. Na pasta do programa, renomeie `portaria.db` para
+2. Na pasta de dados, renomeie `portaria.db` para
    `portaria-danificado.db` (não apague: pode ser útil depois). Se existirem
    `portaria.db-wal` e `portaria.db-shm`, renomeie também (ex.:
    `portaria-danificado.db-wal`), para não serem misturados com a cópia.
 3. Abra a pasta `backups` e escolha o backup mais recente que estava bom
    (o nome tem a data: `portaria-2026-10-20.db`).
-4. Copie esse arquivo para a pasta do programa e renomeie a cópia para
+4. Copie esse arquivo para a pasta de dados e renomeie a cópia para
    `portaria.db`.
 5. Abra o programa e confira os registros. O que foi feito depois da data do
    backup não está nele e precisa ser lançado de novo.
@@ -440,6 +478,8 @@ danificado):
 | `docs/revisao/` | Relatórios das revisões de segurança, código e backend (antes e depois da reforma) |
 | `docs/qa/` | Relatórios dos dois testes de QA, a situação de cada achado (`CORRECOES.md`) e prints antes/depois |
 | `build_exe.py` | Gera o `dist/Portaria.exe` com o PyInstaller |
+| `build_instalador.py` e `instalador/portaria.iss` | Geram o instalador com o Inno Setup |
+| `portaria/caminhos.py` | Escolhe a pasta de dados (instalado × portátil) |
 | `assets/` | Ícone do programa (`portaria.ico`) e o script que o gera |
 | `tests/` | Testes automatizados |
 | `IDEIAS_E_MELHORIAS.md` | Análise do código, falhas encontradas e roteiro de melhorias |

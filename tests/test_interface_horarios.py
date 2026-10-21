@@ -6,7 +6,7 @@ o dia, Painel e a página Configurações. Relógio do app sempre fixo.
 
 import tkinter as tk
 import unittest
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from portaria import horarios
 from portaria.horarios import Evento, Horario, hora
@@ -305,6 +305,101 @@ class TestPainelComHorarios(BaseHorarios):
         valor, apoio = self.app.cards["excedido"]
         self.assertEqual(valor.cget("text"), "1")
         self.assertEqual(apoio.cget("text"), "+ 1 saída pendente")
+
+
+class TestConfiguracoes(BaseHorarios):
+    entrar_como = "admin"
+
+    def setUp(self):
+        super().setUp()
+        self.app.ir_para(self.app.aba_configuracoes)
+        self.tela = self.app.tela_configuracoes
+
+    def test_so_admin_tem_a_pagina(self):
+        textos = [i.cget("text") for i in self.app.itens_menu.values()]
+        self.assertEqual(textos[-2:], ["Usuários", "Configurações"])
+
+    def test_mostra_a_configuracao_em_vigor(self):
+        aberto, abre, fecha = self.tela.dias[5]
+        self.assertEqual((aberto.get(), abre.get(), fecha.get()),
+                         (True, "07:00", "14:00"))
+        self.assertFalse(self.tela.dias[6][0].get())        # domingo fechado
+        self.assertEqual(self.tela.dias[6][1].cget("state"), "disabled")
+        aluno = self.tela.categorias["Aluno"]
+        self.assertEqual((aluno["janela"].get(), aluno["de"].get(),
+                          aluno["ate"].get(), aluno["minutos"].get()),
+                         ("Do funcionamento", "0", "-30", "0"))
+        self.assertEqual(self.tela.categorias["Visitante"]["de"].get(), "08:00")
+
+    def test_salvar_funcionamento_valida_e_registra(self):
+        _, abre, fecha = self.tela.dias[5]
+        abre.delete(0, tk.END)
+        abre.insert(0, "15:00")                       # depois do fechamento
+        self.tela.salvar_funcionamento()
+        self.assertIn("Sábado", self.tela.faixa_funcionamento.lbl.cget("text"))
+        self.assertEqual(self.banco.ler_configuracao(),
+                         horarios.configuracao_padrao())
+        abre.delete(0, tk.END)
+        abre.insert(0, "08:00")
+        self.tela.dias[6][0].set(True)               # abre o domingo
+        self.tela._ao_alternar_dia(6)
+        for campo, valor in zip(self.tela.dias[6][1:], ("09:00", "12:00")):
+            campo.insert(0, valor)
+        self.tela.minutos_aviso.delete(0, tk.END)
+        self.tela.minutos_aviso.insert(0, "45")
+        self.tela.salvar_funcionamento()
+        config = self.banco.ler_configuracao()
+        self.assertEqual(config.funcionamento[5], Horario(hora("08:00"), hora("14:00")))
+        self.assertEqual(config.funcionamento[6], Horario(hora("09:00"), hora("12:00")))
+        self.assertEqual(config.minutos_aviso, 45)
+        self.assertIn("3 alteração", self.tela.faixa_funcionamento.lbl.cget("text"))
+        self.assertIn(("ana.admin", "Configuração alterada"), self.acoes())
+
+    def test_salvar_regras_valida_e_troca_a_janela(self):
+        visitante = self.tela.categorias["Visitante"]
+        visitante["ate"].delete(0, tk.END)
+        visitante["ate"].insert(0, "25:00")
+        self.tela.salvar_regras()
+        self.assertIn("horário inválido",
+                      self.tela.faixa_categorias.lbl.cget("text"))
+        # trocar para "Do funcionamento" passa De/Até para minutos
+        visitante["janela"].set("Do funcionamento")
+        self.tela._ao_trocar_janela("Visitante")
+        self.assertEqual((visitante["de"].get(), visitante["ate"].get()), ("0", "0"))
+        self.tela.salvar_regras()
+        regra = self.banco.ler_configuracao().regras["Visitante"]
+        self.assertTrue(regra.relativa)
+        self.assertEqual(regra.permanencia_min, 240)
+
+    def test_feriados_e_eventos(self):
+        self.tela.seletor.selecionar("Feriados e eventos")
+        self.tela.data_feriado.insert(0, "25/12/2026")
+        self.tela.nome_feriado.insert(0, "Natal")
+        self.tela.adicionar_feriado()
+        self.assertEqual(self.banco.ler_configuracao().feriados,
+                         {date(2026, 12, 25): "Natal"})
+        self.assertEqual(self.tela.tabela_feriados.get_children(), ("2026-12-25",))
+        self.tela.data_evento.insert(0, "25/10/2026")
+        self.tela.abre_evento.insert(0, "18:00")
+        self.tela.fecha_evento.insert(0, "17:00")
+        self.tela.nome_evento.insert(0, "Show")
+        self.tela.adicionar_evento()
+        self.assertIn("depois da abertura", self.tela.faixa_eventos.lbl.cget("text"))
+        self.tela.fecha_evento.delete(0, tk.END)
+        self.tela.fecha_evento.insert(0, "23:00")
+        self.tela.adicionar_evento()
+        self.assertIn(date(2026, 10, 25), self.banco.ler_configuracao().eventos)
+        self.tela.tabela_feriados.selection_set("2026-12-25")
+        self.tela.remover_feriado()
+        self.assertEqual(self.banco.ler_configuracao().feriados, {})
+
+
+class TestConfiguracoesPorteiro(BaseHorarios):
+    entrar_como = "porteiro"
+
+    def test_porteiro_nao_tem_a_pagina(self):
+        self.assertIsNone(self.app.aba_configuracoes)
+        self.assertIsNone(self.app.tela_configuracoes)
 
 
 if __name__ == "__main__":

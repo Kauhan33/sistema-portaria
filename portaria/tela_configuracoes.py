@@ -1,0 +1,430 @@
+"""
+Página Configurações (só administrador): os horários de acesso do campus
+(regras em horarios.py, guardadas no banco pela dados.py).
+
+Três seções, escolhidas no seletor do topo:
+- Funcionamento: horário de cada dia da semana, minutos do aviso antes de
+  fechar e o limite da entrada retroativa;
+- Categorias: janela de entrada e permanência máxima de cada tipo de acesso;
+- Feriados e eventos: datas com o campus fechado e datas com horário
+  especial (o evento substitui o funcionamento do dia).
+
+Tudo o que é digitado passa pelas funções horarios.ler_* (fecha depois de
+abre, hh:mm válido, números nos limites) antes de ir ao banco, que confere
+o perfil de administrador e registra cada mudança no histórico.
+"""
+
+import tkinter as tk
+from datetime import date
+
+from . import horarios, mensagens
+from .componentes import (Alternador, Aviso, Botao, Cabecalho, Campo, Cartao,
+                          Seletor, campo_rotulado, inserir_linha, rotulo_campo,
+                          tabela, titulo_cartao)
+from .estilo import COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM, px
+from .horarios import DIAS_SEMANA, FORMATO_DATA
+from .validacao import TIPOS_ACESSO
+
+SECOES = ("Funcionamento", "Categorias", "Feriados e eventos")
+JANELAS = {"Do funcionamento": True, "Horário fixo": False}
+PERMANENCIAS = {"Até o fechamento +": True, "No máximo": False}
+JANELA_FIXA_PADRAO = ("08:00", "18:00")
+DICA_CATEGORIAS = ("Do funcionamento: De = minutos antes de abrir; Até = minutos "
+                   "depois de fechar (negativo = antes, ex.: −30). Horário fixo: "
+                   "hh:mm, só em dia de funcionamento.")
+LARGURA_HORA = 84
+COLUNAS_FERIADOS = [("data", "Data", 96, "w"), ("dia", "Dia", 110, "w"),
+                    ("descricao", "Descrição", 200, "w")]
+COLUNAS_EVENTOS = [("data", "Data", 96, "w"), ("horario", "Horário", 104, "w"),
+                   ("descricao", "Descrição", 220, "w")]
+
+
+def _texto(campo, valor):
+    """Escreve num Entry mesmo desativado."""
+    estado = campo.cget("state")
+    campo.config(state="normal")
+    campo.delete(0, tk.END)
+    campo.insert(0, valor)
+    campo.config(state=estado)
+
+
+def _hhmm(momento):
+    return momento.strftime(horarios.FORMATO_HORA)
+
+
+class AbaConfiguracoes:
+    def __init__(self, aba, app):
+        self.aba = aba
+        self.app = app
+        self.config = None
+        self.dias = []          # 7 x (var aberto, campo abre, campo fecha)
+        self.categorias = {}    # tipo -> campos da linha
+
+        cab = Cabecalho(aba, "Configurações",
+                        "Horários de acesso do campus  ·  só o administrador "
+                        "altera, e toda mudança fica no histórico").posicionar()
+        self.seletor = Seletor(aba, SECOES, self.mostrar_secao)
+        self.seletor.pack(fill="x", padx=px(MARGEM), pady=(0, px(ESPACO_CARTOES)))
+        self.secoes = {nome: tk.Frame(aba, bg=COR["fundo"]) for nome in SECOES}
+        self._montar_funcionamento(self.secoes["Funcionamento"])
+        self._montar_categorias(self.secoes["Categorias"])
+        self._montar_calendario(self.secoes["Feriados e eventos"])
+        self.seletor.selecionar(SECOES[0])
+        self.atualizar()
+
+    def mostrar_secao(self, nome):
+        for secao, frame in self.secoes.items():
+            if secao == nome:
+                frame.pack(fill="both", expand=True, padx=px(MARGEM),
+                           pady=(0, px(MARGEM)))
+            else:
+                frame.pack_forget()
+
+    # --------------------------------------------------------------
+    # Funcionamento + avisos e limites
+    # --------------------------------------------------------------
+    def _montar_funcionamento(self, secao):
+        secao.columnconfigure(0, weight=3, uniform="f")
+        secao.columnconfigure(1, weight=2, uniform="f")
+        cartao = Cartao(secao, pad=18)
+        cartao.grid(row=0, column=0, sticky="nsew", padx=(0, px(ESPACO_CARTOES)))
+        m = cartao.miolo
+        cab = tk.Frame(m, bg=COR["superficie"])
+        cab.pack(fill="x", pady=(0, px(8)))
+        titulo_cartao(cab, "Horário de funcionamento").pack(side="left")
+        tk.Label(cab, text="feriados e eventos mudam um dia só",
+                 font=FONTE["dica"], bg=COR["superficie"],
+                 fg=COR["texto_3"]).pack(side="right")
+        grade = tk.Frame(m, bg=COR["superficie"])
+        grade.pack(fill="x")
+        for coluna, texto in enumerate(("Dia", "", "Abre", "Fecha")):
+            tk.Label(grade, text=texto, font=FONTE["rotulo"], bg=COR["superficie"],
+                     fg=COR["texto_2"]).grid(row=0, column=coluna, sticky="w",
+                                             pady=(0, px(2)))
+        grade.columnconfigure(0, weight=1)
+        for dia, nome in enumerate(DIAS_SEMANA):
+            linha = dia + 1
+            tk.Label(grade, text=nome, font=FONTE["corpo"], bg=COR["superficie"],
+                     fg=COR["texto"]).grid(row=linha, column=0, sticky="w")
+            aberto = tk.BooleanVar(self.aba, value=True)
+            abre = Campo(grade, largura=LARGURA_HORA)
+            fecha = Campo(grade, largura=LARGURA_HORA)
+            Alternador(grade, "Aberto", aberto,
+                       comando=lambda d=dia: self._ao_alternar_dia(d)
+                       ).grid(row=linha, column=1, sticky="w", padx=(0, px(16)))
+            abre.grid(row=linha, column=2, pady=px(2), padx=(0, px(8)))
+            fecha.grid(row=linha, column=3, pady=px(2))
+            self.dias.append((aberto, abre.entrada, fecha.entrada))
+
+        lado = Cartao(secao, pad=18)
+        lado.grid(row=0, column=1, sticky="nsew")
+        m = lado.miolo
+        titulo_cartao(m, "Avisos e limites").pack(anchor="w", pady=(0, px(10)))
+        grupo, campo = campo_rotulado(m, "Aviso antes de fechar",
+                                      "minutos (0 = sem aviso)", numeros=3)
+        grupo.pack(fill="x", pady=(0, px(12)))
+        self.minutos_aviso = campo.entrada
+        grupo, campo = campo_rotulado(m, "Entrada retroativa pede autorização",
+                                      "após quantas horas", numeros=2)
+        grupo.pack(fill="x", pady=(0, px(12)))
+        self.horas_retroativo = campo.entrada
+        nota = Aviso(m)
+        nota.mostrar("neutro", f"Visitas com mais de {horarios.LIMITE_VISITA_HORAS} h "
+                               "sempre pedem autorização do administrador.")
+        nota.pack(fill="x")
+        Botao(m, "Salvar funcionamento", self.salvar_funcionamento, "primario"
+              ).pack(side="bottom", anchor="e")
+        self.faixa_funcionamento = Aviso(m)
+
+    def _ao_alternar_dia(self, dia):
+        aberto, abre, fecha = self.dias[dia]
+        estado = "normal" if aberto.get() else "disabled"
+        for campo in (abre, fecha):
+            campo.config(state=estado)
+
+    def _preencher_funcionamento(self):
+        for dia, (aberto, abre, fecha) in enumerate(self.dias):
+            horario = self.config.funcionamento.get(dia)
+            aberto.set(horario is not None)
+            abre.config(state="normal")
+            fecha.config(state="normal")
+            _texto(abre, horario.abre.strftime("%H:%M") if horario else "")
+            _texto(fecha, horario.fecha.strftime("%H:%M") if horario else "")
+            self._ao_alternar_dia(dia)
+        _texto(self.minutos_aviso, str(self.config.minutos_aviso))
+        _texto(self.horas_retroativo, str(self.config.horas_retroativo))
+
+    def salvar_funcionamento(self):
+        linhas = [(aberto.get(), abre.get(), fecha.get())
+                  for aberto, abre, fecha in self.dias]
+        funcionamento, erro = horarios.ler_funcionamento(linhas)
+        if not erro:
+            parametros, erro = horarios.ler_parametros(
+                self.minutos_aviso.get(), self.horas_retroativo.get())
+        if erro:
+            self._resultado(self.faixa_funcionamento, "erro", erro)
+            return
+        ok, dias = self.app.tentar(self.app.banco.salvar_funcionamento,
+                                   funcionamento, autor=self.app.autor)
+        if not ok:
+            return
+        ok, outros = self.app.tentar(self.app.banco.salvar_parametros,
+                                     *parametros, autor=self.app.autor)
+        if not ok:
+            return
+        self._salvo(self.faixa_funcionamento, dias + outros)
+
+    # --------------------------------------------------------------
+    # Regras por categoria
+    # --------------------------------------------------------------
+    def _montar_categorias(self, secao):
+        cartao = Cartao(secao, pad=18)
+        cartao.pack(fill="both", expand=True)
+        m = cartao.miolo
+        cab = tk.Frame(m, bg=COR["superficie"])
+        cab.pack(fill="x")
+        titulo_cartao(cab, "Regras por categoria").pack(side="left")
+        Botao(cab, "Salvar regras", self.salvar_regras, "primario"
+              ).pack(side="right")
+        tk.Label(m, text=DICA_CATEGORIAS, font=FONTE["dica"], bg=COR["superficie"],
+                 fg=COR["texto_3"], justify="left", anchor="w",
+                 wraplength=px(720)).pack(fill="x", pady=(px(4), px(10)))
+        self.faixa_categorias = Aviso(m)
+        grade = tk.Frame(m, bg=COR["superficie"])
+        grade.pack(fill="x")
+        self.grade_categorias = grade
+        titulos = ("Categoria", "Janela de entrada", "De", "Até", "Permanência",
+                   "Minutos")
+        for coluna, texto in enumerate(titulos):
+            tk.Label(grade, text=texto, font=FONTE["rotulo"], bg=COR["superficie"],
+                     fg=COR["texto_2"]).grid(row=0, column=coluna, sticky="w",
+                                             pady=(0, px(2)))
+        grade.columnconfigure((1, 4), weight=1)
+        for linha, tipo in enumerate(TIPOS_ACESSO, start=1):
+            self.categorias[tipo] = self._linha_categoria(grade, linha, tipo)
+
+    def _linha_categoria(self, grade, linha, tipo):
+        nome = tk.Frame(grade, bg=COR["superficie"])
+        nome.grid(row=linha, column=0, sticky="w", padx=(0, px(12)))
+        tk.Label(nome, text=chr(0x25CF), font=FONTE["dica"], bg=COR["superficie"],
+                 fg=CORES_TIPO.get(tipo, COR["texto_2"])).pack(side="left")
+        tk.Label(nome, text=tipo, font=FONTE["corpo"], bg=COR["superficie"],
+                 fg=COR["texto"]).pack(side="left", padx=(px(4), 0))
+        campos = {"janela": Campo(grade, opcoes=JANELAS),
+                  "de": Campo(grade, largura=LARGURA_HORA),
+                  "ate": Campo(grade, largura=LARGURA_HORA),
+                  "permanencia": Campo(grade, opcoes=PERMANENCIAS),
+                  "minutos": Campo(grade, largura=LARGURA_HORA, numeros=4)}
+        for coluna, campo in enumerate(campos.values(), start=1):
+            campo.grid(row=linha, column=coluna, sticky="ew", pady=px(2),
+                       padx=(0, px(8) if coluna < 5 else 0))
+        linha_campos = {chave: campo.entrada for chave, campo in campos.items()}
+        linha_campos["memoria"] = {}       # o que cada janela tinha (trocar e voltar)
+        linha_campos["janela"].bind("<<ComboboxSelected>>",
+                                    lambda e, t=tipo: self._ao_trocar_janela(t))
+        return linha_campos
+
+    def _ao_trocar_janela(self, tipo):
+        """Troca De/Até para o formato da janela escolhida (minutos ou hh:mm)."""
+        c = self.categorias[tipo]
+        relativa = JANELAS[c["janela"].get()]
+        anterior = c.get("relativa_mostrada", not relativa)
+        if anterior == relativa:
+            return
+        c["memoria"][anterior] = (c["de"].get(), c["ate"].get())
+        de, ate = c["memoria"].get(relativa, ("0", "0") if relativa
+                                   else JANELA_FIXA_PADRAO)
+        _texto(c["de"], de)
+        _texto(c["ate"], ate)
+        c["relativa_mostrada"] = relativa
+
+    def _preencher_categorias(self):
+        nome_janela = {v: k for k, v in JANELAS.items()}
+        nome_permanencia = {v: k for k, v in PERMANENCIAS.items()}
+        for tipo, c in self.categorias.items():
+            regra = self.config.regras[tipo]
+            c["memoria"] = {}
+            c["relativa_mostrada"] = regra.relativa
+            c["janela"].set(nome_janela[regra.relativa])
+            if regra.relativa:
+                de, ate = str(regra.abre_antes), str(regra.fecha_depois)
+            else:
+                de, ate = _hhmm(regra.janela.abre), _hhmm(regra.janela.fecha)
+            _texto(c["de"], de)
+            _texto(c["ate"], ate)
+            c["permanencia"].set(nome_permanencia[regra.ate_fechamento])
+            _texto(c["minutos"], str(regra.permanencia_min))
+
+    def salvar_regras(self):
+        regras = {}
+        for tipo, c in self.categorias.items():
+            regra, erro = horarios.ler_regra(
+                tipo, JANELAS[c["janela"].get()], c["de"].get(), c["ate"].get(),
+                PERMANENCIAS[c["permanencia"].get()], c["minutos"].get())
+            if erro:
+                self._resultado(self.faixa_categorias, "erro", erro)
+                return
+            regras[tipo] = regra
+        ok, mudaram = self.app.tentar(self.app.banco.salvar_regras, regras,
+                                      autor=self.app.autor)
+        if ok:
+            self._salvo(self.faixa_categorias, mudaram)
+
+    # --------------------------------------------------------------
+    # Feriados e eventos
+    # --------------------------------------------------------------
+    def _montar_calendario(self, secao):
+        secao.columnconfigure(0, weight=2, uniform="c")
+        secao.columnconfigure(1, weight=3, uniform="c")
+        secao.rowconfigure(0, weight=1)
+        m = self._cartao_lista(secao, 0, "Feriados", "campus fechado o dia todo",
+                               self.remover_feriado)
+        linha = tk.Frame(m, bg=COR["superficie"])
+        linha.pack(fill="x")
+        linha.columnconfigure(1, weight=1)
+        self.data_feriado = self._campo(linha, 0, "Data", "dd/mm/aaaa", 110)
+        self.nome_feriado = self._campo(linha, 1, "Descrição", "ex.: Natal")
+        Botao(linha, "Adicionar", self.adicionar_feriado, "secundario",
+              icone=ICONE["mais"]).grid(row=1, column=2, sticky="s")
+        self.faixa_feriados = Aviso(m)
+        quadro, self.tabela_feriados = tabela(m, COLUNAS_FERIADOS, altura=5)
+        quadro.pack(fill="both", expand=True, pady=(px(12), 0))
+
+        m = self._cartao_lista(secao, 1, "Eventos",
+                               "horário especial que substitui o do dia",
+                               self.remover_evento)
+        linha = tk.Frame(m, bg=COR["superficie"])
+        linha.pack(fill="x")
+        linha.columnconfigure(3, weight=1)
+        self.data_evento = self._campo(linha, 0, "Data", "dd/mm/aaaa", 110)
+        self.abre_evento = self._campo(linha, 1, "Abre", "", LARGURA_HORA)
+        self.fecha_evento = self._campo(linha, 2, "Fecha", "", LARGURA_HORA)
+        self.nome_evento = self._campo(linha, 3, "Descrição", "ex.: Formatura")
+        Botao(linha, "Adicionar", self.adicionar_evento, "secundario",
+              icone=ICONE["mais"]).grid(row=1, column=4, sticky="s")
+        self.faixa_eventos = Aviso(m)
+        quadro, self.tabela_eventos = tabela(m, COLUNAS_EVENTOS, altura=5)
+        quadro.pack(fill="both", expand=True, pady=(px(12), 0))
+
+    def _cartao_lista(self, secao, coluna, titulo, apoio, remover):
+        cartao = Cartao(secao, pad=18)
+        cartao.grid(row=0, column=coluna, sticky="nsew",
+                    padx=(0, px(ESPACO_CARTOES)) if coluna == 0 else 0)
+        m = cartao.miolo
+        cab = tk.Frame(m, bg=COR["superficie"])
+        cab.pack(fill="x", pady=(0, px(10)))
+        textos = tk.Frame(cab, bg=COR["superficie"])
+        textos.pack(side="left")
+        titulo_cartao(textos, titulo).pack(anchor="w")
+        tk.Label(textos, text=apoio, font=FONTE["dica"], bg=COR["superficie"],
+                 fg=COR["texto_3"]).pack(anchor="w")
+        Botao(cab, "Remover", remover, "secundario", icone=ICONE["lixo"]
+              ).pack(side="right")
+        return m
+
+    @staticmethod
+    def _campo(linha, coluna, texto, apoio, largura=None):
+        rotulo, _ = rotulo_campo(linha, texto, apoio)
+        rotulo.grid(row=0, column=coluna, sticky="w", pady=(0, px(4)))
+        campo = Campo(linha, largura=largura)
+        campo.grid(row=1, column=coluna, sticky="ew", padx=(0, px(8)))
+        return campo.entrada
+
+    def _preencher_calendario(self):
+        hoje = self.app.relogio().date()
+        self.tabela_feriados.delete(*self.tabela_feriados.get_children())
+        for i, (dia, nome) in enumerate(sorted(self.config.feriados.items())):
+            inserir_linha(self.tabela_feriados, i,
+                          (f"{dia:{FORMATO_DATA}}", DIAS_SEMANA[dia.weekday()], nome),
+                          iid=dia.isoformat(),
+                          tags=("apagado",) if dia < hoje else ())
+        self.tabela_eventos.delete(*self.tabela_eventos.get_children())
+        for i, evento in enumerate(sorted(self.config.eventos.values(),
+                                          key=lambda e: e.data)):
+            inserir_linha(self.tabela_eventos, i,
+                          (f"{evento.data:{FORMATO_DATA}}", str(evento.horario),
+                           evento.descricao), iid=evento.data.isoformat(),
+                          tags=("apagado",) if evento.data < hoje else ())
+
+    def adicionar_feriado(self):
+        valor, erro = horarios.ler_feriado(self.data_feriado.get(),
+                                           self.nome_feriado.get(), self.config)
+        if erro:
+            self._resultado(self.faixa_feriados, "erro", erro)
+            return
+        ok, _ = self.app.tentar(self.app.banco.adicionar_feriado, *valor,
+                                autor=self.app.autor)
+        if ok:
+            for campo in (self.data_feriado, self.nome_feriado):
+                campo.delete(0, tk.END)
+            self._salvo(self.faixa_feriados, 1, f"Feriado de "
+                        f"{valor[0]:{FORMATO_DATA}} adicionado.")
+
+    def adicionar_evento(self):
+        evento, erro = horarios.ler_evento(
+            self.data_evento.get(), self.abre_evento.get(),
+            self.fecha_evento.get(), self.nome_evento.get(), self.config)
+        if erro:
+            self._resultado(self.faixa_eventos, "erro", erro)
+            return
+        ok, _ = self.app.tentar(self.app.banco.adicionar_evento, evento,
+                                autor=self.app.autor)
+        if ok:
+            for campo in (self.data_evento, self.abre_evento, self.fecha_evento,
+                          self.nome_evento):
+                campo.delete(0, tk.END)
+            self._salvo(self.faixa_eventos, 1, f"Evento de "
+                        f"{evento.data:{FORMATO_DATA}} adicionado.")
+
+    def remover_feriado(self):
+        self._remover(self.tabela_feriados, "feriado",
+                      self.app.banco.remover_feriado, self.faixa_feriados)
+
+    def remover_evento(self):
+        self._remover(self.tabela_eventos, "evento",
+                      self.app.banco.remover_evento, self.faixa_eventos)
+
+    def _remover(self, tab, nome, operacao, faixa):
+        selecao = tab.selection()
+        if not selecao:
+            mensagens.aviso("Atenção", f"Selecione um {nome} na lista.")
+            return
+        dia = date.fromisoformat(selecao[0])
+        if not self.app.perguntar(mensagens.confirmar, f"Remover {nome}",
+                                  f"Remover o {nome} de {dia:{FORMATO_DATA}}?\n"
+                                  "A remoção fica no histórico."):
+            return
+        ok, _ = self.app.tentar(operacao, dia, autor=self.app.autor)
+        if ok:
+            self._salvo(faixa, 1, f"{nome.capitalize()} de "
+                                  f"{dia:{FORMATO_DATA}} removido.")
+
+    # --------------------------------------------------------------
+    # Dados e mensagens
+    # --------------------------------------------------------------
+    def atualizar(self):
+        """Página aberta: relê a configuração do banco (descarta o que
+        foi digitado e não foi salvo)."""
+        ok, config = self.app.tentar(self.app.banco.ler_configuracao)
+        if not ok:
+            return
+        self.config = config
+        self._preencher_funcionamento()
+        self._preencher_categorias()
+        self._preencher_calendario()
+
+    @staticmethod
+    def _resultado(faixa, tipo, texto):
+        faixa.mostrar(tipo, texto)
+        if not faixa.winfo_ismapped():
+            faixa.pack(fill="x", pady=(px(10), 0))
+
+    def _salvo(self, faixa, mudancas, texto=None):
+        """Relê tudo, avisa na seção e atualiza o Movimento (as situações
+        dependem dos horários)."""
+        self.atualizar()
+        self.app.atualizar_tabela()
+        if texto is None:
+            texto = ("Nada mudou." if not mudancas else
+                     f"Salvo: {mudancas} alteração(ões), registradas no histórico.")
+        self._resultado(faixa, "sucesso", texto)

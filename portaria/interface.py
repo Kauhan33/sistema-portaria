@@ -3,7 +3,7 @@ Janela principal (Tkinter): moldura com a barra lateral, sessão do usuário
 (login, saída, troca de senha e saída automática por inatividade) e as
 páginas. Cada página mora no seu módulo: tela_cadastro.py ("Entrada e
 saída"), tela_pessoas.py, tela_bloqueios.py, tela_dashboard.py ("Painel"),
-tela_usuarios.py (só para administrador);
+tela_usuarios.py e tela_configuracoes.py (as duas só para administrador);
 o login fica em tela_login.py, a janela "Corrigir registro" em
 tela_edicao.py, "Trocar minha senha" em tela_senha.py e a "Autorização do
 administrador" (exceções de horário) em tela_autorizacao.py.
@@ -58,6 +58,7 @@ from .estilo import (COR, FONTE, ICONE, LARGURA_LATERAL, aplicar_tema,
                      carregar_fontes, px)
 from .tela_bloqueios import AbaBloqueios
 from .tela_cadastro import AbaCadastro
+from .tela_configuracoes import AbaConfiguracoes
 from .tela_dashboard import AbaDashboard
 from .tela_login import TelaLogin
 from .tela_pessoas import AbaPessoas
@@ -94,6 +95,7 @@ PAGINAS_SOB_DEMANDA = {
     "tela_bloqueios": ("aba_bloqueios", AbaBloqueios),
     "tela_dashboard": ("aba_dash", AbaDashboard),
     "tela_usuarios": ("aba_usuarios", AbaUsuarios),
+    "tela_configuracoes": ("aba_configuracoes", AbaConfiguracoes),
 }
 
 
@@ -497,9 +499,10 @@ class AppPortaria:
         self.aba_pessoas = self._nova_pagina("Pessoas", "pessoas")
         self.aba_bloqueios = self._nova_pagina("Bloqueios", "bloqueio")
         self.aba_dash = self._nova_pagina("Painel", "painel")
-        self.aba_usuarios = None
+        self.aba_usuarios = self.aba_configuracoes = None
         if pode_gerenciar_usuarios(self.usuario):
             self.aba_usuarios = self._nova_pagina("Usuários", "usuarios")
+            self.aba_configuracoes = self._nova_pagina("Configurações", "config")
         for nome in PAGINAS_SOB_DEMANDA:       # as da sessão anterior saem
             self.__dict__.pop(nome, None)
         # a Entrada e saída é a página inicial: montada já

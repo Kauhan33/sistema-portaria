@@ -42,11 +42,12 @@ SEM_VISITAS = "Nenhuma visita registrada."
 # Situação na lista: (ordem, texto da bolinha, cor). Crescente = quem está
 # no campus primeiro (o que a guarita mais procura), depois os bloqueados.
 NO_CAMPUS, BLOQUEADO, FORA = 0, 1, 2
-# cor da bolinha de cada situação de visita (mesmas cores do Movimento)
-COR_SITUACAO = {horarios.NO_CAMPUS: COR["sucesso"],
-                horarios.TEMPO_EXCEDIDO: COR["alerta"],
-                horarios.SAIDA_PENDENTE: COR["erro"],
-                horarios.SAIU: COR["barra"]}
+# token da cor de cada situação de visita (as do Movimento); o nome, e não
+# a cor, porque a cor depende do tema em uso
+COR_SITUACAO = {horarios.NO_CAMPUS: "sucesso",
+                horarios.TEMPO_EXCEDIDO: "alerta",
+                horarios.SAIDA_PENDENTE: "erro",
+                horarios.SAIU: "barra"}
 
 
 def _sem_acento(texto):
@@ -228,8 +229,8 @@ class AbaPessoas:
         t.tag_configure("detalhe", font=FONTE["dica"], foreground=COR["texto_2"])
         t.tag_configure("como", font=FONTE["dica"], foreground=COR["texto_3"])
         t.tag_configure("separa", font=(FONTE["dica"][0], 4))
-        for situacao, cor in COR_SITUACAO.items():
-            t.tag_configure(situacao, foreground=cor)
+        for situacao, token in COR_SITUACAO.items():
+            t.tag_configure(situacao, foreground=COR[token])
         t.bind("<MouseWheel>", lambda e: t.yview_scroll(
             -1 if e.delta > 0 else 1, "units") or "break")
         return secao

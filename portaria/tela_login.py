@@ -91,8 +91,8 @@ class TelaLogin:
     # Montagem
     # --------------------------------------------------------------
     def _montar_painel(self, pai):
-        marca = COR["marca"]
-        branco = COR["texto_invertido"]
+        marca = COR["painel_login"]
+        branco = COR["texto_sobre_marca"]
         painel = tk.Frame(pai, bg=marca, width=px(470))
         painel.pack(side="left", fill="y")
         painel.pack_propagate(False)

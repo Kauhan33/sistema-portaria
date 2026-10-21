@@ -22,8 +22,8 @@ import zlib
 from datetime import datetime
 from tkinter import ttk
 
-from .estilo import (ALTURA_CAMPO, COR, ESTADO, FONTE, ICONE, MARGEM,
-                     fonte_icone, px)
+from .estilo import (ALTURA_CAMPO, COR, ESTADO, FONTE, ICONE, MARGEM, TEMA,
+                     fonte_icone, pintar_barra_de_titulo, px)
 
 TAMANHO_PLACA = 7
 # Na tela pequena as colunas das tabelas encolhem até 85% da largura de projeto
@@ -53,12 +53,14 @@ def plural(n, singular, plural_):
 # Imagens: cantos arredondados e bolinhas (guardadas por janela raiz)
 # ----------------------------------------------------------------------
 def _cache(widget):
-    """Imagens já feitas, guardadas na janela raiz: uma imagem do Tk só vale
-    para o interpretador que a criou (os testes criam várias raízes)."""
+    """Imagens já feitas do tema em uso, guardadas na janela raiz: uma imagem
+    do Tk só vale para o interpretador que a criou (os testes criam várias
+    raízes). Cada tema tem o seu cache: voltar ao tema anterior reaproveita
+    as imagens dele."""
     raiz = widget._root()
     if not hasattr(raiz, "imagens_guarita"):
         raiz.imagens_guarita = {}
-    return raiz.imagens_guarita
+    return raiz.imagens_guarita.setdefault(TEMA["atual"], {})
 
 
 def _rgb(h):
@@ -210,18 +212,21 @@ class Botao(tk.Canvas):
     tk.Button; invocar() aciona como um clique.
     """
 
-    VARIANTES = {
-        #             fundo, hover, pressionado, texto, borda
-        "primario": (COR["primario"], COR["primario_hover"], COR["primario_press"],
-                     COR["texto_invertido"], None),
-        "marca": (COR["marca"], COR["marca_escura"], "#9A0013",
-                  COR["texto_invertido"], None),
-        "secundario": (COR["superficie"], COR["superficie_2"], COR["hover"],
-                       COR["texto"], COR["borda_campo"]),
-        "perigo": (COR["superficie"], ESTADO["erro"][1], "#F9D9DE",
-                   ESTADO["erro"][0], ESTADO["erro"][2]),
-        "fantasma": (None, COR["hover"], "#DDE1E8", COR["texto"], None),
-    }
+    @staticmethod
+    def cores_da_variante(variante):
+        """(fundo, hover, pressionado, texto, borda) no tema em uso (lidas na
+        hora: uma tabela fixa ficaria com as cores do tema do import)."""
+        return {
+            "primario": (COR["primario"], COR["primario_hover"],
+                         COR["primario_press"], COR["texto_invertido"], None),
+            "marca": (COR["marca"], COR["marca_escura"], COR["marca_press"],
+                      COR["texto_sobre_marca"], None),
+            "secundario": (COR["superficie"], COR["superficie_2"], COR["hover"],
+                           COR["texto"], COR["borda_campo"]),
+            "perigo": (COR["superficie"], ESTADO["erro"][1], COR["erro_press"],
+                       ESTADO["erro"][0], ESTADO["erro"][2]),
+            "fantasma": (None, COR["hover"], COR["press"], COR["texto"], None),
+        }[variante]
 
     def __init__(self, pai, texto, comando=None, variante="secundario",
                  icone=None, fundo_pai=None, largura=None, altura=ALTURA_CAMPO,
@@ -231,7 +236,8 @@ class Botao(tk.Canvas):
         self.dica_tecla, self.variante = dica_tecla, variante
         self.largura_fixa = largura
         self.ativo, self.estado, self.focado = True, "normal", False
-        fundo, hover, press, self.cor_texto, self.cor_borda = self.VARIANTES[variante]
+        fundo, hover, press, self.cor_texto, self.cor_borda = \
+            self.cores_da_variante(variante)
         self.cores = {"normal": fundo or self.fundo_pai, "hover": hover,
                       "press": press}
         self.fonte = tkfont.Font(root=pai, font=FONTE["botao"])
@@ -272,7 +278,7 @@ class Botao(tk.Canvas):
         if variante and variante != self.variante:
             self.variante = variante
             fundo, hover, press, self.cor_texto, self.cor_borda = \
-                self.VARIANTES[variante]
+                self.cores_da_variante(variante)
             self.cores = {"normal": fundo or self.fundo_pai, "hover": hover,
                           "press": press}
         self.config(width=self._largura_natural())
@@ -338,10 +344,11 @@ class Botao(tk.Canvas):
                          font=FONTE["botao"], fill=cor_texto)
         if self.dica_tecla:
             x += self.fonte.measure(self.texto) + px(10)
-            claro = cor_texto == COR["texto_invertido"]
+            sobre_primario = cor_texto == COR["texto_invertido"]
             self.create_text(x, h / 2, text=self.dica_tecla, anchor="w",
                              font=FONTE["dica"],
-                             fill="#AEB7C6" if claro else COR["texto_3"])
+                             fill=COR["dica_invertida"] if sobre_primario
+                             else COR["texto_3"])
 
 
 class BotaoIcone(tk.Label):
@@ -444,6 +451,9 @@ class Campo(tk.Frame):
                                     bg=COR["superficie"], fg=COR["texto"],
                                     insertbackground=COR["texto"],
                                     disabledbackground=COR["superficie_2"],
+                                    disabledforeground=COR["texto_3"],
+                                    selectbackground=COR["selecao"],
+                                    selectforeground=COR["texto"],
                                     textvariable=self.var, **kw)
             direita = px(36) if icone else px(10)
             self.entrada.place(x=px(10), rely=0.5, anchor="w", relwidth=1,
@@ -681,24 +691,24 @@ class Placa(tk.Canvas):
             self.create_text(w / 2, h / 2 + px(11), text="ABC1234 ou ABC1D23",
                              font=FONTE["dica"], fill=COR["texto_3"])
             return
-        contorno = ESTADO["erro"][0] if self.bloqueada else COR["texto"]
-        ret_arredondado(self, 0, 0, w, h, r, "#FFFFFF", self.fundo_pai,
-                        contorno, px(3) if self.bloqueada else px(2))
+        branco = COR["placa_fundo"]
+        cor_texto = COR["placa_erro"] if self.bloqueada else COR["placa_texto"]
+        ret_arredondado(self, 0, 0, w, h, r, branco, self.fundo_pai,
+                        cor_texto, px(3) if self.bloqueada else px(2))
         faixa, e = round(h * 0.26), px(3) if self.bloqueada else px(2)
         ret_arredondado(self, e, e, w - e, e + faixa + r, max(1, r - e),
-                        COR["placa_azul"], "#FFFFFF")
+                        COR["placa_azul"], branco)
         self.create_rectangle(e, e + faixa, w - e, e + faixa + r,
-                              fill="#FFFFFF", width=0)
+                              fill=branco, width=0)
         self.create_text(w / 2, e + faixa / 2 + 1, text="BRASIL",
-                         font=FONTE["placa_pequena"], fill="#FFFFFF")
+                         font=FONTE["placa_pequena"], fill=branco)
         bx, by = w - e - px(16), e + px(4)
         self.create_rectangle(bx, by, bx + px(11), by + max(faixa - px(8), 2),
                               fill=COR["placa_verde"], width=0)
         self.create_text(e + px(10), e + faixa / 2 + 1, text="BR", anchor="w",
-                         font=(FONTE["placa_pequena"][0], 6), fill="#FFFFFF")
+                         font=(FONTE["placa_pequena"][0], 6), fill=branco)
         self.create_text(w / 2, e + faixa + (h - faixa - e) / 2 + 1,
-                         text=self.texto, font=FONTE["placa"],
-                         fill=ESTADO["erro"][0] if self.bloqueada else COR["texto"])
+                         text=self.texto, font=FONTE["placa"], fill=cor_texto)
 
 
 # ----------------------------------------------------------------------
@@ -785,7 +795,7 @@ def marca_cancela(pai, fundo_pai, tamanho=36, cor=None, traco=None):
     """Símbolo do sistema: uma cancela (poste + braço listrado) num
     quadrado vermelho UNA, desenhada no Canvas (não é o logotipo da UNA)."""
     cor = cor or COR["marca"]
-    traco = traco or COR["texto_invertido"]
+    traco = traco or COR["texto_sobre_marca"]
     t = px(tamanho)
     cv = tk.Canvas(pai, width=t, height=t, bg=fundo_pai, highlightthickness=0,
                    bd=0)
@@ -1090,6 +1100,7 @@ class Dialogo:
         self.janela.configure(bg=COR["superficie"])
         self.janela.resizable(False, False)
         self.janela.transient(dono)
+        pintar_barra_de_titulo(self.janela)
         if ao_usar is not None:   # conta como uso (sessão por inatividade)
             for evento in ("<KeyPress>", "<ButtonPress>"):
                 self.janela.bind(evento, ao_usar, add="+")

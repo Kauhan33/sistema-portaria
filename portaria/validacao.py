@@ -13,6 +13,7 @@ from datetime import datetime
 # ------------------------------------------------------------------
 FORMATO = "%d/%m/%Y %H:%M"            # usado pelo datetime
 FORMATO_EXIBICAO = "dd/mm/aaaa hh:mm"  # mostrado para o usuário
+ANO_MINIMO = 2000                      # antes disso é erro de digitação
 TIPOS_ACESSO = ["Aluno", "Professor", "Funcionário", "Visitante",
                 "Entregador", "Prestador de serviço"]
 
@@ -130,9 +131,17 @@ def normalizar(nome, cpf, celular, placa, tipo, entrada, saida):
         "celular": so_digitos(celular),
         "placa": placa.strip().upper(),
         "tipo": tipo,
-        "entrada": entrada.strip(),
-        "saida": saida.strip(),
+        "entrada": _normalizar_data(entrada),
+        "saida": _normalizar_data(saida),
     }
+
+
+def _normalizar_data(texto):
+    """'21/10/2026 9:5' -> '21/10/2026 09:05': a mesma hora escrita de
+    outro jeito não conta como mudança (aviso e correção). Inválida fica
+    como foi digitada, para validar recusar com a mensagem certa."""
+    momento = converter_data(texto)
+    return momento.strftime(FORMATO) if momento else texto.strip()
 
 
 def _periodo(registro):
@@ -287,6 +296,8 @@ def validar(registro, registros, agora=None):
                        f"Use o formato {FORMATO_EXIBICAO}.")
     if entrada_dt > agora:  # VERIFICAÇÃO SEMÂNTICA 2
         return False, "A entrada não pode estar no futuro."
+    if entrada_dt.year < ANO_MINIMO:
+        return False, f"Confira o ano da entrada (antes de {ANO_MINIMO})."
 
     saida_dt = None
     if registro["saida"]:

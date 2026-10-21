@@ -24,8 +24,9 @@ import tkinter as tk
 
 from .componentes import Aviso, Dialogo, campo_rotulado
 from .estilo import COR, FONTE, ICONE, px
-from .horarios import MINIMO_JUSTIFICATIVA, Excecoes
+from .horarios import MINIMO_JUSTIFICATIVA, Excecoes, ler_justificativa
 from .usuarios import conferir_autorizador, eh_admin, estacao_atual
+from .validacao import MAXIMO_JUSTIFICATIVA, MAXIMO_LOGIN
 
 TITULO = "Autorização do administrador"
 SO_ADMIN = ("Somente um administrador pode autorizar a exceção.\n"
@@ -81,7 +82,8 @@ class JanelaAutorizacao(Dialogo):
             linha = tk.Frame(self.miolo, bg=COR["superficie"])
             linha.pack(fill="x", pady=(0, px(12)))
             linha.columnconfigure((0, 1), weight=1, uniform="a")
-            grupo, campo = campo_rotulado(linha, "Administrador", "login")
+            grupo, campo = campo_rotulado(linha, "Administrador", "login",
+                                          maximo=MAXIMO_LOGIN)
             grupo.grid(row=0, column=0, sticky="ew", padx=(0, px(12)))
             self.login = campo.entrada
             grupo, campo = campo_rotulado(linha, "Senha", senha=True)
@@ -89,7 +91,8 @@ class JanelaAutorizacao(Dialogo):
             self.senha = campo.entrada
         grupo, campo = campo_rotulado(
             self.miolo, "Justificativa",
-            f"obrigatória, mín. {MINIMO_JUSTIFICATIVA} caracteres; vai para o histórico")
+            f"obrigatória, mín. {MINIMO_JUSTIFICATIVA} caracteres; vai para o "
+            "histórico", maximo=MAXIMO_JUSTIFICATIVA, contador=True)
         grupo.pack(fill="x")
         self.justificativa = campo.entrada
         self.faixa = Aviso(self.miolo)
@@ -105,10 +108,9 @@ class JanelaAutorizacao(Dialogo):
         self.faixa.pack(fill="x", pady=(px(12), 0))
 
     def confirmar(self):
-        justificativa = " ".join(self.justificativa.get().split())
-        if len(justificativa) < MINIMO_JUSTIFICATIVA:
-            self._erro("Escreva a justificativa da exceção (pelo menos "
-                       f"{MINIMO_JUSTIFICATIVA} caracteres).")
+        justificativa, erro = ler_justificativa(self.justificativa.get())
+        if erro:
+            self._erro(erro)
             self.justificativa.focus_set()
             return
         autorizado_por = self._conferir_admin()

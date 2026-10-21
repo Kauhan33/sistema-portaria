@@ -9,9 +9,7 @@ from portaria import mensagens
 class TestMensagens(unittest.TestCase):
     def setUp(self):
         self.caixa = mock.MagicMock()
-        self.dialogo = mock.MagicMock()
-        patcher = mock.patch.multiple(mensagens, messagebox=self.caixa,
-                                      simpledialog=self.dialogo)
+        patcher = mock.patch.multiple(mensagens, messagebox=self.caixa)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -31,11 +29,6 @@ class TestMensagens(unittest.TestCase):
         dono = object()
         mensagens.erro("T", "e", parent=dono)
         self.caixa.showerror.assert_called_once_with("T", "e", parent=dono)
-
-    def test_pedir_senha_esconde_o_texto(self):
-        self.dialogo.askstring.return_value = "segredo1"
-        self.assertEqual(mensagens.pedir_senha("T", "Senha:"), "segredo1")
-        self.dialogo.askstring.assert_called_once_with("T", "Senha:", show="•")
 
 
 if __name__ == "__main__":

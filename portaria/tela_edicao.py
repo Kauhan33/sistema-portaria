@@ -16,7 +16,7 @@ from .consultas import descrever_alteracoes
 from .estilo import COR, FONTE, ICONE, px
 from .tela_autorizacao import autorizar_excecao
 from .usuarios import eh_admin, pode_editar
-from .validacao import (FORMATO_EXIBICAO, TIPOS_ACESSO,
+from .validacao import (FORMATO_EXIBICAO, MAXIMO_NOME, TIPOS_ACESSO,
                         checar_bloqueio_correcao, mascarar_cpf, normalizar,
                         validar)
 
@@ -68,7 +68,8 @@ class JanelaEdicao(Dialogo):
                             readonlybackground=COR["superficie"])
         else:
             self.cpf = novo("CPF", 0, 0, r["cpf"], numeros=11).entrada
-        self.nome = novo("Nome completo", 0, 1, r["nome"], juntas=2).entrada
+        self.nome = novo("Nome completo", 0, 1, r["nome"], juntas=2,
+                         maximo=MAXIMO_NOME).entrada
         self.celular = novo("Celular", 0, 3, r["celular"], "só números",
                             numeros=11).entrada
         campo_placa = novo("Placa", 2, 0, r.get("placa", ""), "opcional",

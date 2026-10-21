@@ -53,7 +53,11 @@ from datetime import date, datetime, timedelta
 from . import horarios
 from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
                        pode_editar)
-from .validacao import (FORMATO, TIPOS_ACESSO, formatar_placa, mascarar_cpf,
+from .validacao import (FORMATO, MAXIMO_BUSCA, MAXIMO_CELULAR, MAXIMO_CPF,
+                        MAXIMO_DATA_HORA, MAXIMO_DESCRICAO,
+                        MAXIMO_JUSTIFICATIVA, MAXIMO_LOGIN, MAXIMO_MOTIVO,
+                        MAXIMO_NOME, MAXIMO_PLACA, TIPOS_ACESSO,
+                        checar_tamanho, formatar_placa, mascarar_cpf,
                         mascarar_cpfs_no_texto, normalizar, so_digitos,
                         validar)
 
@@ -176,6 +180,14 @@ FROM pessoas p LEFT JOIN registros r ON r.pessoa_id = p.id
 """
 
 COLUNAS_REGISTRO = "id, nome, cpf, celular, placa, tipo, entrada, saida"
+# Tamanho máximo dos textos da visita, conferido antes de gravar
+TAMANHOS_DA_VISITA = (("Nome completo", "nome", MAXIMO_NOME),
+                      ("CPF", "cpf", MAXIMO_CPF),
+                      ("Celular", "celular", MAXIMO_CELULAR),
+                      ("Placa", "placa", MAXIMO_PLACA),
+                      ("Entrada", "entrada", MAXIMO_DATA_HORA),
+                      ("Saída", "saida", MAXIMO_DATA_HORA))
+VEICULO_SEM_DONO = "Veículo saiu sem o dono"     # evento e regra (RN32)
 # Busca (visitas e pessoas): texto no nome, tipo e placa; dígitos no CPF
 # e no celular
 COLUNAS_BUSCA = {"texto": ("nome", "tipo", "placa"),
@@ -283,6 +295,18 @@ def _dia_iso(dia):
     return f"{dia:%Y-%m-%d} 00:00"
 
 
+def _exigir_tamanho(rotulo, texto, maximo):
+    """Defesa em profundidade: texto acima do máximo não é gravado."""
+    ok, msg = checar_tamanho(rotulo, texto or "", maximo)
+    if not ok:
+        raise ErroDados(msg)
+
+
+def _exigir_tamanhos_da_visita(registro):
+    for rotulo, chave, maximo in TAMANHOS_DA_VISITA:
+        _exigir_tamanho(rotulo, registro.get(chave, ""), maximo)
+
+
 def _registro(linha):
     i, nome, cpf, cel, placa, tipo, entrada, saida = linha
     return {"id": i, "nome": nome, "cpf": cpf, "celular": cel,
@@ -310,7 +334,7 @@ def _condicao_busca(texto, tabela, colunas, so_cpf_completo=False):
     11 dígitos num campo de 11 dígitos é o mesmo que igualdade: `cpf = ?`
     usa o índice.
     """
-    texto = texto.strip().lower()
+    texto = texto.strip().lower()[:MAXIMO_BUSCA]
     if not texto:
         return "", []
     numeros = so_digitos(texto)
@@ -887,6 +911,7 @@ class Banco:
         if len(justificativa) < horarios.MINIMO_JUSTIFICATIVA:
             raise ErroDados("A exceção precisa de uma justificativa (pelo "
                             f"menos {horarios.MINIMO_JUSTIFICATIVA} caracteres).")
+        _exigir_tamanho("Justificativa", justificativa, MAXIMO_JUSTIFICATIVA)
 
     @staticmethod
     def _exigir_autorizacao_24h(acima_de_24h, autorizacao, nome):
@@ -1066,6 +1091,7 @@ class Banco:
         visita antiga (retroativa) não troca o nome/celular atuais.
         A visita vai primeiro: se ela for recusada, a pessoa nem é tocada.
         """
+        _exigir_tamanhos_da_visita(r)
         cursor = con.execute(
             "INSERT INTO registros (nome, cpf, celular, placa, tipo, entrada, saida) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -1243,6 +1269,7 @@ class Banco:
         no próprio UPDATE). Antes, salvar só o nome reabria a visita e
         apagava a saída dada pela outra estação.
         """
+        _exigir_tamanhos_da_visita(novo)
         with self._conexao() as con:
             usuario = self._exigir(con, autor, so_admin=False)
             self._conferir_autorizacao(con, autorizacao)
@@ -1629,6 +1656,7 @@ class Banco:
             return len(mudancas)
 
     def adicionar_feriado(self, dia, descricao, autor):
+        _exigir_tamanho("Descrição", descricao.strip(), MAXIMO_DESCRICAO)
         with self._conexao() as con:
             self._exigir(con, autor, para="alterar as configurações")
             con.execute("INSERT INTO feriados (data, descricao) VALUES (?, ?)",
@@ -1650,6 +1678,7 @@ class Banco:
                 [f"{dia:{horarios.FORMATO_DATA}} — {linha[0]}"])
 
     def adicionar_evento(self, evento, autor):
+        _exigir_tamanho("Descrição", evento.descricao, MAXIMO_DESCRICAO)
         with self._conexao() as con:
             self._exigir(con, autor, para="alterar as configurações")
             con.execute("INSERT INTO eventos (data, abre, fecha, descricao) "
@@ -1698,6 +1727,9 @@ class Banco:
 
     def bloquear(self, tipo, valor, motivo, autor):
         agora = datetime.now().strftime(FORMATO_ISO)
+        _exigir_tamanho("CPF ou placa", valor,
+                        MAXIMO_CPF if tipo == "cpf" else MAXIMO_PLACA)
+        _exigir_tamanho("Motivo", motivo.strip(), MAXIMO_MOTIVO)
         with self._conexao() as con:
             self._exigir(con, autor, para="bloquear CPF ou placa")
             cursor = con.execute(
@@ -1780,6 +1812,8 @@ class Banco:
 
     def atualizar_pessoa(self, id_pessoa, nome, celular, placa, tipo, autor=None):
         """Corrige o cadastro da pessoa (as visitas antigas não mudam)."""
+        _exigir_tamanhos_da_visita({"nome": nome, "celular": celular,
+                                    "placa": placa})
         with self._conexao() as con:
             self._conferir_autor(con, autor)
             con.execute("UPDATE pessoas SET nome = ?, celular = ?, placa = ?, "
@@ -1832,6 +1866,8 @@ class Banco:
         com a tabela de usuários vazia. A condição fica no próprio INSERT:
         duas estações no "Primeiro acesso" não criam dois usuários.
         """
+        _exigir_tamanho("Nome completo", nome, MAXIMO_NOME)
+        _exigir_tamanho("Usuário", login, MAXIMO_LOGIN)
         with self._conexao() as con:
             if autor is None:
                 cursor = con.execute(

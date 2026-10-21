@@ -8,7 +8,7 @@ troca todas as caixas por falsas (assim nenhuma janela trava o teste).
 caixa aparece sobre a janela principal.
 """
 
-from tkinter import filedialog, messagebox, simpledialog
+from tkinter import filedialog, messagebox
 
 
 def _dono(parent):
@@ -30,11 +30,6 @@ def info(titulo, texto, parent=None):
 def confirmar(titulo, texto, parent=None):
     """Pergunta Sim/Não; devolve True se a resposta for Sim."""
     return messagebox.askyesno(titulo, texto, **_dono(parent))
-
-
-def pedir_senha(titulo, texto, parent=None):
-    """Pede um texto escondido (••••); devolve None se cancelar."""
-    return simpledialog.askstring(titulo, texto, show="•", **_dono(parent))
 
 
 def salvar_como(titulo, nome_inicial, parent=None):

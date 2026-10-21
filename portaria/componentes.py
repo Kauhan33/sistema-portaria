@@ -15,6 +15,7 @@ transparência gerados aqui mesmo (zlib + struct, biblioteca padrão).
 
 import base64
 import math
+import re
 import struct
 import tkinter as tk
 import tkinter.font as tkfont
@@ -24,8 +25,12 @@ from tkinter import ttk
 
 from .estilo import (ALTURA_CAMPO, COR, ESTADO, FONTE, ICONE, MARGEM, TEMA,
                      fonte_icone, pintar_barra_de_titulo, px)
+from .validacao import (MAXIMO_DATA, MAXIMO_DATA_HORA, MAXIMO_HORA,
+                        MAXIMO_PLACA, MAXIMO_SENHA)
 
-TAMANHO_PLACA = 7
+TAMANHO_PLACA = MAXIMO_PLACA
+MAXIMO_DO_SELETOR = {"data_hora": MAXIMO_DATA_HORA, "data": MAXIMO_DATA,
+                     "hora": MAXIMO_HORA}
 # Na tela pequena as colunas das tabelas encolhem até 85% da largura de projeto
 ENCOLHER_ATE = 0.85
 COLUNAS_EVENTOS = [("momento", "Data e hora"), ("usuario", "Usuário"),
@@ -388,16 +393,12 @@ def link(pai, texto, comando, fundo=None, cor=None):
 # ----------------------------------------------------------------------
 # Campos
 # ----------------------------------------------------------------------
-def _so_numeros(limite):
-    def aceita(texto):
-        return texto == "" or (texto.isascii() and texto.isdigit()
-                               and len(texto) <= limite)
-    return aceita
+def _digito(c):
+    return c.isascii() and c.isdigit()
 
 
-def _so_placa(texto):
-    return texto == "" or (texto.isascii() and texto.isalnum()
-                           and len(texto) <= TAMANHO_PLACA)
+def _letra_ou_digito(c):
+    return c.isascii() and c.isalnum()
 
 
 class Campo(tk.Frame):
@@ -408,6 +409,14 @@ class Campo(tk.Frame):
     e o texto em .var. Restrições de digitação (as mesmas em todas as telas):
         numeros=11   só dígitos, no máximo 11 (CPF, celular)
         placa=True   letras e números, até 7, sempre em maiúscula
+        maximo=N     no máximo N caracteres (validacao.MAXIMO_*)
+    TODA caixa de texto tem um máximo: o de numeros/placa, o do seletor
+    (data e hora 16, data 10, hora 5), o da senha (64) ou `maximo`. Sem
+    nenhum deles o Campo nem é criado (ValueError): nenhum campo fica sem.
+    A digitação não passa do máximo; ao COLAR um texto maior, entra só o
+    que cabe (cortado no máximo, sem aviso) e, em campos de números ou de
+    placa, só os caracteres aceitos (colar "529.982.247-25" no CPF dá
+    52998224725). Quebras de linha coladas viram espaço.
     icone + acao_icone: ícone clicável dentro do campo.
     dica_vazio: texto cinza mostrado enquanto o campo está vazio.
     seletor="data_hora" | "data" | "hora": clicar no campo (ou no ícone)
@@ -419,7 +428,7 @@ class Campo(tk.Frame):
     def __init__(self, pai, fundo_pai=None, opcoes=None, numeros=None,
                  placa=False, senha=False, icone=None, acao_icone=None,
                  dica_vazio="", largura=None, var=None, seletor=None,
-                 relogio=None, ao_escolher=None, **kw):
+                 relogio=None, ao_escolher=None, maximo=None, **kw):
         self.fundo_pai = fundo_pai or COR["superficie"]
         super().__init__(pai, bg=self.fundo_pai, height=px(ALTURA_CAMPO))
         if largura:
@@ -439,13 +448,18 @@ class Campo(tk.Frame):
             self.entrada.place(x=px(4), rely=0.5, anchor="w", relwidth=1,
                                width=-px(8))
         else:
-            if numeros:
-                kw.update(validate="key", validatecommand=(
-                    self.register(_so_numeros(numeros)), "%P"))
+            self.maximo = (maximo or numeros or (TAMANHO_PLACA if placa else None)
+                           or MAXIMO_DO_SELETOR.get(seletor)
+                           or (MAXIMO_SENHA if senha else None))
+            if not self.maximo:
+                raise ValueError("Campo de texto sem tamanho máximo: informe "
+                                 "maximo= (validacao.MAXIMO_*).")
+            self.aceito = (_digito if numeros
+                           else _letra_ou_digito if placa else None)
+            kw.update(validate="key", validatecommand=(
+                self.register(self._aceita), "%P"))
             if placa:
                 self.var.trace_add("write", self._maiuscula)
-                kw.update(validate="key",
-                          validatecommand=(self.register(_so_placa), "%P"))
             if senha:
                 kw["show"] = "•"
             self.entrada = tk.Entry(self, relief="flat", bd=0, font=FONTE["corpo"],
@@ -459,6 +473,7 @@ class Campo(tk.Frame):
             direita = px(36) if icone else px(10)
             self.entrada.place(x=px(10), rely=0.5, anchor="w", relwidth=1,
                                width=-(px(10) + direita))
+            self.entrada.bind("<<Paste>>", self._colar_da_area_de_transferencia)
         self.modo_seletor, self.relogio = seletor, relogio
         self.ao_escolher, self.seletor_aberto = ao_escolher, None
         if seletor:
@@ -514,6 +529,37 @@ class Campo(tk.Frame):
         if self.acao_icone:
             self.acao_icone()
             self.entrada.focus_set()
+
+    def _aceita(self, texto):
+        """validatecommand (%P = o texto como ficaria): digitar e colar não
+        passam do máximo nem de caracteres que o campo não aceita."""
+        if len(texto) > self.maximo:
+            return False
+        return self.aceito is None or all(self.aceito(c) for c in texto)
+
+    def _colar_da_area_de_transferencia(self, event=None):
+        try:
+            texto = self.entrada.clipboard_get()
+        except tk.TclError:              # área de transferência vazia
+            return "break"
+        self.colar(texto)
+        return "break"                   # o Tk não cola de novo, inteiro
+
+    def colar(self, texto):
+        """Cola `texto` no cursor (no lugar da seleção), só com o que cabe:
+        o resto é cortado no máximo do campo."""
+        caixa = self.entrada
+        if str(caixa.cget("state")) != "normal":
+            return
+        if caixa.selection_present():
+            caixa.delete("sel.first", "sel.last")
+        if self.aceito is not None:
+            texto = "".join(c for c in texto if self.aceito(c))
+        else:
+            texto = re.sub(r"[\r\n\t]+", " ", texto)
+        cabe = max(self.maximo - len(caixa.get()), 0)
+        if texto[:cabe]:
+            caixa.insert("insert", texto[:cabe])
 
     def _maiuscula(self, *args):
         texto = self.var.get()
@@ -609,15 +655,36 @@ def rotulo_campo(pai, texto, apoio="", fundo=None):
     return linha, lbl_apoio
 
 
-def campo_rotulado(pai, texto, apoio="", fundo=None, **opcoes_campo):
-    """Rótulo em cima + Campo embaixo, num Frame. Devolve (grupo, campo)."""
+def campo_rotulado(pai, texto, apoio="", fundo=None, contador=False,
+                   **opcoes_campo):
+    """Rótulo em cima + Campo embaixo, num Frame. Devolve (grupo, campo).
+    contador=True: "0/200" discreto à direita do rótulo (textos longos)."""
     fundo = fundo or COR["superficie"]
     grupo = tk.Frame(pai, bg=fundo)
     linha, _ = rotulo_campo(grupo, texto, apoio, fundo)
-    linha.pack(anchor="w", pady=(0, px(4)))
+    linha.pack(fill="x", pady=(0, px(4)))
     campo = Campo(grupo, fundo_pai=fundo, **opcoes_campo)
     campo.pack(fill="x")
+    if contador:
+        campo.contador = Contador(linha, campo, fundo)
+        campo.contador.pack(side="right")
     return grupo, campo
+
+
+class Contador(tk.Label):
+    """Quantos caracteres o campo tem e o máximo ("123/200"), em cinza
+    discreto; no limite fica na cor de alerta (não cabe mais nada)."""
+
+    def __init__(self, pai, campo, fundo=None):
+        super().__init__(pai, font=FONTE["dica"], bg=fundo or COR["superficie"])
+        self.campo = campo
+        campo.var.trace_add("write", lambda *a: self.atualizar())
+        self.atualizar()
+
+    def atualizar(self):
+        usados, maximo = len(self.campo.var.get()), self.campo.maximo
+        self.config(text=f"{usados}/{maximo}",
+                    fg=COR["alerta"] if usados >= maximo else COR["texto_3"])
 
 
 # ----------------------------------------------------------------------

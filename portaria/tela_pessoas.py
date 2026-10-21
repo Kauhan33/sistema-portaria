@@ -23,7 +23,8 @@ from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao,
 from .estilo import (COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, fonte_icone,
                      px)
 from .usuarios import eh_admin
-from .validacao import (TIPOS_ACESSO, converter_data,
+from .validacao import (MAXIMO_BUSCA, MAXIMO_NOME, TIPOS_ACESSO,
+                        converter_data,
                         formatar_celular, formatar_placa, normalizar,
                         validar_campos)
 
@@ -98,7 +99,8 @@ class AbaPessoas:
         barra = tk.Frame(m, bg=COR["superficie"])
         barra.pack(fill="x", padx=px(19), pady=(px(6), px(12)))
         campo = Campo(barra, icone=ICONE["busca"],
-                      dica_vazio="Buscar por nome, CPF, celular, placa ou tipo")
+                      dica_vazio="Buscar por nome, CPF, celular, placa ou tipo",
+                      maximo=MAXIMO_BUSCA)
         campo.pack(fill="x")
         self.busca = campo.entrada
         self.espera_busca = EsperaDigitacao(self.busca, self.atualizar)
@@ -189,7 +191,8 @@ class AbaPessoas:
                        padx=(0, px(10)) if coluna == 0 and juntas == 1 else 0)
             return campo
 
-        self.campo_nome = grupo("Nome completo", 0, 0, Campo(form), juntas=2)
+        self.campo_nome = grupo("Nome completo", 0, 0,
+                                Campo(form, maximo=MAXIMO_NOME), juntas=2)
         self.nome = self.campo_nome.entrada
         # Q04: as mesmas restrições de digitação da Entrada e saída
         self.celular = grupo("Celular", 2, 0, Campo(form, numeros=11)).entrada

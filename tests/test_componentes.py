@@ -3,8 +3,9 @@
 import tkinter as tk
 import unittest
 from datetime import datetime
+from unittest import mock
 
-from portaria import componentes, estilo
+from portaria import componentes, estilo, validacao
 from portaria.estilo import COR, ESTADO
 
 
@@ -58,7 +59,8 @@ class TestComponentes(unittest.TestCase):
         self.assertEqual(str(campo.entrada.cget("state")), "readonly")
 
     def test_dica_de_campo_vazio_some_ao_digitar(self):
-        campo = componentes.Campo(self.pai, dica_vazio="CPF ou placa")
+        campo = componentes.Campo(self.pai, dica_vazio="CPF ou placa",
+                                  maximo=14)
         self.assertEqual(campo.lbl_vazio.winfo_manager(), "place")
         campo.entrada.insert(0, "1")
         self.assertEqual(campo.lbl_vazio.winfo_manager(), "")
@@ -66,7 +68,7 @@ class TestComponentes(unittest.TestCase):
 
     def test_icone_do_campo_executa_a_acao(self):
         chamado = []
-        campo = componentes.Campo(self.pai, icone="x",
+        campo = componentes.Campo(self.pai, icone="x", maximo=60,
                                   acao_icone=lambda: chamado.append(1))
         self.assertEqual(campo.lbl_icone.cget("text"), "x")
         self.assertTrue(campo.lbl_icone.bind("<Button-1>"))
@@ -75,13 +77,118 @@ class TestComponentes(unittest.TestCase):
 
     def test_campo_rotulado_tem_rotulo_e_apoio(self):
         grupo, campo = componentes.campo_rotulado(self.pai, "Entrada",
-                                               "dd/mm/aaaa hh:mm")
+                                               "dd/mm/aaaa hh:mm",
+                                               maximo=16)
         textos = []
         for filho in grupo.winfo_children():
             textos += [w.cget("text") for w in filho.winfo_children()
                        if isinstance(w, tk.Label)]
         self.assertEqual(textos, ["Entrada", "dd/mm/aaaa hh:mm"])
         self.assertIsInstance(campo, componentes.Campo)
+
+    # --- tamanho máximo: digitação, colagem e contador
+    def colar(self, campo, texto):
+        """O que o Ctrl+V (<<Paste>>) chama, com a área de transferência
+        trocada por `texto` (o teste não mexe na do Windows). O Tk só
+        entrega o evento a janela visível: os testes chamam a ligação."""
+        self.assertIn("_colar_da_area_de_transferencia",
+                      campo.entrada.bind("<<Paste>>"))
+        with mock.patch.object(campo.entrada, "clipboard_get",
+                               return_value=texto):
+            self.assertEqual(campo._colar_da_area_de_transferencia(), "break")
+        return campo.entrada.get()
+
+    def test_todo_campo_de_texto_precisa_de_um_maximo(self):
+        with self.assertRaises(ValueError):
+            componentes.Campo(self.pai)
+        lista = componentes.Campo(self.pai, opcoes=["Aluno"])   # só escolhe
+        self.assertFalse(hasattr(lista, "maximo"))
+
+    def test_maximo_de_cada_tipo_de_campo(self):
+        casos = [({"maximo": validacao.MAXIMO_NOME}, 80),
+                 ({"numeros": 11}, 11),
+                 ({"placa": True}, 7),
+                 ({"senha": True}, validacao.MAXIMO_SENHA),
+                 ({"seletor": "data_hora"}, 16),
+                 ({"seletor": "data"}, 10),
+                 ({"seletor": "hora"}, 5)]
+        for opcoes, maximo in casos:
+            with self.subTest(opcoes=opcoes):
+                campo = componentes.Campo(self.pai, **opcoes)
+                self.assertEqual(campo.maximo, maximo)
+
+    def test_digitar_nao_passa_do_maximo(self):
+        for opcoes, texto, esperado in [
+                ({"maximo": 5}, "abcdefgh", "abcde"),
+                ({"senha": True}, "s" * 70, "s" * 64),
+                ({"seletor": "data_hora"}, "21/10/2026 10:009", "21/10/2026 10:00"),
+                ({"seletor": "data"}, "21/10/20266", "21/10/2026"),
+                ({"seletor": "hora"}, "07:300", "07:30"),
+                ({"numeros": 11}, "529982247251", "52998224725"),
+                ({"placa": True}, "ABC1D234", "ABC1D23")]:
+            with self.subTest(opcoes=opcoes):
+                campo = componentes.Campo(self.pai, **opcoes)
+                self.assertEqual(self.digitar(campo.entrada, texto), esperado)
+
+    def test_colar_texto_maior_corta_no_maximo(self):
+        campo = componentes.Campo(self.pai, maximo=validacao.MAXIMO_NOME)
+        self.assertEqual(self.colar(campo, "Ana " + "x" * 200), "Ana " + "x" * 76)
+        self.assertEqual(len(campo.entrada.get()), 80)
+
+    def test_colar_no_meio_so_entra_o_que_cabe(self):
+        campo = componentes.Campo(self.pai, maximo=10)
+        campo.entrada.insert(0, "12345678")
+        campo.entrada.icursor(4)
+        self.assertEqual(self.colar(campo, "abcdef"), "1234ab5678")
+
+    def test_colar_substitui_a_selecao(self):
+        campo = componentes.Campo(self.pai, maximo=6)
+        campo.entrada.insert(0, "abcdef")
+        campo.entrada.selection_range(0, 3)
+        campo.entrada.icursor(0)
+        self.assertEqual(self.colar(campo, "XYZW"), "XYZdef")
+
+    def test_colar_cpf_formatado_no_campo_de_numeros(self):
+        campo = componentes.Campo(self.pai, numeros=11)
+        self.assertEqual(self.colar(campo, "529.982.247-25 extra 99"),
+                         "52998224725")
+
+    def test_colar_placa_com_hifen_e_minuscula(self):
+        campo = componentes.Campo(self.pai, placa=True)
+        self.assertEqual(self.colar(campo, "abc-1d23xyz"), "ABC1D23")
+
+    def test_colar_senha_e_datas_cortam_no_maximo(self):
+        for opcoes, texto, esperado in [
+                ({"senha": True}, "p" * 100, "p" * 64),
+                ({"seletor": "data_hora"}, "21/10/2026 10:00:59", "21/10/2026 10:00"),
+                ({"seletor": "data"}, "21/10/2026 10:00", "21/10/2026"),
+                ({"seletor": "hora"}, "07:30:00", "07:30")]:
+            with self.subTest(opcoes=opcoes):
+                campo = componentes.Campo(self.pai, **opcoes)
+                self.assertEqual(self.colar(campo, texto), esperado)
+
+    def test_colar_quebra_de_linha_vira_espaco(self):
+        campo = componentes.Campo(self.pai, maximo=60)
+        self.assertEqual(self.colar(campo, "linha um\r\nlinha dois"),
+                         "linha um linha dois")
+
+    def test_colar_em_campo_somente_leitura_nao_faz_nada(self):
+        campo = componentes.Campo(self.pai, numeros=11)
+        campo.entrada.insert(0, "123")
+        campo.entrada.config(state="readonly")
+        self.assertEqual(self.colar(campo, "456"), "123")
+
+    def test_contador_mostra_usados_e_maximo(self):
+        _, campo = componentes.campo_rotulado(
+            self.pai, "Justificativa", maximo=validacao.MAXIMO_JUSTIFICATIVA,
+            contador=True)
+        self.assertEqual(campo.contador.cget("text"), "0/200")
+        self.assertEqual(str(campo.contador.cget("fg")), COR["texto_3"])
+        campo.entrada.insert(0, "Evento da reitoria")
+        self.assertEqual(campo.contador.cget("text"), "18/200")
+        self.colar(campo, "x" * 500)
+        self.assertEqual(campo.contador.cget("text"), "200/200")
+        self.assertEqual(str(campo.contador.cget("fg")), COR["alerta"])
 
     # --- botões
     def test_botao_le_o_texto_e_aciona(self):

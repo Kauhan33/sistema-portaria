@@ -234,8 +234,8 @@ class AppPortaria:
 
     def perguntar(self, caixa, *args, **kwargs):
         """
-        Abre uma caixa que trava a tela (mensagens.confirmar, pedir_senha,
-        salvar_como) e devolve a resposta. O tempo de inatividade continua
+        Abre uma caixa que trava a tela (mensagens.confirmar, salvar_como,
+        diálogos de autorização e do carro) e devolve a resposta. O tempo de inatividade continua
         correndo com ela aberta: se a sessão acabou (ou mudou) enquanto
         isso, avisa e devolve None, e quem chamou não faz nada.
         """

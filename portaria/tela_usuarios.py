@@ -1,7 +1,9 @@
 """
 Página Usuários (só administrador): as contas (criar porteiros e
 administradores, ativar ou desativar, redefinir senha) e a atividade do
-sistema (histórico de ações, com filtro). "Novo usuário" abre um diálogo.
+sistema (histórico de ações, com filtro). "Novo usuário" e "Redefinir
+senha" abrem diálogos no estilo Guarita (as caixas de senha têm o mesmo
+limite de 64 caracteres das outras).
 """
 
 import tkinter as tk
@@ -12,6 +14,7 @@ from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao, Dialogo,
                           preencher_eventos, tabela, tabela_eventos,
                           titulo_cartao)
 from .estilo import COR, ESPACO_CARTOES, ICONE, MARGEM, px
+from .validacao import MAXIMO_BUSCA, MAXIMO_LOGIN, MAXIMO_NOME
 from .usuarios import (PERFIS, SENHA_MINIMA, gerar_hash, normalizar_login,
                        pode_desativar, validar_novo_usuario, validar_senha)
 
@@ -69,7 +72,8 @@ class AbaUsuarios:
         barra.pack(fill="x", padx=px(19), pady=(px(6), px(12)))
         titulo_cartao(barra, "Atividade").pack(side="left")
         campo = Campo(barra, largura=300, icone=ICONE["busca"],
-                      dica_vazio="Filtrar por usuário, ação ou detalhe")
+                      dica_vazio="Filtrar por usuário, ação ou detalhe",
+                      maximo=MAXIMO_BUSCA)
         campo.pack(side="left", padx=(px(16), 0))
         self.busca = campo.entrada
         self.busca.bind("<KeyRelease>", lambda e: self._mostrar_eventos())
@@ -158,31 +162,56 @@ class AbaUsuarios:
         self.atualizar()
 
     def redefinir_senha(self):
+        """Abre o diálogo "Redefinir senha" do usuário selecionado; devolve
+        o diálogo (ou None, sem seleção)."""
         alvo = self._selecionado()
         if alvo is None:
-            return
-        senha = self.app.perguntar(
-            mensagens.pedir_senha, "Redefinir senha",
-            f"Nova senha para {alvo['login']}:", parent=self.aba)
-        if senha is None:
-            return
-        confirmacao = self.app.perguntar(
-            mensagens.pedir_senha, "Redefinir senha",
-            "Digite a nova senha de novo:", parent=self.aba)
-        if confirmacao is None:
-            return
-        ok, msg = validar_senha(senha, confirmacao)
+            return None
+        self.dialogo = DialogoRedefinirSenha(self, alvo)
+        return self.dialogo
+
+
+class DialogoRedefinirSenha(Dialogo):
+    """Nova senha (2x) para outro usuário: o administrador a passa para
+    ele, que troca no primeiro acesso. Libera o login travado."""
+
+    def __init__(self, aba, alvo):
+        self.aba, self.alvo = aba, alvo
+        app = aba.app
+        super().__init__(app.janela, "Redefinir senha",
+                         f"Nova senha para {alvo['login']}, com pelo menos "
+                         f"{SENHA_MINIMA} caracteres.", largura=360,
+                         ao_usar=app.registrar_uso)
+        self.senha = self._campo("Nova senha")
+        self.confirmacao = self._campo("Confirmar a nova senha")
+        self.faixa = Aviso(self.miolo)
+        self.adicionar_botao("Redefinir senha", self.salvar, "primario")
+        self.adicionar_botao("Cancelar", self.fechar)
+        self.abrir(confirmar=self.salvar, foco=self.senha)
+
+    def _campo(self, texto):
+        grupo, campo = campo_rotulado(self.miolo, texto, senha=True)
+        grupo.pack(fill="x", pady=(0, px(14)))
+        return campo.entrada
+
+    def salvar(self):
+        app = self.aba.app
+        senha = self.senha.get()
+        ok, msg = validar_senha(senha, self.confirmacao.get())
         if not ok:
-            mensagens.erro("Dados inválidos", msg)
+            self.faixa.mostrar("erro", msg)
+            self.faixa.pack(fill="x", pady=(px(2), 0))
             return
-        ok, _ = self.app.tentar(self.app.banco.definir_senha, alvo["id"],
-                                gerar_hash(senha), autor=self.app.autor)
-        if ok:
-            self.atualizar()
-            mensagens.info("Usuários",
-                           f"Senha de {alvo['login']} redefinida. Se o login "
-                           "estava travado por tentativas erradas, já foi "
-                           "liberado.")
+        ok, _ = app.tentar(app.banco.definir_senha, self.alvo["id"],
+                           gerar_hash(senha), autor=app.autor)
+        if not ok:
+            return
+        self.fechar()
+        self.aba.atualizar()
+        mensagens.info("Usuários",
+                       f"Senha de {self.alvo['login']} redefinida. Se o login "
+                       "estava travado por tentativas erradas, já foi "
+                       "liberado.")
 
 
 class DialogoUsuario(Dialogo):
@@ -205,8 +234,9 @@ class DialogoUsuario(Dialogo):
                        padx=(0, px(10)) if coluna == 0 and juntas == 1 else 0)
             return c.entrada
 
-        self.nome = campo("Nome completo", 0, 0, juntas=2)
-        self.login = campo("Usuário", 1, 0, juntas=2, apoio="ex.: maria.souza")
+        self.nome = campo("Nome completo", 0, 0, juntas=2, maximo=MAXIMO_NOME)
+        self.login = campo("Usuário", 1, 0, juntas=2, apoio="ex.: maria.souza",
+                           maximo=MAXIMO_LOGIN)
         self.senha = campo("Senha", 2, 0, apoio=f"mín. {SENHA_MINIMA}", senha=True)
         self.confirmacao = campo("Confirmar senha", 2, 1, senha=True)
         self.perfil = campo("Perfil", 3, 0, opcoes=PERFIL_POR_NOME)

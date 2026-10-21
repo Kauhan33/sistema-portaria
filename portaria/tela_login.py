@@ -16,6 +16,7 @@ from .dados import ErroDados
 from .estilo import COR, FONTE, px
 from .usuarios import (SENHA_MINIMA, entrar, gerar_hash, normalizar_login,
                        validar_novo_usuario)
+from .validacao import MAXIMO_LOGIN, MAXIMO_NOME
 
 SEGUNDOS_RELOGIO = 15
 
@@ -54,8 +55,9 @@ class TelaLogin:
             self._titulo("Primeiro acesso",
                          "Crie o usuário administrador do sistema. "
                          "Ele cadastra os porteiros depois.")
-            self.campo_nome = self._campo("Nome completo")
-            self.campo_login = self._campo("Usuário", "ex.: maria.souza")
+            self.campo_nome = self._campo("Nome completo", maximo=MAXIMO_NOME)
+            self.campo_login = self._campo("Usuário", "ex.: maria.souza",
+                                           maximo=MAXIMO_LOGIN)
             self.campo_senha = self._campo(
                 "Senha", f"mínimo {SENHA_MINIMA} caracteres", senha=True)
             self.campo_confirmacao = self._campo("Confirmar senha", senha=True)
@@ -63,7 +65,7 @@ class TelaLogin:
         else:
             self._titulo("Entrar", "Use o usuário e a senha que o administrador "
                                    "cadastrou para você.")
-            self.campo_login = self._campo("Usuário")
+            self.campo_login = self._campo("Usuário", maximo=MAXIMO_LOGIN)
             self.campo_senha = self._campo("Senha", senha=True)
             acao, texto = self.entrar, "Entrar"
 
@@ -140,7 +142,7 @@ class TelaLogin:
                  fg=COR["texto_2"], wraplength=px(360), justify="left"
                  ).pack(anchor="w", pady=(px(4), px(24)))
 
-    def _campo(self, texto, apoio="", senha=False):
+    def _campo(self, texto, apoio="", senha=False, maximo=None):
         # RNF02: a senha aparece como •••• enquanto é digitada
         fundo = COR["superficie"]
         linha = tk.Frame(self.miolo, bg=fundo)
@@ -150,7 +152,7 @@ class TelaLogin:
         if apoio:
             tk.Label(linha, text=apoio, font=FONTE["dica"], bg=fundo,
                      fg=COR["texto_3"]).pack(side="left", padx=(px(8), 0))
-        campo = Campo(self.miolo, senha=senha)
+        campo = Campo(self.miolo, senha=senha, maximo=maximo)
         campo.pack(fill="x", pady=(0, px(16)))
         self.campos.append(campo.entrada)
         return campo.entrada

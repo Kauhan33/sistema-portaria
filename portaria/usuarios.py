@@ -24,7 +24,8 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from .validacao import converter_data, nome_valido
+from .validacao import (MAXIMO_LOGIN, MAXIMO_NOME, MAXIMO_SENHA,
+                        checar_tamanho, converter_data, nome_valido)
 
 PERFIS = {"admin": "Administrador", "porteiro": "Porteiro"}
 # Tema escolhido por cada usuário (menu da conta). "sistema" = seguir o
@@ -32,8 +33,8 @@ PERFIS = {"admin": "Administrador", "porteiro": "Porteiro"}
 TEMAS = ("claro", "escuro", "sistema")
 TEMA_PADRAO = "sistema"
 SENHA_MINIMA = 8
-SENHA_MAXIMA = 128
-REGEX_LOGIN = re.compile(r"^[a-z0-9._]{3,20}$")
+SENHA_MAXIMA = MAXIMO_SENHA
+REGEX_LOGIN = re.compile(r"^[a-z0-9._]{3,%d}$" % MAXIMO_LOGIN)
 # Recomendação atual da OWASP para PBKDF2-SHA256. Os testes baixam
 # ITERACOES (tests/__init__.py), por isso gerar_hash lê o valor na hora.
 ITERACOES_PADRAO = 600_000
@@ -125,8 +126,9 @@ def validar_senha(senha, confirmacao, login=""):
     """Retorna (ok, mensagem). Com `login`, recusa também senha igual ao login."""
     if len(senha) < SENHA_MINIMA:
         return False, f"A senha deve ter pelo menos {SENHA_MINIMA} caracteres."
-    if len(senha) > SENHA_MAXIMA:
-        return False, f"A senha pode ter no máximo {SENHA_MAXIMA} caracteres."
+    ok, msg = checar_tamanho("Senha", senha, SENHA_MAXIMA)
+    if not ok:
+        return False, msg
     if senha.lower() in SENHAS_COMUNS or (login and senha.lower() == login.lower()):
         return False, ("Essa senha é fácil de adivinhar.\n"
                        "Escolha outra (não use o login nem sequências).")
@@ -138,6 +140,12 @@ def validar_senha(senha, confirmacao, login=""):
 def validar_novo_usuario(nome, login, senha, confirmacao, perfil,
                          logins_existentes):
     """Retorna (ok, mensagem). `login` já normalizado."""
+    for rotulo, texto, maximo in (("Nome completo", " ".join(nome.split()),
+                                   MAXIMO_NOME),
+                                  ("Usuário", login, MAXIMO_LOGIN)):
+        ok, msg = checar_tamanho(rotulo, texto, maximo)
+        if not ok:
+            return False, msg
     if not nome_valido(" ".join(nome.split())):
         return False, "Informe o nome completo do usuário (só letras)."
     if not REGEX_LOGIN.match(login):

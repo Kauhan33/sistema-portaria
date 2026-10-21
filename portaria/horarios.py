@@ -62,7 +62,8 @@ import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
-from .validacao import FORMATO, converter_data
+from .validacao import (FORMATO, MAXIMO_DESCRICAO, MAXIMO_JUSTIFICATIVA,
+                        checar_tamanho, converter_data)
 
 DIAS_SEMANA = ["Segunda-feira", "Terça-feira", "Quarta-feira",
                "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
@@ -638,15 +639,38 @@ def ler_data(texto, rotulo="Data"):
         return None, f"{rotulo} inválida. Use dd/mm/aaaa."
 
 
+def ler_justificativa(texto):
+    """Justificativa da exceção (espaços repetidos viram um): de
+    MINIMO_JUSTIFICATIVA a MAXIMO_JUSTIFICATIVA caracteres."""
+    justificativa = " ".join(texto.split())
+    if len(justificativa) < MINIMO_JUSTIFICATIVA:
+        return None, ("Escreva a justificativa da exceção (pelo menos "
+                      f"{MINIMO_JUSTIFICATIVA} caracteres).")
+    ok, erro = checar_tamanho("Justificativa", justificativa,
+                              MAXIMO_JUSTIFICATIVA)
+    return (justificativa, "") if ok else (None, erro)
+
+
+def _ler_descricao(descricao, falta):
+    """Descrição de feriado ou evento: de 3 a MAXIMO_DESCRICAO caracteres."""
+    descricao = descricao.strip()
+    if len(descricao) < 3:
+        return None, falta
+    ok, erro = checar_tamanho("Descrição", descricao, MAXIMO_DESCRICAO)
+    return (descricao, "") if ok else (None, erro)
+
+
 def ler_feriado(data, descricao, config):
     dia, erro = ler_data(data)
     if erro:
         return None, erro
-    if len(descricao.strip()) < 3:
-        return None, "Informe o nome do feriado (ex.: Natal)."
+    descricao, erro = _ler_descricao(descricao,
+                                     "Informe o nome do feriado (ex.: Natal).")
+    if erro:
+        return None, erro
     if dia in config.feriados:
         return None, f"{dia:{FORMATO_DATA}} já é feriado."
-    return (dia, descricao.strip()), ""
+    return (dia, descricao), ""
 
 
 def ler_evento(data, abre, fecha, descricao, config):
@@ -656,11 +680,13 @@ def ler_evento(data, abre, fecha, descricao, config):
     horario, erro = ler_horario(abre, fecha, "Horário do evento")
     if erro:
         return None, erro
-    if len(descricao.strip()) < 3:
-        return None, "Descreva o evento (ex.: Formatura de Direito)."
+    descricao, erro = _ler_descricao(
+        descricao, "Descreva o evento (ex.: Formatura de Direito).")
+    if erro:
+        return None, erro
     if dia in config.eventos:
         return None, f"Já há um evento em {dia:{FORMATO_DATA}}."
-    return Evento(dia, horario, descricao.strip()), ""
+    return Evento(dia, horario, descricao), ""
 
 
 # ------------------------------------------------------------------

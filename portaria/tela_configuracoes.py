@@ -30,7 +30,7 @@ from .componentes import (Alternador, Aviso, Botao, Cabecalho, Campo, Cartao,
                           tabela, titulo_cartao)
 from .estilo import COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM, px
 from .horarios import DIAS_SEMANA, FORMATO_DATA
-from .validacao import TIPOS_ACESSO
+from .validacao import MAXIMO_DESCRICAO, MAXIMO_HORA, TIPOS_ACESSO
 
 SECOES = ("Funcionamento", "Categorias", "Feriados e eventos")
 JANELAS = {"Do funcionamento": True, "Horário fixo": False}
@@ -229,8 +229,10 @@ class AbaConfiguracoes:
         tk.Label(nome, text=tipo, font=FONTE["corpo"], bg=COR["superficie"],
                  fg=COR["texto"]).pack(side="left", padx=(px(4), 0))
         campos = {"janela": Campo(grade, opcoes=JANELAS),
-                  "de": Campo(grade, largura=LARGURA_NUMERO),
-                  "ate": Campo(grade, largura=LARGURA_NUMERO),
+                  "de": Campo(grade, largura=LARGURA_NUMERO,
+                              maximo=MAXIMO_HORA),
+                  "ate": Campo(grade, largura=LARGURA_NUMERO,
+                               maximo=MAXIMO_HORA),
                   "permanencia": Campo(grade, opcoes=PERMANENCIAS),
                   "minutos": Campo(grade, largura=LARGURA_NUMERO, numeros=4),
                   "tolerancia": Campo(grade, largura=LARGURA_NUMERO, numeros=3)}
@@ -305,7 +307,8 @@ class AbaConfiguracoes:
         linha.columnconfigure(1, weight=1)
         self.data_feriado = self._campo(linha, 0, 0, "Data", "dd/mm/aaaa", 136,
                                         seletor="data")
-        self.nome_feriado = self._campo(linha, 0, 1, "Descrição", "ex.: Natal")
+        self.nome_feriado = self._campo(linha, 0, 1, "Descrição", "ex.: Natal",
+                                        maximo=MAXIMO_DESCRICAO)
         Botao(linha, "Adicionar", self.adicionar_feriado, "secundario",
               icone=ICONE["mais"]).grid(row=2, column=0, columnspan=2,
                                         sticky="e", pady=(px(10), 0))
@@ -327,7 +330,7 @@ class AbaConfiguracoes:
         self.fecha_evento = self._campo(linha, 0, 2, "Fecha", "hh:mm",
                                         LARGURA_HORA_RELOGIO, seletor="hora")
         self.nome_evento = self._campo(linha, 2, 0, "Descrição", "ex.: Formatura",
-                                       juntas=4)
+                                       juntas=4, maximo=MAXIMO_DESCRICAO)
         # na linha da data: ao lado da descrição, era cortado no notebook
         Botao(linha, "Adicionar", self.adicionar_evento, "secundario",
               icone=ICONE["mais"]).grid(row=1, column=3, sticky="e")
@@ -353,14 +356,14 @@ class AbaConfiguracoes:
         return m
 
     def _campo(self, grade, linha, coluna, texto, dica, largura=None, juntas=1,
-               seletor=None):
+               seletor=None, maximo=None):
         """Rótulo em cima e campo embaixo (o formato fica dentro do campo);
         com `seletor`, o calendário ou o relógio abre no clique."""
         rotulo, _ = rotulo_campo(grade, texto)
         rotulo.grid(row=linha, column=coluna, sticky="w",
                     pady=(px(10) if linha else 0, px(4)))
         campo = Campo(grade, largura=largura, dica_vazio=dica, seletor=seletor,
-                      relogio=self.app.relogio)
+                      relogio=self.app.relogio, maximo=maximo)
         campo.grid(row=linha + 1, column=coluna, columnspan=juntas, sticky="ew",
                    padx=(0, px(8)))
         return campo.entrada

@@ -86,11 +86,9 @@ class BaseInterface(unittest.TestCase):
         # caixas de mensagem e de diálogo viram "falsas" para o teste não travar
         self.msg = mock.MagicMock()
         self.msg.askyesno.return_value = True
-        self.dialogo = mock.MagicMock()
         self.arquivo = mock.MagicMock()           # "Salvar como"
         # todas as telas usam portaria.mensagens: um patch só cobre tudo
         patcher = mock.patch.multiple("portaria.mensagens", messagebox=self.msg,
-                                      simpledialog=self.dialogo,
                                       filedialog=self.arquivo)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -963,10 +961,13 @@ class TestSessaoExpiraComCaixaAberta(BaseInterface):
     def test_redefinir_senha(self):
         aba = self.app.tela_usuarios
         aba.tabela.selection_set(str(self.porteiro["id"]))
-        self.dialogo.askstring.side_effect = self.expirar_e_responder("novasenha9")
-        aba.redefinir_senha()
+        dialogo = aba.redefinir_senha()
+        dialogo.senha.insert(0, "novasenha9")
+        dialogo.confirmacao.insert(0, "novasenha9")
+        self.app.sair(inatividade=True)          # sessão acabou com ele aberto
+        self.assertFalse(dialogo.janela.winfo_exists())   # fechou junto
+        self.assertIsNone(self.app.usuario)
         self.assertIsNotNone(autenticar(self.banco, "paulo", "senha456"))
-        self.assert_sessao_encerrada_avisada()
 
     def test_bloquear_e_remover_bloqueio(self):
         aba = self.app.tela_bloqueios
@@ -1015,7 +1016,7 @@ class TestSessaoExpiraComCaixaAberta(BaseInterface):
         self.assert_sessao_encerrada_avisada()
 
     def test_inatividade_fecha_janelas_dentro_das_paginas(self):
-        # o "Redefinir senha" (simpledialog) é filho da página, não da janela
+        # uma janela filha da página (não da janela principal) também fecha
         aba = self.app.tela_usuarios
         filha = tk.Toplevel(aba.aba)
         self.app.sair(inatividade=True)
@@ -1179,12 +1180,34 @@ class TestAbaUsuarios(BaseInterface):
         self.assertIsNotNone(autenticar(self.banco, "paulo", "senha456"))
 
     def test_redefinir_senha(self):
-        self.dialogo.askstring.side_effect = ["novasenha", "novasenha"]
         self.aba.tabela.selection_set(self.linha_de("paulo"))
-        self.aba.redefinir_senha()
+        dialogo = self.aba.redefinir_senha()
+        dialogo.senha.insert(0, "novasenha")
+        dialogo.confirmacao.insert(0, "novasenha")
+        dialogo.salvar()
         self.assertIsNone(autenticar(self.banco, "paulo", "senha456"))
         self.assertIsNotNone(autenticar(self.banco, "paulo", "novasenha"))
         self.assertIn(("ana.admin", "Senha redefinida"), self.acoes())
+        self.assertFalse(dialogo.janela.winfo_exists())
+
+    def test_redefinir_senha_confirmacao_diferente_nao_grava(self):
+        self.aba.tabela.selection_set(self.linha_de("paulo"))
+        dialogo = self.aba.redefinir_senha()
+        dialogo.senha.insert(0, "novasenha")
+        dialogo.confirmacao.insert(0, "outrasenha")
+        dialogo.salvar()
+        self.assertIsNotNone(autenticar(self.banco, "paulo", "senha456"))
+        self.assertIn("confirmação", dialogo.faixa.lbl.cget("text"))
+        dialogo.fechar()
+
+    def test_caixas_de_senha_do_redefinir_param_em_64(self):
+        self.aba.tabela.selection_set(self.linha_de("paulo"))
+        dialogo = self.aba.redefinir_senha()
+        for caixa in (dialogo.senha, dialogo.confirmacao):
+            for letra in "s" * 70:
+                caixa.insert(tk.END, letra)
+            self.assertEqual(len(caixa.get()), 64)
+        dialogo.fechar()
 
     def test_historico_mostra_as_acoes(self):
         self.cadastrar_um()

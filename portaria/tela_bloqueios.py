@@ -8,12 +8,13 @@ import tkinter as tk
 
 from . import mensagens
 from .componentes import (Alternador, Aviso, Botao, Cabecalho, Campo, Cartao,
-                          inserir_linha, plural, rotulo_campo, tabela,
+                          Contador, inserir_linha, plural, rotulo_campo, tabela,
                           titulo_cartao)
 from .consultas import encontrar_dentro
 from .estilo import COR, ESPACO_CARTOES, ICONE, MARGEM, px
 from .usuarios import pode_gerenciar_bloqueios
-from .validacao import (BLOQUEADO, COM_ARTIGO, COM_DE, TIPOS_BLOQUEIO,
+from .validacao import (BLOQUEADO, COM_ARTIGO, COM_DE, MAXIMO_CPF_OU_PLACA,
+                        MAXIMO_MOTIVO, TIPOS_BLOQUEIO,
                         formatar_bloqueio, normalizar_bloqueio,
                         validar_bloqueio)
 
@@ -69,10 +70,16 @@ class AbaBloqueios:
         self.tipo = Campo(linha, opcoes=TIPO_POR_NOME, largura=110).entrada
         self.tipo.master.grid(row=1, column=0, padx=(0, px(10)))
         self.tipo.set("CPF")
-        self.valor = Campo(linha, largura=170).entrada
+        self.valor = Campo(linha, largura=170,
+                           maximo=MAXIMO_CPF_OU_PLACA).entrada
         self.valor.master.grid(row=1, column=1, padx=(0, px(10)))
-        self.motivo = Campo(linha).entrada
+        campo_motivo = Campo(linha, maximo=MAXIMO_MOTIVO)
+        self.motivo = campo_motivo.entrada
         self.motivo.master.grid(row=1, column=2, sticky="ew", padx=(0, px(10)))
+        # "123/200" discreto acima do campo, à direita do rótulo
+        self.contador_motivo = Contador(linha, campo_motivo)
+        self.contador_motivo.grid(row=0, column=2, sticky="e",
+                                  padx=(0, px(10)), pady=(0, px(4)))
         self.motivo.bind("<Return>", lambda e: (self.bloquear(), "break")[1])
         botoes = tk.Frame(linha, bg=COR["superficie"])
         botoes.grid(row=1, column=3)

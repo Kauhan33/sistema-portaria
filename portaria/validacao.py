@@ -32,12 +32,38 @@ DDDS_VALIDOS = {
 # Placa antiga (ABC1234) e Mercosul (ABC1D23)
 REGEX_PLACA = re.compile(r"^([A-Z]{3}[0-9]{4}|[A-Z]{3}[0-9][A-Z][0-9]{2})$")
 
+# Tamanho máximo de cada campo, num lugar só. Vale em três camadas: a
+# digitação e a colagem (componentes.Campo não deixa passar), a validação
+# (aqui, em usuarios.py e em horarios.py) e o banco (dados.py recusa o que
+# passar, sem precisar mudar o esquema).
+MAXIMO_NOME = 80             # nome completo (pessoa e usuário)
+MAXIMO_LOGIN = 20            # usuario.REGEX_LOGIN já pedia de 3 a 20
+MAXIMO_SENHA = 64
+MAXIMO_JUSTIFICATIVA = 200   # autorização do administrador
+MAXIMO_MOTIVO = 200          # motivo do bloqueio
+MAXIMO_DESCRICAO = 80        # feriado e evento
+MAXIMO_BUSCA = 60            # buscas e filtros das listas
+MAXIMO_CPF_OU_PLACA = 14     # saída rápida e bloqueio: 529.982.247-25
+MAXIMO_DATA_HORA = 16        # dd/mm/aaaa hh:mm
+MAXIMO_DATA = 10             # dd/mm/aaaa
+MAXIMO_HORA = 5              # hh:mm (e os minutos "-1440" das regras)
+MAXIMO_CPF = 11
+MAXIMO_CELULAR = 11
+MAXIMO_PLACA = 7
+
 
 # ------------------------------------------------------------------
 # Validadores de campo
 # ------------------------------------------------------------------
 def so_digitos(texto):
     return re.sub(r"\D", "", texto)
+
+
+def checar_tamanho(rotulo, texto, maximo):
+    """(ok, mensagem): "Nome completo: no máximo 80 caracteres"."""
+    if len(texto) > maximo:
+        return False, f"{rotulo}: no máximo {maximo} caracteres."
+    return True, ""
 
 
 def nome_valido(nome):
@@ -164,6 +190,9 @@ def validar_campos(registro):
     """
     if not registro["nome"]:
         return False, "O nome da pessoa é obrigatório."
+    ok, msg = checar_tamanho("Nome completo", registro["nome"], MAXIMO_NOME)
+    if not ok:
+        return False, msg
     if len(registro["nome"].split()) < 2:
         return False, "Informe o nome completo (nome e sobrenome)."
     if not nome_valido(registro["nome"]):
@@ -225,6 +254,9 @@ def validar_bloqueio(tipo, valor, motivo, ativos):
     if len(motivo.strip()) < MOTIVO_MINIMO:
         return False, ("Informe o motivo do bloqueio "
                        f"(pelo menos {MOTIVO_MINIMO} caracteres).")
+    ok, msg = checar_tamanho("Motivo", motivo.strip(), MAXIMO_MOTIVO)
+    if not ok:
+        return False, msg
     if any(b["tipo"] == tipo and b["valor"] == valor for b in ativos):
         esse = "Este CPF" if tipo == "cpf" else "Esta placa"
         return False, f"{esse} já está {BLOQUEADO[tipo]}."

@@ -494,7 +494,7 @@ def aplicar_tema(janela):
 
 def _cores_padrao_tk(janela):
     """Cores padrão dos widgets tk que não dizem a sua (menu da conta, a
-    caixa de senha do simpledialog, a lista do Combobox): sem isto eles
+    lista do Combobox): sem isto eles
     ficariam claros no tema escuro."""
     padroes = {
         "*Background": COR["superficie"], "*Foreground": COR["texto"],

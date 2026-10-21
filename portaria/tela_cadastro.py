@@ -49,7 +49,8 @@ from .tela_edicao import JanelaEdicao
 from .tela_veiculo import (COM_CARRO, JUNTO, responsavel_saiu_junto,
                            saiu_com_o_veiculo)
 from .usuarios import eh_admin, pode_editar, pode_excluir
-from .validacao import (FORMATO, FORMATO_EXIBICAO, PLACA_OBRIGATORIA,
+from .validacao import (FORMATO, FORMATO_EXIBICAO, MAXIMO_BUSCA,
+                        MAXIMO_CPF_OU_PLACA, MAXIMO_NOME, PLACA_OBRIGATORIA,
                         TIPOS_ACESSO, checar_bloqueio, checar_saida,
                         cpf_valido, formatar_celular, formatar_cpf,
                         formatar_placa, normalizar, placa_valida, so_digitos,
@@ -173,7 +174,8 @@ class AbaCadastro:
         linha.pack()
         campo = Campo(linha, fundo_pai=COR["fundo"], largura=230,
                       icone=ICONE["busca"], acao_icone=self.saida_rapida,
-                      dica_vazio=DICA_SAIDA_RAPIDA["normal"])
+                      dica_vazio=DICA_SAIDA_RAPIDA["normal"],
+                      maximo=MAXIMO_CPF_OU_PLACA)
         campo.pack(side="left")
         self.campo_saida_rapida_quadro = campo
         self.campo_saida_rapida = campo.entrada
@@ -211,7 +213,8 @@ class AbaCadastro:
         # CPF primeiro: é por ele que a pessoa é reconhecida
         self.var_cpf = tk.StringVar(self.aba)
         self.cpf = self._peca("cpf", "CPF", Campo(form, numeros=11, var=self.var_cpf))
-        self.nome = self._peca("nome", "Nome completo", Campo(form))
+        self.nome = self._peca("nome", "Nome completo",
+                               Campo(form, maximo=MAXIMO_NOME))
         self.celular = self._peca("celular", "Celular com DDD",
                                   Campo(form, numeros=11), "só números")
         campo_placa = Campo(form, placa=True)
@@ -391,7 +394,7 @@ class AbaCadastro:
                                      fundo_pai=COR["superficie"])
         self.seletor_lista.pack(side="left", padx=(px(16), 0))
         self.campo_busca = Campo(barra, largura=300, icone=ICONE["busca"],
-                                 dica_vazio=DICA_BUSCA)
+                                 dica_vazio=DICA_BUSCA, maximo=MAXIMO_BUSCA)
         self.busca = self.campo_busca.entrada
         self.espera_busca = EsperaDigitacao(self.busca, self.atualizar_tabela)
         self.busca.bind("<Return>", lambda e: "break")   # Enter na busca não cadastra

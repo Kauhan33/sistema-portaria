@@ -197,6 +197,31 @@ injetado), guardado no banco (esquema v7) e editável na página Configurações
   aberto (hoje vale no próximo login); manter a seção aberta de cada página
   (ex.: Configurações › Feriados) ao trocar o tema.
 
+### Versão 2.1 — rodada 4, correções dos dois testes de QA (21/10/2026) ✅
+Dois testes de QA (fluxos e casos difíceis) sobre a rodada 2; relatórios em
+`docs/qa/` e a situação de cada achado em `docs/qa/CORRECOES.md`.
+- ✅ Regras de horário revistas pelo coordenador: o **evento soma** ao dia
+  (sábado 07–14 + formatura 18–23 = duas janelas; domingo/feriado: só o
+  evento); janela fixa de categoria só dentro de uma janela aberta; saída
+  lançada com o **campus fechado** é sempre exceção; "dia já fechou, só com
+  senha" usa o **prazo da categoria** (fechamento + tolerância).
+- ✅ Veículos: a placa só tira o carro (nunca a pessoa); pessoa com dois
+  carros fecha o carro certo; excluir a visita mantém o carro que está lá.
+- ✅ Estações ao mesmo tempo: correção com a linha desatualizada é recusada
+  (trava otimista), saída e Encerrar o dia com condição no UPDATE.
+- ✅ Segurança: busca do porteiro só acha CPF pelos 11 dígitos; importação do
+  JSON antigo com as regras do cadastro e no histórico; diálogo de
+  autorização com contador próprio por estação (fecha a N04); banco v10 com
+  a versão na tabela meta (programa antigo que rebaixa o banco é percebido).
+- ✅ Notebook 1366×670: Configurações com botão e mensagens sempre visíveis;
+  Movimento com 4 linhas e o aviso com Desfazer inteiro; busca com espera
+  de 300 ms entre teclas.
+- 573 testes automatizados.
+- Ideias para depois (dos QAs): evento que passa da meia-noite; opção "o
+  evento libera visitantes"; situação "Na tolerância" (hoje o professor fica
+  "Tempo excedido" entre 23:00 e 23:30); inatividade medida com o relógio
+  monotônico; levar a janela e o retroativo também para dentro do banco.
+
 ## 4. Rascunho de requisitos para o Word
 
 **RF**: RF01 cadastrar entrada · RF02 registrar saída (botão, duplo clique,
@@ -232,11 +257,14 @@ nas listas e no histórico · RN15 senha com pelo menos 8 caracteres e diferente
 reabrir o programa.)
 
 Novas na 2.1 (regras de horário, atualizadas na rodada 2):
-RN16 o campus tem horário por dia da semana; feriado fecha o dia e evento substitui o
-horário daquela data (mesmo domingo ou feriado) · RN17 cada categoria só entra na sua
-janela (aluno no funcionamento até 30 min antes de fechar; professor de 30 min antes de
-abrir até fechar; funcionário de 1 h antes de abrir até fechar; visitante 08–18,
-entregador 07–17 e prestador 07–19, só em dia aberto) · RN18 cada categoria tem
+RN16 o campus tem horário por dia da semana; feriado fecha o dia; o evento SOMA uma
+janela ao dia (sábado 07–14 com formatura 18–23 abre nas duas; num domingo ou feriado o
+evento é a única janela); o fechamento do dia é o fim da última janela · RN17 cada
+categoria só entra na sua janela, em cada janela do dia (aluno no funcionamento até
+30 min antes de fechar; professor de 30 min antes de abrir até fechar; funcionário de
+1 h antes de abrir até fechar; visitante 08–18, entregador 07–17 e prestador 07–19, só
+DENTRO de uma janela aberta: visitante às 08:00 num domingo com evento 18–23 é
+exceção) · RN18 cada categoria tem
 permanência máxima (aluno e professor até fechar; funcionário 12 h; visitante 4 h;
 entregador 1 h; prestador 10 h); acima dela a visita fica "Tempo excedido" (só alerta) ·
 RN19 nenhuma visita passa de 24 h · RN20 entrada fora da janela, lançamento retroativo
@@ -249,13 +277,26 @@ de tolerância (configurável por categoria; as outras 0); quem entrou depois de
 prazo de cada uma, registrada) · RN22 só o administrador altera os horários, e cada
 alteração fica no histórico · RN23 ninguém entra depois do fechamento sem autorização
 · RN24 lançamento retroativo (entrada ou saída no passado, no cadastro e na correção):
-até 3 h com o fechamento daquele dia ainda por vir é normal; mais de 3 h pede
-autorização; de um dia que já fechou, só com a senha de um administrador, mesmo com ele
-logado; até 5 min no passado conta como agora · RN25 o veículo tem estadia própria: a
+até 3 h, num horário em que a categoria podia estar no campus e antes do prazo do dia,
+é normal; mais de 3 h pede autorização; uma SAÍDA num horário com o campus fechado
+para a categoria (madrugada, domingo sem evento, entre duas janelas) pede autorização
+mesmo se recente; depois do PRAZO DA CATEGORIA (fechamento + tolerância), só com a
+senha de um administrador, mesmo com ele logado (a saída real às 23:00 de uma
+funcionária, lançada às 23:10, é normal); até 5 min no passado conta como agora; os
+segundos do relógio não contam · RN25 o veículo tem estadia própria: a
 entrada com placa abre a estadia, a pessoa pode sair a pé e deixar o carro, e o carro
 depois do prazo do responsável fica "Veículo pendente" (o Encerrar o dia não o tira:
 ele está lá) · RN26 uma placa só tem uma estadia aberta: o carro que já está no
-estacionamento não "entra" de novo.
+estacionamento não "entra" de novo · RN27 pela placa só sai o carro, nunca a pessoa;
+na saída de quem tem mais de um carro no estacionamento, pergunta-se primeiro pelo
+carro desta visita · RN28 excluir a visita não tira do estacionamento o carro que
+ainda está lá (a confirmação avisa e o histórico registra "Veículo mantido no
+estacionamento"; o carro sai pela placa) · RN29 uma correção aberta antes de outra
+estação mudar a visita é recusada ("alterado em outra estação"); duas saídas ao mesmo
+tempo: vale a primeira · RN30 o porteiro só acha um CPF na busca pelos 11 dígitos ·
+RN31 senhas erradas no diálogo de autorização contam num contador da estação: depois
+de 5, só o diálogo fica travado naquele computador (espera crescente), nunca o login
+do administrador; cada erro e a trava ficam no histórico.
 
 ## 5. Pendências registradas na revisão final (para a versão 2.1+)
 
@@ -265,8 +306,11 @@ Detalhes em `docs/revisao/REVISAO_FINAL_CODIGO.md` e `REVISAO_FINAL_SEGURANCA.md
 - Banco e backups sem criptografia: depende de permissões do Windows/BitLocker — S02.
 - Troca de senha obrigatória no primeiro acesso; redefinição pelo admin recusar
   senha igual ao login — S07.
-- Admin pode ser travado de propósito por tentativas erradas — N04; limite de
-  tentativas na senha atual em "Trocar minha senha" — N09.
+- ✅ Admin travado de propósito pelo diálogo de autorização — N04 (rodada 4:
+  contador próprio da estação). Continua: o login normal do admin ainda pode
+  ser travado por quem chuta a senha na tela de login (é o bloqueio por
+  tentativas, de propósito); limite de tentativas na senha atual em "Trocar
+  minha senha" — N09.
 - Histórico gravado antes da 2.0 continua com CPF completo — B8.
 - Limpeza de código para a apresentação: ControleTentativas (não usado pelas
   telas), listagens antigas do banco, o repasse `__getattr__`/NOMES_DO_CADASTRO.

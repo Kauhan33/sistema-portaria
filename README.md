@@ -4,7 +4,7 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
-**Versão atual: 2.0** — veja [Versões](#versões).
+**Versão atual: 2.0** (a 2.1 está em desenvolvimento neste ramo) — veja [Versões](#versões).
 
 ![Tela Entrada e saída](docs/design/final/cadastro_campus.png)
 
@@ -51,7 +51,9 @@ padrão). Depois disso abre sempre na tela de login.
 Depois de 5 senhas erradas seguidas o login fica bloqueado por 30 s (o tempo
 dobra a cada novo bloqueio, até 15 min). As tentativas ficam no banco: fechar e
 abrir o programa não zera o bloqueio (o administrador libera o login ao
-redefinir a senha). Sem teclado ou mouse por 10 minutos, a sessão se encerra
+redefinir a senha). Senhas erradas no diálogo **Autorização do administrador**
+contam à parte, por computador: depois de 5, só o diálogo fica travado naquela
+estação (mesma espera crescente); o login do administrador não é afetado. Sem teclado ou mouse por 10 minutos, a sessão se encerra
 sozinha e o sistema volta ao login; uma confirmação que ficou aberta nesse
 meio-tempo (ex.: "Excluir registro?") não faz mais nada: aparece "A sessão foi
 encerrada. Entre novamente." e o banco também recusa a ação sem um usuário
@@ -63,15 +65,18 @@ logado e ativo.
 python -m unittest -v
 ```
 
-535 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
+573 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
 negócio, login, senhas, permissões, cadastro de pessoas e preenchimento
 automático, saída rápida e desfazer, correção de registros, lista de bloqueio,
 **regras de horário** (cada categoria dentro e fora da janela, ninguém entra
 depois de fechar, feriados, eventos, 24 h, lançamento retroativo nos três
 casos, tolerância, tempo excedido, saída pendente, autorização do
-administrador com e sem senha, encerrar o dia, Configurações), **estadia de
+administrador com e sem senha, encerrar o dia, Configurações, evento que
+soma ao dia, saída com o campus fechado, prazo da categoria), **estadia de
 veículo** (sair a pé, voltar, sair de carro, saída pela placa, veículo
-pendente), histórico de visitas e ordenação na página Pessoas, o
+pendente, dois carros, exclusão que mantém o carro), duas estações ao mesmo
+tempo (correção com a linha desatualizada, saídas e Encerrar o dia em
+paralelo), histórico de visitas e ordenação na página Pessoas, o
 **calendário e o relógio** dos campos de data, o **modo noturno** (contraste
 WCAG AA de todos os pares de cor dos dois temas, tema de cada usuário,
 "Seguir o Windows" com o registro simulado, troca sem fechar o programa
@@ -176,12 +181,15 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     fecha. Campos só de data (feriados, eventos, exportar) abrem só o
     calendário; os só de hora (Configurações), só o relógio;
   - **Saída rápida** no topo (atalho **F2**): CPF ou placa exatos + Enter.
-    Pela placa sai o **carro** (e, se o responsável estiver no campus, a
-    pergunta se ele saiu junto);
+    Pela placa sai **só o carro** (e, se o responsável estiver no campus, a
+    pergunta se ele saiu junto); placa de carro que não está no
+    estacionamento é recusada, nunca dá a saída da pessoa;
   - tabela **Movimento** com o seletor **Pessoas | Veículos**. Em Pessoas: as
     entradas e saídas de hoje e todo mundo que ainda está no campus; com texto
     na busca, procura no **histórico inteiro** (nome, CPF, celular, placa ou
-    tipo). A situação de cada visita: no campus, saiu, **Tempo excedido**
+    tipo; o porteiro acha um CPF só pelos 11 dígitos, porque ele vê o CPF
+    mascarado). A busca espera uma pausa de 300 ms na digitação. A situação
+    de cada visita: no campus, saiu, **Tempo excedido**
     (âmbar) ou **Saída pendente** (vermelho, em destaque), recalculada a cada
     30 s junto com as faixas. Duplo clique ou "Registrar saída" dão a saída
     (aceita várias linhas); o aviso com **Desfazer** fica 10 segundos no
@@ -193,15 +201,20 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     de quem tem carro no estacionamento, a pergunta **"Saiu com o veículo
     ABC-1234?"** — *Saiu de carro* ou *Saiu a pé — o carro fica*. Quem volta
     vê a faixa **"O carro ABC-1234 está no estacionamento desde 08:00"** e
-    entra a pé; na próxima saída, a pergunta de novo;
+    entra a pé; na próxima saída, a pergunta de novo. Quem tem dois carros
+    no estacionamento (saiu a pé e voltou com outro) é perguntado primeiro
+    pelo carro desta visita;
   - faixas no topo, só quando importam: **saídas pendentes** e **veículos
     pendentes** depois do fechamento (o administrador tem o atalho **Encerrar
     o dia**) e, nos últimos 30 minutos antes de fechar, **"Campus fecha às
     23:00 (em 20 min) · 5 no campus"** (sem caixa de diálogo, não atrapalha o
     uso);
   - "Corrigir" abre a janela **Corrigir registro** (mesmas validações do
-    cadastro; o histórico guarda o que mudou e quem mudou); "Excluir" só
-    aparece para o administrador (RN02).
+    cadastro; o histórico guarda o que mudou e quem mudou). Se outra estação
+    mudou a visita enquanto a janela estava aberta (ex.: deu a saída), a
+    correção é recusada sem gravar nada. "Excluir" só aparece para o
+    administrador (RN02); o carro que a visita trouxe e que ainda está no
+    estacionamento **continua lá** (a confirmação avisa; ele sai pela placa).
 - **Pessoas**: lista com busca e situação (no campus, fora, bloqueado),
   **ordenada pela coluna clicada** no cabeçalho (1º clique crescente, 2º
   decrescente, com ▲ ou ▼; datas e números na ordem certa; abre ordenada pela
@@ -228,23 +241,31 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
   (janela de entrada, permanência máxima e **tolerância** depois do
   fechamento de cada tipo de acesso) e **Feriados e eventos**
   (adicionar e remover). Tudo é validado (hh:mm válido, fechamento depois da
-  abertura, números nos limites) e cada mudança fica no histórico.
+  abertura, números nos limites) e cada mudança fica no histórico. O erro ou o
+  "Salvo" aparece junto do botão, no lugar da nota de ajuda (visível também
+  no notebook 1366×670).
 
 ### Regras de horário de acesso
 
 Padrão do campus (tudo editável em Configurações): **segunda a sexta 06:30–23:00,
-sábado 07:00–14:00, domingo fechado**. Um **feriado** fecha o campus no dia; um
-**evento** (ex.: formatura num sábado 18:00–23:00, ou num domingo) substitui o
-horário daquela data, mesmo em feriado ou domingo.
+sábado 07:00–14:00, domingo fechado**. Um **feriado** fecha o campus no dia. Um
+**evento** **soma** uma janela ao dia: num sábado normal 07:00–14:00 com
+formatura 18:00–23:00, o campus abre nas duas janelas; num domingo ou feriado o
+evento é a única janela. O fechamento do dia (saída pendente, Encerrar o dia,
+"até fechar") é o fim da última janela.
 
 | Categoria | Pode entrar | Permanência máxima | Tolerância depois de fechar |
 |---|---|---|---|
 | Aluno | no funcionamento, até 30 min antes de fechar | até o fechamento | — |
 | Professor | de 30 min antes de abrir até o fechamento | até o fechamento | 30 min |
 | Funcionário | de 1 h antes de abrir até o fechamento | 12 h | 30 min |
-| Visitante | 08:00–18:00, só em dia de funcionamento | 4 h | — |
-| Entregador | 07:00–17:00, só em dia de funcionamento | 1 h | — |
-| Prestador de serviço | 07:00–19:00, só em dia de funcionamento | 10 h | — |
+| Visitante | 08:00–18:00, só dentro de uma janela aberta | 4 h | — |
+| Entregador | 07:00–17:00, só dentro de uma janela aberta | 1 h | — |
+| Prestador de serviço | 07:00–19:00, só dentro de uma janela aberta | 10 h | — |
+
+Aluno, professor e funcionário entram em cada janela do dia (no sábado com
+formatura: de manhã e à noite). As janelas fixas valem só com o campus aberto:
+um visitante às 08:00 num domingo com evento 18:00–23:00 é exceção.
 
 - **Ninguém entra depois do fechamento** sem autorização: toda janela termina,
   no máximo, no fechamento do dia (um visitante às 16:00 de sábado, com o
@@ -256,16 +277,21 @@ horário daquela data, mesmo em feriado ou domingo.
   saída (botão, duplo clique ou saída rápida) e corrigir um registro (só o que
   mudou é conferido de novo).
 - **Lançamento retroativo** (data/hora de entrada ou de saída no passado, no
-  cadastro e na correção): (a) até **3 h** atrás, com o fechamento daquele dia
-  ainda por vir — normal; (b) mais de 3 h — exceção com autorização; (c) de um
-  dia que **já fechou** (ex.: 23:10 lançando 22:00, ou lançando ontem) — só com
-  a **senha** de um administrador, inclusive quando o próprio administrador
-  está logado (ele redigita a senha). Até 5 min no passado ainda conta como
-  "agora". O limite de 3 h muda em Configurações.
+  cadastro e na correção): (a) até **3 h** atrás, num horário em que a
+  categoria podia estar no campus e antes do prazo do dia — normal; (b) mais
+  de 3 h, ou uma **saída num horário com o campus fechado** (madrugada,
+  domingo sem evento, entre duas janelas), mesmo recente — exceção com
+  autorização; (c) depois do **prazo da categoria** naquele dia (fechamento +
+  tolerância: 23:10 lançando 22:00 de um aluno, ou lançando ontem) — só com a
+  **senha** de um administrador, inclusive quando o próprio administrador está
+  logado (ele redigita a senha). A saída real às 23:00 de uma funcionária
+  (tolerância até 23:30), lançada às 23:10, é normal. Até 5 min no passado
+  ainda conta como "agora"; os segundos do relógio não contam. O limite de
+  3 h muda em Configurações.
 - **Autorização do administrador**: um diálogo lista as regras violadas e pede
   a **justificativa** (obrigatória). Com o porteiro logado, um administrador
-  digita o login e a senha dele (senha oculta; errar conta como tentativa de
-  login). Com o administrador logado, basta confirmar com a justificativa
+  digita o login e a senha dele (senha oculta; errar conta num contador da
+  estação, que trava só o diálogo, nunca o login do administrador). Com o administrador logado, basta confirmar com a justificativa
   (menos no caso (c), em que a senha é obrigatória). O
   histórico grava a **"Exceção autorizada"** com quem autorizou, quem operava,
   as regras e o porquê, ligada à visita. Se a sessão expirar com o diálogo
@@ -294,11 +320,22 @@ Regras e segurança:
   DDD válido e 9, placa antiga (ABC1234) ou Mercosul (ABC1D23); nome completo só
   com letras. CPF, celular e placa só aceitam o que cabe no formato, em todas as
   telas.
-- Entrada e saída não podem estar no futuro; a saída não pode ser anterior à
-  entrada; o mesmo CPF não pode estar no campus duas vezes ao mesmo tempo
+- Entrada e saída não podem estar no futuro nem antes de 2000 ("Confira o
+  ano"); hora com um dígito ("9:5") vira "09:05"; a saída não pode ser
+  anterior à entrada; o mesmo CPF não pode estar no campus duas vezes ao mesmo tempo
   (conferido com todas as visitas daquele CPF no banco).
 - O banco também barra CPF incompleto, saída anterior à entrada e duas visitas
-  abertas do mesmo CPF; cada operação é uma transação.
+  abertas do mesmo CPF; cada operação é uma transação. Duas estações ao mesmo
+  tempo: a saída e o Encerrar o dia só gravam a visita ainda aberta, e a
+  correção só grava se a visita estiver como a janela a leu.
+- O `registros_portaria.json` da versão 1 é importado com as mesmas regras do
+  cadastro: o que não passa é ignorado, com os motivos no aviso, e a
+  importação fica no histórico.
+- A versão do banco fica também na tabela `meta` (banco v10): se um programa
+  antigo abrir o banco e rebaixar a versão, o programa novo atualiza de novo
+  (com backup) e avisa o administrador; um banco de versão mais nova é
+  recusado. O programa antigo já distribuído (versões 5 e 6) não confere a
+  versão e não há como protegê-lo: não use versões antigas no mesmo banco.
 - Senha guardada só como hash PBKDF2-SHA256 com sal (RNF02); histórico de ações
   com CPFs mascarados.
 - Ao abrir, o programa faz o **backup do dia** (pasta `backups`, guarda os 30
@@ -401,6 +438,7 @@ danificado):
 | `portaria/tela_senha.py` | Janela "Trocar minha senha" |
 | `docs/design/` | Proposta de design, protótipo e prints (antes, protótipo e final) |
 | `docs/revisao/` | Relatórios das revisões de segurança, código e backend (antes e depois da reforma) |
+| `docs/qa/` | Relatórios dos dois testes de QA, a situação de cada achado (`CORRECOES.md`) e prints antes/depois |
 | `build_exe.py` | Gera o `dist/Portaria.exe` com o PyInstaller |
 | `assets/` | Ícone do programa (`portaria.ico`) e o script que o gera |
 | `tests/` | Testes automatizados |
@@ -431,7 +469,13 @@ danificado):
 - rodada 3: **modo noturno** (Claro, Escuro ou Seguir o Windows, escolhido
   por usuário no menu da conta e trocado sem fechar o programa); banco na
   versão 9;
-- 535 testes automatizados.
+- rodada 4: correções dos dois testes de QA (`docs/qa/CORRECOES.md`): evento
+  soma ao dia, retroativo com o campus fechado, prazo da categoria; placa só
+  tira o carro, dois carros, exclusão que mantém o carro; corridas entre
+  estações; busca do CPF para o porteiro; importação validada; diálogo de
+  autorização que não trava o login; telas no notebook 1366×670; banco na
+  versão 10;
+- 573 testes automatizados.
 
 **2.0** (20/10/2026) — reforma completa, feita com um time de agentes de IA
 (design, segurança, código, backend) e revisada antes de publicar:

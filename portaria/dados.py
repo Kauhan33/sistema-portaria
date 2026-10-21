@@ -34,6 +34,17 @@ perde a ligação com a visita); as encerradas vão junto (ON DELETE
 CASCADE). Corrigir a placa, o CPF ou a entrada de uma visita aberta
 corrige a estadia aberta por ela.
 
+O VEÍCULO SÓ SAI COM O DONO (RN32): o dono é o responsável da estadia.
+Uma estadia só é fechada junto com a saída do dono, na mesma transação
+(registrar_saidas com o carro dele). Fechar a estadia sem o dono — só o
+carro sai pela placa, outra pessoa sai com ele, ou a correção da visita
+apaga/troca a placa ou o dono de um carro que ficou — exige
+`autorizacao_veiculo` de um administrador ativo, dada COM a senha, e grava
+o evento "Veículo saiu sem o dono" na mesma transação.
+
+Tamanho dos textos: os métodos que gravam recusam (ErroDados) texto acima
+dos máximos de validacao.py (MAXIMO_*), sem mudar o esquema.
+
 Exceções de horário (horarios.py): a tela pede a autorização do
 administrador e a passa em `autorizacao` ({"autorizado_por", "regras",
 "justificativa"}). O banco confere de novo (defesa em profundidade): uma
@@ -913,6 +924,32 @@ class Banco:
                             f"menos {horarios.MINIMO_JUSTIFICATIVA} caracteres).")
         _exigir_tamanho("Justificativa", justificativa, MAXIMO_JUSTIFICATIVA)
 
+    @classmethod
+    def _conferir_autorizacao_veiculo(cls, con, autorizacao, placa):
+        """RN32: o carro sai sem o dono só com a autorização de um
+        administrador ativo dada com a SENHA dele (até o administrador
+        logado redigita a senha)."""
+        if autorizacao is None:
+            raise ErroDados(
+                f"O veículo {formatar_placa(placa)} só sai com o dono.\n"
+                "Para liberar sem ele, um administrador precisa digitar a "
+                "senha.")
+        cls._conferir_autorizacao(con, autorizacao)
+        if not autorizacao.get("com_senha"):
+            raise ErroDados("A saída do veículo sem o dono precisa da senha "
+                            "do administrador.")
+
+    @classmethod
+    def _registrar_veiculo_sem_dono(cls, con, autorizacao, autor, o_que,
+                                    registro_id):
+        """Evento "Veículo saiu sem o dono": quem autorizou (usuário do
+        evento), o que aconteceu, o porquê e quem operava."""
+        cls._evento(con, autorizacao["autorizado_por"], VEICULO_SEM_DONO,
+                    f"{o_que} Justificativa: "
+                    f"{autorizacao['justificativa'].strip()}. Operador: "
+                    f"{autor or AUTOR_SISTEMA}. Senha do administrador "
+                    "conferida.", registro_id)
+
     @staticmethod
     def _exigir_autorizacao_24h(acima_de_24h, autorizacao, nome):
         """Defesa em profundidade: visita acima de 24 h só com autorização."""
@@ -1129,7 +1166,7 @@ class Banco:
                                           autorizacao))
 
     def registrar_saidas(self, ids, saida, autor=None, autorizacao=None,
-                         com_veiculo=()):
+                         com_veiculo=(), autorizacao_veiculo=None):
         """
         Saída de uma ou várias visitas na mesma transação; só das abertas.
         Devolve os ids que de fato receberam a saída (outra estação pode ter
@@ -1141,6 +1178,12 @@ class Banco:
         {id da visita: id da estadia} diz QUAL carro (a pessoa pode ter dois
         no estacionamento); num conjunto de ids, sai o carro com que ela
         entrou nesta visita ou, sem ele, o mais antigo dela.
+
+        RN32: o carro de OUTRO dono (a estadia escolhida não é da pessoa
+        que sai) só sai com `autorizacao_veiculo` (administrador, com a
+        senha); a exceção fica no histórico como "Veículo saiu sem o dono".
+        O carro só fecha se a visita de quem sai com ele recebeu a saída
+        nesta mesma transação.
 
         Duas estações dando a saída da mesma visita: o UPDATE só grava se a
         visita ainda estiver aberta, então a segunda não sobrescreve a
@@ -1170,8 +1213,8 @@ class Banco:
                 if acima_de_24h:
                     self._registrar_excecao(con, autorizacao, autor, i, nome)
                 if i in escolhas:
-                    self._fechar_estadia_do_responsavel(con, i, saida_iso, autor,
-                                                        escolhas[i])
+                    self._sair_de_carro(con, i, saida_iso, autor, escolhas[i],
+                                        autorizacao_veiculo)
         return gravados
 
     def desfazer_saidas(self, ids, autor=None, saida=None):
@@ -1252,7 +1295,7 @@ class Banco:
         return _registro(linha) if linha else None
 
     def editar(self, id_registro, novo, alteracoes, autor, autorizacao=None,
-               original=None):
+               original=None, autorizacao_veiculo=None):
         """
         Corrige um registro e grava no histórico o que mudou (`alteracoes`,
         já descritas). Porteiro só corrige visitas com entrada (a original e
@@ -1268,17 +1311,26 @@ class Banco:
         correção é RECUSADA sem gravar nada (trava otimista: a condição vai
         no próprio UPDATE). Antes, salvar só o nome reabria a visita e
         apagava a saída dada pela outra estação.
+
+        RN32: a correção que tiraria um carro do estacionamento sem o dono
+        ou passaria o carro a outro dono (ver _correcao_mexe_no_carro) só
+        grava com `autorizacao_veiculo` (administrador, com a senha).
         """
         _exigir_tamanhos_da_visita(novo)
         with self._conexao() as con:
             usuario = self._exigir(con, autor, so_admin=False)
             self._conferir_autorizacao(con, autorizacao)
-            linha = con.execute("SELECT pessoa_id, nome, entrada, saida, placa "
-                                "FROM registros WHERE id = ?",
+            linha = con.execute("SELECT pessoa_id, nome, entrada, saida, placa, "
+                                "cpf FROM registros WHERE id = ?",
                                 (id_registro,)).fetchone()
             if linha is None:
                 raise ErroDados("Este registro não existe mais.")
             pessoa_antiga = linha[0]
+            sem_o_dono = self._correcao_mexe_no_carro(
+                con, id_registro, {"cpf": linha[5], "saida": linha[3]}, novo)
+            if sem_o_dono:
+                self._conferir_autorizacao_veiculo(con, autorizacao_veiculo,
+                                                   sem_o_dono[0][1])
             agora = self.relogio()
             for entrada in (de_iso(linha[2]), novo["entrada"]):
                 ok, msg = pode_editar(usuario, {"entrada": entrada}, agora)
@@ -1326,6 +1378,61 @@ class Banco:
             if autorizacao:
                 self._registrar_excecao(con, autorizacao, autor, id_registro,
                                         novo["nome"])
+            for texto, _ in sem_o_dono:
+                self._registrar_veiculo_sem_dono(
+                    con, autorizacao_veiculo, autor,
+                    f"Correção da visita #{id_registro}: {texto}", id_registro)
+
+    def veiculo_sem_dono_na_correcao(self, id_registro, novo):
+        """Textos do que a correção faria com um carro sem o dono (a tela
+        pede a senha do administrador antes de salvar); [] = nada."""
+        with self._conexao() as con:
+            linha = con.execute("SELECT cpf, saida FROM registros WHERE id = ?",
+                                (id_registro,)).fetchone()
+            if linha is None:
+                return []
+            antes = {"cpf": linha[0], "saida": linha[1]}
+            return [texto for texto, _ in self._correcao_mexe_no_carro(
+                con, id_registro, antes, novo)]
+
+    @classmethod
+    def _correcao_mexe_no_carro(cls, con, id_registro, antes, novo):
+        """
+        [(texto, placa)] do que a correção faria com carros no
+        estacionamento sem o dono (RN32):
+        - a visita já saiu e o carro dela ficou: apagar ou trocar a placa
+          tiraria o carro sem o dono; trocar o CPF passaria o carro a outro
+          dono, que poderia sair com ele;
+        - a visita fica aberta e o CPF muda para o de alguém com carro no
+          estacionamento: essa pessoa passaria a constar no campus e
+          poderia sair com o carro.
+        Corrigir a placa ou o CPF de quem AINDA está no campus com o carro
+        é erro de digitação da própria visita: não pede nada.
+        """
+        achados = []
+        estadia = cls._estadia_aberta(con, "registro_id", id_registro)
+        if estadia is not None and antes["saida"]:
+            placa = formatar_placa(estadia["placa"])
+            if not novo["placa"]:
+                achados.append(f"a placa {placa} seria apagada e o carro "
+                               "sairia do estacionamento sem o dono.")
+            elif novo["placa"] != estadia["placa"]:
+                achados.append(f"a placa {placa} seria trocada por "
+                               f"{formatar_placa(novo['placa'])} e o carro "
+                               "sairia do estacionamento sem o dono.")
+            if novo["cpf"] != antes["cpf"]:
+                achados.append(f"o carro {placa}, que ficou no "
+                               "estacionamento, passaria para outro dono.")
+            achados = [(texto, estadia["placa"]) for texto in achados]
+        if novo["cpf"] != antes["cpf"] and not novo["saida"]:
+            for (placa,) in con.execute(
+                    "SELECT placa FROM estadias_veiculo WHERE saida = '' AND "
+                    "cpf = ? AND registro_id IS NOT ?", (novo["cpf"], id_registro)):
+                achados.append((f"{novo['nome']} passaria a constar no campus "
+                                f"como dono do carro {formatar_placa(placa)}, "
+                                "que está no estacionamento, e poderia sair "
+                                "com ele.", placa))
+        return achados
 
     def eventos_do_registro(self, id_registro):
         """Histórico de uma visita, do mais antigo para o mais recente."""
@@ -1449,48 +1556,78 @@ class Banco:
             (r["placa"], r["cpf"], r["nome"], autor or AUTOR_SISTEMA,
              (autor or AUTOR_SISTEMA) if saida else "", id_registro))
 
+    @staticmethod
+    def _carro_do_dono(con, id_registro, cpf):
+        """O carro de quem sai: o que entrou com esta visita ou, sem ele, o
+        mais antigo dessa pessoa (saiu a pé e voltou). Sempre do mesmo CPF."""
+        linha = con.execute(f"SELECT {COLUNAS_ESTADIA} {DE_ESTADIAS} "
+                            "WHERE e.saida = '' AND e.cpf = ? "
+                            "ORDER BY e.registro_id IS NOT ? , e.entrada, e.id "
+                            "LIMIT 1", (cpf, id_registro)).fetchone()
+        return _estadia(linha) if linha else None
+
     @classmethod
-    def _fechar_estadia_do_responsavel(cls, con, id_registro, saida, autor,
-                                       id_estadia=None):
-        """Saída "de carro": fecha a estadia `id_estadia` (aberta e do
-        responsável da visita) ou, sem ela, a aberta por esta visita ou,
-        por fim, a mais antiga do responsável."""
+    def _sair_de_carro(cls, con, id_registro, saida, autor, id_estadia=None,
+                       autorizacao=None):
+        """Saída "de carro" de quem acabou de receber a saída nesta
+        transação: fecha a estadia `id_estadia` ou, sem ela, o carro dessa
+        pessoa. Se o carro escolhido é de OUTRO dono, só com a autorização
+        de veículo (RN32), registrada como "Veículo saiu sem o dono"."""
         cpf, nome = con.execute("SELECT cpf, nome FROM registros WHERE id = ?",
                                 (id_registro,)).fetchone()
-        estadia = None
-        if id_estadia is not None:
+        if id_estadia is None:
+            estadia = cls._carro_do_dono(con, id_registro, cpf)
+        else:
             estadia = cls._estadia_aberta(con, "id", id_estadia)
-            if estadia is not None and estadia["cpf"] != cpf:
-                raise ErroDados("O carro escolhido não está com essa pessoa. "
-                                "Atualize a tela e tente de novo.")
-        estadia = (estadia or cls._estadia_aberta(con, "registro_id", id_registro)
-                   or cls._estadia_aberta(con, "cpf", cpf))
         if estadia is None:
             return
+        sem_o_dono = estadia["cpf"] != cpf
+        if sem_o_dono:
+            cls._conferir_autorizacao_veiculo(con, autorizacao, estadia["placa"])
         con.execute("UPDATE estadias_veiculo SET saida = ?, autor_saida = ?, "
                     "registro_saida_id = ? WHERE id = ? AND saida = ''",
                     (saida, autor or AUTOR_SISTEMA, id_registro, estadia["id"]))
+        placa = formatar_placa(estadia["placa"])
         cls._evento(con, autor, "Saída de veículo",
-                    f"Placa {formatar_placa(estadia['placa'])} saiu com "
-                    f"{nome} (#{id_registro}).", estadia["registro_id"])
+                    f"Placa {placa} saiu com {nome} (#{id_registro}).",
+                    estadia["registro_id"])
+        if sem_o_dono:
+            cls._registrar_veiculo_sem_dono(
+                con, autorizacao, autor,
+                f"Placa {placa} saiu com {nome} (#{id_registro}); o dono é "
+                f"{estadia['nome']} (CPF {estadia['cpf']}).",
+                estadia["registro_id"])
 
-    def registrar_saida_veiculo(self, id_estadia, saida, autor=None):
-        """Só o carro sai (saída pela placa). False se ele já tinha saído."""
+    def registrar_saida_veiculo(self, id_estadia, saida, autor=None,
+                                autorizacao=None):
+        """
+        Só o carro sai (saída pela placa ou pela lista de veículos): o dono
+        não sai nesta operação, então é sempre "Veículo saiu sem o dono" e
+        precisa da `autorizacao` de um administrador com a senha (RN32).
+        Quando o dono sai junto, a tela usa registrar_saidas com o carro.
+        False se o carro já tinha saído (nada a autorizar).
+        """
         saida_iso = para_iso(saida)
         with self._conexao() as con:
             self._conferir_autor(con, autor)
-            linha = con.execute("SELECT placa, nome, registro_id "
-                                "FROM estadias_veiculo WHERE id = ? AND "
-                                "saida = ''", (id_estadia,)).fetchone()
-            if linha is None:
+            estadia = self._estadia_aberta(con, "id", id_estadia)
+            if estadia is None:
                 return False
-            placa, nome, registro_id = linha
+            self._conferir_autorizacao_veiculo(con, autorizacao,
+                                               estadia["placa"])
             con.execute("UPDATE estadias_veiculo SET saida = ?, autor_saida = ? "
                         "WHERE id = ?", (saida_iso, autor or AUTOR_SISTEMA,
                                          id_estadia))
+            placa = formatar_placa(estadia["placa"])
             self._evento(con, autor, "Saída de veículo",
-                         f"Placa {formatar_placa(placa)} saiu (responsável: "
-                         f"{nome}).", registro_id)
+                         f"Placa {placa} saiu (responsável: {estadia['nome']}).",
+                         estadia["registro_id"])
+            onde = ("continua no campus" if estadia["responsavel_dentro"]
+                    else "está fora do campus")
+            self._registrar_veiculo_sem_dono(
+                con, autorizacao, autor,
+                f"Placa {placa} saiu sem o dono, {estadia['nome']} (CPF "
+                f"{estadia['cpf']}), que {onde}.", estadia["registro_id"])
             return True
 
     def desfazer_saida_veiculos(self, ids, saida, autor=None):

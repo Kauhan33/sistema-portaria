@@ -22,6 +22,12 @@ def autorizacao(por="ana", justificativa="Evento da reitoria autorizado"):
             "regras": ["Campus fechado em 25/10/2026 (domingo)."]}
 
 
+def senha_do_admin(por="ana", justificativa="Dono ligou e autorizou o guincho"):
+    """Autorização de veículo sem o dono (RN32): com a senha conferida."""
+    return {"autorizado_por": por, "justificativa": justificativa,
+            "regras": ["Veículo saiu sem o dono"], "com_senha": True}
+
+
 class BaseRegras(unittest.TestCase):
     AGORA = datetime(2026, 10, 19, 10, 0)
 
@@ -302,7 +308,8 @@ class TestEstadiasDeVeiculo(BaseRegras):
         self.com_carro()
         estadia = self.banco.estadia_aberta(placa="ABC1D23")
         self.assertTrue(self.banco.registrar_saida_veiculo(
-            estadia["id"], "19/10/2026 09:00", autor="paulo"))
+            estadia["id"], "19/10/2026 09:00", autor="paulo",
+            autorizacao=senha_do_admin()))
         self.assertFalse(self.banco.registrar_saida_veiculo(
             estadia["id"], "19/10/2026 09:00", autor="paulo"))
         self.assertEqual(self.banco.listar()[0]["saida"], "")
@@ -335,9 +342,14 @@ class TestEstadiasDeVeiculo(BaseRegras):
         acoes = [e["acao"] for e in self.banco.listar_eventos()[:2]]
         self.assertEqual(acoes, ["Exclusão de registro",
                                  "Veículo mantido no estacionamento"])
-        # sai pela placa, como qualquer outro carro
+        # sai pela placa, como qualquer outro carro: sem o dono, só com a
+        # senha do administrador (RN32)
+        with self.assertRaises(dados.ErroDados):
+            self.banco.registrar_saida_veiculo(carros[0]["id"],
+                                               "19/10/2026 10:00", autor="paulo")
         self.assertTrue(self.banco.registrar_saida_veiculo(
-            carros[0]["id"], "19/10/2026 10:00", autor="paulo"))
+            carros[0]["id"], "19/10/2026 10:00", autor="paulo",
+            autorizacao=senha_do_admin()))
 
     def test_excluir_visita_cujo_carro_ja_saiu_leva_a_estadia_junto(self):
         visita = self.com_carro()
@@ -390,6 +402,205 @@ class TestEstadiasDeVeiculo(BaseRegras):
                                         com_veiculo={segunda: alheio["id"]})
         self.assertEqual(self.banco.buscar(segunda)["saida"], "")
         self.assertEqual(self.banco.buscar(outro)["saida"], "")
+
+
+class TestVeiculoSoSaiComODono(BaseRegras):
+    """RN32: a estadia só fecha junto com a saída do dono; sem ele, só com a
+    autorização de um administrador ativo dada com a senha."""
+
+    ANA, BETO = "52998224725", "11144477735"
+
+    def setUp(self):
+        super().setUp()
+        self.visita = self.banco.inserir(registro(entrada="19/10/2026 08:00"),
+                                         autor="paulo")
+        self.carro = self.banco.estadia_aberta(placa="ABC1D23")["id"]
+
+    def no_estacionamento(self):
+        return self.banco.estadia_aberta(placa="ABC1D23") is not None
+
+    def sem_dono(self):
+        return [e for e in self.banco.listar_eventos()
+                if e["acao"] == dados.VEICULO_SEM_DONO]
+
+    def dono_sai_a_pe(self):
+        self.banco.registrar_saidas([self.visita], "19/10/2026 09:00",
+                                    autor="paulo")
+
+    def sair_so_o_carro(self, autorizacao=None):
+        return self.banco.registrar_saida_veiculo(
+            self.carro, "19/10/2026 09:30", autor="paulo",
+            autorizacao=autorizacao)
+
+    def test_banco_recusa_tirar_o_carro_sem_o_dono_e_sem_autorizacao(self):
+        self.dono_sai_a_pe()
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.sair_so_o_carro()
+        self.assertIn("ABC1D23 só sai com o dono", str(erro.exception))
+        self.assertTrue(self.no_estacionamento())
+        self.assertEqual(self.sem_dono(), [])
+
+    def test_dono_no_campus_tambem_nao_deixa_o_carro_sair_sozinho(self):
+        with self.assertRaises(dados.ErroDados):
+            self.sair_so_o_carro()           # dono continua no campus
+        self.assertTrue(self.no_estacionamento())
+
+    def test_so_administrador_ativo_com_senha_e_justificativa(self):
+        self.dono_sai_a_pe()
+        self.banco.definir_ativo(2, False, autor="ana")           # bia desativada
+        casos = [dict(senha_do_admin(), com_senha=False),         # sem a senha
+                 senha_do_admin(por="paulo"), senha_do_admin(por="bia"),
+                 senha_do_admin(por="ninguem"),
+                 senha_do_admin(justificativa="curta"),
+                 senha_do_admin(justificativa="x" * 201)]
+        for caso in casos:
+            with self.subTest(caso=caso):
+                with self.assertRaises(dados.ErroDados):
+                    self.sair_so_o_carro(caso)
+                self.assertTrue(self.no_estacionamento())
+
+    def test_com_a_senha_sai_e_o_historico_registra_a_excecao(self):
+        self.dono_sai_a_pe()
+        self.assertTrue(self.sair_so_o_carro(senha_do_admin()))
+        self.assertFalse(self.no_estacionamento())
+        evento, = self.sem_dono()
+        self.assertEqual(evento["usuario"], "ana")        # quem autorizou
+        for trecho in ("Placa ABC1D23 saiu sem o dono, João Ávila",
+                       "***.982.247-**", "está fora do campus",
+                       "Justificativa: Dono ligou e autorizou o guincho",
+                       "Operador: paulo", "Senha do administrador conferida"):
+            self.assertIn(trecho, evento["detalhe"])
+        self.assertNotIn(self.ANA, evento["detalhe"])      # CPF mascarado
+        self.assertIn(dados.VEICULO_SEM_DONO, [
+            e["acao"] for e in self.banco.eventos_do_registro(self.visita)])
+
+    def test_dono_sai_a_pe_volta_a_pe_e_sai_de_carro_sem_senha(self):
+        self.dono_sai_a_pe()
+        volta = self.banco.inserir(registro(placa="", entrada="19/10/2026 09:30"),
+                                   autor="paulo")
+        self.banco.registrar_saidas([volta], "19/10/2026 10:00", autor="paulo",
+                                    com_veiculo={volta: self.carro})
+        self.assertFalse(self.no_estacionamento())
+        self.assertEqual(self.sem_dono(), [])
+
+    def test_dono_no_campus_sai_junto_pela_placa_sem_senha(self):
+        self.banco.registrar_saidas([self.visita], "19/10/2026 09:00",
+                                    autor="paulo",
+                                    com_veiculo={self.visita: self.carro})
+        self.assertFalse(self.no_estacionamento())
+        self.assertTrue(self.banco.buscar(self.visita)["saida"])
+        self.assertEqual(self.sem_dono(), [])
+
+    def test_outra_pessoa_saindo_com_o_carro_exige_a_senha(self):
+        self.dono_sai_a_pe()
+        beto = self.banco.inserir(registro(cpf=self.BETO, nome="Beto Rocha",
+                                           entrada="19/10/2026 08:30"),
+                                  autor="paulo")
+        with self.assertRaises(dados.ErroDados):
+            self.banco.registrar_saidas([beto], "19/10/2026 10:00",
+                                        autor="paulo",
+                                        com_veiculo={beto: self.carro})
+        self.assertTrue(self.no_estacionamento())
+        self.assertEqual(self.banco.buscar(beto)["saida"], "")   # tudo ou nada
+        self.banco.registrar_saidas([beto], "19/10/2026 10:00", autor="paulo",
+                                    com_veiculo={beto: self.carro},
+                                    autorizacao_veiculo=senha_do_admin())
+        self.assertFalse(self.no_estacionamento())
+        evento, = self.sem_dono()
+        self.assertIn("saiu com Beto Rocha", evento["detalhe"])
+        self.assertIn("o dono é João Ávila", evento["detalhe"])
+
+    def test_autorizacao_de_horario_nao_serve_para_o_carro(self):
+        self.dono_sai_a_pe()
+        with self.assertRaises(dados.ErroDados):
+            self.sair_so_o_carro(autorizacao())        # sem "com_senha"
+        self.assertTrue(self.no_estacionamento())
+
+    def test_desfazer_nao_tira_o_carro(self):
+        """Desfazer só REABRE: a saída do dono de carro desfeita devolve o
+        carro; a do dono a pé não mexe no carro que ficou."""
+        self.dono_sai_a_pe()
+        self.banco.desfazer_saidas([self.visita], autor="paulo",
+                                   saida="19/10/2026 09:00")
+        self.assertTrue(self.no_estacionamento())
+        self.banco.registrar_saidas([self.visita], "19/10/2026 09:10",
+                                    autor="paulo",
+                                    com_veiculo={self.visita: self.carro})
+        self.banco.desfazer_saidas([self.visita], autor="paulo",
+                                   saida="19/10/2026 09:10")
+        self.assertTrue(self.no_estacionamento())
+        self.assertEqual(self.banco.buscar(self.visita)["saida"], "")
+
+    def corrigir(self, autorizacao_veiculo=None, **mudancas):
+        atual = self.banco.buscar(self.visita)
+        self.banco.editar(self.visita, dict(atual, **mudancas), ["correção"],
+                          autor="ana", original=atual,
+                          autorizacao_veiculo=autorizacao_veiculo)
+
+    def test_correcao_nao_tira_o_carro_que_ficou_sem_a_senha(self):
+        self.dono_sai_a_pe()
+        for mudanca in ({"placa": ""}, {"placa": "XYZ9A87"},
+                        {"cpf": self.BETO, "nome": "Beto Rocha"}):
+            with self.subTest(mudanca=mudanca):
+                self.assertTrue(self.banco.veiculo_sem_dono_na_correcao(
+                    self.visita, dict(self.banco.buscar(self.visita),
+                                      **mudanca)))
+                with self.assertRaises(dados.ErroDados):
+                    self.corrigir(**mudanca)
+                carro = self.banco.estadia_aberta(placa="ABC1D23")
+                self.assertEqual(carro["cpf"], self.ANA)
+        self.corrigir(autorizacao_veiculo=senha_do_admin(), placa="")
+        self.assertFalse(self.no_estacionamento())
+        evento, = self.sem_dono()
+        self.assertIn(f"Correção da visita #{self.visita}", evento["detalhe"])
+
+    def test_correcao_de_quem_esta_no_campus_com_o_carro_nao_pede_senha(self):
+        self.assertEqual(self.banco.veiculo_sem_dono_na_correcao(
+            self.visita, dict(self.banco.buscar(self.visita), placa="XYZ9A87")),
+            [])
+        self.corrigir(placa="XYZ9A87")             # erro de digitação na hora
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="XYZ9A87"))
+
+    def test_correcao_nao_faz_outra_pessoa_virar_dona_no_campus(self):
+        """Corrigir o CPF de quem está no campus para o do dono (fora)
+        deixaria essa pessoa sair com o carro."""
+        self.dono_sai_a_pe()
+        beto = self.banco.inserir(registro(cpf=self.BETO, nome="Beto Rocha",
+                                           entrada="19/10/2026 09:30"),
+                                  autor="paulo")
+        atual = self.banco.buscar(beto)
+        with self.assertRaises(dados.ErroDados):
+            self.banco.editar(beto, dict(atual, cpf=self.ANA), ["CPF"],
+                              autor="ana", original=atual)
+        self.assertEqual(self.banco.buscar(beto)["cpf"], self.BETO)
+
+    def test_exclusao_nao_tira_o_carro_e_ele_continua_pedindo_a_senha(self):
+        self.dono_sai_a_pe()
+        self.banco.excluir([self.visita], autor="ana")
+        self.assertTrue(self.no_estacionamento())
+        with self.assertRaises(dados.ErroDados):
+            self.sair_so_o_carro()
+
+    def test_importacao_nao_tira_o_carro(self):
+        import json
+        self.dono_sai_a_pe()
+        arquivo = os.path.join(self.pasta.name, "registros_portaria.json")
+        with open(arquivo, "w", encoding="utf-8") as f:
+            json.dump([dict(registro(entrada="19/10/2026 09:10",
+                                     saida="19/10/2026 09:20")),
+                       dict(registro(cpf=self.BETO, nome="Beto Rocha",
+                                     placa="ABC1D23",
+                                     entrada="19/10/2026 09:15"))], f)
+        self.banco.importar_json(arquivo)
+        self.assertEqual(self.banco.estadia_aberta(placa="ABC1D23")["id"],
+                         self.carro)
+        self.assertEqual(self.sem_dono(), [])
+
+    def test_encerrar_o_dia_nao_tira_o_carro(self):
+        self.AGORA = datetime(2026, 10, 19, 23, 55)
+        self.banco.encerrar_pendentes(self.AGORA, autor="ana")
+        self.assertTrue(self.banco.buscar(self.visita)["saida"])
+        self.assertTrue(self.no_estacionamento())
 
 
 class TestCorridaEntreEstacoes(BaseRegras):

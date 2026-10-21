@@ -11,10 +11,11 @@ O seletor [Pessoas | Veículos] troca para os carros no estacionamento.
 
 Veículo com estadia própria (dados.py): a entrada com placa abre a estadia
 do carro, e a mesma placa não entra de novo enquanto ele estiver lá. Na
-saída de quem tem carro no estacionamento, a tela pergunta se ele saiu com
-o carro (tela_veiculo.py); a pessoa que volta a pé vê a faixa "O carro
-está no estacionamento" e, na próxima saída, a pergunta de novo. A saída
-rápida pela placa tira o carro (e pergunta se o responsável saiu junto).
+saída de quem tem carro no estacionamento, a tela pergunta se ele saiu com o carro (tela_veiculo.py); a
+pessoa que volta a pé vê a faixa "O carro está no estacionamento" e, na
+próxima saída, pode sair com ele. O VEÍCULO SÓ SAI COM O DONO (RN32): a
+saída rápida pela placa tira o carro junto com o dono no campus; sem o
+dono (fora do campus, ou ele fica), só com a senha de um administrador.
 
 Regras de horário (horarios.py): entrada fora do horário da categoria,
 retroativa antiga ou visita acima de 24 h é uma EXCEÇÃO e pede a
@@ -46,8 +47,8 @@ from .estilo import (COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM,
                      fonte_icone, px)
 from .tela_autorizacao import autorizar_excecao
 from .tela_edicao import JanelaEdicao
-from .tela_veiculo import (COM_CARRO, JUNTO, responsavel_saiu_junto,
-                           saiu_com_o_veiculo)
+from .tela_veiculo import (COM_CARRO, JUNTO, liberar_sem_o_dono,
+                           responsavel_saiu_junto, saiu_com_o_veiculo)
 from .usuarios import eh_admin, pode_editar, pode_excluir
 from .validacao import (FORMATO, FORMATO_EXIBICAO, MAXIMO_BUSCA,
                         MAXIMO_CPF_OU_PLACA, MAXIMO_NOME, PLACA_OBRIGATORIA,
@@ -73,7 +74,7 @@ COLUNAS_VEICULOS = [("placa", "Placa", 96, "w"),
                     ("tipo", "Tipo de acesso", 130, "w"),
                     ("desde", "Desde", 120, "w"),
                     ("onde", "Responsável está", 130, "w")]
-LARGURA_SITUACAO_VEICULO = 168     # cabe "No estacionamento" com a bolinha
+LARGURA_SITUACAO_VEICULO = 190     # cabe "Dono fora do campus" com a bolinha
 LISTAS = ("Pessoas", "Veículos")
 
 # Abaixo desta altura da página (px lógicos) o layout fica compacto: num
@@ -113,6 +114,7 @@ APARENCIA = {horarios.NO_CAMPUS: ("sucesso", None),
              horarios.SAIDA_PENDENTE: ("erro", "pendente"),
              horarios.SAIU: ("barra", None),
              horarios.NO_ESTACIONAMENTO: ("sucesso", None),
+             horarios.DONO_FORA: ("alerta", None),
              horarios.VEICULO_PENDENTE: ("erro", "pendente")}
 LARGURA_SITUACAO = 140         # cabe "Saída pendente" com a bolinha
 MOSTRAR_NO_ENCERRAMENTO = 8    # nomes listados na confirmação
@@ -965,7 +967,9 @@ class AbaCadastro:
                     "info", f"O carro {formatar_placa(estadia['placa'])} está "
                             "no estacionamento desde "
                             f"{self._quando(estadia['entrada'])}: a entrada é "
-                            "a pé.", icone=ICONE["carro"])
+                            f"a pé. {pessoa['nome'].split()[0]} é o dono e "
+                            "pode sair com ele (na saída, \"Saiu de carro\").",
+                    icone=ICONE["carro"])
         bloqueio = self._bloqueio_ativo("cpf", cpf)
         if bloqueio:
             self._situacao("erro", f"CPF bloqueado: {bloqueio['motivo']}. "
@@ -1202,18 +1206,16 @@ class AbaCadastro:
         ok, estadia = self.app.tentar(self.app.banco.estadia_aberta, cpf=chave)
         if not ok or estadia is None:
             return False
-        if self.app.perguntar(
-                mensagens.confirmar, "Saída rápida",
-                f"{estadia['nome']} não está no campus, mas o carro "
-                f"{formatar_placa(estadia['placa'])} dele está no "
-                "estacionamento.\n\nRegistrar a saída do carro?"):
-            if self._sair_so_o_carro(estadia):
-                self.campo_saida_rapida.delete(0, tk.END)
+        # o dono está fora: o carro só sai com a senha (RN32)
+        if self._sair_so_o_carro(estadia):
+            self.campo_saida_rapida.delete(0, tk.END)
         return True
 
     def _saida_do_carro(self, estadia):
-        """O carro sai (placa ou lista de veículos). Com o responsável no
-        campus, pergunta se ele saiu junto."""
+        """O carro sai (placa ou lista de veículos). Com o dono no campus,
+        pergunta se ele saiu junto: junto, os dois saem sem senha. Sem o
+        dono (fora do campus ou "Só o carro saiu"), RN32: só com a senha
+        de um administrador."""
         if estadia["responsavel_dentro"]:
             visita = next((r for r in self.app.registros if r["cpf"] ==
                            estadia["cpf"] and not r["saida"]), None)
@@ -1226,10 +1228,15 @@ class AbaCadastro:
         return self._sair_so_o_carro(estadia)
 
     def _sair_so_o_carro(self, estadia):
+        """O carro sai sem o dono: mensagem + senha do administrador."""
+        autorizacao = liberar_sem_o_dono(self.app, estadia)
+        if autorizacao is None:
+            return False
         momento = self.app.relogio().replace(second=0, microsecond=0)
         saida = momento.strftime(FORMATO)
         ok, gravou = self.app.tentar(self.app.banco.registrar_saida_veiculo,
-                                     estadia["id"], saida, autor=self.app.autor)
+                                     estadia["id"], saida, autor=self.app.autor,
+                                     autorizacao=autorizacao)
         if not ok:
             return False
         self.app.atualizar_tabela()
@@ -1239,7 +1246,8 @@ class AbaCadastro:
             return False
         self._saida_para_desfazer = saida
         self.avisar(f"Saída do carro {formatar_placa(estadia['placa'])} "
-                    f"registrada às {momento:%H:%M}.",
+                    f"registrada às {momento:%H:%M}, sem o dono (liberada por "
+                    f"{autorizacao['autorizado_por']}).",
                     desfazer={"veiculos": [estadia["id"]]})
         return True
 

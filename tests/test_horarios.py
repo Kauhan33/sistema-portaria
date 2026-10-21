@@ -564,5 +564,31 @@ class TestLancamentoRetroativo(BaseRegras):
         self.assertTrue(excecoes.so_com_senha)
 
 
+class TestSituacaoDoCarro(unittest.TestCase):
+    """RN32: carro com o dono fora fica "Dono fora do campus"."""
+
+    AGORA = datetime(2026, 10, 16, 12, 0)
+
+    def estadia(self, dentro):
+        return {"entrada": "16/10/2026 08:00", "tipo": "Professor",
+                "responsavel_dentro": dentro}
+
+    def test_dono_fora_e_dono_dentro(self):
+        config = h.configuracao_padrao()
+        self.assertEqual(h.situacao_veiculo(config, self.estadia(False),
+                                                   self.AGORA),
+                         h.DONO_FORA)
+        self.assertEqual(h.situacao_veiculo(config, self.estadia(True),
+                                                   self.AGORA),
+                         h.NO_ESTACIONAMENTO)
+
+    def test_pendente_vale_mais_que_dono_fora(self):
+        config = h.configuracao_padrao()
+        tarde = datetime(2026, 10, 17, 9, 0)
+        self.assertEqual(h.situacao_veiculo(config, self.estadia(False),
+                                                   tarde),
+                         h.VEICULO_PENDENTE)
+
+
 if __name__ == "__main__":
     unittest.main()

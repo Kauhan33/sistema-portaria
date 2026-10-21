@@ -13,6 +13,7 @@ from . import horarios, mensagens
 from .componentes import (Aviso, Campo, Dialogo, preencher_eventos,
                           rotulo_campo, tabela_eventos)
 from .consultas import descrever_alteracoes
+from .dados import VEICULO_SEM_DONO
 from .estilo import COR, FONTE, ICONE, px
 from .tela_autorizacao import autorizar_excecao
 from .usuarios import eh_admin, pode_editar
@@ -162,11 +163,15 @@ class JanelaEdicao(Dialogo):
         autorizacao, ok = self._autorizar(novo, agora)
         if not ok:
             return
+        autorizacao_veiculo, ok = self._autorizar_veiculo(novo)
+        if not ok:
+            return
         # `original`: se outra estação mudou a visita depois que esta janela
         # abriu (ex.: deu a saída), o banco recusa em vez de desfazer aquilo
         if not self.app.gravar(self.app.banco.editar, self.original["id"],
                                novo, alteracoes, autorizacao=autorizacao,
-                               original=self.original):
+                               original=self.original,
+                               autorizacao_veiculo=autorizacao_veiculo):
             return
         self.app.atualizar_tabela()
         self.app.avisar(f"Registro de {novo['nome'].split()[0]} corrigido "
@@ -186,4 +191,21 @@ class JanelaEdicao(Dialogo):
         autorizacao = autorizar_excecao(
             self.app, regras, f"A correção do registro de {novo['nome']}",
             dono=self.janela)
+        return autorizacao, autorizacao is not None
+
+    def _autorizar_veiculo(self, novo):
+        """RN32: a correção que tiraria do estacionamento, sem o dono, o
+        carro que ficou (placa apagada ou trocada) ou o passaria a outra
+        pessoa (CPF) só passa com a senha de um administrador.
+        Devolve (autorização ou None, pode seguir?)."""
+        ok, achados = self.app.tentar(self.app.banco.veiculo_sem_dono_na_correcao,
+                                      self.original["id"], novo)
+        if not ok:
+            return None, False
+        if not achados:
+            return None, True
+        regras = [f"{VEICULO_SEM_DONO}: {texto}" for texto in achados]
+        autorizacao = autorizar_excecao(
+            self.app, regras, f"A correção do registro de {novo['nome']}",
+            dono=self.janela, veiculo=True)
         return autorizacao, autorizacao is not None

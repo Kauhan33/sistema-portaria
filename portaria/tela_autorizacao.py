@@ -13,6 +13,11 @@ histórico).
 - Lançamento num dia que JÁ FECHOU (RN24 c, so_com_senha): a senha é
   obrigatória para todos. O administrador logado redigita a própria senha
   (o login dele já vem preenchido; outro administrador pode trocar).
+- Veículo saindo sem o dono (RN32, veiculo=True): também só com a senha,
+  com o texto e o ícone do carro.
+
+Justificativa: de MINIMO_JUSTIFICATIVA a MAXIMO_JUSTIFICATIVA caracteres
+(horarios.ler_justificativa), com o contador "123/200" ao lado do rótulo.
 
 O diálogo só devolve a autorização; quem grava é a tela, passando-a ao
 banco, que confere de novo e grava o evento "Exceção autorizada". A tela
@@ -34,20 +39,27 @@ SO_ADMIN = ("Somente um administrador pode autorizar a exceção.\n"
 
 
 class JanelaAutorizacao(Dialogo):
-    def __init__(self, app, regras, acao, dono=None, so_com_senha=False):
+    def __init__(self, app, regras, acao, dono=None, so_com_senha=False,
+                 veiculo=False):
         """
         regras: textos das regras violadas; acao: o que precisa da
         autorização ("A entrada de Ana Silva"). `resultado` fica com a
         autorização ({"autorizado_por", "regras", "justificativa",
         "com_senha"}) quando o administrador confirma; continua None se
         cancelar. so_com_senha: até o administrador logado digita a senha.
+        veiculo: o carro sairia sem o dono (sempre com a senha).
         """
         self.app, self.regras = app, list(regras)
         self.resultado = None
         self.erro = ""                  # último erro mostrado na faixa
+        self.veiculo = veiculo
         admin_logado = eh_admin(app.usuario)
-        self.pede_senha = so_com_senha or not admin_logado
-        if so_com_senha:
+        self.pede_senha = so_com_senha or veiculo or not admin_logado
+        if veiculo:
+            subtitulo = (f"{acao}: o veículo só sai com o dono. Para liberar "
+                         "sem ele, um administrador digita a senha"
+                         + (" (digite a sua)." if admin_logado else "."))
+        elif so_com_senha:
             subtitulo = (f"{acao} lança um horário de um dia que já fechou. "
                          "Isso só passa com a senha de um administrador"
                          + (" (digite a sua)." if admin_logado else "."))
@@ -75,7 +87,7 @@ class JanelaAutorizacao(Dialogo):
     def _montar(self):
         regras = Aviso(self.miolo)
         regras.mostrar("alerta", "\n".join(f"• {r}" for r in self.regras),
-                       icone=ICONE["relogio"])
+                       icone=ICONE["carro" if self.veiculo else "relogio"])
         regras.pack(fill="x", pady=(0, px(14)))
         self.login = self.senha = None
         if self.pede_senha:
@@ -149,9 +161,10 @@ class JanelaAutorizacao(Dialogo):
         self.janela.wait_window()
 
 
-def pedir_autorizacao(app, regras, acao, dono=None, so_com_senha=False):
+def pedir_autorizacao(app, regras, acao, dono=None, so_com_senha=False,
+                      veiculo=False):
     """Abre o diálogo e espera a resposta: a autorização ou None."""
-    dialogo = JanelaAutorizacao(app, regras, acao, dono, so_com_senha)
+    dialogo = JanelaAutorizacao(app, regras, acao, dono, so_com_senha, veiculo)
     dialogo.esperar()
     if dialogo.janela.winfo_exists():
         dialogo.fechar()
@@ -163,7 +176,8 @@ def pedir_autorizacao(app, regras, acao, dono=None, so_com_senha=False):
     return dialogo.resultado
 
 
-def autorizar_excecao(app, regras, acao, dono=None, so_com_senha=False):
+def autorizar_excecao(app, regras, acao, dono=None, so_com_senha=False,
+                      veiculo=False):
     """Pela app.perguntar: se a sessão acabou com o diálogo aberto, None.
     `regras` pode ser uma lista de textos ou um horarios.Excecoes (que já
     diz se a autorização exige a senha)."""
@@ -171,4 +185,4 @@ def autorizar_excecao(app, regras, acao, dono=None, so_com_senha=False):
         so_com_senha = so_com_senha or regras.so_com_senha
         regras = regras.regras
     return app.perguntar(pedir_autorizacao, app, regras, acao, dono,
-                         so_com_senha)
+                         so_com_senha, veiculo)

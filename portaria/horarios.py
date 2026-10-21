@@ -88,6 +88,7 @@ SAIDA_PENDENTE = "Saída pendente"
 SAIU = "Saiu"
 # Situação de um carro no estacionamento (estadia de veículo)
 NO_ESTACIONAMENTO = "No estacionamento"
+DONO_FORA = "Dono fora do campus"      # o carro só sai com ele (ou senha)
 VEICULO_PENDENTE = "Veículo pendente"
 
 
@@ -501,6 +502,10 @@ def situacao_veiculo(config, estadia, agora):
     tolerância da categoria dele). Ao contrário da visita, o "Encerrar o
     dia" não fecha a estadia: o carro está fisicamente lá, e só sai pela
     placa quando alguém o tirar.
+
+    Dentro do prazo, o carro cujo dono (o responsável) NÃO está no campus
+    fica "Dono fora do campus": ele só sai quando o dono voltar e sair com
+    ele, ou com a senha de um administrador (RN32).
     """
     entrada = converter_data(estadia["entrada"])
     try:
@@ -508,6 +513,8 @@ def situacao_veiculo(config, estadia, agora):
             return VEICULO_PENDENTE
     except OverflowError:   # data absurda já gravada: não derruba a tela
         pass
+    if not estadia.get("responsavel_dentro", True):
+        return DONO_FORA
     return NO_ESTACIONAMENTO
 
 

@@ -106,8 +106,9 @@ class BaseInterface(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         # a pergunta do carro ("Saiu com o veículo?") também: sem resposta
-        # definida, escolhe o botão principal (saiu de carro / saiu junto);
-        # responder_veiculo = valor escolhido, ou None para Cancelar
+        # definida, escolhe o botão destacado, o do Enter (saiu de carro /
+        # saiu junto / liberar com a senha / de carro, se a última visita
+        # foi de carro); responder_veiculo = valor escolhido, None = Cancelar
         self.perguntas_veiculo = []
         self.responder_veiculo = "principal"
 
@@ -116,7 +117,7 @@ class BaseInterface(unittest.TestCase):
             if callable(self.responder_veiculo):
                 self.responder_veiculo(dialogo)
             elif self.responder_veiculo == "principal":
-                dialogo.escolher(dialogo.opcoes[0][1])
+                dialogo.escolher(dialogo.padrao)
             elif self.responder_veiculo is not None:
                 dialogo.escolher(self.responder_veiculo)
 
@@ -156,6 +157,29 @@ class BaseInterface(unittest.TestCase):
 
     def no_banco(self):
         return self.banco.listar()
+
+    def autorizar_com_senha(self, login="ana.admin", senha="senha123",
+                            justificativa="Dono ligou e autorizou a retirada"):
+        """O administrador digita login e senha no diálogo de autorização
+        (vale também para o administrador logado, que redigita a sua)."""
+        def responder(dialogo):
+            if dialogo.pede_senha:
+                dialogo.login.delete(0, tk.END)
+                dialogo.login.insert(0, login)
+                dialogo.senha.insert(0, senha)
+            dialogo.justificativa.insert(0, justificativa)
+            dialogo.confirmar()
+        self.responder_autorizacao = responder
+
+    def respostas_veiculo(self, *valores):
+        """Responde as perguntas do carro em ordem (None = Cancelar)."""
+        fila = list(valores)
+
+        def responder(dialogo):
+            valor = fila.pop(0)
+            if valor is not None:
+                dialogo.escolher(valor)
+        self.responder_veiculo = responder
 
     def acoes(self):
         return [(e["usuario"], e["acao"]) for e in self.banco.listar_eventos()]
@@ -1570,7 +1594,8 @@ class TestSaidaRapida(BaseInterface):
     def test_placa_de_carro_que_ja_saiu_nao_da_saida_na_pessoa(self):
         """QA1 A1: 'Só o carro saiu' e a placa de novo davam a saída do
         Beto, que continuava no campus."""
-        self.responder_veiculo = "so_carro"
+        self.respostas_veiculo("so_carro", "liberar")    # e a senha (RN32)
+        self.autorizar_com_senha()
         self.digitar("QWE1234")
         self.assertIsNone(self.banco.estadia_aberta(placa="QWE1234"))
         self.assertEqual(self.saida("Beto"), "")
@@ -1693,24 +1718,93 @@ class TestEstadiaDeVeiculo(BaseInterface):
         self.assertIsNone(self.estadia())
         self.assertEqual(len(self.perguntas_veiculo), 2)
 
-    def test_saida_pela_placa_com_o_responsavel_fora_nao_pergunta(self):
-        self.sair_pelo_cpf("a_pe")
+    def sair_pela_placa(self, placa="abc-1234"):
         self.tela.campo_saida_rapida.delete(0, tk.END)
-        self.tela.campo_saida_rapida.insert(0, "abc-1234")
+        self.tela.campo_saida_rapida.insert(0, placa)
         self.tela.saida_rapida()
-        self.assertEqual(len(self.perguntas_veiculo), 1)
+
+    def test_placa_com_o_dono_fora_pede_a_senha_do_administrador(self):
+        """RN32 (porteiro logado): o dono saiu a pé; o carro só sai com a
+        senha de um administrador, e o Desfazer devolve o carro."""
+        self.sair_pelo_cpf("a_pe")
+        self.responder_veiculo = "principal"         # chamar o administrador
+        self.autorizar_com_senha()
+        self.sair_pela_placa()
+        self.assertEqual(self.perguntas_veiculo[1:],
+                         ["O veículo só sai com o dono"])
+        dialogo = self.autorizacoes[0]
+        self.assertTrue(dialogo.pede_senha)
+        self.assertIn("Veículo saiu sem o dono: ABC-1234", dialogo.regras[0])
         self.assertIsNone(self.estadia())
         self.assertIn("Saída do carro ABC-1234", self.app.lbl_aviso.cget("text"))
+        self.assertIn("liberada por ana.admin", self.app.lbl_aviso.cget("text"))
+        self.assertIn(("ana.admin", "Veículo saiu sem o dono"), self.acoes())
         self.app.desfazer_saida()                            # Desfazer
         self.assertIsNotNone(self.estadia())
 
-    def test_so_o_carro_sai_pela_placa(self):
-        from portaria.tela_veiculo import SO_CARRO
-        self.responder_veiculo = SO_CARRO
-        self.tela.campo_saida_rapida.insert(0, "ABC1234")
-        self.tela.saida_rapida()
+    def test_mensagem_do_dono_fora_com_o_cpf_mascarado(self):
+        self.sair_pelo_cpf("a_pe")
+        textos = []
+
+        def ver(dialogo):
+            textos.append(dialogo.lbl_subtitulo.cget("text"))
+        self.responder_veiculo = ver                         # Cancelar
+        self.sair_pela_placa()
+        self.assertEqual(textos, [
+            "O dono do veículo ABC-1234 (Ana Silva, CPF ***.982.247-**) não "
+            "está no campus. O veículo só sai com o dono; para liberar, um "
+            "administrador precisa digitar a senha."])
+        self.assertEqual(self.autorizacoes, [])              # nem pediu senha
+        self.assertIsNotNone(self.estadia())
+
+    def test_senha_errada_nao_tira_o_carro(self):
+        self.sair_pelo_cpf("a_pe")
+        self.responder_veiculo = "principal"
+        self.autorizar_com_senha(senha="senha-errada")
+        self.sair_pela_placa()
+        self.assertIn("senha", self.autorizacoes[0].erro.lower())
+        self.assertIsNotNone(self.estadia())
+        self.assertNotIn("Veículo saiu sem o dono", [a for _, a in self.acoes()])
+
+    def test_porteiro_nao_libera_com_a_propria_senha(self):
+        self.sair_pelo_cpf("a_pe")
+        self.responder_veiculo = "principal"
+        self.autorizar_com_senha(login="paulo", senha="senha456")
+        self.sair_pela_placa()
+        self.assertIn("administrador", self.autorizacoes[0].erro)
+        self.assertIsNotNone(self.estadia())
+
+    def test_cpf_de_quem_deixou_o_carro_tambem_pede_a_senha(self):
+        self.sair_pelo_cpf("a_pe")
+        self.responder_veiculo = "principal"
+        self.tela.campo_saida_rapida.delete(0, tk.END)
+        self.tela.campo_saida_rapida.insert(0, self.CPF)
+        self.tela.saida_rapida()                             # sem senha: cancela
+        self.assertEqual(self.perguntas_veiculo[-1], "O veículo só sai com o dono")
+        self.assertIsNotNone(self.estadia())
+
+    def test_so_o_carro_sai_pela_placa_com_o_dono_no_campus(self):
+        """O carro sairia sem o dono, que fica no campus: senha também."""
+        from portaria.tela_veiculo import LIBERAR, SO_CARRO
+        self.respostas_veiculo(SO_CARRO, None)               # sem senha
+        self.sair_pela_placa("ABC1234")
+        self.assertIsNotNone(self.estadia())
+        self.respostas_veiculo(SO_CARRO, LIBERAR)
+        self.autorizar_com_senha()
+        self.sair_pela_placa("ABC1234")
         self.assertIsNone(self.estadia())
         self.assertEqual(self.banco.buscar(self.visita)["saida"], "")
+        evento = next(e for e in self.banco.listar_eventos()
+                      if e["acao"] == "Veículo saiu sem o dono")
+        self.assertIn("continua no campus", evento["detalhe"])
+
+    def test_dono_no_campus_saindo_junto_nao_pede_senha(self):
+        self.responder_veiculo = "principal"                 # saiu junto
+        self.sair_pela_placa("ABC1234")
+        self.assertEqual(self.perguntas_veiculo, ["Ana saiu junto com o carro?"])
+        self.assertEqual(self.autorizacoes, [])
+        self.assertIsNone(self.estadia())
+        self.assertTrue(self.banco.buscar(self.visita)["saida"])
 
     def test_lista_de_veiculos_no_movimento(self):
         self.tela.seletor_lista.selecionar("Veículos")
@@ -1727,6 +1821,20 @@ class TestEstadiaDeVeiculo(BaseInterface):
         self.app.registrar_saida()
         self.assertIsNone(self.estadia())
         self.assertTrue(self.banco.buscar(self.visita)["saida"])
+
+    def test_lista_mostra_dono_fora_do_campus(self):
+        self.sair_pelo_cpf("a_pe")
+        iid = self.tela.tabela_veiculos.get_children()[0]
+        linha = self.tela.tabela_veiculos.item(iid)
+        self.assertEqual(linha["text"], "Dono fora do campus")
+        self.assertEqual(linha["values"][-1], "Fora do campus")
+
+    def test_faixa_do_carro_diz_que_o_dono_pode_sair_com_ele(self):
+        self.sair_pelo_cpf("a_pe")
+        self.app.limpar()
+        self.app.cpf.insert(0, self.CPF)
+        self.assertIn("Ana é o dono e pode sair com ele",
+                      self.app.lbl_pessoa.cget("text"))
 
     def test_veiculo_pendente_depois_do_fechamento(self):
         self.sair_pelo_cpf("a_pe")

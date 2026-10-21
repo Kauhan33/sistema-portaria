@@ -6,7 +6,9 @@ saída"), tela_pessoas.py, tela_bloqueios.py, tela_dashboard.py ("Painel"),
 tela_usuarios.py e tela_configuracoes.py (as duas só para administrador);
 o login fica em tela_login.py, a janela "Corrigir registro" em
 tela_edicao.py, "Trocar minha senha" em tela_senha.py e a "Autorização do
-administrador" (exceções de horário) em tela_autorizacao.py.
+administrador" (exceções de horário) em tela_autorizacao.py, as perguntas do
+carro ("Saiu com o veículo?") em tela_veiculo.py e o calendário/relógio dos
+campos de data em seletor_data.py.
 
 As regras ficam em validacao.py, usuarios.py e horarios.py e o banco de
 dados (com os números do Painel, calculados no SQL) em dados.py — as

@@ -63,15 +63,21 @@ logado e ativo.
 python -m unittest -v
 ```
 
-443 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
+508 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
 negócio, login, senhas, permissões, cadastro de pessoas e preenchimento
 automático, saída rápida e desfazer, correção de registros, lista de bloqueio,
-**regras de horário** (cada categoria dentro e fora da janela, feriados,
-eventos, 24 h, retroativo, tempo excedido, saída pendente, autorização do
-administrador, encerrar o dia, Configurações), banco de dados, histórico,
+**regras de horário** (cada categoria dentro e fora da janela, ninguém entra
+depois de fechar, feriados, eventos, 24 h, lançamento retroativo nos três
+casos, tolerância, tempo excedido, saída pendente, autorização do
+administrador com e sem senha, encerrar o dia, Configurações), **estadia de
+veículo** (sair a pé, voltar, sair de carro, saída pela placa, veículo
+pendente), histórico de visitas e ordenação na página Pessoas, o
+**calendário e o relógio** dos campos de data, banco de dados, histórico,
 migrações, busca, backup, exportação, Painel e a própria tela (preenche campos
 e clica nos botões com a janela oculta), inclusive a sessão que expira com uma
 confirmação ou a autorização aberta e o tamanho de um notebook 1366×768 a 125%.
+Um teste a mais confere a migração numa **cópia** de um banco real da versão 7
+(só roda com `PORTARIA_BANCO_V7=<caminho da cópia>`).
 Os testes de tela usam um **relógio fixo** (uma quarta-feira às 10:00): o
 resultado não depende da hora em que eles rodam.
 
@@ -93,8 +99,18 @@ resultado não depende da hora em que eles rodam.
 | **Usuários** — contas e atividade do sistema | **Corrigir registro** — com o histórico do registro |
 | ![Saída pendente e aviso de fechamento](docs/design/final/horarios_movimento_admin.png) | ![Autorização do administrador](docs/design/final/horarios_autorizacao_porteiro.png) |
 | **Regras de horário** — saída pendente, tempo excedido e "fecha em 20 min" | **Autorização do administrador** — exceção pedida pelo porteiro |
-| ![Configurações](docs/design/final/horarios_config_categorias.png) | ![Painel com tempo excedido](docs/design/final/horarios_painel.png) |
-| **Configurações** — regras de cada categoria | **Painel** — tempo excedido e saídas pendentes |
+| ![Configurações](docs/design/final/r2_config_categorias.png) | ![Painel](docs/design/final/r2_painel.png) |
+| **Configurações** — janela, permanência e tolerância de cada categoria | **Painel** — veículos no estacionamento e tempo excedido |
+| ![Calendário](docs/design/final/r2_calendario.png) | ![Relógio](docs/design/final/r2_relogio_horas.png) |
+| **Calendário** — clique no campo de data | **Relógio** — horas em dois anéis, depois os minutos |
+| ![Saiu com o veículo?](docs/design/final/r2_saiu_com_o_veiculo.png) | ![Veículos no estacionamento](docs/design/final/r2_movimento_veiculos.png) |
+| **Saiu com o veículo?** — sair de carro ou a pé | **Movimento › Veículos** — os carros no estacionamento |
+| ![Carro no estacionamento](docs/design/final/r2_carro_no_estacionamento_1366x670.png) | ![Histórico de visitas](docs/design/final/r2_pessoas_historico.png) |
+| **De volta, a pé** — o carro dela continua no estacionamento | **Pessoas** — histórico de visitas na ficha |
+| ![Lista ordenada](docs/design/final/r2_pessoas_ordenada.png) | ![Senha no retroativo](docs/design/final/r2_autorizacao_senha_admin.png) |
+| **Pessoas** — ordenada pelo cabeçalho (▲ ▼) | **Dia que já fechou** — só com a senha, mesmo para o administrador |
+| ![Pendências com veículo](docs/design/final/r2_pendencias_com_veiculo.png) | ![Funcionamento](docs/design/final/r2_config_funcionamento_1366x670.png) |
+| **Pendências** — saídas e veículo depois do fechamento | **Configurações** — lançamento retroativo de 3 h (notebook 1366×670) |
 
 **Antes × depois** (a mesma tela na versão 1 e na 2.0):
 
@@ -133,38 +149,65 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
   - à direita, a **placa Mercosul desenhada** acompanha a digitação (fica
     vermelha se a placa estiver bloqueada) e o histórico da pessoa (visitas,
     última vinda, tipo);
-  - o relógio dentro dos campos de data põe a hora de agora;
-  - **Saída rápida** no topo (atalho **F2**): CPF ou placa exatos + Enter;
-    pergunta antes se a placa trouxer mais de uma pessoa (carona);
-  - tabela **Movimento**: as entradas e saídas de hoje e todo mundo que
-    ainda está no campus; com texto na busca, procura no **histórico inteiro**
-    (nome, CPF, celular, placa ou tipo). A situação de cada visita: no campus,
-    saiu, **Tempo excedido** (âmbar) ou **Saída pendente** (vermelho, em
-    destaque). Duplo clique ou "Registrar saída" dão a saída (aceita várias
-    linhas); o aviso com **Desfazer** fica 10 segundos no rodapé;
-  - faixas no topo, só quando importam: **saídas pendentes** (o administrador
-    tem o atalho **Encerrar o dia**) e, nos últimos 30 minutos antes de
-    fechar, **"Campus fecha às 23:00 (em 20 min) · 5 no campus"** (sem caixa
-    de diálogo, não atrapalha o uso);
+  - o campo **Entrada** acompanha o relógio enquanto ninguém mexe nele, e o
+    registro usa o "agora" exato do clique; editado, vale o que foi digitado;
+  - clicar num campo de data (ou no ícone dele) abre o **calendário** e depois
+    o **relógio** (horas em dois anéis, 00–11 e 12–23; minutos de 5 em 5 com
+    ajuste fino), desenhados no estilo Guarita. Digitar continua valendo; Esc
+    fecha. Campos só de data (feriados, eventos, exportar) abrem só o
+    calendário; os só de hora (Configurações), só o relógio;
+  - **Saída rápida** no topo (atalho **F2**): CPF ou placa exatos + Enter.
+    Pela placa sai o **carro** (e, se o responsável estiver no campus, a
+    pergunta se ele saiu junto);
+  - tabela **Movimento** com o seletor **Pessoas | Veículos**. Em Pessoas: as
+    entradas e saídas de hoje e todo mundo que ainda está no campus; com texto
+    na busca, procura no **histórico inteiro** (nome, CPF, celular, placa ou
+    tipo). A situação de cada visita: no campus, saiu, **Tempo excedido**
+    (âmbar) ou **Saída pendente** (vermelho, em destaque), recalculada a cada
+    30 s junto com as faixas. Duplo clique ou "Registrar saída" dão a saída
+    (aceita várias linhas); o aviso com **Desfazer** fica 10 segundos no
+    rodapé. Em Veículos: placa, responsável, desde quando, situação (**No
+    estacionamento** ou **Veículo pendente**) e se o responsável está no
+    campus ou fora;
+  - **veículo com estadia própria**: quem entra com placa abre a estadia do
+    carro; a mesma placa não entra de novo enquanto ele estiver lá. Na saída
+    de quem tem carro no estacionamento, a pergunta **"Saiu com o veículo
+    ABC-1234?"** — *Saiu de carro* ou *Saiu a pé — o carro fica*. Quem volta
+    vê a faixa **"O carro ABC-1234 está no estacionamento desde 08:00"** e
+    entra a pé; na próxima saída, a pergunta de novo;
+  - faixas no topo, só quando importam: **saídas pendentes** e **veículos
+    pendentes** depois do fechamento (o administrador tem o atalho **Encerrar
+    o dia**) e, nos últimos 30 minutos antes de fechar, **"Campus fecha às
+    23:00 (em 20 min) · 5 no campus"** (sem caixa de diálogo, não atrapalha o
+    uso);
   - "Corrigir" abre a janela **Corrigir registro** (mesmas validações do
     cadastro; o histórico guarda o que mudou e quem mudou); "Excluir" só
     aparece para o administrador (RN02).
-- **Pessoas**: lista com busca e situação (no campus, fora, bloqueado) e a
-  **ficha** da pessoa escolhida: placa, visitas, faixa de bloqueio, correção dos
-  dados e "Registrar entrada" (abre a Entrada e saída já preenchida).
+- **Pessoas**: lista com busca e situação (no campus, fora, bloqueado),
+  **ordenada pela coluna clicada** no cabeçalho (1º clique crescente, 2º
+  decrescente, com ▲ ou ▼; datas e números na ordem certa; abre ordenada pela
+  situação e depois pelo nome) e a **ficha** da pessoa escolhida: placa,
+  visitas, faixa de bloqueio e duas seções — **Cadastro** (correção dos dados
+  e "Registrar entrada", que abre a Entrada e saída já preenchida) e
+  **Visitas** (o histórico dela, da mais recente para a mais antiga: entrada,
+  saída, duração, tipo, placa e situação, com o nome e o celular da época
+  quando eram outros).
 - **Bloqueios**: CPFs e placas com acesso negado e o motivo. Todos veem; só o
   administrador cria ("Novo bloqueio") ou remove — remover não apaga, guarda
   quem removeu e quando ("Mostrar removidos").
-- **Painel**: no campus agora, entradas de hoje, permanência média, com
-  veículo e **tempo excedido** (com as saídas pendentes logo abaixo); gráficos de pessoas por tipo e das entradas dos últimos 7 dias (hoje
-  em destaque). O administrador **exporta para CSV** (Excel) os registros de um
+- **Painel**: no campus agora, entradas de hoje, permanência média,
+  **veículos no estacionamento** (com os pendentes, ou o total de visitas com
+  veículo, logo abaixo) e **tempo excedido** (com as saídas pendentes logo
+  abaixo); gráficos de pessoas por tipo e das entradas dos últimos 7 dias
+  (hoje em destaque). O administrador **exporta para CSV** (Excel) os registros de um
   período.
 - **Usuários** (administrador): contas (criar em diálogo, ativar/desativar,
   redefinir senha) e a atividade do sistema com filtro.
 - **Configurações** (administrador): os horários de acesso, em três seções —
   **Funcionamento** (abre e fecha de cada dia da semana, minutos do aviso
-  antes de fechar e o limite da entrada retroativa), **Categorias** (janela de
-  entrada e permanência máxima de cada tipo de acesso) e **Feriados e eventos**
+  antes de fechar e o limite do lançamento retroativo, 3 h), **Categorias**
+  (janela de entrada, permanência máxima e **tolerância** depois do
+  fechamento de cada tipo de acesso) e **Feriados e eventos**
   (adicionar e remover). Tudo é validado (hh:mm válido, fechamento depois da
   abertura, números nos limites) e cada mudança fica no histórico.
 
@@ -175,37 +218,56 @@ sábado 07:00–14:00, domingo fechado**. Um **feriado** fecha o campus no dia; 
 **evento** (ex.: formatura num sábado 18:00–23:00, ou num domingo) substitui o
 horário daquela data, mesmo em feriado ou domingo.
 
-| Categoria | Pode entrar | Permanência máxima |
-|---|---|---|
-| Aluno | no funcionamento, até 30 min antes de fechar | até o fechamento |
-| Professor | de 30 min antes de abrir até o fechamento | até o fechamento + 1 h |
-| Funcionário | de 1 h antes de abrir até 1 h depois de fechar | 12 h |
-| Visitante | 08:00–18:00, só em dia de funcionamento | 4 h |
-| Entregador | 07:00–17:00, só em dia de funcionamento | 1 h |
-| Prestador de serviço | 07:00–19:00, só em dia de funcionamento | 10 h |
+| Categoria | Pode entrar | Permanência máxima | Tolerância depois de fechar |
+|---|---|---|---|
+| Aluno | no funcionamento, até 30 min antes de fechar | até o fechamento | — |
+| Professor | de 30 min antes de abrir até o fechamento | até o fechamento | 30 min |
+| Funcionário | de 1 h antes de abrir até o fechamento | 12 h | 30 min |
+| Visitante | 08:00–18:00, só em dia de funcionamento | 4 h | — |
+| Entregador | 07:00–17:00, só em dia de funcionamento | 1 h | — |
+| Prestador de serviço | 07:00–19:00, só em dia de funcionamento | 10 h | — |
 
+- **Ninguém entra depois do fechamento** sem autorização: toda janela termina,
+  no máximo, no fechamento do dia (um visitante às 16:00 de sábado, com o
+  campus fechando às 14:00, é exceção). Em Configurações, "Até" só aceita 0
+  ou negativo.
 - **Exceções** (pedem a autorização do administrador): entrada com o campus
-  fechado ou fora da janela da categoria, entrada retroativa com mais de 12 h
-  e qualquer visita com mais de **24 h**. Vale ao registrar a entrada, dar a
+  fechado ou fora da janela da categoria, **lançamento retroativo** antigo e
+  qualquer visita com mais de **24 h**. Vale ao registrar a entrada, dar a
   saída (botão, duplo clique ou saída rápida) e corrigir um registro (só o que
   mudou é conferido de novo).
+- **Lançamento retroativo** (data/hora de entrada ou de saída no passado, no
+  cadastro e na correção): (a) até **3 h** atrás, com o fechamento daquele dia
+  ainda por vir — normal; (b) mais de 3 h — exceção com autorização; (c) de um
+  dia que **já fechou** (ex.: 23:10 lançando 22:00, ou lançando ontem) — só com
+  a **senha** de um administrador, inclusive quando o próprio administrador
+  está logado (ele redigita a senha). Até 5 min no passado ainda conta como
+  "agora". O limite de 3 h muda em Configurações.
 - **Autorização do administrador**: um diálogo lista as regras violadas e pede
   a **justificativa** (obrigatória). Com o porteiro logado, um administrador
   digita o login e a senha dele (senha oculta; errar conta como tentativa de
-  login). Com o administrador logado, basta confirmar com a justificativa. O
+  login). Com o administrador logado, basta confirmar com a justificativa
+  (menos no caso (c), em que a senha é obrigatória). O
   histórico grava a **"Exceção autorizada"** com quem autorizou, quem operava,
   as regras e o porquê, ligada à visita. Se a sessão expirar com o diálogo
   aberto, nada é gravado. O banco confere de novo: visita acima de 24 h sem a
   autorização de um administrador ativo é recusada.
 - **Tempo excedido**: visita aberta acima da permanência máxima da categoria
   (âmbar no Movimento e um número no Painel). É só um alerta.
-- **Saída pendente**: quem não teve a saída registrada até o fechamento do dia
-  da entrada (nunca antes do fim da permanência permitida: o professor pode
-  ficar até 24:00). É calculada com o relógio, não depende de o programa estar
-  aberto às 23:00.
+- **Saída pendente**: a visita aberta vira pendente no **fechamento do dia da
+  entrada** (23:00 de segunda a sexta, ou o fim do evento), para todas as
+  categorias; só professor e funcionário têm a **tolerância** de 30 min
+  (configurável por categoria). Quem entrou depois desse prazo (só com
+  autorização) já nasce pendente: o dia dela acabou. É calculada com o
+  relógio, não depende de o programa estar aberto às 23:00.
 - **Encerrar o dia** (administrador): dá a saída de todas as pendentes, de uma
-  vez, no horário de fechamento do dia de cada entrada, depois de confirmar;
-  cada uma fica no histórico como "Saída automática (encerramento)".
+  vez, no prazo de cada uma (fechamento + tolerância), depois de confirmar;
+  cada uma fica no histórico como "Saída automática (encerramento)". Os
+  **carros não saem** com o Encerrar o dia: o carro está fisicamente lá.
+- **Veículo pendente**: o carro ainda no estacionamento depois do prazo do
+  responsável (fechamento + tolerância da categoria dele) aparece na faixa de
+  pendências e na lista de veículos; sai só pela placa (saída rápida ou
+  lista de veículos). Toda saída de veículo fica no histórico.
 
 Regras e segurança:
 
@@ -315,6 +377,8 @@ danificado):
 | `portaria/tela_edicao.py` | Janela "Corrigir registro" com o histórico do registro |
 | `portaria/tela_autorizacao.py` | Diálogo "Autorização do administrador" (exceções de horário) |
 | `portaria/tela_configuracoes.py` | Configurações dos horários de acesso (só administrador) |
+| `portaria/tela_veiculo.py` | Perguntas "Saiu com o veículo?" e "Saiu junto?" |
+| `portaria/seletor_data.py` | Calendário e relógio dos campos de data e hora (Canvas) |
 | `portaria/tela_senha.py` | Janela "Trocar minha senha" |
 | `docs/design/` | Proposta de design, protótipo e prints (antes, protótipo e final) |
 | `docs/revisao/` | Relatórios das revisões de segurança, código e backend (antes e depois da reforma) |
@@ -338,7 +402,14 @@ danificado):
   antes de fechar, **Encerrar o dia** e o número novo no Painel;
 - página **Configurações**; banco na versão 7 (migração com backup antes);
 - correção: a visita com entrada em outro dia e saída hoje sumia do Movimento;
-- 443 testes automatizados.
+- rodada 2 (depois dos testes do aluno): pendência no fechamento com
+  **tolerância** só para professor e funcionário; ninguém entra depois de
+  fechar; **lançamento retroativo** de 3 h, e de dia já fechado só com senha;
+  campo Entrada que acompanha o relógio; **veículo com estadia própria**
+  (sair a pé, voltar, sair de carro, lista de veículos, veículo pendente);
+  histórico de visitas e ordenação na página Pessoas; **calendário e
+  relógio** nos campos de data; banco na versão 8;
+- 508 testes automatizados.
 
 **2.0** (20/10/2026) — reforma completa, feita com um time de agentes de IA
 (design, segurança, código, backend) e revisada antes de publicar:

@@ -1,5 +1,5 @@
 """
-Regras de horário de acesso (RN16 a RN24): funcionamento do campus por dia
+Regras de horário de acesso (RN16 a RN26): funcionamento do campus por dia
 da semana, feriados, eventos, janela de entrada, permanência máxima e
 tolerância de cada categoria, limite geral de 24 h, lançamento retroativo
 e a situação de cada visita aberta (no campus, tempo excedido, saída
@@ -29,7 +29,7 @@ Como cada categoria é descrita (RegraCategoria):
 - permanência: `permanencia_min` minutos depois da entrada ou, com
   ate_fechamento = True, até o fechamento + `permanencia_min`. Passou
   dela, a visita fica "Tempo excedido" (só um alerta);
-- tolerância (RN22): `tolerancia_min` minutos depois do fechamento até a
+- tolerância (RN21): `tolerancia_min` minutos depois do fechamento até a
   visita aberta virar "Saída pendente" (padrão: 30 para professor e
   funcionário, 0 para os outros).
 
@@ -355,7 +355,7 @@ def limite_permanencia(config, tipo, entrada):
 
 def prazo_saida(config, tipo, entrada):
     """
-    RN22: até quando a visita pode ficar aberta sem virar "Saída
+    RN21: até quando a visita pode ficar aberta sem virar "Saída
     pendente": o fechamento do dia da entrada (23:00 de segunda a sexta,
     ou o fim do evento) + a tolerância da categoria (30 min para professor
     e funcionário, 0 para os outros). Nunca passa de 24 h.

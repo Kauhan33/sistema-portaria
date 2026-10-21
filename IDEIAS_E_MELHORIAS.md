@@ -156,7 +156,30 @@ injetado), guardado no banco (esquema v7) e editável na página Configurações
   Encerrar o dia e o número novo no Painel.
 - ✅ Página Configurações (só administrador), com validação e histórico.
 - 443 testes automatizados (relógio fixo nos testes de tela).
-- Ideias para depois: avisar o administrador por e-mail/WhatsApp das saídas
+
+### Versão 2.1 — rodada 2, depois dos testes do aluno (21/10/2026) ✅
+- ✅ Saída pendente no fechamento do dia da entrada para todas as categorias,
+  com tolerância (30 min) só para professor e funcionário. Saiu a regra
+  "max(fechamento, permanência)", que deu a um visitante das 22:55 prazo até
+  02:55. Entrada depois do prazo (autorizada) já nasce pendente.
+- ✅ Ninguém entra depois do fechamento sem autorização (funcionário até o
+  fechamento; janelas fixas param no fechamento).
+- ✅ Lançamento retroativo: até 3 h com o dia aberto é normal; mais antigo
+  pede autorização; de dia que já fechou, só com a senha (até o administrador
+  logado redigita a dele). 5 min de folga para o "agora".
+- ✅ Bug: o campo Entrada ficava parado na hora em que o formulário foi limpo.
+- ✅ Veículo com estadia própria (banco v8): sair a pé e deixar o carro,
+  voltar a pé, sair de carro, saída pela placa, lista de veículos, veículo
+  pendente (o Encerrar o dia não tira o carro).
+- ✅ Pessoas: histórico de visitas na ficha e ordenação pelo cabeçalho.
+- ✅ Calendário e relógio desenhados nos campos de data e hora.
+- ✅ A situação das linhas do Movimento muda sozinha a cada 30 s.
+- 508 testes automatizados.
+- Ideias para depois: ordenar também o Movimento e a lista de veículos pelo
+  cabeçalho (a OrdenacaoTabela já está em componentes.py); levar a regra do
+  retroativo também para dentro do banco (hoje ela é conferida na tela);
+  vaga numerada no estacionamento; vários carros para a mesma pessoa.
+- Ideias para depois (da primeira rodada): avisar o administrador por e-mail/WhatsApp das saídas
   pendentes; "liberar uma vez" a categoria para uma pessoa (ex.: professor
   substituto no sábado); horário por pessoa além da categoria; eventos de vários
   dias de uma vez; relatório das exceções autorizadas no período.
@@ -172,7 +195,10 @@ usuários (admin) · RF12 trocar a própria senha · RF13 backup diário automá
 RF14 comando digitado (Etapa 4, futuro) · RF15 configurar os horários de
 acesso: funcionamento, categorias, feriados e eventos (admin) · RF16 autorizar
 exceção de horário (admin) · RF17 encerrar o dia (admin) · RF18 alertar tempo
-excedido, saída pendente e fechamento próximo.
+excedido, saída pendente e fechamento próximo · RF19 registrar a entrada e a
+saída do veículo separadas da pessoa (estacionamento) · RF20 ver o histórico
+de visitas de cada pessoa · RF21 escolher datas e horas num calendário e
+relógio.
 
 **RNF**: RNF01 interface simples com botões identificados · RNF02 senha oculta e
 armazenada com hash · RNF03 tela principal e busca respondem na hora mesmo com
@@ -192,20 +218,31 @@ nas listas e no histórico · RN15 senha com pelo menos 8 caracteres e diferente
 (RN10 na 2.0: a espera começa em 30 s, dobra a cada bloqueio até 15 min e não zera ao
 reabrir o programa.)
 
-Novas na 2.1 (regras de horário):
+Novas na 2.1 (regras de horário, atualizadas na rodada 2):
 RN16 o campus tem horário por dia da semana; feriado fecha o dia e evento substitui o
 horário daquela data (mesmo domingo ou feriado) · RN17 cada categoria só entra na sua
 janela (aluno no funcionamento até 30 min antes de fechar; professor de 30 min antes de
-abrir até fechar; funcionário de 1 h antes a 1 h depois; visitante 08–18, entregador
-07–17 e prestador 07–19, só em dia aberto) · RN18 cada categoria tem permanência
-máxima (aluno até fechar; professor fechamento + 1 h; funcionário 12 h; visitante 4 h;
-entregador 1 h; prestador 10 h); acima dela a visita fica "Tempo excedido" · RN19
-nenhuma visita passa de 24 h · RN20 entrada fora da janela, entrada retroativa com
-mais de 12 h e visita acima de 24 h são exceções: só com autorização de um
+abrir até fechar; funcionário de 1 h antes de abrir até fechar; visitante 08–18,
+entregador 07–17 e prestador 07–19, só em dia aberto) · RN18 cada categoria tem
+permanência máxima (aluno e professor até fechar; funcionário 12 h; visitante 4 h;
+entregador 1 h; prestador 10 h); acima dela a visita fica "Tempo excedido" (só alerta) ·
+RN19 nenhuma visita passa de 24 h · RN20 entrada fora da janela, lançamento retroativo
+antigo (RN24) e visita acima de 24 h são exceções: só com autorização de um
 administrador ativo e justificativa, registradas no histórico com quem autorizou e quem
-operava · RN21 quem não teve saída até o fechamento do dia da entrada fica "Saída
-pendente"; só o administrador encerra o dia (saída automática no fechamento, registrada)
-· RN22 só o administrador altera os horários, e cada alteração fica no histórico.
+operava · RN21 a visita aberta fica "Saída pendente" no fechamento do dia da entrada
+(23:00 ou o fim do evento), para todas as categorias; professor e funcionário têm 30 min
+de tolerância (configurável por categoria; as outras 0); quem entrou depois desse prazo
+(autorizado) já nasce pendente; só o administrador encerra o dia (saída automática no
+prazo de cada uma, registrada) · RN22 só o administrador altera os horários, e cada
+alteração fica no histórico · RN23 ninguém entra depois do fechamento sem autorização
+· RN24 lançamento retroativo (entrada ou saída no passado, no cadastro e na correção):
+até 3 h com o fechamento daquele dia ainda por vir é normal; mais de 3 h pede
+autorização; de um dia que já fechou, só com a senha de um administrador, mesmo com ele
+logado; até 5 min no passado conta como agora · RN25 o veículo tem estadia própria: a
+entrada com placa abre a estadia, a pessoa pode sair a pé e deixar o carro, e o carro
+depois do prazo do responsável fica "Veículo pendente" (o Encerrar o dia não o tira:
+ele está lá) · RN26 uma placa só tem uma estadia aberta: o carro que já está no
+estacionamento não "entra" de novo.
 
 ## 5. Pendências registradas na revisão final (para a versão 2.1+)
 

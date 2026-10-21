@@ -35,6 +35,8 @@ Organização do código (pasta portaria/):
     tela_configuracoes.py  Configurações dos horários (só administrador)
     tela_edicao.py     janela "Corrigir registro"
     tela_autorizacao.py  diálogo "Autorização do administrador"
+    tela_veiculo.py    perguntas "Saiu com o veículo?" e "Saiu junto?"
+    seletor_data.py    calendário e relógio dos campos de data e hora
     tela_senha.py      janela "Trocar minha senha"
 Testes automatizados: python -m unittest
 """
@@ -118,3 +120,10 @@ if __name__ == "__main__":
 #    "int x = 'texto';" mesmo com a sintaxe certa, o sistema não grava: pede
 #    a autorização do administrador (tela_autorizacao.py), e o banco confere
 #    de novo o limite de 24 h (dados.Banco._exigir_autorizacao_24h).
+#    O mesmo vale para o lançamento retroativo (horarios.retroativo): a
+#    entrada "20/10/2026 22:00" digitada às 23:10 é uma data bem escrita, mas
+#    o dia dela já fechou; o significado depende do CONTEXTO (o relógio), não
+#    da forma, e por isso só passa com a senha de um administrador. E a placa
+#    "ABC1234" é válida (léxico e sintaxe), mas não faz sentido entrar de novo
+#    se o carro já está no estacionamento (dados.Banco._abrir_estadia): é a
+#    verificação de "símbolo já declarado", só que com carros.

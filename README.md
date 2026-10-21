@@ -63,7 +63,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-508 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
+535 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
 negócio, login, senhas, permissões, cadastro de pessoas e preenchimento
 automático, saída rápida e desfazer, correção de registros, lista de bloqueio,
 **regras de horário** (cada categoria dentro e fora da janela, ninguém entra
@@ -72,7 +72,10 @@ casos, tolerância, tempo excedido, saída pendente, autorização do
 administrador com e sem senha, encerrar o dia, Configurações), **estadia de
 veículo** (sair a pé, voltar, sair de carro, saída pela placa, veículo
 pendente), histórico de visitas e ordenação na página Pessoas, o
-**calendário e o relógio** dos campos de data, banco de dados, histórico,
+**calendário e o relógio** dos campos de data, o **modo noturno** (contraste
+WCAG AA de todos os pares de cor dos dois temas, tema de cada usuário,
+"Seguir o Windows" com o registro simulado, troca sem fechar o programa
+mantendo sessão, página e formulário), banco de dados, histórico,
 migrações, busca, backup, exportação, Painel e a própria tela (preenche campos
 e clica nos botões com a janela oculta), inclusive a sessão que expira com uma
 confirmação ou a autorização aberta e o tamanho de um notebook 1366×768 a 125%.
@@ -111,6 +114,10 @@ resultado não depende da hora em que eles rodam.
 | **Pessoas** — ordenada pelo cabeçalho (▲ ▼) | **Dia que já fechou** — só com a senha, mesmo para o administrador |
 | ![Pendências com veículo](docs/design/final/r2_pendencias_com_veiculo.png) | ![Funcionamento](docs/design/final/r2_config_funcionamento_1366x670.png) |
 | **Pendências** — saídas e veículo depois do fechamento | **Configurações** — lançamento retroativo de 3 h (notebook 1366×670) |
+| ![Entrada e saída no tema escuro](docs/design/final/escuro_entrada_ficha.png) | ![Painel no tema escuro](docs/design/final/escuro_barra_de_titulo.png) |
+| **Modo noturno** — Entrada e saída no tema escuro | **Modo noturno** — Painel, com a barra de título escura |
+| ![Login no tema escuro](docs/design/final/escuro_login.png) | ![Menu da conta](docs/design/final/escuro_menu_tema.png) |
+| **Modo noturno** — o login segue o tema do Windows | **Menu da conta** — Claro, Escuro ou Seguir o Windows |
 
 **Antes × depois** (a mesma tela na versão 1 e na 2.0):
 
@@ -136,11 +143,23 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
 - **Login**: painel vermelho com o símbolo da cancela e o relógio da guarita;
   à direita, usuário e senha. No primeiro uso, o mesmo layout cria o
   administrador.
+- **Modo noturno**: cada usuário escolhe o tema no menu da conta (três
+  pontos no rodapé da barra lateral): **Tema: Claro**, **Tema: Escuro** ou
+  **Tema: Seguir o Windows** (lê no Windows se os aplicativos estão no modo
+  escuro). A troca acontece na hora, **sem fechar o programa**: a sessão
+  continua, a página aberta também, e o que estava digitado na Entrada e
+  saída volta para o lugar (janelas abertas, como Corrigir, são fechadas). A
+  escolha fica gravada no usuário e vale nos próximos logins dele; a tela de
+  login segue sempre o tema do Windows. O tema escuro ("Guarita à noite") tem
+  paleta própria, com contraste WCAG AA conferido por teste, placa Mercosul
+  branca e barra de título escura no Windows 10/11
+  (`docs/design/PROPOSTA_DESIGN.md`, seção 10). As caixas de mensagem
+  nativas do Windows seguem o tema do próprio Windows.
 - **Barra lateral**: Entrada e saída, Pessoas, Bloqueios, Painel, Usuários e
   Configurações (as duas últimas só para o administrador), com o número de
   pessoas cadastradas e de bloqueios ativos. No
-  rodapé, quem está logado, o menu da conta (**Trocar minha senha**, Sair) e o
-  botão sair.
+  rodapé, quem está logado, o menu da conta (**Trocar minha senha**, o
+  **tema** e Sair) e o botão sair.
 - **Entrada e saída** (tecla **Enter** registra a entrada):
   - ao completar o CPF, a faixa de situação diz se a pessoa é nova, já
     cadastrada (nome, celular, placa e tipo se preenchem sozinhos, só nos campos
@@ -364,7 +383,7 @@ danificado):
 | `portaria/consultas.py` | Busca e números do Painel (versão em Python, usada nos testes) |
 | `portaria/usuarios.py` | Senhas (hash), perfis, permissões, login e troca de senha |
 | `portaria/backup.py` | Backup do banco e exportação para CSV |
-| `portaria/estilo.py` | Tokens do design: cores, fontes, ícones, medidas, escala (DPI) e estilos ttk |
+| `portaria/estilo.py` | Tokens do design: cores dos temas claro e escuro, fontes, ícones, medidas, escala (DPI), estilos ttk e contraste |
 | `portaria/componentes.py` | Peças de tela: cartão, botões, campo, faixa de aviso, placa, tabela, diálogo |
 | `portaria/mensagens.py` | Caixas de mensagem e "Salvar como" |
 | `portaria/interface.py` | Janela principal, barra lateral, sessão e o contrato que as telas usam |
@@ -409,7 +428,10 @@ danificado):
   (sair a pé, voltar, sair de carro, lista de veículos, veículo pendente);
   histórico de visitas e ordenação na página Pessoas; **calendário e
   relógio** nos campos de data; banco na versão 8;
-- 508 testes automatizados.
+- rodada 3: **modo noturno** (Claro, Escuro ou Seguir o Windows, escolhido
+  por usuário no menu da conta e trocado sem fechar o programa); banco na
+  versão 9;
+- 535 testes automatizados.
 
 **2.0** (20/10/2026) — reforma completa, feita com um time de agentes de IA
 (design, segurança, código, backend) e revisada antes de publicar:

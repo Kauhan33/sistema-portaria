@@ -184,6 +184,19 @@ injetado), guardado no banco (esquema v7) e editável na página Configurações
   substituto no sábado); horário por pessoa além da categoria; eventos de vários
   dias de uma vez; relatório das exceções autorizadas no período.
 
+### Versão 2.1 — rodada 3, modo noturno (21/10/2026) ✅
+- ✅ Tema **Claro / Escuro / Seguir o Windows** por usuário, no menu da conta;
+  gravado no banco (v9, migração atômica com backup antes) e aplicado no
+  próximo login. Usuários antigos começam no claro; novos seguem o Windows.
+- ✅ Troca sem fechar o programa: sessão, página e formulário de entrada
+  continuam. A tela de login segue o tema do Windows.
+- ✅ Paleta escura própria ("Guarita à noite"), contraste WCAG AA conferido
+  por teste nos dois temas, placa Mercosul branca, barra de título escura.
+- 535 testes automatizados.
+- Ideias para depois: acompanhar a troca de tema do Windows com o programa
+  aberto (hoje vale no próximo login); manter a seção aberta de cada página
+  (ex.: Configurações › Feriados) ao trocar o tema.
+
 ## 4. Rascunho de requisitos para o Word
 
 **RF**: RF01 cadastrar entrada · RF02 registrar saída (botão, duplo clique,

@@ -4,7 +4,7 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
-**Versão atual: 2.0** (a 2.1 está em desenvolvimento neste ramo) — veja [Versões](#versões).
+**Versão atual: 2.1** — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
 
 ![Tela Entrada e saída](docs/design/final/cadastro_campus.png)
 
@@ -483,13 +483,15 @@ danificado):
 | `assets/` | Ícone do programa (`portaria.ico`) e o script que o gera |
 | `tests/` | Testes automatizados |
 | `IDEIAS_E_MELHORIAS.md` | Análise do código, falhas encontradas e roteiro de melhorias |
+| `docs/IDEIAS_NOVAS.md` | Sugestões de novas funcionalidades e o esboço da linha de comando (Compiladores) |
+| `docs/qa/` | Relatórios dos testes de QA e a lista de correções |
 | `versoes/v1_original/` | Cópia da versão feita no Claude gratuito, para comparar antes × depois |
 | `material_aula/` | Slides da disciplina (enunciado do exercício e guia de documentação) — local, fora do git |
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
 
-**2.1** (em desenvolvimento) — regras de horário de acesso:
+**2.1** (21/10/2026) — regras de horário de acesso, veículos, modo noturno e instalador:
 
 - funcionamento por dia da semana, feriados e eventos; janela de entrada e
   permanência máxima por categoria; limite geral de 24 h;
@@ -515,7 +517,10 @@ danificado):
   estações; busca do CPF para o porteiro; importação validada; diálogo de
   autorização que não trava o login; telas no notebook 1366×670; banco na
   versão 10;
-- 573 testes automatizados.
+- **instalador do Windows** (Inno Setup): programa em Arquivos de Programas,
+  dados em `C:\ProgramData\Portaria`, atalhos e desinstalador; o `.exe`
+  portátil continua disponível;
+- 578 testes automatizados.
 
 **2.0** (20/10/2026) — reforma completa, feita com um time de agentes de IA
 (design, segurança, código, backend) e revisada antes de publicar:

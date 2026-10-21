@@ -95,10 +95,19 @@ não se repete abaixo):
   `autorizados_veiculo(id, placa, cpf, nome, valido_ate, criado_por, criado_em,
   ativo, removido_em, removido_por)`. Fica um índice por placa. Remover é
   lógico, como nos bloqueios.
+- **Quem cadastra (decidido):**
+  - o **porteiro** cadastra só com o dono presente, ou seja, com uma visita
+    aberta do dono no campus naquele momento. O banco confere isso também;
+  - o **administrador** cadastra a qualquer hora;
+  - qualquer usuário pode **remover**, porque remover só diminui a permissão;
+  - o histórico grava quem cadastrou e se o dono estava presente.
+- **Validade (decidido):** opcional. Sem data, a autorização vale até ser
+  removida; com data, vence sozinha.
 - **Tela:**
   - **Cadastro:** na ficha da pessoa (Pessoas), seção **Veículo** com
-    "Quem pode retirar" e os botões Adicionar e Remover. Só o administrador
-    cadastra; a validade é opcional.
+    "Quem pode retirar" e os botões Adicionar e Remover. Para o porteiro, o
+    botão Adicionar só fica ativo com o dono no campus e mostra a dica
+    "o dono precisa estar no campus".
   - **Saída de quem é autorizado:** a pergunta "Vai levar o carro BRA2E19 de
     Carla?" com as opções Sim, leva o carro / Não.
   - **Aba Veículos:** coluna "Pode retirar" com a quantidade de autorizados.
@@ -107,7 +116,11 @@ não se repete abaixo):
   - autorizado no campus leva o carro sem senha;
   - autorizado vencido, removido, fora do campus ou bloqueado: pede senha;
   - autorizado de **outra** placa: pede senha;
-  - desfazer a saída devolve o carro ao estacionamento.
+  - desfazer a saída devolve o carro ao estacionamento;
+  - porteiro cadastrando com o dono fora do campus é recusado, inclusive
+    direto no `Banco`;
+  - administrador cadastra com o dono fora;
+  - porteiro remove e o histórico registra a remoção.
 
 ### V2. Alerta de "carro esquecido" antes do fechamento · P · RN36
 - **Problema:** o carro só aparece como pendente **depois** do fechamento,
@@ -124,9 +137,11 @@ não se repete abaixo):
 - **Regra (RN37):**
   - Em Configurações, o campo "Vagas" (0 = sem controle; limite de 4 dígitos).
   - Com vagas definidas, o cabeçalho mostra "Estacionamento 47/50".
-  - A entrada de carro com o estacionamento lotado **avisa** e pede
-    confirmação. A sugestão é avisar e não bloquear: a decisão está no fim do
-    documento.
+  - A entrada de carro com o estacionamento lotado **avisa** ("Estacionamento
+    lotado (50/50)") e pede confirmação ao porteiro. Em Configurações, a opção
+    "Bloquear quando lotado" (desligada) faz a entrada exigir a senha do
+    administrador.
+  - O valor inicial é 0 vagas, ou seja, sem controle.
 - **Banco (v11):** `parametros.vagas` e `parametros.bloquear_lotado`.
 - **Testes:** contagem com estadias abertas; aviso no limite exato (50/50);
   o valor 0 desliga o controle.
@@ -261,8 +276,9 @@ formulário monta e passa pelas **mesmas** funções: `validacao`, `horarios` e
 - Para Visitante, Prestador e Entregador, aparece uma linha extra no
   formulário:
   - **Vai até:** nome ou setor, com sugestões; até 60 caracteres;
-  - **Motivo:** lista curta;
-  - **Crachá:** sugere o primeiro número livre.
+  - **Motivo:** reunião, entrega, manutenção, evento ou outro;
+  - **Crachá:** sugere o primeiro número livre, de 1 a 50 (faixa ajustável em
+    Configurações).
 - **Regra (RN40):**
   - um crachá não fica com duas pessoas ao mesmo tempo;
   - na saída, o sistema pergunta "Devolveu o crachá 07?";
@@ -398,18 +414,16 @@ formulário monta e passa pelas **mesmas** funções: `validacao`, `horarios` e
 
 ---
 
-## Decisões em aberto
+## Decisões tomadas (21/10/2026)
 
-Para cada decisão, a sugestão padrão vem entre parênteses.
-
-1. **V1:** quem cadastra os autorizados a retirar o veículo? (Só o
-   administrador.) A autorização tem validade obrigatória? (Não, é opcional.)
-2. **V3:** com o estacionamento lotado, o sistema avisa ou bloqueia?
-   (Avisa e pede confirmação; bloquear fica como opção em Configurações.)
-   Quantas vagas? (Começa em 0, sem controle.)
-3. **B3:** quantos códigos de recuperação? (8.)
-4. **A1:** qual a faixa de números dos crachás? (1 a 30.) Quais motivos entram
-   na lista? (Reunião, entrega, manutenção, evento, outro.)
-5. **B1:** por quanto tempo guardar as visitas identificadas? (12 meses.)
-6. **Ordem:** a 2.3 (Compiladores) vem logo depois da 2.2? (Sim, por causa da
-   data de entrega.)
+| Item | Pergunta | Decisão |
+|---|---|---|
+| V1 | Quem cadastra os autorizados a retirar o veículo? | O **porteiro, com o dono presente** (dono no campus naquele momento). O administrador cadastra a qualquer hora. |
+| V1 | A autorização tem validade? | **Opcional.** |
+| V3 | Estacionamento lotado: avisar ou bloquear? | **Avisa e pede confirmação.** Bloquear fica como opção em Configurações. |
+| V3 | Número de vagas inicial | **0**, ou seja, sem controle até o administrador definir. |
+| B3 | Quantos códigos de recuperação? | **8.** |
+| A1 | Faixa dos crachás | **1 a 50**, ajustável em Configurações. |
+| A1 | Motivos da visita | Reunião, entrega, manutenção, evento, outro. Não foi perguntado: ficou o padrão. |
+| B1 | Retenção das visitas identificadas | **12 meses.** |
+| Ordem | O que vem depois da 2.2 | **2.3 Compiladores**, depois a 2.4, a 2.5 e a 2.6. |

@@ -11,7 +11,9 @@ O seletor [Pessoas | Veículos] troca para os carros no estacionamento.
 
 Veículo com estadia própria (dados.py): a entrada com placa abre a estadia
 do carro, e a mesma placa não entra de novo enquanto ele estiver lá. Na
-saída de quem tem carro no estacionamento, a tela pergunta se ele saiu com o carro (tela_veiculo.py); a
+entrada de quem tem placa cadastrada (preenchida sozinha pelo CPF), a
+tela pergunta "vai entrar de carro?" (RN34). Na saída de quem tem carro
+no estacionamento, pergunta se ele saiu com o carro (tela_veiculo.py); a
 pessoa que volta a pé vê a faixa "O carro está no estacionamento" e, na
 próxima saída, pode sair com ele. O VEÍCULO SÓ SAI COM O DONO (RN32): a
 saída rápida pela placa tira o carro junto com o dono no campus; sem o
@@ -47,8 +49,9 @@ from .estilo import (COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM,
                      fonte_icone, px)
 from .tela_autorizacao import autorizar_excecao
 from .tela_edicao import JanelaEdicao
-from .tela_veiculo import (COM_CARRO, JUNTO, liberar_sem_o_dono,
-                           responsavel_saiu_junto, saiu_com_o_veiculo)
+from .tela_veiculo import (COM_CARRO, JUNTO, OUTRO_CARRO,
+                           liberar_sem_o_dono, responsavel_saiu_junto,
+                           saiu_com_o_veiculo, vai_entrar_de_carro)
 from .usuarios import eh_admin, pode_editar, pode_excluir
 from .validacao import (FORMATO, FORMATO_EXIBICAO, MAXIMO_BUSCA,
                         MAXIMO_CPF_OU_PLACA, MAXIMO_NOME, PLACA_OBRIGATORIA,
@@ -796,6 +799,10 @@ class AbaCadastro:
             self._registrar_recusa(registro)
             mensagens.erro("Acesso negado", msg)
             return
+        placa = self._como_vai_entrar(registro)
+        if placa is None:
+            return
+        registro["placa"] = placa
         if registro["placa"] and not registro["saida"]:
             estadia = self._carro_no_estacionamento(registro["placa"])
             if estadia is not None:
@@ -833,6 +840,38 @@ class AbaCadastro:
         hora = registro["entrada"][-5:]
         self.avisar(f"Entrada de {registro['nome'].split()[0]} registrada "
                     f"às {hora}" + self._com_autorizacao(autorizacao))
+
+    def _como_vai_entrar(self, registro):
+        """RN34: quem tem placa cadastrada (o CPF a preencheu e ninguém mexeu
+        no campo Placa) responde se entra de carro. Devolve a placa da
+        visita ('' = a pé) ou None (cancelou ou vai digitar outra placa).
+        Não pergunta se a Placa foi digitada ou apagada à mão (vale o que
+        está no campo), se o carro dela já está no estacionamento (o CPF
+        nem preenche a placa: ela volta a pé) ou se não há placa
+        cadastrada."""
+        sugerida = self._placa_sugerida()
+        if not sugerida or registro["placa"] != sugerida:
+            return registro["placa"]
+        resposta = vai_entrar_de_carro(self.app, registro["nome"], sugerida,
+                                       self._ultima_visita_de_carro())
+        if resposta == OUTRO_CARRO:
+            self.var_placa.set("")
+            self.pecas["placa"][1].entrada.focus_set()
+            return None
+        if resposta is None:
+            return None
+        return sugerida if resposta == COM_CARRO else ""
+
+    def _placa_sugerida(self):
+        """A placa cadastrada que o CPF preencheu, se o campo continua com
+        ela (o porteiro não digitou nem apagou); senão ''."""
+        auto = (self._auto or {}).get("campos", {}).get("placa", "")
+        return auto if auto and self.var_placa.get() == auto else ""
+
+    def _ultima_visita_de_carro(self):
+        ok, visitas = self.app.tentar(self.app.banco.visitas_da_pessoa,
+                                      self._auto["pessoa_id"], 1)
+        return bool(ok and visitas and visitas[0]["placa"])
 
     @staticmethod
     def _com_autorizacao(autorizacao):
@@ -1046,7 +1085,8 @@ class AbaCadastro:
             if not campo.get().strip() and pessoa[chave]:
                 self._escrever(campo, pessoa[chave])
                 preenchidos[chave] = campo.get()
-        self._auto = {"cpf": pessoa["cpf"], "campos": preenchidos}
+        self._auto = {"cpf": pessoa["cpf"], "pessoa_id": pessoa["id"],
+                      "campos": preenchidos}
 
     def _desfazer_preenchimento(self):
         """CPF trocado: apaga o que foi preenchido sozinho e não foi mexido."""

@@ -1,6 +1,11 @@
 """
 Perguntas sobre o carro (estadia de veículo, dados.py):
 
+- na ENTRADA de quem tem placa cadastrada (RN34): "Fulano vai entrar de
+  carro?" → [De carro — ABC-1234] a placa entra na visita (abre a estadia);
+  [A pé] entra sem placa; [Com outro carro] volta ao campo Placa para
+  digitar a outra. O botão destacado (e o Enter) é "De carro" se a última
+  visita dela foi de carro, senão "A pé";
 - a pessoa que sai tem um carro no estacionamento: "Saiu com o veículo
   ABC-1234?" → [Saiu de carro] fecha a visita e a estadia; [Saiu a pé — o
   carro fica] fecha só a visita;
@@ -25,6 +30,7 @@ from .validacao import formatar_placa
 
 COM_CARRO, A_PE = "carro", "a_pe"
 JUNTO, SO_CARRO = "junto", "so_carro"
+OUTRO_CARRO = "outro_carro"
 LIBERAR = "liberar"
 
 
@@ -72,6 +78,26 @@ def _desde(app, estadia):
     hoje = app.relogio().strftime("%d/%m/%Y")
     entrada = estadia["entrada"]
     return entrada[-5:] if entrada.startswith(hoje) else entrada
+
+
+def vai_entrar_de_carro(app, nome, placa, veio_de_carro):
+    """RN34: COM_CARRO, A_PE, OUTRO_CARRO ou None (cancelou).
+    veio_de_carro: a última visita foi de carro (destaca "De carro")."""
+    primeiro = nome.split()[0] if nome.split() else "A pessoa"
+    padrao = COM_CARRO if veio_de_carro else A_PE
+
+    def variante(valor):
+        return "primario" if valor == padrao else "secundario"
+
+    return app.perguntar(
+        _perguntar, app, f"{primeiro} vai entrar de carro?",
+        f"{nome} tem o veículo {formatar_placa(placa)} cadastrado. Ele entra "
+        "com a pessoa agora? A pé, a visita fica sem placa.", placa,
+        [(f"De carro — {formatar_placa(placa)}", COM_CARRO,
+          variante(COM_CARRO)),
+         ("A pé", A_PE, variante(A_PE)),
+         ("Com outro carro", OUTRO_CARRO, "fantasma")],
+        padrao, 520)
 
 
 def saiu_com_o_veiculo(app, nome, estadia):

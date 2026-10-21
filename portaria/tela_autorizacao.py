@@ -5,9 +5,10 @@ regras violadas e pede uma justificativa (obrigatória, vai para o
 histórico).
 
 - Porteiro logado: um administrador vem até a guarita e digita o login e
-  a senha dele (senha oculta). A conferência é a mesma do login
-  (usuarios.entrar): a senha errada conta como tentativa e trava o login
-  depois de várias. Só um administrador ativo autoriza.
+  a senha dele (senha oculta). Só um administrador ativo autoriza. As
+  senhas erradas contam num contador PRÓPRIO desta estação
+  (usuarios.conferir_autorizador): depois de 5, o diálogo fica travado
+  aqui por um tempo, mas o login do administrador não é afetado (N04).
 - Administrador logado: só confirma, com a justificativa (sem senha).
 - Lançamento num dia que JÁ FECHOU (RN24 c, so_com_senha): a senha é
   obrigatória para todos. O administrador logado redigita a própria senha
@@ -24,7 +25,7 @@ import tkinter as tk
 from .componentes import Aviso, Dialogo, campo_rotulado
 from .estilo import COR, FONTE, ICONE, px
 from .horarios import MINIMO_JUSTIFICATIVA, Excecoes
-from .usuarios import eh_admin, entrar
+from .usuarios import conferir_autorizador, eh_admin, estacao_atual
 
 TITULO = "Autorização do administrador"
 SO_ADMIN = ("Somente um administrador pode autorizar a exceção.\n"
@@ -123,8 +124,10 @@ class JanelaAutorizacao(Dialogo):
         """Login de quem autoriza, ou None (com o erro na faixa)."""
         if not self.pede_senha:
             return self.app.autor
-        ok, resposta = self.app.tentar(entrar, self.app.banco, self.login.get(),
-                                       self.senha.get(), self.app.relogio())
+        ok, resposta = self.app.tentar(
+            conferir_autorizador, self.app.banco, self.login.get(),
+            self.senha.get(), estacao_atual(), self.app.autor,
+            self.app.relogio())
         if not ok:
             return None
         usuario, motivo = resposta

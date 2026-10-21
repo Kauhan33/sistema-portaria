@@ -11,6 +11,8 @@ from datetime import date, datetime, timedelta
 
 from portaria import horarios
 from portaria.horarios import Evento, Horario, hora
+from portaria.usuarios import (CHAVE_AUTORIZACAO, LIMITE_TENTATIVAS, entrar,
+                               estacao_atual)
 
 from .test_interface import AGORA, BaseInterface
 
@@ -80,13 +82,41 @@ class TestAutorizacaoComoPorteiro(BaseHorarios):
         self.assertEqual(ocultas, ["•"])                        # senha oculta
         self.assertEqual(self.no_banco(), [])                   # cancelou
 
-    def test_senha_errada_nao_grava_e_conta_tentativa(self):
+    def test_senha_errada_nao_grava_e_conta_tentativa_da_estacao(self):
         self.responder("ana.admin", "senha-errada")
         self.cadastrar_no_domingo()
         self.assertEqual(self.no_banco(), [])
         self.assertIn("incorretos", self.autorizacoes[0].erro)
-        self.assertEqual(self.banco.ler_tentativas_login("ana.admin")[0], 1)
-        self.assertIn(("ana.admin", "Login recusado"), self.acoes())
+        chave = CHAVE_AUTORIZACAO.format(estacao_atual())
+        self.assertEqual(self.banco.ler_tentativas_login(chave)[0], 1)
+        # o contador do login da administradora não é tocado (N04)
+        self.assertEqual(self.banco.ler_tentativas_login("ana.admin")[0], 0)
+        self.assertIn(("paulo", "Autorização recusada"), self.acoes())
+
+    def test_cinco_senhas_erradas_travam_so_o_dialogo_desta_estacao(self):
+        """N04 (QA2 M4): 5 chutes no diálogo travavam o login do
+        administrador em todas as estações."""
+        self.mudar_relogio(DOMINGO)
+        self.preencher(tipo="Aluno")
+        for _ in range(LIMITE_TENTATIVAS):
+            self.responder("ana.admin", "senha-errada")
+            self.app.cadastrar()
+        self.assertIn("travada nesta estação", self.autorizacoes[-1].erro)
+        self.assertIn(("paulo", "Autorização travada"), self.acoes())
+        # até a senha certa é recusada no diálogo, por um tempo
+        self.responder("ana.admin", "senha123")
+        self.app.cadastrar()
+        self.assertIn("travada por mais", self.autorizacoes[-1].erro)
+        self.assertEqual(self.no_banco(), [])
+        # mas a administradora entra normalmente, aqui e em qualquer estação
+        usuario, motivo = entrar(self.banco, "ana.admin", "senha123", DOMINGO)
+        self.assertIsNotNone(usuario, motivo)
+        # passado o tempo, o diálogo volta a aceitar
+        self.mudar_relogio(DOMINGO + timedelta(minutes=1))
+        self.preencher(tipo="Aluno")
+        self.responder("ana.admin", "senha123")
+        self.app.cadastrar()
+        self.assertEqual(len(self.no_banco()), 1)
 
     def test_porteiro_nao_autoriza_a_si_mesmo(self):
         self.responder("paulo", "senha456")

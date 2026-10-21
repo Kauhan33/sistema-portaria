@@ -32,7 +32,9 @@ casos de teste (inclusive negativos, com "passou/falhou").
 
 ## 3. Roteiro sugerido
 
-Ordem pensada para cada etapa já deixar algo entregável.
+Ordem pensada para cada etapa já deixar algo entregável. O plano das próximas
+versões (2.2 a 2.6, com regras RN35 em diante, banco, telas e testes de cada
+ideia) está em `docs/PLANO_DE_IMPLEMENTACAO.md`.
 
 ### Etapa 1 — Base sólida (pré-requisito do resto)
 - ✅ Corrigir F1–F4 (16/10/2026).

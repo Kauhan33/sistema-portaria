@@ -552,9 +552,19 @@ def agora_menos(**delta):
     return (datetime.now() - timedelta(**delta)).strftime(FORMATO)
 
 
+def rebaixar_para_v8(caminho):
+    """Deixa um banco como a versão 8 deixava: sem o tema de cada usuário."""
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        ALTER TABLE usuarios DROP COLUMN tema;
+        PRAGMA user_version = 8;""")
+    con.close()
+
+
 def rebaixar_para_v7(caminho):
     """Deixa um banco como a versão 7 deixava: sem a tolerância e com os
     padrões antigos das regras de horário."""
+    rebaixar_para_v8(caminho)
     con = sqlite3.connect(caminho)
     con.executescript("""
         DROP TABLE estadias_veiculo;

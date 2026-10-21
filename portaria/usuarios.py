@@ -20,6 +20,10 @@ from datetime import datetime, timedelta
 from .validacao import converter_data, nome_valido
 
 PERFIS = {"admin": "Administrador", "porteiro": "Porteiro"}
+# Tema escolhido por cada usuário (menu da conta). "sistema" = seguir o
+# Windows. Os textos do menu ficam em estilo.PREFERENCIAS_TEMA.
+TEMAS = ("claro", "escuro", "sistema")
+TEMA_PADRAO = "sistema"
 SENHA_MINIMA = 8
 SENHA_MAXIMA = 128
 REGEX_LOGIN = re.compile(r"^[a-z0-9._]{3,20}$")
@@ -226,7 +230,7 @@ def entrar(banco, login, senha, agora=None):
     if _conferir(banco, u, senha):
         if falhas or bloqueios:
             banco.gravar_tentativas_login(chave, 0, 0, None)
-        return {k: u[k] for k in ("id", "login", "nome", "perfil")}, ""
+        return {k: u[k] for k in ("id", "login", "nome", "perfil", "tema")}, ""
 
     falhas += 1
     motivo = "Usuário ou senha incorretos."

@@ -336,10 +336,10 @@ class TestMigracaoV7ParaV8(unittest.TestCase):
 
     def test_padroes_antigos_viram_os_novos_e_ganham_tolerancia(self):
         banco = dados.Banco(self.caminho)
-        self.assertEqual(versao_do_arquivo(self.caminho), 8)
+        self.assertEqual(versao_do_arquivo(self.caminho), dados.VERSAO_ESQUEMA)
         self.assertEqual(banco.ler_configuracao(), horarios.configuracao_padrao())
         self.assertIn("Funcionário: entrada até o fechamento", banco.avisos[0])
-        self.assertIn("antes-v8-de-v7",
+        self.assertIn(f"antes-v{dados.VERSAO_ESQUEMA}-de-v7",
                       os.listdir(os.path.join(self.pasta.name, "backups"))[0])
 
     def test_carros_de_quem_esta_no_campus_viram_estadias(self):

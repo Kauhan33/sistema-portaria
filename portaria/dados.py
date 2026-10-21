@@ -48,7 +48,8 @@ from contextlib import closing, contextmanager
 from datetime import date, datetime, timedelta
 
 from . import horarios
-from .usuarios import LOGIN_INEXISTENTE, SESSAO_ENCERRADA, pode_editar
+from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
+                       pode_editar)
 from .validacao import (FORMATO, TIPOS_ACESSO, formatar_placa, mascarar_cpf,
                         mascarar_cpfs_no_texto, so_digitos)
 
@@ -65,7 +66,8 @@ FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
 # 8: tolerância de cada categoria depois do fechamento, padrões novos das
 #    regras de horário (ninguém entra depois de fechar, retroativo de 3 h)
 #    e as estadias de veículo (o carro tem entrada e saída próprias)
-VERSAO_ESQUEMA = 8
+# 9: tema (claro, escuro ou seguir o Windows) escolhido por cada usuário
+VERSAO_ESQUEMA = 9
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
 
@@ -630,8 +632,24 @@ def _passo_v8(banco, con, versao):
               "fechamento. Confira em Configurações.")
 
 
+def _passo_v9(banco, con, versao):
+    """Coluna do tema de cada usuário. Usuário novo começa em "seguir o
+    Windows"; quem já existia começa em "claro", que é como o programa
+    sempre abriu: nada muda para ele até escolher outro tema no menu da
+    conta."""
+    colunas = {c[1] for c in con.execute("PRAGMA table_info(usuarios)")}
+    if "tema" in colunas:
+        return
+    lista = ", ".join(f"'{t}'" for t in TEMAS)
+    con.execute(f"ALTER TABLE usuarios ADD COLUMN tema TEXT NOT NULL "
+                f"DEFAULT '{TEMA_PADRAO}' CHECK (tema IN ({lista}))")
+    if versao > 0:
+        con.execute("UPDATE usuarios SET tema = 'claro'")
+
+
 # (versão alcançada, função) em ordem; uma migração nova entra no fim
-MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7), (8, _passo_v8)]
+MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7), (8, _passo_v8),
+             (9, _passo_v9)]
 
 
 class Banco:
@@ -1621,13 +1639,25 @@ class Banco:
     def buscar_usuario(self, login):
         """Usuário com o hash da senha (só para conferir o login), ou None."""
         with self._conexao() as con:
-            linha = con.execute("SELECT id, login, nome, perfil, senha, ativo "
-                                "FROM usuarios WHERE login = ?", (login,)).fetchone()
+            linha = con.execute("SELECT id, login, nome, perfil, senha, ativo, "
+                                "tema FROM usuarios WHERE login = ?",
+                                (login,)).fetchone()
         if linha is None:
             return None
-        i, login, nome, perfil, senha, ativo = linha
+        i, login, nome, perfil, senha, ativo, tema = linha
         return {"id": i, "login": login, "nome": nome, "perfil": perfil,
-                "senha": senha, "ativo": bool(ativo)}
+                "senha": senha, "ativo": bool(ativo), "tema": tema}
+
+    def definir_tema(self, tema, autor):
+        """Cada usuário escolhe o PRÓPRIO tema (vale nos próximos logins).
+        Não vai para o histórico: é preferência de tela, não ação na
+        portaria."""
+        if tema not in TEMAS:
+            raise ErroDados("Tema desconhecido.", detalhe=repr(tema))
+        with self._conexao() as con:
+            self._exigir(con, autor, so_admin=False)
+            con.execute("UPDATE usuarios SET tema = ? WHERE login = ?",
+                        (tema, autor))
 
     def criar_usuario(self, nome, login, perfil, senha_hash, autor=None):
         """

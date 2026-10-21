@@ -161,8 +161,11 @@ class JanelaEdicao(Dialogo):
         autorizacao, ok = self._autorizar(novo, agora)
         if not ok:
             return
+        # `original`: se outra estação mudou a visita depois que esta janela
+        # abriu (ex.: deu a saída), o banco recusa em vez de desfazer aquilo
         if not self.app.gravar(self.app.banco.editar, self.original["id"],
-                               novo, alteracoes, autorizacao=autorizacao):
+                               novo, alteracoes, autorizacao=autorizacao,
+                               original=self.original):
             return
         self.app.atualizar_tabela()
         self.app.avisar(f"Registro de {novo['nome'].split()[0]} corrigido "

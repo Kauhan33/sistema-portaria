@@ -5,6 +5,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+import unittest.mock
 from datetime import date, datetime
 
 from portaria import dados, horarios
@@ -320,8 +321,149 @@ class TestEstadiasDeVeiculo(BaseRegras):
         self.assertIsNone(self.banco.estadia_aberta(cpf="52998224725"))
         self.banco.editar(visita, original, ["placa"], autor="ana")
         self.assertIsNotNone(self.banco.estadia_aberta(placa="ABC1D23"))
-        self.banco.excluir([visita], autor="ana")
-        self.assertEqual(self.banco.listar_estacionamento(), [])
+
+    def test_excluir_a_visita_nao_tira_o_carro_que_esta_la(self):
+        """QA1 M1 / QA2 M6: a pessoa saiu a pé e o carro ficou; excluir a
+        visita de origem apagava o carro do estacionamento sem avisar."""
+        visita = self.com_carro()
+        self.banco.registrar_saidas([visita], "19/10/2026 09:00", autor="paulo")
+        self.assertEqual(self.banco.excluir([visita], autor="ana"), ["ABC1D23"])
+        carros = self.banco.listar_estacionamento()
+        self.assertEqual([(e["placa"], e["registro_id"], e["tipo"])
+                          for e in carros], [("ABC1D23", None, "Funcionário")])
+        self.assertEqual(self.banco.contadores()["veiculos"], 1)
+        acoes = [e["acao"] for e in self.banco.listar_eventos()[:2]]
+        self.assertEqual(acoes, ["Exclusão de registro",
+                                 "Veículo mantido no estacionamento"])
+        # sai pela placa, como qualquer outro carro
+        self.assertTrue(self.banco.registrar_saida_veiculo(
+            carros[0]["id"], "19/10/2026 10:00", autor="paulo"))
+
+    def test_excluir_visita_cujo_carro_ja_saiu_leva_a_estadia_junto(self):
+        visita = self.com_carro()
+        self.banco.registrar_saidas([visita], "19/10/2026 09:00", autor="paulo",
+                                    com_veiculo={visita})
+        self.assertEqual(self.banco.excluir([visita], autor="ana"), [])
+        con = sqlite3.connect(self.caminho)
+        self.assertEqual(con.execute("SELECT COUNT(*) FROM estadias_veiculo"
+                                     ).fetchone()[0], 0)
+        con.close()
+
+    def dois_carros(self):
+        """Ana entra com GHI1J23, sai a pé, volta com KLM4N56."""
+        primeira = self.com_carro(placa="GHI1J23")
+        self.banco.registrar_saidas([primeira], "19/10/2026 09:00",
+                                    autor="paulo")
+        segunda = self.banco.inserir(registro(placa="KLM4N56",
+                                              entrada="19/10/2026 09:30"),
+                                     autor="paulo")
+        return segunda
+
+    def test_dois_carros_sai_o_da_propria_visita(self):
+        """QA1 M3 / QA2 M1: fechava o mais antigo (o carro errado)."""
+        segunda = self.dois_carros()
+        self.banco.registrar_saidas([segunda], "19/10/2026 10:00",
+                                    autor="paulo", com_veiculo={segunda})
+        self.assertIsNone(self.banco.estadia_aberta(placa="KLM4N56"))
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="GHI1J23"))
+
+    def test_dois_carros_sai_o_escolhido(self):
+        segunda = self.dois_carros()
+        antigo = self.banco.estadia_aberta(placa="GHI1J23")
+        self.assertEqual([e["placa"] for e in
+                          self.banco.estadias_abertas_do_cpf("52998224725")],
+                         ["GHI1J23", "KLM4N56"])
+        self.banco.registrar_saidas([segunda], "19/10/2026 10:00",
+                                    autor="paulo",
+                                    com_veiculo={segunda: antigo["id"]})
+        self.assertIsNone(self.banco.estadia_aberta(placa="GHI1J23"))
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="KLM4N56"))
+
+    def test_carro_de_outra_pessoa_e_recusado(self):
+        segunda = self.dois_carros()
+        outro = self.banco.inserir(registro(cpf="11144477735", placa="XYZ9A87",
+                                            entrada="19/10/2026 09:40"))
+        alheio = self.banco.estadia_aberta(placa="XYZ9A87")
+        with self.assertRaises(dados.ErroDados):
+            self.banco.registrar_saidas([segunda], "19/10/2026 10:00",
+                                        autor="paulo",
+                                        com_veiculo={segunda: alheio["id"]})
+        self.assertEqual(self.banco.buscar(segunda)["saida"], "")
+        self.assertEqual(self.banco.buscar(outro)["saida"], "")
+
+
+class TestCorridaEntreEstacoes(BaseRegras):
+    """Duas estações no mesmo banco: a segunda nunca apaga nem sobrescreve
+    o que a primeira gravou (condição no próprio UPDATE)."""
+
+    AGORA = datetime(2026, 10, 19, 10, 0)
+
+    def outra_estacao(self):
+        return dados.Banco(self.caminho, relogio=lambda: self.AGORA)
+
+    def no_meio(self, alvo, acao):
+        """Roda `acao` (a outra estação) logo depois da 1ª chamada de
+        dados.<alvo>, ou seja, entre a leitura e a gravação desta."""
+        original = getattr(dados, alvo) if hasattr(dados, alvo) else None
+        modulo = dados if original else horarios
+        original = original or getattr(horarios, alvo)
+        feito = []
+
+        def com_gancho(*args, **kwargs):
+            if not feito:
+                feito.append(True)
+                acao()
+            return original(*args, **kwargs)
+        patcher = unittest.mock.patch.object(modulo, alvo, com_gancho)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_correcao_com_linha_desatualizada_e_recusada(self):
+        """QA2 A1: a correção do nome reabria a visita que a outra estação
+        tinha fechado."""
+        id_ = self.banco.inserir(registro(entrada="19/10/2026 08:00"))
+        aberto_na_tela = self.banco.buscar(id_)
+        self.outra_estacao().registrar_saidas([id_], "19/10/2026 09:00",
+                                              autor="paulo")
+        novo = dict(aberto_na_tela, nome="João Ávila Souza")
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.editar(id_, novo, ["Nome"], autor="ana",
+                              original=aberto_na_tela)
+        self.assertIn("outra estação", str(erro.exception))
+        self.assertEqual(self.banco.buscar(id_)["saida"], "19/10/2026 09:00")
+        self.assertEqual(self.banco.buscar(id_)["nome"], "João Ávila")
+        # com a linha em dia, a correção passa
+        atual = self.banco.buscar(id_)
+        self.banco.editar(id_, dict(atual, nome="João Ávila Souza"), ["Nome"],
+                          autor="ana", original=atual)
+        self.assertEqual(self.banco.buscar(id_)["saida"], "19/10/2026 09:00")
+
+    def test_duas_saidas_ao_mesmo_tempo_a_segunda_nao_sobrescreve(self):
+        """QA2 B1: a estação 1 gravava 09:05 por cima das 09:00."""
+        id_ = self.banco.inserir(registro(entrada="19/10/2026 08:00"))
+        self.no_meio("_duracao_iso", lambda: self.outra_estacao()
+                     .registrar_saidas([id_], "19/10/2026 09:00", autor="paulo"))
+        gravados = self.banco.registrar_saidas([id_], "19/10/2026 09:05",
+                                               autor="ana")
+        self.assertEqual(gravados, [])
+        self.assertEqual(self.banco.buscar(id_)["saida"], "19/10/2026 09:00")
+        saidas = [e for e in self.banco.eventos_do_registro(id_)
+                  if e["acao"] == "Saída registrada"]
+        self.assertEqual(len(saidas), 1)
+
+    def test_encerrar_o_dia_nao_registra_saida_falsa(self):
+        """QA2 B2: a saída real (00:20) de outra estação no meio do
+        Encerrar o dia virava 'Saída automática ... 23:00' no histórico."""
+        self.AGORA = datetime(2026, 10, 20, 0, 30)
+        id_ = self.banco.inserir(registro(tipo="Aluno",
+                                          entrada="19/10/2026 08:00"))
+        self.no_meio("prazo_saida", lambda: self.outra_estacao()
+                     .registrar_saidas([id_], "20/10/2026 00:20", autor="paulo"))
+        self.assertEqual(self.banco.encerrar_pendentes(self.AGORA, autor="ana"),
+                         [])
+        self.assertEqual(self.banco.buscar(id_)["saida"], "20/10/2026 00:20")
+        self.assertNotIn("Saída automática (encerramento)",
+                         [e["acao"] for e in self.banco.eventos_do_registro(id_)])
 
 
 class TestMigracaoV7ParaV8(unittest.TestCase):

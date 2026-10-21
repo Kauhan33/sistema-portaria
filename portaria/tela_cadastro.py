@@ -16,6 +16,11 @@ e "Saída pendente" (vermelho, depois do fechamento do dia da entrada).
 Faixas no topo da página avisam as saídas pendentes (o administrador
 encerra o dia) e quando o campus está perto de fechar.
 
+O tempo passa sozinho (ao_passar_o_tempo, a cada 30 s pelo app): o campo
+Entrada acompanha o relógio enquanto ninguém mexe nele (e o registro usa
+o "agora" exato do clique), e a situação de cada linha do Movimento é
+recalculada junto com as faixas, sem reler o banco.
+
 Fala com a janela principal só pelo contrato público do app (ver
 interface.py).
 """
@@ -24,8 +29,8 @@ import tkinter as tk
 from datetime import datetime
 
 from . import horarios, mensagens
-from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao, Placa, link,
-                          data_por_extenso, inserir_linha, plural,
+from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao, Placa, bolinha,
+                          data_por_extenso, inserir_linha, link, plural,
                           rotulo_campo, tabela, titulo_cartao)
 from .consultas import encontrar_dentro
 from .estilo import (COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM,
@@ -104,6 +109,7 @@ class AbaCadastro:
         self.pecas, self.apoios = {}, {}    # rótulo e campo do formulário
         self.compacta = None                # densidade em uso
         self.config = None                  # horários em vigor (horarios.py)
+        self._entrada_automatica = None     # texto que o relógio pôs na Entrada
 
         self._montar_cabecalho()
         self._montar_alertas()
@@ -388,6 +394,45 @@ class AbaCadastro:
     def _agora_texto(self):
         return self.app.relogio().strftime(FORMATO)
 
+    # --------------------------------------------------------------
+    # O tempo passando: campo Entrada, situação das linhas e faixas
+    # --------------------------------------------------------------
+    def ao_passar_o_tempo(self):
+        """Chamado pelo app a cada 30 s (e pelos testes)."""
+        self.acompanhar_relogio()
+        self.atualizar_situacoes()
+        self.atualizar_alertas()
+
+    def entrada_automatica(self):
+        """True enquanto o campo Entrada tem o que o relógio escreveu (o
+        usuário não editou)."""
+        return self.entrada.get() == self._entrada_automatica
+
+    def acompanhar_relogio(self):
+        """A Entrada intocada mostra sempre o agora (o bug do aluno: o campo
+        ficava parado na hora em que o formulário foi limpo)."""
+        if self.entrada_automatica():
+            self._escrever_entrada_agora()
+
+    def _escrever_entrada_agora(self):
+        self._entrada_automatica = self._agora_texto()
+        self.entrada.delete(0, tk.END)
+        self.entrada.insert(0, self._entrada_automatica)
+
+    def atualizar_situacoes(self):
+        """Recalcula a situação (texto, bolinha e destaque) de cada linha
+        mostrada com o relógio de agora, sem reler o banco."""
+        agora = self.app.relogio()
+        for i, iid in enumerate(self.tabela.get_children()):
+            registro = self.mostrados.get(int(iid))
+            if registro is None:
+                continue
+            situacao = self._situacao_da_visita(registro, agora)
+            cor, destaque = APARENCIA[situacao]
+            tags = (destaque,) if destaque else (("zebra",) if i % 2 else ())
+            self.tabela.item(iid, text=situacao, image=bolinha(self.tabela, cor),
+                             tags=tags)
+
     def _situacao_da_visita(self, registro, agora):
         if self.config is None:          # sem a configuração: só dentro/saiu
             return horarios.SAIU if registro["saida"] else horarios.NO_CAMPUS
@@ -558,6 +603,7 @@ class AbaCadastro:
     def cadastrar(self, event=None):
         if event is not None and not self._esta_visivel():
             return  # Enter só registra na página Entrada e saída
+        self.acompanhar_relogio()      # Entrada intocada = o agora exato
         registro = normalizar(self.nome.get(), self.cpf.get(),
                               self.celular.get(), self.var_placa.get(),
                               self.tipo.get(), self.entrada.get(),
@@ -623,8 +669,7 @@ class AbaCadastro:
         self.celular.delete(0, tk.END)
         self.var_placa.set("")
         self.tipo.set("")
-        self.entrada.delete(0, tk.END)
-        self.entrada.insert(0, self._agora_texto())
+        self._escrever_entrada_agora()
         self.saida.delete(0, tk.END)
         self.cpf.focus()
 

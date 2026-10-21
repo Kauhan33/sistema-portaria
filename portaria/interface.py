@@ -373,11 +373,12 @@ class AppPortaria:
 
     def _vigiar_inatividade(self):
         """A cada SEGUNDOS_ENTRE_CONFERENCIAS: confere a inatividade e
-        refaz as faixas de horário (saídas pendentes, aviso de fechamento)."""
+        deixa o tempo passar na Entrada e saída (campo Entrada, situação
+        das linhas, saídas pendentes e aviso de fechamento)."""
         self._timer_inatividade = None
         if not self.conferir_inatividade() and self.usuario:
             if self.tela_cadastro is not None:
-                self.tela_cadastro.atualizar_alertas()
+                self.tela_cadastro.ao_passar_o_tempo()
             self._timer_inatividade = self.janela.after(
                 SEGUNDOS_ENTRE_CONFERENCIAS * 1000, self._vigiar_inatividade)
 

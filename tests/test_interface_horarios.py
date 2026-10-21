@@ -6,6 +6,7 @@ o dia, Painel e a página Configurações. Relógio do app sempre fixo.
 
 import tkinter as tk
 import unittest
+import unittest.mock
 from datetime import date, datetime, timedelta
 
 from portaria import horarios
@@ -266,6 +267,57 @@ class TestSituacaoEFaixas(BaseHorarios):
         self.app.tela_cadastro.encerrar_dia()
         self.msg.showerror.assert_called_once()
         self.assertEqual(self.banco.buscar(id_)["saida"], "")
+
+
+class TestOTempoPassando(BaseHorarios):
+    """O campo Entrada acompanha o relógio e as linhas mudam de situação
+    junto com as faixas (a cada 30 s), sem recarregar."""
+    entrar_como = "porteiro"
+
+    def passar_o_tempo(self, momento):
+        self.agora = momento
+        self.app.registrar_uso()
+        self.app._vigiar_inatividade()          # o temporizador de 30 s
+
+    def test_entrada_intocada_acompanha_o_relogio(self):
+        self.assertEqual(self.app.entrada.get(), tela(AGORA))
+        self.passar_o_tempo(AGORA.replace(minute=7))
+        self.assertEqual(self.app.entrada.get(), tela(AGORA.replace(minute=7)))
+
+    def test_registro_usa_o_agora_exato(self):
+        # o caso do aluno: o campo parado em 22:59 e o registro às 23:05
+        self.agora = AGORA.replace(minute=9)     # sem o temporizador passar
+        self.preencher(tipo="Aluno")
+        self.app.cadastrar()
+        self.assertEqual(self.no_banco()[0]["entrada"],
+                         tela(AGORA.replace(minute=9)))
+
+    def test_entrada_editada_vale_o_que_foi_digitado(self):
+        self.app.entrada.delete(0, tk.END)
+        self.app.entrada.insert(0, tela(AGORA.replace(hour=9, minute=30)))
+        self.passar_o_tempo(AGORA.replace(minute=7))
+        self.assertEqual(self.app.entrada.get(),
+                         tela(AGORA.replace(hour=9, minute=30)))
+        self.preencher(tipo="Aluno")
+        self.app.cadastrar()
+        self.assertEqual(self.no_banco()[0]["entrada"],
+                         tela(AGORA.replace(hour=9, minute=30)))
+        # depois de registrar, o formulário limpo volta a acompanhar
+        self.passar_o_tempo(AGORA.replace(minute=8))
+        self.assertEqual(self.app.entrada.get(), tela(AGORA.replace(minute=8)))
+
+    def test_situacao_da_linha_muda_sem_recarregar(self):
+        id_ = self.banco.inserir(visita(tipo="Visitante", entrada=AGORA))
+        self.app.atualizar_tabela()
+        self.assertEqual(self.situacao_da_linha(id_), horarios.NO_CAMPUS)
+        with unittest.mock.patch.object(self.app.banco, "listar_movimento") as lido:
+            self.passar_o_tempo(AGORA.replace(hour=14, minute=1))
+            lido.assert_not_called()
+        self.assertEqual(self.situacao_da_linha(id_), horarios.TEMPO_EXCEDIDO)
+        self.assertIn("excedido", self.app.tabela.item(str(id_))["tags"])
+        self.passar_o_tempo(AGORA.replace(hour=23, minute=1))
+        self.assertEqual(self.situacao_da_linha(id_), horarios.SAIDA_PENDENTE)
+        self.assertTrue(self.app.tela_cadastro.faixa_pendentes.winfo_manager())
 
 
 class TestEncerrarODia(BaseHorarios):

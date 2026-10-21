@@ -304,6 +304,26 @@ RN31 senhas erradas no diálogo de autorização contam num contador da estaçã
 de 5, só o diálogo fica travado naquele computador (espera crescente), nunca o login
 do administrador; cada erro e a trava ficam no histórico.
 
+Novas na rodada 5 (pedidos do aluno):
+RN32 o VEÍCULO SÓ SAI COM O DONO (o responsável da estadia, quem entrou com o carro):
+sem senha, o carro sai junto com o dono — na saída dele ("Saiu de carro", também
+depois de sair a pé e voltar a pé) e pela placa com o dono no campus saindo junto;
+sem o dono (fora do campus, outra pessoa saindo com o carro, ou pela placa com o dono
+ficando no campus), só com a SENHA de um administrador ativo (o administrador logado
+também redigita a sua) e justificativa, registrado como "Veículo saiu sem o dono". O
+banco confere de novo: fechar uma estadia sem o dono saindo na mesma operação, ou a
+correção que apaga/troca a placa ou o dono de um carro que ficou, só com essa
+autorização; desfazer, exclusão, importação e "Encerrar o dia" não tiram carro ·
+RN33 todo campo de texto tem tamanho máximo (nome 80, login 20, senha 64,
+justificativa e motivo 200, descrição 80, buscas 60, saída rápida 14, data e hora 16,
+data 10, hora 5, CPF e celular 11, placa 7): a digitação para no máximo, a colagem
+corta no máximo, a validação recusa ("X: no máximo N caracteres") e o banco também ·
+RN34 na entrada de quem tem placa cadastrada, a pergunta "vai entrar de carro?"
+(De carro abre a estadia; A pé entra sem placa; Com outro carro volta ao campo
+Placa); não pergunta se a placa foi digitada ou apagada à mão, se o carro já está no
+estacionamento ou se não há placa cadastrada; o Enter escolhe "De carro" se a última
+visita foi de carro, senão "A pé".
+
 ## 5. Pendências registradas na revisão final (para a versão 2.1+)
 
 Detalhes em `docs/revisao/REVISAO_FINAL_CODIGO.md` e `REVISAO_FINAL_SEGURANCA.md`.

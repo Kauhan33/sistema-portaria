@@ -102,7 +102,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-573 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
+649 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
 negócio, login, senhas, permissões, cadastro de pessoas e preenchimento
 automático, saída rápida e desfazer, correção de registros, lista de bloqueio,
 **regras de horário** (cada categoria dentro e fora da janela, ninguém entra
@@ -111,7 +111,11 @@ casos, tolerância, tempo excedido, saída pendente, autorização do
 administrador com e sem senha, encerrar o dia, Configurações, evento que
 soma ao dia, saída com o campus fechado, prazo da categoria), **estadia de
 veículo** (sair a pé, voltar, sair de carro, saída pela placa, veículo
-pendente, dois carros, exclusão que mantém o carro), duas estações ao mesmo
+pendente, dois carros, exclusão que mantém o carro), **o veículo só sai com o
+dono** (senha do administrador, inclusive logado; senha errada; outra pessoa
+com o carro; desfazer, correção, exclusão e importação que não burlam), a
+pergunta **"de carro ou a pé?"** na entrada, o **tamanho máximo de todos os
+campos** (digitação, colagem, validação e banco), duas estações ao mesmo
 tempo (correção com a linha desatualizada, saídas e Encerrar o dia em
 paralelo), histórico de visitas e ordenação na página Pessoas, o
 **calendário e o relógio** dos campos de data, o **modo noturno** (contraste
@@ -160,6 +164,10 @@ resultado não depende da hora em que eles rodam.
 | **Modo noturno** — Entrada e saída no tema escuro | **Modo noturno** — Painel, com a barra de título escura |
 | ![Login no tema escuro](docs/design/final/escuro_login.png) | ![Menu da conta](docs/design/final/escuro_menu_tema.png) |
 | **Modo noturno** — o login segue o tema do Windows | **Menu da conta** — Claro, Escuro ou Seguir o Windows |
+| ![O veículo só sai com o dono](docs/design/final/r5_veiculo_so_sai_com_o_dono_claro.png) | ![Senha do administrador](docs/design/final/r5_senha_do_administrador_claro.png) |
+| **O veículo só sai com o dono** — o dono está fora do campus | **Senha do administrador** — libera o carro, com justificativa (contador 68/200) |
+| ![Dono fora do campus](docs/design/final/r5_veiculos_dono_fora_escuro_1366x670.png) | ![De carro ou a pé?](docs/design/final/r5_entrada_de_carro_ou_a_pe_claro.png) |
+| **Movimento › Veículos** — "Dono fora do campus" (notebook, tema escuro) | **De carro ou a pé?** — na entrada de quem tem placa cadastrada |
 
 **Antes × depois** (a mesma tela na versão 1 e na 2.0):
 
@@ -218,9 +226,9 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     fecha. Campos só de data (feriados, eventos, exportar) abrem só o
     calendário; os só de hora (Configurações), só o relógio;
   - **Saída rápida** no topo (atalho **F2**): CPF ou placa exatos + Enter.
-    Pela placa sai **só o carro** (e, se o responsável estiver no campus, a
-    pergunta se ele saiu junto); placa de carro que não está no
-    estacionamento é recusada, nunca dá a saída da pessoa;
+    Pela placa sai o carro: se o dono (o responsável) está no campus, a
+    pergunta se ele saiu junto (sai os dois, sem senha); placa de carro que
+    não está no estacionamento é recusada, nunca dá a saída da pessoa;
   - tabela **Movimento** com o seletor **Pessoas | Veículos**. Em Pessoas: as
     entradas e saídas de hoje e todo mundo que ainda está no campus; com texto
     na busca, procura no **histórico inteiro** (nome, CPF, celular, placa ou
@@ -231,16 +239,38 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     30 s junto com as faixas. Duplo clique ou "Registrar saída" dão a saída
     (aceita várias linhas); o aviso com **Desfazer** fica 10 segundos no
     rodapé. Em Veículos: placa, responsável, desde quando, situação (**No
-    estacionamento** ou **Veículo pendente**) e se o responsável está no
-    campus ou fora;
+    estacionamento**, **Dono fora do campus** ou **Veículo pendente**) e se
+    o responsável está no campus ou fora;
   - **veículo com estadia própria**: quem entra com placa abre a estadia do
     carro; a mesma placa não entra de novo enquanto ele estiver lá. Na saída
     de quem tem carro no estacionamento, a pergunta **"Saiu com o veículo
     ABC-1234?"** — *Saiu de carro* ou *Saiu a pé — o carro fica*. Quem volta
-    vê a faixa **"O carro ABC-1234 está no estacionamento desde 08:00"** e
-    entra a pé; na próxima saída, a pergunta de novo. Quem tem dois carros
-    no estacionamento (saiu a pé e voltou com outro) é perguntado primeiro
-    pelo carro desta visita;
+    vê a faixa **"O carro ABC-1234 está no estacionamento desde 08:00"**
+    (ele é o dono e pode sair com o carro) e entra a pé; na próxima saída, a
+    pergunta de novo. Quem tem dois carros no estacionamento (saiu a pé e
+    voltou com outro) é perguntado primeiro pelo carro desta visita;
+  - **o veículo só sai com o dono** (RN32): sem o dono — ele está fora do
+    campus, fica no campus ("Só o carro saiu") ou é outra pessoa que sai com
+    o carro — aparece **"O veículo só sai com o dono"** (com o nome e o CPF
+    do dono, mascarado para o porteiro) e, se o porteiro chamar um
+    administrador, o diálogo pede a **senha** dele e a justificativa (o
+    administrador logado também redigita a própria senha). Fica no histórico
+    como **"Veículo saiu sem o dono"**. O banco confere de novo: nenhum
+    caminho (saída, placa, correção, exclusão, desfazer, importação,
+    Encerrar o dia) tira um carro sem o dono sem essa autorização;
+  - **de carro ou a pé?** (RN34): na entrada de quem tem placa cadastrada (o
+    CPF preenche a placa e ninguém mexe nela), a pergunta **"Fulano vai
+    entrar de carro?"** com a placa desenhada — *De carro — ABC-1234* (abre a
+    estadia), *A pé* (sem placa) ou *Com outro carro* (volta ao campo Placa).
+    O Enter escolhe *De carro* se a última visita foi de carro, senão *A pé*.
+    Não pergunta se a placa foi digitada ou apagada à mão, se o carro já está
+    no estacionamento ou se a pessoa não tem placa cadastrada. Vale também
+    para quem vem da página Pessoas ("Registrar entrada");
+  - **tamanho máximo** em todos os campos (RN33): a digitação para no
+    máximo e a colagem corta no máximo (nome 80, login 20, senha 64,
+    justificativa e motivo 200 com o contador "123/200", descrição 80,
+    buscas 60, saída rápida 14, data e hora 16, data 10, hora 5, CPF e
+    celular 11, placa 7). A validação e o banco recusam o que passar;
   - faixas no topo, só quando importam: **saídas pendentes** e **veículos
     pendentes** depois do fechamento (o administrador tem o atalho **Encerrar
     o dia**) e, nos últimos 30 minutos antes de fechar, **"Campus fecha às
@@ -517,10 +547,15 @@ danificado):
   estações; busca do CPF para o porteiro; importação validada; diálogo de
   autorização que não trava o login; telas no notebook 1366×670; banco na
   versão 10;
+- rodada 5: **o veículo só sai com o dono** (sem ele, só com a senha de um
+  administrador, registrada como "Veículo saiu sem o dono", conferida também
+  no banco); pergunta **"de carro ou a pé?"** na entrada de quem tem placa
+  cadastrada; **tamanho máximo em todos os campos** (digitação, colagem,
+  validação e banco); "Redefinir senha" num diálogo no estilo Guarita;
 - **instalador do Windows** (Inno Setup): programa em Arquivos de Programas,
   dados em `C:\ProgramData\Portaria`, atalhos e desinstalador; o `.exe`
   portátil continua disponível;
-- 578 testes automatizados.
+- 649 testes automatizados.
 
 **2.0** (20/10/2026) — reforma completa, feita com um time de agentes de IA
 (design, segurança, código, backend) e revisada antes de publicar:

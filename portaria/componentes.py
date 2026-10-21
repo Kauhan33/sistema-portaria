@@ -400,13 +400,18 @@ class Campo(tk.Frame):
     e o texto em .var. Restrições de digitação (as mesmas em todas as telas):
         numeros=11   só dígitos, no máximo 11 (CPF, celular)
         placa=True   letras e números, até 7, sempre em maiúscula
-    icone + acao_icone: ícone clicável dentro do campo (relógio = agora).
+    icone + acao_icone: ícone clicável dentro do campo.
     dica_vazio: texto cinza mostrado enquanto o campo está vazio.
+    seletor="data_hora" | "data" | "hora": clicar no campo (ou no ícone)
+        abre o calendário/relógio (seletor_data.py); `relogio` é o "agora"
+        dele e `ao_escolher` é chamado depois de preencher. Digitar
+        continua valendo: a primeira tecla fecha o pop-up.
     """
 
     def __init__(self, pai, fundo_pai=None, opcoes=None, numeros=None,
                  placa=False, senha=False, icone=None, acao_icone=None,
-                 dica_vazio="", largura=None, var=None, **kw):
+                 dica_vazio="", largura=None, var=None, seletor=None,
+                 relogio=None, ao_escolher=None, **kw):
         self.fundo_pai = fundo_pai or COR["superficie"]
         super().__init__(pai, bg=self.fundo_pai, height=px(ALTURA_CAMPO))
         if largura:
@@ -443,6 +448,13 @@ class Campo(tk.Frame):
             direita = px(36) if icone else px(10)
             self.entrada.place(x=px(10), rely=0.5, anchor="w", relwidth=1,
                                width=-(px(10) + direita))
+        self.modo_seletor, self.relogio = seletor, relogio
+        self.ao_escolher, self.seletor_aberto = ao_escolher, None
+        if seletor:
+            icone = icone or ICONE["calendario" if seletor == "data" else "relogio"]
+            acao_icone = self.abrir_seletor
+            self.entrada.bind("<Button-1>", self.abrir_seletor, add="+")
+            self.entrada.bind("<Key>", self._tecla_com_seletor, add="+")
         self.acao_icone, self.lbl_icone = acao_icone, None
         if icone:
             self.lbl_icone = tk.Label(self, text=icone, font=fonte_icone(11),
@@ -461,6 +473,30 @@ class Campo(tk.Frame):
         self.entrada.bind("<FocusIn>", lambda e: self._foco(True), add="+")
         self.entrada.bind("<FocusOut>", lambda e: self._foco(False), add="+")
         self.cv.bind("<Configure>", lambda e: self._desenhar())
+
+    def abrir_seletor(self, event=None):
+        """Abre o calendário/relógio embaixo do campo (um por vez)."""
+        if str(self.entrada.cget("state")) == "disabled":
+            return
+        if self.seletor_aberto is not None and self.seletor_aberto.existe():
+            return
+        from .seletor_data import SeletorDataHora   # (importa componentes)
+        fechar_seletor()
+        self.seletor_aberto = SeletorDataHora(self, self.modo_seletor,
+                                              self.relogio, self.ao_escolher)
+        _SELETOR["aberto"] = self.seletor_aberto
+        topo = self.winfo_toplevel()
+        if not getattr(topo, "fecha_seletor_ligado", False):
+            topo.bind("<Button-1>", _clique_fora_do_seletor, add="+")
+            topo.fecha_seletor_ligado = True
+
+    def _tecla_com_seletor(self, event):
+        """Digitar fecha o pop-up (e o texto entra no campo); Esc só fecha."""
+        if self.seletor_aberto is not None and self.seletor_aberto.existe():
+            self.seletor_aberto.fechar()
+            if event.keysym == "Escape":
+                return "break"
+        return None
 
     def usar_icone(self):
         """O que o clique no ícone faz (ex.: relógio = data e hora de agora)."""
@@ -494,6 +530,26 @@ class Campo(tk.Frame):
                         COR["borda_campo"])
         cor, esp = (COR["foco"], px(2)) if self.focado else (COR["traco_campo"], 1)
         cv.create_rectangle(r, h - esp, w - r, h, fill=cor, width=0)
+
+
+_SELETOR = {"aberto": None}       # o calendário/relógio aberto agora
+
+
+def fechar_seletor():
+    aberto = _SELETOR["aberto"]
+    if aberto is not None:
+        aberto.fechar()
+    _SELETOR["aberto"] = None
+
+
+def _clique_fora_do_seletor(event):
+    """Clique em qualquer lugar da janela fora do campo fecha o pop-up."""
+    aberto = _SELETOR["aberto"]
+    if aberto is None or not aberto.existe():
+        return
+    campo = aberto.campo
+    if event.widget not in (campo.entrada, campo.lbl_icone):
+        fechar_seletor()
 
 
 def rotulo_campo(pai, texto, apoio="", fundo=None):

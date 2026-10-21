@@ -306,6 +306,19 @@ class TestOTempoPassando(BaseHorarios):
         self.passar_o_tempo(AGORA.replace(minute=8))
         self.assertEqual(self.app.entrada.get(), tela(AGORA.replace(minute=8)))
 
+    def test_escolher_no_calendario_conta_como_editado(self):
+        campo = self.app.tela_cadastro.pecas["entrada"][1]
+        campo.abrir_seletor()
+        pop = campo.seletor_aberto
+        self.assertEqual(pop.valor, AGORA)                  # abre no agora do app
+        pop.escolher_dia(AGORA.date())
+        pop.escolher_hora(9)
+        pop.escolher_minuto(15)
+        pop.confirmar()
+        self.assertEqual(self.app.entrada.get(), tela(AGORA.replace(hour=9, minute=15)))
+        self.passar_o_tempo(AGORA.replace(minute=7))
+        self.assertEqual(self.app.entrada.get(), tela(AGORA.replace(hour=9, minute=15)))
+
     def test_situacao_da_linha_muda_sem_recarregar(self):
         id_ = self.banco.inserir(visita(tipo="Visitante", entrada=AGORA))
         self.app.atualizar_tabela()

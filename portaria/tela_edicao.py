@@ -76,8 +76,10 @@ class JanelaEdicao(Dialogo):
         self.var_placa, self.caixa_placa = campo_placa.var, campo_placa.entrada
         self.tipo = novo("Tipo de acesso", 2, 1, r["tipo"],
                          opcoes=TIPOS_ACESSO).entrada
-        self.entrada = novo("Entrada", 2, 2, r["entrada"], FORMATO_EXIBICAO).entrada
-        self.saida = novo("Saída", 2, 3, r["saida"], "vazio = no campus").entrada
+        self.entrada = novo("Entrada", 2, 2, r["entrada"], FORMATO_EXIBICAO,
+                            seletor="data_hora", relogio=self.app.relogio).entrada
+        self.saida = novo("Saída", 2, 3, r["saida"], "vazio = no campus",
+                          seletor="data_hora", relogio=self.app.relogio).entrada
         self.cpf.config(font=FONTE["cpf"])
 
     def _montar_historico(self):

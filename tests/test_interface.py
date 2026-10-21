@@ -448,8 +448,8 @@ class TestDashboard(BaseInterface):
 
     def test_sem_registros_mostra_zeros(self):
         self.assertEqual(set(self.app.cards),
-                         {"dentro", "hoje", "permanencia", "veiculos",
-                          "estacionamento", "excedido"})
+                         {"dentro", "hoje", "permanencia", "estacionamento",
+                          "excedido"})
         self.assertEqual(self.valor("estacionamento"), "0")
         self.assertEqual(self.valor("excedido"), "0")
         self.assertEqual(self.valor("dentro"), "0")
@@ -468,8 +468,9 @@ class TestDashboard(BaseInterface):
         self.app.atualizar_tabela()
         self.assertEqual(self.valor("dentro"), "1")
         self.assertEqual(self.valor("hoje"), "1")
-        self.assertEqual(self.valor("veiculos"), "1")
-        self.assertEqual(self.apoio("veiculos"), "de 2 registros")
+        # o carro da visita antiga já saiu com ela: o estacionamento está vazio
+        self.assertEqual(self.valor("estacionamento"), "0")
+        self.assertEqual(self.apoio("estacionamento"), "1 visita com veículo")
         self.assertEqual(self.valor("permanencia"), "5h 00min")
         self.assertEqual(self.apoio("permanencia"), "em 1 visita encerrada")
         self.assertIn("2 registros desde o início",

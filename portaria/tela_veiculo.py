@@ -67,8 +67,8 @@ def saiu_com_o_veiculo(app, nome, estadia):
     placa = formatar_placa(estadia["placa"])
     return app.perguntar(
         _perguntar, app, f"Saiu com o veículo {placa}?",
-        f"{nome} está saindo e o carro dele está no estacionamento desde "
-        f"{_desde(app, estadia)}.", estadia["placa"],
+        f"{nome} está saindo. O carro registrado com essa pessoa está no "
+        f"estacionamento desde {_desde(app, estadia)}.", estadia["placa"],
         [("Saiu de carro", COM_CARRO, "primario"),
          ("Saiu a pé — o carro fica", A_PE, "secundario")])
 

@@ -26,10 +26,10 @@ from .validacao import (TIPOS_ACESSO, converter_data,
                         formatar_celular, formatar_placa, normalizar,
                         validar_campos)
 
-COLUNAS = [("nome", "Nome", 190, "w"), ("cpf", "CPF", 118, "w"),
+COLUNAS = [("nome", "Nome", 160, "w"), ("cpf", "CPF", 112, "w"),
            ("celular", "Celular", 115, "w"), ("placa", "Placa", 80, "w"),
-           ("tipo", "Tipo", 110, "w"), ("visitas", "Visitas", 64, "center"),
-           ("ultima", "Última visita", 128, "w"),
+           ("tipo", "Tipo", 110, "w"), ("visitas", "Visitas", 66, "center"),
+           ("ultima", "Última visita", 124, "w"),
            ("situacao", "Situação", 95, "w")]
 # a ficha mostra o resto; os values continuam completos
 COLUNAS_VISIVEIS = ("nome", "cpf", "visitas", "ultima")
@@ -153,7 +153,7 @@ class AbaPessoas:
                                 fg=COR["texto_2"])
         self.lbl_cpf.pack(anchor="w")
 
-        linha = tk.Frame(c, bg=fundo)
+        self.linha_placa = linha = tk.Frame(c, bg=fundo)
         linha.pack(fill="x", pady=(px(12), 0))
         self.desenho_placa = Placa(linha, fundo, largura=170)
         self.desenho_placa.pack(side="left")
@@ -235,6 +235,12 @@ class AbaPessoas:
         return secao
 
     def mostrar_secao(self, nome):
+        """Cadastro ou Visitas. Nas visitas a placa e os números saem da
+        frente: sobra altura para a lista (tela pequena)."""
+        if nome == SECOES_FICHA[1]:
+            self.linha_placa.pack_forget()
+        else:
+            self.linha_placa.pack(fill="x", pady=(px(12), 0), after=self.lbl_cpf)
         for secao, frame in getattr(self, "secoes", {}).items():
             if secao == nome:
                 frame.pack(fill="both", expand=True)
@@ -288,9 +294,8 @@ class AbaPessoas:
         status = plural(len(pessoas), "pessoa na lista", "pessoas na lista")
         if len(pessoas) >= LIMITE_BUSCA:
             status += f" (as {LIMITE_BUSCA} primeiras: refine a busca)"
-        self.lbl_status.config(text=status + "  ·  clique no cabeçalho para "
-                                             "ordenar  ·  duplo clique começa "
-                                             "uma nova entrada")
+        self.lbl_status.config(text=status + "  ·  o cabeçalho ordena  ·  "
+                                             "duplo clique: nova entrada")
 
     def mostrar_lista(self):
         """Redesenha a lista na ordem escolhida (mantém a seleção)."""

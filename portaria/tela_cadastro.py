@@ -67,11 +67,12 @@ COLUNAS = [("Nome", "Nome", 170, "w"), ("CPF", "CPF", 118, "w"),
            ("Entrada", "Entrada", 128, "w"), ("Saida", "Saída", 128, "w")]
 # o celular continua nos values (mesma linha de antes), mas não aparece
 COLUNAS_VISIVEIS = ("Nome", "CPF", "Placa", "Tipo", "Entrada", "Saida")
-COLUNAS_VEICULOS = [("placa", "Placa", 100, "w"),
-                    ("responsavel", "Responsável", 200, "w"),
-                    ("tipo", "Tipo de acesso", 150, "w"),
-                    ("desde", "No estacionamento desde", 170, "w"),
-                    ("onde", "Responsável está", 150, "w")]
+COLUNAS_VEICULOS = [("placa", "Placa", 96, "w"),
+                    ("responsavel", "Responsável", 190, "w"),
+                    ("tipo", "Tipo de acesso", 130, "w"),
+                    ("desde", "Desde", 120, "w"),
+                    ("onde", "Responsável está", 130, "w")]
+LARGURA_SITUACAO_VEICULO = 168     # cabe "No estacionamento" com a bolinha
 LISTAS = ("Pessoas", "Veículos")
 
 # Abaixo desta altura da página (px lógicos) o layout fica compacto: num
@@ -307,13 +308,9 @@ class AbaCadastro:
                                 before=self.form)
 
     def _campo_data(self, form):
-        """Campo de data/hora; o relógio dentro dele põe a hora de agora."""
-        def preencher_agora():
-            campo.entrada.delete(0, tk.END)
-            campo.entrada.insert(0, self._agora_texto())
-
-        campo = Campo(form, icone=ICONE["relogio"], acao_icone=preencher_agora)
-        return campo
+        """Campo de data/hora: clicar nele (ou no relógio) abre o
+        calendário e o relógio (o "Agora" deles usa o relógio do app)."""
+        return Campo(form, seletor="data_hora", relogio=self.app.relogio)
 
     def _montar_ficha(self):
         """Coluna da direita: a placa desenhada e o histórico da pessoa."""
@@ -403,7 +400,7 @@ class AbaCadastro:
         self.tabela.bind("<Double-1>", self._ao_duplo_clique)
         self.quadro_veiculos, self.tabela_veiculos = tabela(
             m, COLUNAS_VEICULOS, situacao="Situação",
-            largura_situacao=LARGURA_SITUACAO)
+            largura_situacao=LARGURA_SITUACAO_VEICULO)
         self.tabela_veiculos.bind("<Double-1>", self._ao_duplo_clique_veiculo)
         for tab in (self.tabela, self.tabela_veiculos):
             # Enter com o foco na tabela não cadastra (o formulário está vazio)

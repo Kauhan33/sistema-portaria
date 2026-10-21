@@ -1,9 +1,9 @@
 """
-Página Painel: seis números do movimento (no campus agora, entradas de
-hoje, permanência média, com veículo, veículos no estacionamento agora —
-com os pendentes depois do fechamento no apoio — e tempo excedido — as
-visitas abertas acima da permanência máxima da categoria, com as saídas
-pendentes no apoio) e dois gráficos (pessoas por tipo de
+Página Painel: cinco números do movimento (no campus agora, entradas de
+hoje, permanência média, veículos no estacionamento agora — com os
+pendentes depois do fechamento, ou o total de visitas com veículo, no
+apoio — e tempo excedido — as visitas abertas acima da permanência máxima
+da categoria, com as saídas pendentes no apoio) e dois gráficos (pessoas por tipo de
 acesso e entradas nos últimos 7 dias). Os números vêm do banco
 (banco.resumo_painel, calculado no SQL); o desenho fica em graficos.py.
 O administrador exporta os registros de um período para planilha (CSV).
@@ -27,7 +27,7 @@ PLURAL_TIPO = {"Aluno": "Alunos", "Professor": "Professores",
                "Prestador de serviço": "Prestadores"}
 # (chave, rótulo); o primeiro é o destaque
 NUMEROS = [("dentro", "No campus agora"), ("hoje", "Entradas hoje"),
-           ("permanencia", "Permanência média"), ("veiculos", "Com veículo"),
+           ("permanencia", "Permanência média"),
            ("estacionamento", "No estacionamento"),
            ("excedido", "Tempo excedido")]
 ALTURA_GRAFICO = 230
@@ -39,6 +39,7 @@ class AbaDashboard:
         self.aba = aba
         self.app = app
         self.cards = {}                            # chave -> (valor, apoio)
+        self.com_veiculo = 0                       # visitas com placa (total)
         self.dados = {"tipos": [], "dias": []}     # dados prontos dos gráficos
         self.btn_exportar = None
         self.dialogo = None
@@ -126,8 +127,7 @@ class AbaDashboard:
                           f"em {plural(r['saidas'], 'visita encerrada', 'visitas encerradas')}")
         else:
             self._mostrar("permanencia", "—", "sem saídas registradas")
-        self._mostrar("veiculos", r["com_veiculo"],
-                      f"de {plural(r['total'], 'registro', 'registros')}")
+        self.com_veiculo = r["com_veiculo"]
         self._mostrar_horarios()
 
         self.dados["tipos"] = [
@@ -163,7 +163,8 @@ class AbaDashboard:
             config, e, agora) == horarios.VEICULO_PENDENTE)
         self._mostrar("estacionamento", len(veiculos),
                       plural(carros, "veículo pendente", "veículos pendentes")
-                      if carros else "veículos agora")
+                      if carros else plural(self.com_veiculo, "visita com veículo",
+                                            "visitas com veículo"))
         self.cards["estacionamento"][1].config(
             fg=COR["erro"] if carros else COR["texto_3"])
 
@@ -207,10 +208,12 @@ class DialogoExportar(Dialogo):
         datas = tk.Frame(self.miolo, bg=COR["superficie"])
         datas.pack(fill="x")
         datas.columnconfigure((0, 1), weight=1, uniform="d")
-        grupo, campo = campo_rotulado(datas, "De", "dd/mm/aaaa")
+        grupo, campo = campo_rotulado(datas, "De", "dd/mm/aaaa", seletor="data",
+                                      relogio=app.relogio)
         grupo.grid(row=0, column=0, sticky="ew", padx=(0, px(12)))
         self.desde = campo.entrada
-        grupo, campo = campo_rotulado(datas, "Até", "dd/mm/aaaa")
+        grupo, campo = campo_rotulado(datas, "Até", "dd/mm/aaaa", seletor="data",
+                                      relogio=app.relogio)
         grupo.grid(row=0, column=1, sticky="ew")
         self.ate = campo.entrada
         self.faixa = Aviso(self.miolo)

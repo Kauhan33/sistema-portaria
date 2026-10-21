@@ -35,6 +35,8 @@ DICA_CATEGORIAS = ("Do funcionamento: De = min antes de abrir; Até = 0 (até "
                    "hh:mm, só em dia aberto. Ninguém entra depois de fechar. "
                    "Tolerância = min depois do fechamento até a saída pendente.")
 LARGURA_HORA = 84
+LARGURA_HORA_RELOGIO = 104    # hh:mm com o ícone do relógio
+LARGURA_NUMERO = 72           # minutos ou hh:mm na tabela de categorias
 COLUNAS_FERIADOS = [("data", "Data", 96, "w"), ("dia", "Dia", 56, "w"),
                     ("descricao", "Descrição", 200, "w")]
 COLUNAS_EVENTOS = [("data", "Data", 96, "w"), ("horario", "Horário", 104, "w"),
@@ -109,8 +111,8 @@ class AbaConfiguracoes:
             tk.Label(grade, text=nome, font=FONTE["corpo"], bg=COR["superficie"],
                      fg=COR["texto"]).grid(row=linha, column=0, sticky="w")
             aberto = tk.BooleanVar(self.aba, value=True)
-            abre = Campo(grade, largura=LARGURA_HORA)
-            fecha = Campo(grade, largura=LARGURA_HORA)
+            abre = Campo(grade, largura=LARGURA_HORA_RELOGIO, seletor="hora")
+            fecha = Campo(grade, largura=LARGURA_HORA_RELOGIO, seletor="hora")
             for campo in (abre, fecha):      # dia fechado: campo apagado, liso
                 campo.entrada.config(disabledbackground=COR["superficie"],
                                      disabledforeground=COR["texto_3"])
@@ -218,11 +220,11 @@ class AbaConfiguracoes:
         tk.Label(nome, text=tipo, font=FONTE["corpo"], bg=COR["superficie"],
                  fg=COR["texto"]).pack(side="left", padx=(px(4), 0))
         campos = {"janela": Campo(grade, opcoes=JANELAS),
-                  "de": Campo(grade, largura=LARGURA_HORA),
-                  "ate": Campo(grade, largura=LARGURA_HORA),
+                  "de": Campo(grade, largura=LARGURA_NUMERO),
+                  "ate": Campo(grade, largura=LARGURA_NUMERO),
                   "permanencia": Campo(grade, opcoes=PERMANENCIAS),
-                  "minutos": Campo(grade, largura=LARGURA_HORA, numeros=4),
-                  "tolerancia": Campo(grade, largura=LARGURA_HORA, numeros=3)}
+                  "minutos": Campo(grade, largura=LARGURA_NUMERO, numeros=4),
+                  "tolerancia": Campo(grade, largura=LARGURA_NUMERO, numeros=3)}
         for coluna, campo in enumerate(campos.values(), start=1):
             campo.grid(row=linha, column=coluna, sticky="ew", pady=1,
                        padx=(0, px(8) if coluna < len(campos) else 0))
@@ -292,7 +294,8 @@ class AbaConfiguracoes:
         linha = tk.Frame(m, bg=COR["superficie"])
         linha.pack(fill="x")
         linha.columnconfigure(1, weight=1)
-        self.data_feriado = self._campo(linha, 0, 0, "Data", "dd/mm/aaaa", 120)
+        self.data_feriado = self._campo(linha, 0, 0, "Data", "dd/mm/aaaa", 136,
+                                        seletor="data")
         self.nome_feriado = self._campo(linha, 0, 1, "Descrição", "ex.: Natal")
         Botao(linha, "Adicionar", self.adicionar_feriado, "secundario",
               icone=ICONE["mais"]).grid(row=2, column=0, columnspan=2,
@@ -308,9 +311,12 @@ class AbaConfiguracoes:
         linha = tk.Frame(m, bg=COR["superficie"])
         linha.pack(fill="x")
         linha.columnconfigure(3, weight=1)
-        self.data_evento = self._campo(linha, 0, 0, "Data", "dd/mm/aaaa", 120)
-        self.abre_evento = self._campo(linha, 0, 1, "Abre", "hh:mm", LARGURA_HORA)
-        self.fecha_evento = self._campo(linha, 0, 2, "Fecha", "hh:mm", LARGURA_HORA)
+        self.data_evento = self._campo(linha, 0, 0, "Data", "dd/mm/aaaa", 136,
+                                       seletor="data")
+        self.abre_evento = self._campo(linha, 0, 1, "Abre", "hh:mm",
+                                       LARGURA_HORA_RELOGIO, seletor="hora")
+        self.fecha_evento = self._campo(linha, 0, 2, "Fecha", "hh:mm",
+                                        LARGURA_HORA_RELOGIO, seletor="hora")
         self.nome_evento = self._campo(linha, 2, 0, "Descrição", "ex.: Formatura",
                                        juntas=4)
         Botao(linha, "Adicionar", self.adicionar_evento, "secundario",
@@ -336,13 +342,15 @@ class AbaConfiguracoes:
               ).pack(side="right")
         return m
 
-    @staticmethod
-    def _campo(grade, linha, coluna, texto, dica, largura=None, juntas=1):
-        """Rótulo em cima e campo embaixo (o formato fica dentro do campo)."""
+    def _campo(self, grade, linha, coluna, texto, dica, largura=None, juntas=1,
+               seletor=None):
+        """Rótulo em cima e campo embaixo (o formato fica dentro do campo);
+        com `seletor`, o calendário ou o relógio abre no clique."""
         rotulo, _ = rotulo_campo(grade, texto)
         rotulo.grid(row=linha, column=coluna, sticky="w",
                     pady=(px(10) if linha else 0, px(4)))
-        campo = Campo(grade, largura=largura, dica_vazio=dica)
+        campo = Campo(grade, largura=largura, dica_vazio=dica, seletor=seletor,
+                      relogio=self.app.relogio)
         campo.grid(row=linha + 1, column=coluna, columnspan=juntas, sticky="ew",
                    padx=(0, px(8)))
         return campo.entrada

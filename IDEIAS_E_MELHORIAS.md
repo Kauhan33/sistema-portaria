@@ -118,6 +118,12 @@ comando por **voz**, como na Lanchonete.
 - Documento Word completo (capa, RF, RNF, RN, telas com prints, fluxo, testes) na
   pasta `entrega/`.
 - ✅ Executável `Portaria.exe` com PyInstaller (`build_exe.py`, 20/10/2026).
+- ✅ **Instalador do Windows** com Inno Setup (`build_instalador.py` +
+  `instalador/portaria.iss`, 21/10/2026): programa em Arquivos de Programas,
+  dados em `C:\ProgramData\Portaria` (`portaria/caminhos.py`), atalhos,
+  desinstalador que preserva os dados; o `.exe` portátil continua.
+- ✅ **Versão 2.1 publicada** (21/10/2026, release v2.1.0 com o instalador e o
+  `.exe` portátil), zerada: sem dados de teste nem usuários.
 - ✅ Repositório no GitHub **sem** nome, RA ou professora (material e entrega
   ficam fora do git): github.com/Kauhan33/sistema-portaria.
 

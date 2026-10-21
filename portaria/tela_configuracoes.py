@@ -35,7 +35,6 @@ DICA_CATEGORIAS = ("Do funcionamento: De = min antes de abrir; Até = 0 (até "
                    "fechar) ou negativo (min antes de fechar). Horário fixo: "
                    "hh:mm, só com o campus aberto. Ninguém entra depois de fechar. "
                    "Tolerância = min depois do fechamento até a saída pendente.")
-LARGURA_HORA = 84
 LARGURA_HORA_RELOGIO = 104    # hh:mm com o ícone do relógio
 LARGURA_NUMERO = 72           # minutos ou hh:mm na tabela de categorias
 COLUNAS_FERIADOS = [("data", "Data", 96, "w"), ("dia", "Dia", 56, "w"),

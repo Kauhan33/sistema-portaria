@@ -18,7 +18,7 @@ from tkinter import ttk
 
 from . import horarios, mensagens
 from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao,
-                          OrdenacaoTabela, Placa, Seletor, inserir_linha,
+                          EsperaDigitacao, OrdenacaoTabela, Placa, Seletor, inserir_linha,
                           plural, rotulo_campo, tabela, titulo_cartao)
 from .estilo import (COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, fonte_icone,
                      px)
@@ -101,7 +101,7 @@ class AbaPessoas:
                       dica_vazio="Buscar por nome, CPF, celular, placa ou tipo")
         campo.pack(fill="x")
         self.busca = campo.entrada
-        self.busca.bind("<KeyRelease>", lambda e: self.atualizar())
+        self.espera_busca = EsperaDigitacao(self.busca, self.atualizar)
         self.busca.bind("<Return>", lambda e: "break")
 
         rodape = tk.Frame(m, bg=COR["superficie"])
@@ -355,13 +355,18 @@ class AbaPessoas:
         agora = self.app.relogio()
         self.visitas = [self._descrever_visita(r, pessoa, config if ok else None,
                                                agora) for r in visitas]
+        total = max(pessoa["visitas"], len(visitas))   # a contagem real
         self.seletor_ficha.definir_texto(
-            "Visitas", f"Visitas ({len(visitas)})" if visitas else "Visitas")
+            "Visitas", f"Visitas ({total})" if total else "Visitas")
         t = self.lista_visitas
         t.config(state="normal")
         t.delete("1.0", tk.END)
         if not self.visitas:
             t.insert(tk.END, SEM_VISITAS, "como")
+        elif total > len(visitas):
+            t.insert(tk.END, f"Mostrando as {len(visitas)} mais recentes de "
+                             f"{total} visitas.", "como")
+            t.insert(tk.END, "\n", "separa")
         for i, v in enumerate(self.visitas):
             if i:
                 t.insert(tk.END, "\n", "separa")

@@ -38,8 +38,8 @@ import tkinter as tk
 from datetime import datetime
 
 from . import horarios, mensagens
-from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao, Placa,
-                          Seletor, bolinha, data_por_extenso, inserir_linha,
+from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao,
+                          EsperaDigitacao, Placa, Seletor, bolinha, data_por_extenso, inserir_linha,
                           link, plural, rotulo_campo, tabela, titulo_cartao)
 from .consultas import encontrar_dentro
 from .estilo import (COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM,
@@ -139,6 +139,7 @@ class AbaCadastro:
         self._entrada_automatica = None     # texto que o relógio pôs na Entrada
         self.veiculos = []                  # carros no estacionamento
         self.lista = LISTAS[0]              # lista mostrada no Movimento
+        self._dia_mostrado = None           # o "hoje" da última leitura
 
         self._montar_cabecalho()
         self._montar_alertas()
@@ -372,7 +373,7 @@ class AbaCadastro:
                                  dica_vazio="Buscar no histórico: nome, CPF, "
                                             "placa…")
         self.busca = self.campo_busca.entrada
-        self.busca.bind("<KeyRelease>", lambda e: self.atualizar_tabela())
+        self.espera_busca = EsperaDigitacao(self.busca, self.atualizar_tabela)
         self.busca.bind("<Return>", lambda e: "break")   # Enter na busca não cadastra
         self.busca.bind("<KP_Enter>", lambda e: "break")
 
@@ -456,8 +457,12 @@ class AbaCadastro:
     # O tempo passando: campo Entrada, situação das linhas e faixas
     # --------------------------------------------------------------
     def ao_passar_o_tempo(self):
-        """Chamado pelo app a cada 30 s (e pelos testes)."""
+        """Chamado pelo app a cada 30 s (e pelos testes). Na virada do dia
+        relê tudo: o cabeçalho, o movimento e a contagem são "de hoje"."""
         self.acompanhar_relogio()
+        if self.app.relogio().date() != self._dia_mostrado:
+            self.app.atualizar_tabela()
+            return
         self.atualizar_situacoes()
         self.atualizar_alertas()
 
@@ -511,6 +516,7 @@ class AbaCadastro:
         if ok:
             self.config = config
         agora = self.app.relogio()
+        self._dia_mostrado = agora.date()
         texto = self.busca.get().strip()
         if texto:
             ok, registros = self.app.tentar(

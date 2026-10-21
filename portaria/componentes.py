@@ -36,6 +36,7 @@ MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
          "agosto", "setembro", "outubro", "novembro", "dezembro"]
 ICONE_DO_ESTADO = {"sucesso": "ok", "alerta": "alerta", "erro": "erro",
                    "info": "info", "neutro": "info"}
+ESPERA_BUSCA_MS = 300     # pausa na digitação antes de buscar
 
 
 def data_por_extenso(momento=None):
@@ -540,6 +541,37 @@ class Campo(tk.Frame):
                         COR["borda_campo"])
         cor, esp = (COR["foco"], px(2)) if self.focado else (COR["traco_campo"], 1)
         cv.create_rectangle(r, h - esp, w - r, h, fill=cor, width=0)
+
+
+class EsperaDigitacao:
+    """
+    Busca enquanto se digita sem travar a tela (RNF03): `acao` só roda
+    depois de `espera` ms sem teclas que mudem o texto. Digitar um CPF de
+    11 dígitos faz uma busca, não onze; Shift, setas e Tab não buscam.
+    """
+
+    def __init__(self, entrada, acao, espera=ESPERA_BUSCA_MS):
+        self.entrada, self.acao, self.espera = entrada, acao, espera
+        self._timer = None
+        self._visto = entrada.get()
+        entrada.bind("<KeyRelease>", self._ao_soltar_tecla, add="+")
+
+    def _ao_soltar_tecla(self, event=None):
+        texto = self.entrada.get()
+        if texto == self._visto:
+            return
+        self._visto = texto
+        self.cancelar()
+        self._timer = self.entrada.after(self.espera, self._disparar)
+
+    def cancelar(self):
+        if self._timer is not None:
+            self.entrada.after_cancel(self._timer)
+            self._timer = None
+
+    def _disparar(self):
+        self._timer = None
+        self.acao()
 
 
 _SELETOR = {"aberto": None}       # o calendário/relógio aberto agora

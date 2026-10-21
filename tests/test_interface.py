@@ -716,6 +716,42 @@ class TestPrimeiroAcesso(BaseInterface):
         self.assertEqual(len(self.app.tabela.get_children()), 1)
 
 
+class TestBuscaEViradaDoDia(BaseInterface):
+    def test_busca_espera_a_pausa_na_digitacao(self):
+        """QA2 M5: cada tecla buscava no histórico (1,6 s de tela travada
+        para digitar um CPF)."""
+        tela = self.app.tela_cadastro
+        chamadas = []
+        tela.espera_busca.acao = lambda: chamadas.append(tela.busca.get())
+        # a tecla vai para quem tem o foco: a janela precisa estar visível
+        self.app.janela.deiconify()
+        self.app.janela.update()
+        tela.busca.focus_force()
+        self.app.janela.update()
+        for digito in "52998224725":
+            tela.busca.insert(tk.END, digito)
+            tela.busca.event_generate("<KeyRelease>")
+        tela.busca.event_generate("<KeyRelease>")       # Shift: nada muda
+        self.raiz.update()
+        self.assertEqual(chamadas, [])                   # ainda digitando
+        self.raiz.after(400)
+        self.raiz.update()
+        self.app.janela.withdraw()
+        self.assertEqual(chamadas, ["52998224725"])      # uma busca só
+
+    def test_virada_da_meia_noite_rele_o_dia(self):
+        """QA1 B4 / QA2 B9: às 00:05 o cabeçalho e a contagem continuavam
+        de ontem."""
+        self.cadastrar_um()
+        tela = self.app.tela_cadastro
+        self.agora = AGORA.replace(hour=23, minute=50)
+        tela.ao_passar_o_tempo()
+        self.agora = AGORA.replace(hour=0, minute=5) + timedelta(days=1)
+        tela.ao_passar_o_tempo()
+        self.assertIn("22 de outubro", tela.cabecalho.subtitulo.cget("text"))
+        self.assertIn("0 entradas hoje", self.app.lbl_status.cget("text"))
+
+
 class TestDataAbsurdaNoBanco(BaseInterface):
     def test_visita_do_ano_9999_nao_derruba_o_login_nem_o_painel(self):
         """QA2 M3: uma linha de 31/12/9999 (importada sem validação nas
@@ -1335,6 +1371,18 @@ class TestHistoricoEOrdemNaPaginaPessoas(BaseInterface):
         self.aba.ordenacao.clicar("visitas")
         self.aba.atualizar()
         self.assertEqual(self.ordem()[0], "Érico")
+
+    def test_ficha_com_mais_visitas_que_o_limite_mostra_o_total_real(self):
+        """QA2 B8: 503 visitas apareciam como 'Visitas (200)'."""
+        from portaria import tela_pessoas
+        with unittest.mock.patch.object(tela_pessoas, "LIMITE_VISITAS", 4):
+            self.aba.tabela.selection_set(self.ids["Érico"])
+            self.aba.ao_selecionar()
+        self.assertEqual(self.aba.seletor_ficha.itens["Visitas"][0].cget("text"),
+                         "Visitas (10)")
+        self.assertEqual(len(self.aba.visitas), 4)
+        self.assertIn("Mostrando as 4 mais recentes de 10 visitas",
+                      self.aba.lista_visitas.get("1.0", "end"))
 
     def test_ficha_mostra_o_historico_de_visitas(self):
         self.aba.tabela.selection_set(self.ids["Beto"])

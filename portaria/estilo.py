@@ -112,6 +112,7 @@ ICONE = {
     "info": chr(0xE946), "seta": chr(0xE72A), "cadeado": chr(0xE72E),
     "pessoa": chr(0xE77B), "carro": chr(0xE804), "baixar": chr(0xE896),
     "chave": chr(0xE8D7), "mais_opcoes": chr(0xE712),
+    "config": chr(0xE713), "escudo": chr(0xEA18),
 }
 
 # ----------------------------------------------------------------------

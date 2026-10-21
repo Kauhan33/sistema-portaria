@@ -40,6 +40,8 @@ MINUTOS_AVISO_PADRAO = 30         # aviso antes de fechar
 HORAS_RETROATIVO_PADRAO = 12      # entrada mais antiga que isso é exceção
 MINIMO_JUSTIFICATIVA = 10         # caracteres da justificativa da exceção
 LIMITE_MINUTOS = 24 * 60          # nenhum ajuste passa de um dia
+MAXIMO_MINUTOS_AVISO = 180        # 0 = sem aviso antes de fechar
+MAXIMO_HORAS_RETROATIVO = 72
 FORMATO_HORA = "%H:%M"
 FORMATO_DATA = "%d/%m/%Y"
 _REGEX_HORA = re.compile(r"^\d{2}:\d{2}$")
@@ -347,15 +349,33 @@ def ler_horario(abre, fecha, rotulo):
     return Horario(inicio, fim), ""
 
 
-def ler_minutos(texto, rotulo, minimo=0, maximo=LIMITE_MINUTOS):
+def ler_numero(texto, rotulo, minimo, maximo, unidade):
+    """Número inteiro (aceita o sinal de menos tipográfico) entre os limites."""
     texto = texto.strip().replace("−", "-")
     try:
         valor = int(texto)
     except ValueError:
-        return None, f"{rotulo}: digite um número inteiro de minutos."
+        return None, f"{rotulo}: digite um número inteiro de {unidade}."
     if not minimo <= valor <= maximo:
-        return None, f"{rotulo}: use um valor entre {minimo} e {maximo}."
+        return None, f"{rotulo}: use de {minimo} a {maximo} {unidade}."
     return valor, ""
+
+
+def ler_minutos(texto, rotulo, minimo=0, maximo=LIMITE_MINUTOS):
+    return ler_numero(texto, rotulo, minimo, maximo, "minutos")
+
+
+def ler_parametros(minutos_aviso, horas_retroativo):
+    """(minutos do aviso antes de fechar, horas do limite de retroativo)."""
+    minutos, erro = ler_numero(minutos_aviso, "Aviso antes de fechar", 0,
+                               MAXIMO_MINUTOS_AVISO, "minutos")
+    if erro:
+        return None, erro
+    horas, erro = ler_numero(horas_retroativo, "Entrada retroativa", 1,
+                             MAXIMO_HORAS_RETROATIVO, "horas")
+    if erro:
+        return None, erro
+    return (minutos, horas), ""
 
 
 def ler_funcionamento(linhas):

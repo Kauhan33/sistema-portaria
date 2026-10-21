@@ -1,6 +1,8 @@
 """
-Página Painel: quatro números do movimento (no campus agora, entradas de
-hoje, permanência média e com veículo) e dois gráficos (pessoas por tipo de
+Página Painel: cinco números do movimento (no campus agora, entradas de
+hoje, permanência média, com veículo e tempo excedido — as visitas abertas
+acima da permanência máxima da categoria, com as saídas pendentes no
+apoio) e dois gráficos (pessoas por tipo de
 acesso e entradas nos últimos 7 dias). Os números vêm do banco
 (banco.resumo_painel, calculado no SQL); o desenho fica em graficos.py.
 O administrador exporta os registros de um período para planilha (CSV).
@@ -9,7 +11,7 @@ O administrador exporta os registros de um período para planilha (CSV).
 import tkinter as tk
 from datetime import datetime, timedelta
 
-from . import backup, mensagens
+from . import backup, horarios, mensagens
 from .componentes import (Aviso, Botao, Cabecalho, Cartao, Dialogo,
                           campo_rotulado, plural, titulo_cartao)
 from .consultas import formatar_duracao
@@ -24,7 +26,8 @@ PLURAL_TIPO = {"Aluno": "Alunos", "Professor": "Professores",
                "Prestador de serviço": "Prestadores"}
 # (chave, rótulo); o primeiro é o destaque
 NUMEROS = [("dentro", "No campus agora"), ("hoje", "Entradas hoje"),
-           ("permanencia", "Permanência média"), ("veiculos", "Com veículo")]
+           ("permanencia", "Permanência média"), ("veiculos", "Com veículo"),
+           ("excedido", "Tempo excedido")]
 ALTURA_GRAFICO = 230
 FORMATO_DIA = "%d/%m/%Y"
 
@@ -123,6 +126,7 @@ class AbaDashboard:
             self._mostrar("permanencia", "—", "sem saídas registradas")
         self._mostrar("veiculos", r["com_veiculo"],
                       f"de {plural(r['total'], 'registro', 'registros')}")
+        self._mostrar_horarios()
 
         self.dados["tipos"] = [
             (PLURAL_TIPO.get(t, t), por_tipo[t][0], f"{por_tipo[t][1]} no campus")
@@ -130,6 +134,25 @@ class AbaDashboard:
         self.dados["dias"] = [(d.strftime("%d/%m"), n)
                               for d, n in r["por_dia"].items()]
         self.redesenhar_graficos()
+
+    def _mostrar_horarios(self):
+        """Tempo excedido e saídas pendentes, com o relógio do app."""
+        ok, config = self.app.tentar(self.app.banco.ler_configuracao)
+        if not ok:
+            return
+        ok, abertas = self.app.tentar(self.app.banco.listar_abertas)
+        if not ok:
+            return
+        contagem = horarios.contar_situacoes(config, abertas, self.app.relogio())
+        excedidos = contagem[horarios.TEMPO_EXCEDIDO]
+        pendentes = contagem[horarios.SAIDA_PENDENTE]
+        self._mostrar("excedido", excedidos,
+                      "+ " + plural(pendentes, "saída pendente", "saídas pendentes")
+                      if pendentes else "acima da permanência da categoria")
+        self.cards["excedido"][0].config(
+            fg=COR["alerta"] if excedidos else COR["texto"])
+        self.cards["excedido"][1].config(
+            fg=COR["erro"] if pendentes else COR["texto_3"])
 
     def _mostrar(self, chave, valor, apoio):
         self.cards[chave][0].config(text=str(valor))

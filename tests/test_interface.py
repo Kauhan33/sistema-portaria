@@ -13,6 +13,7 @@ from unittest import mock
 from portaria import dados
 from portaria.componentes import Botao
 from portaria.interface import AppPortaria
+from portaria.tela_autorizacao import JanelaAutorizacao
 from portaria.usuarios import (LIMITE_TENTATIVAS, MINUTOS_INATIVIDADE,
                                autenticar, gerar_hash)
 from portaria.validacao import FORMATO, converter_data
@@ -23,19 +24,25 @@ VISITA_ANTIGA = {"nome": "Beto Rocha", "cpf": "11144477735",
                  "saida": "15/10/2026 12:00"}
 
 
+# Relógio fixo do app nos testes: uma quarta-feira às 10:00, com o campus
+# aberto e todas as categorias dentro do horário (as regras de horário não
+# dependem da hora em que os testes rodam).
+AGORA = datetime(2026, 10, 21, 10, 0)
+
+
 def ha_uma_hora():
-    return (datetime.now() - timedelta(hours=1)).strftime(FORMATO)
+    return (AGORA - timedelta(hours=1)).strftime(FORMATO)
 
 
 def agora_menos(minutos):
     """Momento de hoje (não vira ontem perto da meia-noite)."""
-    momento = max(datetime.now() - timedelta(minutes=minutos),
-                  datetime.now().replace(hour=0, minute=0))
+    momento = max(AGORA - timedelta(minutes=minutos),
+                  AGORA.replace(hour=0, minute=0))
     return momento.strftime(FORMATO)
 
 
 def agora_texto():
-    return datetime.now().strftime(FORMATO)
+    return AGORA.strftime(FORMATO)
 
 
 def criar_usuario(banco, nome, login, perfil, senha, autor=None):
@@ -86,7 +93,21 @@ class BaseInterface(unittest.TestCase):
                                       filedialog=self.arquivo)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # o diálogo de autorização não trava o teste: cada teste diz como
+        # "responder" (responder_autorizacao); sem resposta = Cancelar
+        self.autorizacoes = []
+        self.responder_autorizacao = None
 
+        def esperar(dialogo):
+            self.autorizacoes.append(dialogo)
+            if self.responder_autorizacao:
+                self.responder_autorizacao(dialogo)
+
+        patcher = mock.patch.object(JanelaAutorizacao, "esperar", esperar)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.agora = AGORA
         self.banco = dados.Banco(self.caminho_db)
         if self.com_usuarios:
             self.admin = criar_usuario(self.banco, "Ana Admin", "ana.admin",
@@ -96,7 +117,8 @@ class BaseInterface(unittest.TestCase):
         usuario = {"admin": getattr(self, "admin", None),
                    "porteiro": getattr(self, "porteiro", None)}.get(self.entrar_como)
         self.app = AppPortaria(self.caminho_db, self.janela,
-                               json_antigo=self.caminho_json, usuario=usuario)
+                               json_antigo=self.caminho_json, usuario=usuario,
+                               relogio=lambda: self.agora)
 
     def tearDown(self):
         # cancela os temporizadores (ex.: o aviso que some em 10 s) para não
@@ -407,7 +429,9 @@ class TestDashboard(BaseInterface):
 
     def test_sem_registros_mostra_zeros(self):
         self.assertEqual(set(self.app.cards),
-                         {"dentro", "hoje", "permanencia", "veiculos"})
+                         {"dentro", "hoje", "permanencia", "veiculos",
+                          "excedido"})
+        self.assertEqual(self.valor("excedido"), "0")
         self.assertEqual(self.valor("dentro"), "0")
         self.assertEqual(self.valor("hoje"), "0")
         self.assertEqual(self.valor("permanencia"), "—")
@@ -719,7 +743,7 @@ class TestSessao(BaseInterface):
 
     def test_inatividade_fecha_as_janelas_abertas(self):
         dialogo = self.app.trocar_senha()
-        self.app.relogio = lambda: datetime.now() + timedelta(hours=1)
+        self.agora = AGORA + timedelta(hours=1)     # relógio do app
         self.app.conferir_inatividade()
         self.assertFalse(dialogo.janela.winfo_exists())
 

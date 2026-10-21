@@ -8,13 +8,13 @@ e digita o número inteiro de novo (com o documento em mãos).
 """
 
 import tkinter as tk
-from datetime import datetime
 
-from . import mensagens
+from . import horarios, mensagens
 from .componentes import (Aviso, Campo, Dialogo, preencher_eventos,
                           rotulo_campo, tabela_eventos)
 from .consultas import descrever_alteracoes
 from .estilo import COR, FONTE, ICONE, px
+from .tela_autorizacao import autorizar_excecao
 from .usuarios import eh_admin, pode_editar
 from .validacao import (FORMATO_EXIBICAO, TIPOS_ACESSO,
                         checar_bloqueio_correcao, mascarar_cpf, normalizar,
@@ -137,14 +137,15 @@ class JanelaEdicao(Dialogo):
                            parent=self.janela)
             return
         # o porteiro também não pode mover o registro para outro dia
-        ok, msg = pode_editar(self.app.usuario, novo, datetime.now())
+        agora = self.app.relogio()
+        ok, msg = pode_editar(self.app.usuario, novo, agora)
         if ok:
             ok, anteriores = self.app.tentar(self.app.banco.listar_por_cpf,
                                              novo["cpf"])
             if not ok:
                 return
             outros = [r for r in anteriores if r["id"] != self.original["id"]]
-            ok, msg = validar(novo, outros)
+            ok, msg = validar(novo, outros, agora)
         if not ok:
             mensagens.erro("Dados inválidos", msg, parent=self.janela)
             return
@@ -155,10 +156,28 @@ class JanelaEdicao(Dialogo):
         if not ok:
             mensagens.erro("Acesso negado", msg, parent=self.janela)
             return
+        autorizacao, ok = self._autorizar(novo, agora)
+        if not ok:
+            return
         if not self.app.gravar(self.app.banco.editar, self.original["id"],
-                               novo, alteracoes):
+                               novo, alteracoes, autorizacao=autorizacao):
             return
         self.app.atualizar_tabela()
         self.app.avisar(f"Registro de {novo['nome'].split()[0]} corrigido "
                         f"({len(alteracoes)} alteração(ões)).")
         self.fechar()
+
+    def _autorizar(self, novo, agora):
+        """Correção que vira exceção de horário (entrada movida para fora
+        do horário, retroativa antiga, mais de 24 h) pede a autorização.
+        Devolve (autorização ou None, pode seguir?)."""
+        ok, config = self.app.tentar(self.app.banco.ler_configuracao)
+        if not ok:
+            return None, False
+        regras = horarios.excecoes_da_correcao(config, self.original, novo, agora)
+        if not regras:
+            return None, True
+        autorizacao = autorizar_excecao(
+            self.app, regras, f"A correção do registro de {novo['nome']}",
+            dono=self.janela)
+        return autorizacao, autorizacao is not None

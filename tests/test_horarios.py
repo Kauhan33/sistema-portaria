@@ -317,6 +317,13 @@ class TestLeituraDaConfiguracao(unittest.TestCase):
         self.assertIsNone(h.ler_regra("Visitante", False, "08:00", "18:00",
                                       False, "0")[0])      # permanência zero
 
+    def test_parametros(self):
+        self.assertEqual(h.ler_parametros("45", "6"), ((45, 6), ""))
+        self.assertEqual(h.ler_parametros("0", "12"), ((0, 12), ""))
+        self.assertIn("horas", h.ler_parametros("30", "0")[1])
+        self.assertIn("minutos", h.ler_parametros("abc", "12")[1])
+        self.assertIsNone(h.ler_parametros("500", "12")[0])
+
     def test_feriado_e_evento(self):
         config = configuracao_padrao()
         (dia, nome), erro = h.ler_feriado("25/12/2026", "Natal", config)

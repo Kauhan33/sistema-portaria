@@ -2,26 +2,31 @@
 Janela principal (Tkinter): moldura com a barra lateral, sessão do usuário
 (login, saída, troca de senha e saída automática por inatividade) e as
 páginas. Cada página mora no seu módulo: tela_cadastro.py ("Entrada e
-saída"), tela_pessoas.py, tela_bloqueios.py, tela_dashboard.py ("Painel")
-e tela_usuarios.py (só administrador); o login fica em tela_login.py, a
-janela "Corrigir registro" em tela_edicao.py e "Trocar minha senha" em
-tela_senha.py.
+saída"), tela_pessoas.py, tela_bloqueios.py, tela_dashboard.py ("Painel"),
+tela_usuarios.py (só para administrador);
+o login fica em tela_login.py, a janela "Corrigir registro" em
+tela_edicao.py, "Trocar minha senha" em tela_senha.py e a "Autorização do
+administrador" (exceções de horário) em tela_autorizacao.py.
 
-As regras ficam em validacao.py e usuarios.py e o banco de dados (com os
-números do Painel, calculados no SQL) em dados.py — as telas só montam
-widgets e reagem aos botões.
+As regras ficam em validacao.py, usuarios.py e horarios.py e o banco de
+dados (com os números do Painel, calculados no SQL) em dados.py — as
+telas só montam widgets e reagem aos botões.
 
 CONTRATO DO APP — o que as telas podem usar da AppPortaria:
     app.janela                   janela principal (Tk)
     app.banco                    banco de dados (dados.Banco)
     app.usuario                  quem está logado (dicionário)
     app.autor                    login de quem está logado (para o histórico)
-    app.registros                visitas do movimento: as de hoje e todas as
-                                 que ainda não têm saída (banco.listar_movimento)
+    app.registros                visitas do movimento: entradas e saídas de
+                                 hoje e todas as que ainda não têm saída
+                                 (banco.listar_movimento)
+    app.relogio()                o agora (os testes trocam o relógio; as
+                                 regras de horário e o banco usam este)
     app.tentar(operacao, ...)    roda no banco; (True, resultado) ou avisa
                                  o erro e devolve (False, None). Sem sessão
                                  (usuário saiu ou expirou), nem roda
     app.gravar(operacao, ...)    grava em nome do usuário e recarrega a lista
+                                 (aceita nomeados, ex.: autorizacao=...)
     app.perguntar(caixa, ...)    abre uma caixa que trava a tela (Sim/Não,
                                  senha, "Salvar como") e devolve a resposta,
                                  ou None se a sessão acabou com ela aberta
@@ -110,7 +115,8 @@ class AppPortaria:
         usuario: entra direto com esse usuário (usado nos testes); sem ele,
         a janela abre na tela de login.
         relogio: função que devolve o datetime de agora (os testes trocam
-        para simular o tempo passando: login bloqueado, inatividade).
+        para simular o tempo passando: login bloqueado, inatividade, regras
+        de horário). O banco usa o mesmo relógio.
         """
         self.caminho_banco = caminho_banco
         self.json_antigo = json_antigo
@@ -159,7 +165,8 @@ class AppPortaria:
     # --------------------------------------------------------------
     def _carregar(self):
         try:
-            self.banco = dados.Banco(self.caminho_banco)
+            self.banco = dados.Banco(self.caminho_banco,
+                                     relogio=lambda: self.relogio())
             aviso = (self.banco.importar_json(self.json_antigo)
                      if self.json_antigo else "")
         except dados.ErroDados as e:
@@ -230,9 +237,9 @@ class AppPortaria:
     def _avisar_sessao_encerrada():
         mensagens.aviso("Sessão encerrada", SESSAO_ENCERRADA)
 
-    def gravar(self, operacao, *args):
+    def gravar(self, operacao, *args, **kwargs):
         """Grava em nome do usuário logado e recarrega a lista; False se falhar."""
-        ok, _ = self.tentar(operacao, *args, autor=self.autor)
+        ok, _ = self.tentar(operacao, *args, autor=self.autor, **kwargs)
         if ok:
             self.recarregar_registros()
         return ok
@@ -363,8 +370,12 @@ class AppPortaria:
             self._timer_inatividade = None
 
     def _vigiar_inatividade(self):
+        """A cada SEGUNDOS_ENTRE_CONFERENCIAS: confere a inatividade e
+        refaz as faixas de horário (saídas pendentes, aviso de fechamento)."""
         self._timer_inatividade = None
         if not self.conferir_inatividade() and self.usuario:
+            if self.tela_cadastro is not None:
+                self.tela_cadastro.atualizar_alertas()
             self._timer_inatividade = self.janela.after(
                 SEGUNDOS_ENTRE_CONFERENCIAS * 1000, self._vigiar_inatividade)
 
@@ -513,7 +524,7 @@ class AppPortaria:
         """Monta a página na primeira vez (a montagem já lê os dados)."""
         nome_aba, classe = PAGINAS_SOB_DEMANDA[nome]
         aba = self.__dict__.get(nome_aba)
-        tela = classe(aba, self) if aba is not None else None   # Usuários: só admin
+        tela = classe(aba, self) if aba is not None else None   # só admin
         setattr(self, nome, tela)
         return tela
 

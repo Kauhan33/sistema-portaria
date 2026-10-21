@@ -4,9 +4,17 @@ pessoa (com preenchimento automático pelo CPF, faixa de situação e alerta
 de bloqueio), dar saída (saída rápida F2 por CPF ou placa, botão ou duplo
 clique), desfazer a saída, corrigir e excluir registros.
 
-A tabela "Movimento" mostra o dia: as entradas de hoje e todo mundo que
-ainda está no campus (app.registros = banco.listar_movimento). Com texto na
-busca, ela procura no histórico inteiro (banco.buscar_registros).
+A tabela "Movimento" mostra o dia: as entradas e saídas de hoje e todo
+mundo que ainda está no campus (app.registros = banco.listar_movimento).
+Com texto na busca, ela procura no histórico inteiro (banco.buscar_registros).
+
+Regras de horário (horarios.py): entrada fora do horário da categoria,
+retroativa antiga ou visita acima de 24 h é uma EXCEÇÃO e pede a
+autorização do administrador (tela_autorizacao.py). A situação de cada
+visita aberta é calculada com o relógio do app: "Tempo excedido" (âmbar)
+e "Saída pendente" (vermelho, depois do fechamento do dia da entrada).
+Faixas no topo da página avisam as saídas pendentes (o administrador
+encerra o dia) e quando o campus está perto de fechar.
 
 Fala com a janela principal só pelo contrato público do app (ver
 interface.py).
@@ -15,15 +23,16 @@ interface.py).
 import tkinter as tk
 from datetime import datetime
 
-from . import mensagens
+from . import horarios, mensagens
 from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao, Placa, link,
                           data_por_extenso, inserir_linha, plural,
                           rotulo_campo, tabela, titulo_cartao)
 from .consultas import encontrar_dentro
 from .estilo import (COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM,
                      fonte_icone, px)
+from .tela_autorizacao import autorizar_excecao
 from .tela_edicao import JanelaEdicao
-from .usuarios import pode_editar, pode_excluir
+from .usuarios import eh_admin, pode_editar, pode_excluir
 from .validacao import (FORMATO, FORMATO_EXIBICAO, PLACA_OBRIGATORIA,
                         TIPOS_ACESSO, checar_bloqueio, checar_saida,
                         cpf_valido, formatar_celular, formatar_cpf,
@@ -68,8 +77,13 @@ ESPACOS = {
 }
 
 
-def agora():
-    return datetime.now().strftime(FORMATO)
+# Situação da visita -> (cor da bolinha, marca da linha em destaque)
+APARENCIA = {horarios.NO_CAMPUS: (COR["sucesso"], None),
+             horarios.TEMPO_EXCEDIDO: (COR["alerta"], "excedido"),
+             horarios.SAIDA_PENDENTE: (COR["erro"], "pendente"),
+             horarios.SAIU: (COR["barra"], None)}
+LARGURA_SITUACAO = 132         # cabe "Saída pendente" com a bolinha
+MOSTRAR_NO_ENCERRAMENTO = 8    # nomes listados na confirmação
 
 
 def _px(par):
@@ -89,8 +103,10 @@ class AbaCadastro:
         self._saida_para_desfazer = None    # e o horário dela
         self.pecas, self.apoios = {}, {}    # rótulo e campo do formulário
         self.compacta = None                # densidade em uso
+        self.config = None                  # horários em vigor (horarios.py)
 
         self._montar_cabecalho()
+        self._montar_alertas()
         self._montar_formulario()
         self._montar_movimento()
         self._aplicar_densidade(False)
@@ -123,6 +139,14 @@ class AbaCadastro:
         Botao(linha, "Registrar saída", self.saida_rapida, "secundario",
               fundo_pai=COR["fundo"], dica_tecla="Enter"
               ).pack(side="left", padx=(px(8), 0))
+
+    def _montar_alertas(self):
+        """Faixas que só aparecem quando importam (sem caixa de diálogo):
+        saídas pendentes e o campus perto de fechar."""
+        self.alertas = tk.Frame(self.aba, bg=COR["fundo"])
+        self.alertas.pack(fill="x", padx=px(MARGEM))
+        self.faixa_pendentes = Aviso(self.alertas, fundo_pai=COR["fundo"])
+        self.faixa_fechamento = Aviso(self.alertas, fundo_pai=COR["fundo"])
 
     def _montar_formulario(self):
         """Cartão "Nova entrada". As peças são criadas aqui e posicionadas
@@ -250,7 +274,7 @@ class AbaCadastro:
         """Campo de data/hora; o relógio dentro dele põe a hora de agora."""
         def preencher_agora():
             campo.entrada.delete(0, tk.END)
-            campo.entrada.insert(0, agora())
+            campo.entrada.insert(0, self._agora_texto())
 
         campo = Campo(form, icone=ICONE["relogio"], acao_icone=preencher_agora)
         return campo
@@ -337,7 +361,8 @@ class AbaCadastro:
 
         quadro, self.tabela = tabela(m, COLUNAS, situacao="Situação",
                                      mostrar=COLUNAS_VISIVEIS,
-                                     selecao="extended")
+                                     selecao="extended",
+                                     largura_situacao=LARGURA_SITUACAO)
         quadro.pack(fill="both", expand=True, padx=px(12))
         self.tabela.bind("<Double-1>", self._ao_duplo_clique)
         # Enter com o foco na tabela não cadastra (o formulário está vazio)
@@ -352,8 +377,20 @@ class AbaCadastro:
         self.app.recarregar_registros()
         self.atualizar_tabela()
 
+    def _agora_texto(self):
+        return self.app.relogio().strftime(FORMATO)
+
+    def _situacao_da_visita(self, registro, agora):
+        if self.config is None:          # sem a configuração: só dentro/saiu
+            return horarios.SAIU if registro["saida"] else horarios.NO_CAMPUS
+        return horarios.situacao(self.config, registro, agora)
+
     def atualizar_tabela(self):
         """Sem busca: o movimento (hoje + no campus). Com busca: o histórico."""
+        ok, config = self.app.tentar(self.app.banco.ler_configuracao)
+        if ok:
+            self.config = config
+        agora = self.app.relogio()
         texto = self.busca.get().strip()
         if texto:
             ok, registros = self.app.tentar(self.app.banco.buscar_registros,
@@ -367,7 +404,8 @@ class AbaCadastro:
         self.mostrados = {}
         for i, r in enumerate(registros):
             self.mostrados[r["id"]] = r
-            dentro = not r["saida"]
+            situacao = self._situacao_da_visita(r, agora)
+            cor, destaque = APARENCIA[situacao]
             inserir_linha(self.tabela, i, (
                 r["nome"],
                 self.app.exibir_cpf(r.get("cpf", "")),
@@ -376,8 +414,8 @@ class AbaCadastro:
                 r["tipo"],
                 r["entrada"],
                 r["saida"] or "—"), iid=str(r["id"]),
-                situacao="No campus" if dentro else "Saiu",
-                cor=COR["sucesso"] if dentro else COR["barra"])
+                situacao=situacao, cor=cor,
+                tags=(destaque,) if destaque else (), zebra=not destaque)
         manter = [i for i in selecao if self.tabela.exists(i)]
         if manter:
             self.tabela.selection_set(manter)
@@ -400,6 +438,93 @@ class AbaCadastro:
         self.lbl_no_campus.config(
             text="Ninguém no campus agora" if not dentro else
             plural(dentro, "pessoa", "pessoas") + " no campus agora")
+        self.atualizar_alertas()
+
+    # --------------------------------------------------------------
+    # Faixas: saídas pendentes e aviso antes de fechar
+    # --------------------------------------------------------------
+    def atualizar_alertas(self):
+        """Recalcula as faixas com o relógio (também a cada 30 s, pelo app):
+        não depende de alguém estar usando a tela na hora de fechar."""
+        if self.config is None:
+            return
+        agora = self.app.relogio()
+        contagem = horarios.contar_situacoes(self.config, self.app.registros,
+                                             agora)
+        pendentes = contagem[horarios.SAIDA_PENDENTE]
+        if pendentes:
+            admin = eh_admin(self.app.usuario)
+            texto = (plural(pendentes, "saída pendente", "saídas pendentes")
+                     + ": ficaram no campus depois do fechamento do dia da "
+                       "entrada. Registre a saída de cada uma"
+                     + (" ou encerre o dia." if admin
+                        else " ou peça a um administrador para encerrar o dia."))
+            self.faixa_pendentes.mostrar(
+                "erro", texto, icone=ICONE["alerta"],
+                acao="Encerrar o dia" if admin else None,
+                comando=self.encerrar_dia)
+        self._exibir(self.faixa_pendentes, pendentes > 0)
+
+        minutos = horarios.minutos_para_fechar(self.config, agora)
+        if minutos is not None:
+            fecha = horarios.expediente(self.config, agora.date()).fecha
+            dentro = sum(contagem.values())
+            texto = (f"O campus fecha às {fecha:%H:%M} (em {minutos} min). "
+                     + ("Ninguém no campus agora." if not dentro else
+                        f"Ainda há {plural(dentro, 'pessoa', 'pessoas')} "
+                        "no campus."))
+            self.faixa_fechamento.mostrar("info", texto, icone=ICONE["relogio"])
+        self._exibir(self.faixa_fechamento, minutos is not None)
+
+    def _exibir(self, faixa, visivel):
+        if visivel and not faixa.winfo_ismapped():
+            faixa.pack(fill="x", pady=(0, px(8)))
+        elif not visivel:
+            faixa.pack_forget()
+
+    def encerrar_dia(self):
+        """Só administrador: saída automática de todas as saídas pendentes,
+        no prazo de cada uma (o fechamento do dia da entrada)."""
+        if not eh_admin(self.app.usuario):
+            mensagens.erro("Acesso negado",
+                           "Somente o administrador pode encerrar o dia.")
+            return
+        self.app.recarregar_registros()
+        agora = self.app.relogio()
+        pendentes = [r for r in self.app.registros
+                     if self._situacao_da_visita(r, agora)
+                     == horarios.SAIDA_PENDENTE]
+        if not pendentes:
+            mensagens.info("Encerrar o dia", "Não há saídas pendentes.")
+            self.app.atualizar_tabela()
+            return
+        if not self.app.perguntar(mensagens.confirmar, "Encerrar o dia",
+                                  self._texto_encerramento(pendentes)):
+            return
+        ok, encerradas = self.app.tentar(self.app.banco.encerrar_pendentes,
+                                         agora, autor=self.app.autor)
+        if not ok:
+            return
+        self.app.atualizar_tabela()
+        self.avisar(plural(len(encerradas), "saída automática registrada",
+                           "saídas automáticas registradas")
+                    + " no encerramento do dia.")
+
+    def _texto_encerramento(self, pendentes):
+        linhas = []
+        for r in pendentes[:MOSTRAR_NO_ENCERRAMENTO]:
+            prazo = horarios.prazo_saida(self.config, r["tipo"],
+                                         datetime.strptime(r["entrada"], FORMATO))
+            linhas.append(f"• {r['nome']}: entrada {r['entrada']}, "
+                          f"saída {prazo:{FORMATO}}")
+        if len(pendentes) > MOSTRAR_NO_ENCERRAMENTO:
+            linhas.append(f"• e mais {len(pendentes) - MOSTRAR_NO_ENCERRAMENTO}")
+        return ("Dar saída automática a "
+                + plural(len(pendentes), "visita pendente", "visitas pendentes")
+                + ", no horário de fechamento do dia de cada entrada?\n\n"
+                + "\n".join(linhas)
+                + "\n\nCada uma fica no histórico como "
+                  "\"Saída automática (encerramento)\".")
 
     def _registro(self, iid):
         """Registro da linha da tabela (iid = id no banco). Se a linha já
@@ -438,17 +563,37 @@ class AbaCadastro:
                                          registro["cpf"])
         if not ok:
             return
-        ok, msg = validar(registro, anteriores)
+        agora = self.app.relogio()
+        ok, msg = validar(registro, anteriores, agora)
         if not ok:
             mensagens.erro("Dados inválidos", msg)
             return
-        if not self.app.gravar(self.app.banco.inserir, registro):
+        # VERIFICAÇÃO SEMÂNTICA 6: a entrada faz sentido para a categoria
+        # naquele dia e horário? Se não, é exceção: só com autorização
+        ok, config = self.app.tentar(self.app.banco.ler_configuracao)
+        if not ok:
+            return
+        autorizacao = None
+        regras = horarios.excecoes_do_registro(config, registro, agora)
+        if regras:
+            autorizacao = autorizar_excecao(self.app, regras,
+                                            f"A entrada de {registro['nome']}")
+            if autorizacao is None:
+                return
+        if not self.app.gravar(self.app.banco.inserir, registro,
+                               autorizacao=autorizacao):
             return
         self.app.atualizar_tabela()
         self.limpar()
         hora = registro["entrada"][-5:]
         self.avisar(f"Entrada de {registro['nome'].split()[0]} registrada "
-                    f"às {hora}.")
+                    f"às {hora}" + self._com_autorizacao(autorizacao))
+
+    @staticmethod
+    def _com_autorizacao(autorizacao):
+        if autorizacao is None:
+            return "."
+        return f" (exceção autorizada por {autorizacao['autorizado_por']})."
 
     def _registrar_recusa(self, registro):
         detalhe = f"{registro['nome'] or '?'}, CPF {formatar_cpf(registro['cpf'])}"
@@ -465,7 +610,7 @@ class AbaCadastro:
         self.var_placa.set("")
         self.tipo.set("")
         self.entrada.delete(0, tk.END)
-        self.entrada.insert(0, agora())
+        self.entrada.insert(0, self._agora_texto())
         self.saida.delete(0, tk.END)
         self.cpf.focus()
 
@@ -617,7 +762,7 @@ class AbaCadastro:
             mensagens.aviso("Atenção", "Selecione um registro só para corrigir.")
             return
         registro = self._registro(selecionado[0])
-        ok, msg = pode_editar(self.app.usuario, registro, datetime.now())
+        ok, msg = pode_editar(self.app.usuario, registro, self.app.relogio())
         if not ok:
             mensagens.erro("Acesso negado", msg)
             return
@@ -689,8 +834,9 @@ class AbaCadastro:
         return "break"
 
     def _dar_saida(self, registros):
-        """Registra a saída agora; avisa sem travar a tela e oferece desfazer."""
-        momento = datetime.now()
+        """Registra a saída agora; avisa sem travar a tela e oferece desfazer.
+        Visita que passaria de 24 h é exceção: pede a autorização antes."""
+        momento = self.app.relogio().replace(second=0, microsecond=0)
         prontos, recusas = [], []
         for r in registros:
             ok, msg = checar_saida(r, momento)
@@ -701,10 +847,18 @@ class AbaCadastro:
         if not prontos:
             mensagens.info("Aviso", "\n".join(recusas))
             return False
+        regras = [f"{r['nome']}: {regra}" for r in prontos
+                  for regra in horarios.excecoes_da_duracao(
+                      datetime.strptime(r["entrada"], FORMATO), momento)]
+        autorizacao = None
+        if regras:
+            autorizacao = autorizar_excecao(self.app, regras, "Esta saída")
+            if autorizacao is None:
+                return False
         saida = momento.strftime(FORMATO)
         ok, gravados = self.app.tentar(
             self.app.banco.registrar_saidas, [r["id"] for r in prontos], saida,
-            autor=self.app.autor)
+            autor=self.app.autor, autorizacao=autorizacao)
         if not ok:
             return False
         # a linha pode estar desatualizada: só conta o que o banco gravou
@@ -718,7 +872,8 @@ class AbaCadastro:
         nomes = primeiros[-1]
         if len(primeiros) > 1:
             nomes = ", ".join(primeiros[:-1]) + " e " + nomes
-        texto = f"Saída de {nomes} registrada às {momento:%H:%M}."
+        texto = (f"Saída de {nomes} registrada às {momento:%H:%M}"
+                 + self._com_autorizacao(autorizacao))
         nao_gravadas = len(recusas) + len(prontos) - len(gravadas)
         if nao_gravadas:
             texto += (f" ({nao_gravadas} já tinha(m) saída ou foi(ram) "

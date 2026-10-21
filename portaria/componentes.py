@@ -546,7 +546,7 @@ class Aviso(tk.Frame):
         self.lbl = tk.Label(self.interno, font=FONTE["corpo_semi"], anchor="w",
                             justify="left")
         self.lbl.pack(side="left", fill="x", expand=True)
-        self.acao = None
+        self.acao = self.comando = None
         self.cv.bind("<Configure>", self._ao_redimensionar)
         self.mostrar("neutro", "")
 
@@ -562,6 +562,7 @@ class Aviso(tk.Frame):
         if self.acao is not None:
             self.acao.destroy()
             self.acao = None
+        self.comando = comando if acao else None     # o que o link faz
         if acao:
             self.acao = link(self.interno, acao, comando or (lambda: None),
                              fundo=cor_fundo, cor=cor_texto)
@@ -773,11 +774,13 @@ class Cabecalho(tk.Frame):
 # Tabelas
 # ----------------------------------------------------------------------
 def tabela(pai, colunas, situacao=None, mostrar=None, altura=None,
-           selecao="browse", rolagem=True, compacta=False):
+           selecao="browse", rolagem=True, compacta=False,
+           largura_situacao=112):
     """
     Tabela (Treeview no estilo Guarita) dentro de um Frame branco.
     colunas: lista de (id, título, largura, âncora).
-    situacao: título da 1ª coluna (bolinha + texto), ex.: "Situação".
+    situacao: título da 1ª coluna (bolinha + texto), ex.: "Situação",
+    com `largura_situacao` px lógicos.
     mostrar: ids das colunas visíveis (as outras continuam nos values).
     Devolve (quadro, tabela).
     """
@@ -791,9 +794,9 @@ def tabela(pai, colunas, situacao=None, mostrar=None, altura=None,
     larguras = {}                       # largura de projeto de cada coluna
     if situacao:
         tab.heading("#0", text=situacao, anchor="w")
-        larguras["#0"] = px(112)
-        tab.column("#0", width=px(112), minwidth=px(90), stretch=False,
-                   anchor="w")
+        larguras["#0"] = px(largura_situacao)
+        tab.column("#0", width=px(largura_situacao), minwidth=px(90),
+                   stretch=False, anchor="w")
     for col, titulo, largura, ancora in colunas:
         tab.heading(col, text=titulo, anchor="w" if ancora == "w" else ancora)
         larguras[col] = px(largura)
@@ -805,6 +808,9 @@ def tabela(pai, colunas, situacao=None, mostrar=None, altura=None,
              add="+")
     tab.tag_configure("zebra", background=COR["superficie_2"])
     tab.tag_configure("apagado", foreground=COR["texto_3"])
+    # linhas em destaque (Movimento): fundo claro do estado, sem zebra
+    tab.tag_configure("pendente", background=ESTADO["erro"][1])
+    tab.tag_configure("excedido", background=ESTADO["alerta"][1])
     tab.pack(side="left", fill="both", expand=True)
     if rolagem:
         barra = ttk.Scrollbar(quadro, orient="vertical", command=tab.yview,
@@ -835,9 +841,10 @@ def _encaixar_colunas(tab, larguras):
 
 
 def inserir_linha(tab, indice, values, iid=None, situacao=None, cor=None,
-                  tags=()):
-    """Linha com zebra; `situacao` + `cor` = texto e bolinha da 1ª coluna."""
-    tags = tuple(tags) + (("zebra",) if indice % 2 else ())
+                  tags=(), zebra=True):
+    """Linha com zebra (zebra=False para linha em destaque, que tem fundo
+    próprio); `situacao` + `cor` = texto e bolinha da 1ª coluna."""
+    tags = tuple(tags) + (("zebra",) if zebra and indice % 2 else ())
     opcoes = {"iid": iid} if iid is not None else {}
     if situacao is not None:
         opcoes["text"] = situacao
@@ -860,6 +867,49 @@ def preencher_eventos(tab, eventos):
     for i, e in enumerate(eventos):
         inserir_linha(tab, i, (e["momento"], e["usuario"], e["acao"],
                                e["detalhe"]))
+
+
+class Seletor(tk.Frame):
+    """
+    Navegação entre as seções de uma página (como as abas do Windows 11):
+    a seção ativa fica em texto escuro com o traço vermelho UNA embaixo,
+    o mesmo sinal do item ativo da barra lateral. Tab leva o foco; Enter
+    ou Espaço escolhem. `comando(opcao)` é chamado na troca.
+    """
+
+    def __init__(self, pai, opcoes, comando, fundo_pai=None):
+        self.fundo_pai = fundo_pai or COR["fundo"]
+        super().__init__(pai, bg=self.fundo_pai)
+        self.comando, self.ativa = comando, None
+        self.itens = {}
+        for opcao in opcoes:
+            item = tk.Frame(self, bg=self.fundo_pai)
+            item.pack(side="left", padx=(0, px(20)))
+            rotulo = tk.Label(item, text=opcao, font=FONTE["corpo"],
+                              bg=self.fundo_pai, fg=COR["texto_2"],
+                              cursor="hand2", takefocus=1, padx=px(2),
+                              pady=px(4), highlightthickness=px(2),
+                              highlightcolor=COR["foco"],
+                              highlightbackground=self.fundo_pai)
+            rotulo.pack()
+            traco = tk.Frame(item, height=px(3), bg=self.fundo_pai)
+            traco.pack(fill="x")
+            for evento in ("<Button-1>", "<Return>", "<space>"):
+                rotulo.bind(evento, lambda e, o=opcao: self.selecionar(o))
+            self.itens[opcao] = (rotulo, traco)
+        linha = tk.Frame(self, bg=COR["borda"], height=1)
+        linha.place(relx=0, rely=1, relwidth=1, y=-1)
+        linha.lower()              # o traço da seção ativa fica por cima
+
+    def selecionar(self, opcao):
+        self.ativa = opcao
+        for nome, (rotulo, traco) in self.itens.items():
+            ativa = nome == opcao
+            rotulo.config(font=FONTE["corpo_semi"] if ativa else FONTE["corpo"],
+                          fg=COR["texto"] if ativa else COR["texto_2"])
+            traco.config(bg=COR["marca"] if ativa else self.fundo_pai)
+        self.comando(opcao)
+        return "break"
 
 
 class Alternador(tk.Canvas):

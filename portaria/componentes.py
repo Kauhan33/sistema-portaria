@@ -570,6 +570,10 @@ class Aviso(tk.Frame):
                            before=self.lbl)
         self._ao_redimensionar()
 
+    def definir_respiro(self, vertical):
+        """Espaço acima e abaixo do texto (px lógicos): menor na tela baixa."""
+        self.interno.pack_configure(pady=px(vertical))
+
     def _ao_redimensionar(self, event=None):
         # menos as margens internas e o ícone
         largura = self.cv.winfo_width() - px(60)

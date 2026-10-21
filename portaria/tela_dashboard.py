@@ -62,7 +62,7 @@ class AbaDashboard:
         linha.columnconfigure(tuple(range(len(NUMEROS))), weight=1,
                               uniform="numeros")
         for coluna, (chave, rotulo) in enumerate(NUMEROS):
-            cartao = Cartao(linha, pad=18)
+            cartao = Cartao(linha, pad=14)
             cartao.grid(row=0, column=coluna, sticky="nsew",
                         padx=px(ESPACO_CARTOES // 2))
             m = cartao.miolo
@@ -117,7 +117,7 @@ class AbaDashboard:
         self.lbl_subtitulo.config(
             text=f"{plural(r['total'], 'registro', 'registros')} desde o início"
                  f"  ·  {plural(r['saidas'], 'visita encerrada', 'visitas encerradas')}")
-        self._mostrar("dentro", r["dentro"], "entradas ainda sem saída")
+        self._mostrar("dentro", r["dentro"], "ainda sem saída")
         self._mostrar("hoje", r["entradas_hoje"], hoje.strftime(FORMATO_DIA))
         if r["permanencia_media"] is not None:
             self._mostrar("permanencia", formatar_duracao(r["permanencia_media"]),

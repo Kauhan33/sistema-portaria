@@ -27,13 +27,13 @@ from .validacao import TIPOS_ACESSO
 
 SECOES = ("Funcionamento", "Categorias", "Feriados e eventos")
 JANELAS = {"Do funcionamento": True, "Horário fixo": False}
-PERMANENCIAS = {"Até o fechamento +": True, "No máximo": False}
+PERMANENCIAS = {"Até fechar +": True, "No máximo": False}
 JANELA_FIXA_PADRAO = ("08:00", "18:00")
-DICA_CATEGORIAS = ("Do funcionamento: De = minutos antes de abrir; Até = minutos "
-                   "depois de fechar (negativo = antes, ex.: −30). Horário fixo: "
-                   "hh:mm, só em dia de funcionamento.")
+DICA_CATEGORIAS = ("Do funcionamento: De = min antes de abrir; Até = min depois "
+                   "de fechar (negativo = antes). Horário fixo: hh:mm, só em "
+                   "dia aberto.")
 LARGURA_HORA = 84
-COLUNAS_FERIADOS = [("data", "Data", 96, "w"), ("dia", "Dia", 110, "w"),
+COLUNAS_FERIADOS = [("data", "Data", 96, "w"), ("dia", "Dia", 56, "w"),
                     ("descricao", "Descrição", 200, "w")]
 COLUNAS_EVENTOS = [("data", "Data", 96, "w"), ("horario", "Horário", 104, "w"),
                    ("descricao", "Descrição", 220, "w")]
@@ -64,7 +64,7 @@ class AbaConfiguracoes:
                         "Horários de acesso do campus  ·  só o administrador "
                         "altera, e toda mudança fica no histórico").posicionar()
         self.seletor = Seletor(aba, SECOES, self.mostrar_secao)
-        self.seletor.pack(fill="x", padx=px(MARGEM), pady=(0, px(ESPACO_CARTOES)))
+        self.seletor.pack(fill="x", padx=px(MARGEM), pady=(0, px(12)))
         self.secoes = {nome: tk.Frame(aba, bg=COR["fundo"]) for nome in SECOES}
         self._montar_funcionamento(self.secoes["Funcionamento"])
         self._montar_categorias(self.secoes["Categorias"])
@@ -86,7 +86,7 @@ class AbaConfiguracoes:
     def _montar_funcionamento(self, secao):
         secao.columnconfigure(0, weight=3, uniform="f")
         secao.columnconfigure(1, weight=2, uniform="f")
-        cartao = Cartao(secao, pad=18)
+        cartao = Cartao(secao, pad=16)
         cartao.grid(row=0, column=0, sticky="nsew", padx=(0, px(ESPACO_CARTOES)))
         m = cartao.miolo
         cab = tk.Frame(m, bg=COR["superficie"])
@@ -109,14 +109,17 @@ class AbaConfiguracoes:
             aberto = tk.BooleanVar(self.aba, value=True)
             abre = Campo(grade, largura=LARGURA_HORA)
             fecha = Campo(grade, largura=LARGURA_HORA)
+            for campo in (abre, fecha):      # dia fechado: campo apagado, liso
+                campo.entrada.config(disabledbackground=COR["superficie"],
+                                     disabledforeground=COR["texto_3"])
             Alternador(grade, "Aberto", aberto,
                        comando=lambda d=dia: self._ao_alternar_dia(d)
                        ).grid(row=linha, column=1, sticky="w", padx=(0, px(16)))
-            abre.grid(row=linha, column=2, pady=px(2), padx=(0, px(8)))
-            fecha.grid(row=linha, column=3, pady=px(2))
+            abre.grid(row=linha, column=2, pady=1, padx=(0, px(8)))
+            fecha.grid(row=linha, column=3, pady=1)
             self.dias.append((aberto, abre.entrada, fecha.entrada))
 
-        lado = Cartao(secao, pad=18)
+        lado = Cartao(secao, pad=16)
         lado.grid(row=0, column=1, sticky="nsew")
         m = lado.miolo
         titulo_cartao(m, "Avisos e limites").pack(anchor="w", pady=(0, px(10)))
@@ -124,13 +127,14 @@ class AbaConfiguracoes:
                                       "minutos (0 = sem aviso)", numeros=3)
         grupo.pack(fill="x", pady=(0, px(12)))
         self.minutos_aviso = campo.entrada
-        grupo, campo = campo_rotulado(m, "Entrada retroativa pede autorização",
-                                      "após quantas horas", numeros=2)
+        grupo, campo = campo_rotulado(m, "Limite da entrada retroativa",
+                                      "horas", numeros=2)
         grupo.pack(fill="x", pady=(0, px(12)))
         self.horas_retroativo = campo.entrada
         nota = Aviso(m)
-        nota.mostrar("neutro", f"Visitas com mais de {horarios.LIMITE_VISITA_HORAS} h "
-                               "sempre pedem autorização do administrador.")
+        nota.mostrar("neutro", "Entrada mais antiga que esse limite e visitas "
+                               f"com mais de {horarios.LIMITE_VISITA_HORAS} h "
+                               "pedem autorização do administrador.")
         nota.pack(fill="x")
         Botao(m, "Salvar funcionamento", self.salvar_funcionamento, "primario"
               ).pack(side="bottom", anchor="e")
@@ -178,7 +182,7 @@ class AbaConfiguracoes:
     # Regras por categoria
     # --------------------------------------------------------------
     def _montar_categorias(self, secao):
-        cartao = Cartao(secao, pad=18)
+        cartao = Cartao(secao, pad=16)
         cartao.pack(fill="both", expand=True)
         m = cartao.miolo
         cab = tk.Frame(m, bg=COR["superficie"])
@@ -188,7 +192,7 @@ class AbaConfiguracoes:
               ).pack(side="right")
         tk.Label(m, text=DICA_CATEGORIAS, font=FONTE["dica"], bg=COR["superficie"],
                  fg=COR["texto_3"], justify="left", anchor="w",
-                 wraplength=px(720)).pack(fill="x", pady=(px(4), px(10)))
+                 wraplength=px(760)).pack(fill="x", pady=(px(2), px(8)))
         self.faixa_categorias = Aviso(m)
         grade = tk.Frame(m, bg=COR["superficie"])
         grade.pack(fill="x")
@@ -216,7 +220,7 @@ class AbaConfiguracoes:
                   "permanencia": Campo(grade, opcoes=PERMANENCIAS),
                   "minutos": Campo(grade, largura=LARGURA_HORA, numeros=4)}
         for coluna, campo in enumerate(campos.values(), start=1):
-            campo.grid(row=linha, column=coluna, sticky="ew", pady=px(2),
+            campo.grid(row=linha, column=coluna, sticky="ew", pady=1,
                        padx=(0, px(8) if coluna < 5 else 0))
         linha_campos = {chave: campo.entrada for chave, campo in campos.items()}
         linha_campos["memoria"] = {}       # o que cada janela tinha (trocar e voltar)
@@ -282,13 +286,15 @@ class AbaConfiguracoes:
         linha = tk.Frame(m, bg=COR["superficie"])
         linha.pack(fill="x")
         linha.columnconfigure(1, weight=1)
-        self.data_feriado = self._campo(linha, 0, "Data", "dd/mm/aaaa", 110)
-        self.nome_feriado = self._campo(linha, 1, "Descrição", "ex.: Natal")
+        self.data_feriado = self._campo(linha, 0, 0, "Data", "dd/mm/aaaa", 120)
+        self.nome_feriado = self._campo(linha, 0, 1, "Descrição", "ex.: Natal")
         Botao(linha, "Adicionar", self.adicionar_feriado, "secundario",
-              icone=ICONE["mais"]).grid(row=1, column=2, sticky="s")
+              icone=ICONE["mais"]).grid(row=2, column=0, columnspan=2,
+                                        sticky="e", pady=(px(10), 0))
         self.faixa_feriados = Aviso(m)
         quadro, self.tabela_feriados = tabela(m, COLUNAS_FERIADOS, altura=5)
         quadro.pack(fill="both", expand=True, pady=(px(12), 0))
+        self.faixa_feriados.antes_de = quadro
 
         m = self._cartao_lista(secao, 1, "Eventos",
                                "horário especial que substitui o do dia",
@@ -296,18 +302,20 @@ class AbaConfiguracoes:
         linha = tk.Frame(m, bg=COR["superficie"])
         linha.pack(fill="x")
         linha.columnconfigure(3, weight=1)
-        self.data_evento = self._campo(linha, 0, "Data", "dd/mm/aaaa", 110)
-        self.abre_evento = self._campo(linha, 1, "Abre", "", LARGURA_HORA)
-        self.fecha_evento = self._campo(linha, 2, "Fecha", "", LARGURA_HORA)
-        self.nome_evento = self._campo(linha, 3, "Descrição", "ex.: Formatura")
+        self.data_evento = self._campo(linha, 0, 0, "Data", "dd/mm/aaaa", 120)
+        self.abre_evento = self._campo(linha, 0, 1, "Abre", "hh:mm", LARGURA_HORA)
+        self.fecha_evento = self._campo(linha, 0, 2, "Fecha", "hh:mm", LARGURA_HORA)
+        self.nome_evento = self._campo(linha, 2, 0, "Descrição", "ex.: Formatura",
+                                       juntas=4)
         Botao(linha, "Adicionar", self.adicionar_evento, "secundario",
-              icone=ICONE["mais"]).grid(row=1, column=4, sticky="s")
+              icone=ICONE["mais"]).grid(row=3, column=4, sticky="e")
         self.faixa_eventos = Aviso(m)
         quadro, self.tabela_eventos = tabela(m, COLUNAS_EVENTOS, altura=5)
         quadro.pack(fill="both", expand=True, pady=(px(12), 0))
+        self.faixa_eventos.antes_de = quadro
 
     def _cartao_lista(self, secao, coluna, titulo, apoio, remover):
-        cartao = Cartao(secao, pad=18)
+        cartao = Cartao(secao, pad=16)
         cartao.grid(row=0, column=coluna, sticky="nsew",
                     padx=(0, px(ESPACO_CARTOES)) if coluna == 0 else 0)
         m = cartao.miolo
@@ -323,11 +331,14 @@ class AbaConfiguracoes:
         return m
 
     @staticmethod
-    def _campo(linha, coluna, texto, apoio, largura=None):
-        rotulo, _ = rotulo_campo(linha, texto, apoio)
-        rotulo.grid(row=0, column=coluna, sticky="w", pady=(0, px(4)))
-        campo = Campo(linha, largura=largura)
-        campo.grid(row=1, column=coluna, sticky="ew", padx=(0, px(8)))
+    def _campo(grade, linha, coluna, texto, dica, largura=None, juntas=1):
+        """Rótulo em cima e campo embaixo (o formato fica dentro do campo)."""
+        rotulo, _ = rotulo_campo(grade, texto)
+        rotulo.grid(row=linha, column=coluna, sticky="w",
+                    pady=(px(10) if linha else 0, px(4)))
+        campo = Campo(grade, largura=largura, dica_vazio=dica)
+        campo.grid(row=linha + 1, column=coluna, columnspan=juntas, sticky="ew",
+                   padx=(0, px(8)))
         return campo.entrada
 
     def _preencher_calendario(self):
@@ -335,7 +346,7 @@ class AbaConfiguracoes:
         self.tabela_feriados.delete(*self.tabela_feriados.get_children())
         for i, (dia, nome) in enumerate(sorted(self.config.feriados.items())):
             inserir_linha(self.tabela_feriados, i,
-                          (f"{dia:{FORMATO_DATA}}", DIAS_SEMANA[dia.weekday()], nome),
+                          (f"{dia:{FORMATO_DATA}}", DIAS_SEMANA[dia.weekday()][:3], nome),
                           iid=dia.isoformat(),
                           tags=("apagado",) if dia < hoje else ())
         self.tabela_eventos.delete(*self.tabela_eventos.get_children())
@@ -415,9 +426,12 @@ class AbaConfiguracoes:
 
     @staticmethod
     def _resultado(faixa, tipo, texto):
+        """Mensagem perto de onde se digitou (antes da lista, se houver)."""
         faixa.mostrar(tipo, texto)
-        if not faixa.winfo_ismapped():
-            faixa.pack(fill="x", pady=(px(10), 0))
+        if not faixa.winfo_manager():
+            antes = getattr(faixa, "antes_de", None)
+            faixa.pack(fill="x", pady=(px(10), 0),
+                       **({"before": antes} if antes else {}))
 
     def _salvo(self, faixa, mudancas, texto=None):
         """Relê tudo, avisa na seção e atualiza o Movimento (as situações

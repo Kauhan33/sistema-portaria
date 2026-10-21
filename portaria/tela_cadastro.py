@@ -82,7 +82,7 @@ APARENCIA = {horarios.NO_CAMPUS: (COR["sucesso"], None),
              horarios.TEMPO_EXCEDIDO: (COR["alerta"], "excedido"),
              horarios.SAIDA_PENDENTE: (COR["erro"], "pendente"),
              horarios.SAIU: (COR["barra"], None)}
-LARGURA_SITUACAO = 132         # cabe "Saída pendente" com a bolinha
+LARGURA_SITUACAO = 140         # cabe "Saída pendente" com a bolinha
 MOSTRAR_NO_ENCERRAMENTO = 8    # nomes listados na confirmação
 
 
@@ -145,6 +145,7 @@ class AbaCadastro:
         saídas pendentes e o campus perto de fechar."""
         self.alertas = tk.Frame(self.aba, bg=COR["fundo"])
         self.alertas.pack(fill="x", padx=px(MARGEM))
+        self.alertas.columnconfigure((0, 1), weight=1, uniform="faixas")
         self.faixa_pendentes = Aviso(self.alertas, fundo_pai=COR["fundo"])
         self.faixa_fechamento = Aviso(self.alertas, fundo_pai=COR["fundo"])
 
@@ -207,7 +208,12 @@ class AbaCadastro:
     # --------------------------------------------------------------
     def _ao_redimensionar(self, event):
         if event.widget is self.aba:
-            self._aplicar_densidade(event.height < px(ALTURA_CONFORTAVEL))
+            self._escolher_densidade(event.height)
+
+    def _escolher_densidade(self, altura):
+        """Compacta quando a página, tirando as faixas de alerta, é baixa."""
+        livre = altura - self.alertas.winfo_reqheight()
+        self._aplicar_densidade(livre < px(ALTURA_CONFORTAVEL))
 
     def _aplicar_densidade(self, compacta):
         """
@@ -232,6 +238,8 @@ class AbaCadastro:
         self.rodape_mov.pack_configure(pady=_px(e["rodape"]))
         self.tabela.configure(style="Compacta.Tabela.Treeview" if compacta
                               else "Tabela.Treeview")
+        for faixa in (self.faixa_pendentes, self.faixa_fechamento):
+            faixa.definir_respiro(5 if compacta else 9)
 
     def _posicionar_formulario(self, compacta):
         for w in (self.titulo_form, self.btn_limpar, self.btn_cadastrar,
@@ -455,32 +463,38 @@ class AbaCadastro:
         if pendentes:
             admin = eh_admin(self.app.usuario)
             texto = (plural(pendentes, "saída pendente", "saídas pendentes")
-                     + ": ficaram no campus depois do fechamento do dia da "
-                       "entrada. Registre a saída de cada uma"
-                     + (" ou encerre o dia." if admin
-                        else " ou peça a um administrador para encerrar o dia."))
+                     + " depois do fechamento."
+                     + ("" if admin else " Registre a saída ou chame um "
+                                         "administrador para encerrar o dia."))
             self.faixa_pendentes.mostrar(
                 "erro", texto, icone=ICONE["alerta"],
                 acao="Encerrar o dia" if admin else None,
                 comando=self.encerrar_dia)
-        self._exibir(self.faixa_pendentes, pendentes > 0)
 
         minutos = horarios.minutos_para_fechar(self.config, agora)
         if minutos is not None:
             fecha = horarios.expediente(self.config, agora.date()).fecha
             dentro = sum(contagem.values())
-            texto = (f"O campus fecha às {fecha:%H:%M} (em {minutos} min). "
-                     + ("Ninguém no campus agora." if not dentro else
-                        f"Ainda há {plural(dentro, 'pessoa', 'pessoas')} "
-                        "no campus."))
+            texto = (f"Campus fecha às {fecha:%H:%M} (em {minutos} min)  ·  "
+                     + (f"{dentro} no campus" if dentro else "ninguém no campus"))
             self.faixa_fechamento.mostrar("info", texto, icone=ICONE["relogio"])
-        self._exibir(self.faixa_fechamento, minutos is not None)
+        self._posicionar_faixas([f for f, visivel in (
+            (self.faixa_pendentes, pendentes > 0),
+            (self.faixa_fechamento, minutos is not None)) if visivel])
+        if self.aba.winfo_height() > 1:          # faixas mudam a altura livre
+            self.alertas.update_idletasks()
+            self._escolher_densidade(self.aba.winfo_height())
 
-    def _exibir(self, faixa, visivel):
-        if visivel and not faixa.winfo_ismapped():
-            faixa.pack(fill="x", pady=(0, px(8)))
-        elif not visivel:
-            faixa.pack_forget()
+    def _posicionar_faixas(self, faixas):
+        """Uma faixa ocupa a largura toda; duas ficam lado a lado (sobra
+        altura para o Movimento na tela pequena)."""
+        for faixa in (self.faixa_pendentes, self.faixa_fechamento):
+            faixa.grid_forget()
+        for coluna, faixa in enumerate(faixas):
+            sozinha = len(faixas) == 1
+            faixa.grid(row=0, column=coluna, columnspan=2 if sozinha else 1,
+                       sticky="nsew", pady=(0, px(8)),
+                       padx=0 if sozinha or coluna else (0, px(8)))
 
     def encerrar_dia(self):
         """Só administrador: saída automática de todas as saídas pendentes,

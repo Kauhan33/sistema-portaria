@@ -243,8 +243,7 @@ class TestSituacaoEFaixas(BaseHorarios):
         self.app.tela_cadastro.atualizar_alertas()
         self.assertTrue(faixa.winfo_manager())
         self.assertEqual(faixa.lbl.cget("text"),
-                         "O campus fecha às 23:00 (em 20 min). Ainda há "
-                         "1 pessoa no campus.")
+                         "Campus fecha às 23:00 (em 20 min)  ·  1 no campus")
         self.msg.showinfo.assert_not_called()         # sem caixa de diálogo
         self.agora = AGORA.replace(hour=23, minute=1)
         self.app.tela_cadastro.atualizar_alertas()

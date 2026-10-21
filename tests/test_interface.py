@@ -307,6 +307,23 @@ class TestLinhaDesatualizada(BaseInterface):
         self.assertEqual(self.banco.buscar(self.ana)["saida"], saida_da_outra)
         self.assertEqual(self.banco.buscar(self.beto)["saida"], "")
 
+    def test_correcao_aberta_antes_da_saida_de_outra_estacao(self):
+        """QA2 A1: corrigir só o nome reabria a visita que outra estação
+        tinha fechado (a saída sumia sem rastro)."""
+        self.app.tabela.selection_set(str(self.ana))
+        self.app.editar_selecionado()
+        janela = self.app.janela_edicao
+        saida_da_outra = agora_texto()
+        self.banco.registrar_saida(self.ana, saida_da_outra, autor="paulo")
+        janela.nome.delete(0, tk.END)
+        janela.nome.insert(0, "Ana Silva Souza")
+        janela.salvar()
+        self.assertIn("alterado em outra estação",
+                      self.msg.showerror.call_args[0][1])
+        registro = self.banco.buscar(self.ana)
+        self.assertEqual((registro["nome"], registro["saida"]),
+                         ("Ana Silva", saida_da_outra))
+
     def test_enter_com_o_foco_na_tabela_nao_cadastra(self):
         # a tecla vai para quem tem o foco: a janela precisa estar visível
         self.app.janela.deiconify()
@@ -1382,11 +1399,26 @@ class TestSaidaRapida(BaseInterface):
         self.assertIn("Saída de Beto registrada", self.aviso())
 
     def test_cpf_ou_placa_sem_ninguem_dentro(self):
-        for texto in ["12345678909", "111444777", "ZZZ9999"]:
+        for texto in ["12345678909", "111444777"]:
             with self.subTest(texto=texto):
                 self.digitar(texto)
                 self.assertIn("Ninguém no campus", self.msg.showerror.call_args[0][1])
+        self.digitar("ZZZ9999")
+        self.assertIn("ZZZ-9999 não está no estacionamento",
+                      self.msg.showerror.call_args[0][1])
         self.assertTrue(all(not r["saida"] for r in self.no_banco()))
+
+    def test_placa_de_carro_que_ja_saiu_nao_da_saida_na_pessoa(self):
+        """QA1 A1: 'Só o carro saiu' e a placa de novo davam a saída do
+        Beto, que continuava no campus."""
+        self.responder_veiculo = "so_carro"
+        self.digitar("QWE1234")
+        self.assertIsNone(self.banco.estadia_aberta(placa="QWE1234"))
+        self.assertEqual(self.saida("Beto"), "")
+        self.digitar("QWE1234")                       # segunda leitura
+        self.assertEqual(self.saida("Beto"), "")      # continua no campus
+        self.assertIn("não está no estacionamento",
+                      self.msg.showerror.call_args[0][1])
 
     def test_quem_ja_saiu_nao_e_encontrado_de_novo(self):
         self.digitar("39053344705")
@@ -1548,6 +1580,68 @@ class TestEstadiaDeVeiculo(BaseInterface):
         self.assertIn("1 veículo pendente depois do fechamento",
                       faixa.lbl.cget("text"))
         self.assertEqual(faixa.acao.cget("text"), "Ver veículos")
+
+    def voltar_com_outro_carro(self):
+        """Ana sai a pé (ABC1234 fica) e volta com XYZ9A87."""
+        self.sair_pelo_cpf("a_pe")
+        self.agora = AGORA + timedelta(hours=1)
+        self.app.limpar()
+        self.preencher(cpf=self.CPF, placa="XYZ9A87", tipo="Professor")
+        self.app.cadastrar()
+        self.tela.campo_saida_rapida.delete(0, tk.END)
+        return max(r["id"] for r in self.no_banco())
+
+    def test_dois_carros_pergunta_primeiro_pelo_da_visita(self):
+        """QA1 M3: perguntava pelo ABC-1234 e fechava o carro errado."""
+        volta = self.voltar_com_outro_carro()
+        self.sair_pelo_cpf("carro")
+        self.assertEqual(self.perguntas_veiculo[-1],
+                         "Saiu com o veículo XYZ9A87?")
+        self.assertTrue(self.banco.buscar(volta)["saida"])
+        self.assertIsNone(self.banco.estadia_aberta(placa="XYZ9A87"))
+        self.assertIsNotNone(self.estadia())               # ABC-1234 fica
+
+    def test_dois_carros_a_pe_no_da_visita_pergunta_pelo_outro(self):
+        from portaria.tela_veiculo import A_PE, COM_CARRO
+        self.voltar_com_outro_carro()
+        respostas = [A_PE, COM_CARRO]
+        self.responder_veiculo = lambda d: d.escolher(respostas.pop(0))
+        self.tela.campo_saida_rapida.insert(0, self.CPF)
+        self.tela.saida_rapida()
+        self.assertEqual(self.perguntas_veiculo[-2:],
+                         ["Saiu com o veículo XYZ9A87?",
+                          "Saiu com o veículo ABC-1234?"])
+        self.assertIsNone(self.estadia())                  # saiu com o ABC
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="XYZ9A87"))
+
+    def test_placa_do_segundo_carro_saiu_junto_fecha_esse_carro(self):
+        """QA2 M1: pela placa KLM, "saiu junto" fechava o carro mais antigo."""
+        self.voltar_com_outro_carro()
+        self.responder_veiculo = "principal"               # saiu junto
+        self.tela.campo_saida_rapida.insert(0, "XYZ9A87")
+        self.tela.saida_rapida()
+        self.assertIsNone(self.banco.estadia_aberta(placa="XYZ9A87"))
+        self.assertIsNotNone(self.estadia())
+
+
+class TestExcluirVisitaComCarro(BaseInterface):
+    entrar_como = "admin"
+
+    def test_confirmacao_avisa_e_o_carro_continua(self):
+        """QA1 M1: excluir a visita que trouxe o carro tirava o carro do
+        estacionamento sem avisar."""
+        self.preencher(cpf="52998224725", placa="ABC1234")
+        self.app.cadastrar()
+        visita = self.no_banco()[0]["id"]
+        self.app.tabela.selection_set(str(visita))
+        self.app.excluir_selecionado()
+        texto = self.msg.askyesno.call_args[0][1]
+        self.assertIn("O carro ABC-1234 dessa visita continua no "
+                      "estacionamento", texto)
+        self.assertEqual(self.no_banco(), [])
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="ABC1234"))
+        self.assertIn("ABC-1234 continua(m) no estacionamento",
+                      self.app.lbl_aviso.cget("text"))
 
 
 class TestVeiculoNoEncerramento(BaseInterface):

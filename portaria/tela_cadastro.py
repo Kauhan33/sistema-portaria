@@ -1047,15 +1047,34 @@ class AbaCadastro:
         if not selecionado:
             mensagens.aviso("Atenção", "Selecione um registro na tabela.")
             return
+        ids = [int(i) for i in selecionado]
+        ok, estadias = self.app.tentar(self.app.banco.listar_estacionamento)
+        if not ok:
+            return
+        carros = [formatar_placa(e["placa"]) for e in estadias
+                  if e["registro_id"] in ids]
+        aviso_carros = "" if not carros else (
+            "\n\n" + ("O carro " if len(carros) == 1 else "Os carros ")
+            + ", ".join(carros)
+            + (" dessa visita continua" if len(carros) == 1
+               else " dessas visitas continuam")
+            + " no estacionamento: ele não é apagado com a visita. Para "
+              "tirá-lo, registre a saída pela placa.")
         if not self.app.perguntar(
                 mensagens.confirmar,
                 "Excluir registro",
                 "Excluir " + plural(len(selecionado), "registro selecionado",
                                     "registros selecionados") + "?\n"
-                "A exclusão fica registrada no histórico."):
+                "A exclusão fica registrada no histórico." + aviso_carros):
             return
-        self.app.gravar(self.app.banco.excluir, [int(i) for i in selecionado])
+        ok, _ = self.app.tentar(self.app.banco.excluir, ids,
+                                autor=self.app.autor)
         self.app.atualizar_tabela()
+        if ok:
+            self.avisar(plural(len(ids), "registro excluído",
+                               "registros excluídos")
+                        + (f"; {', '.join(carros)} continua(m) no "
+                           "estacionamento." if carros else "."))
 
     # --------------------------------------------------------------
     # Saída: botão, duplo clique e saída rápida por CPF ou placa
@@ -1106,12 +1125,15 @@ class AbaCadastro:
             return "break"
         self.app.recarregar_registros()        # outra estação pode ter mudado
         chave = re.sub(r"[\s.\-]", "", texto).upper()
-        if not chave.isdigit():                # placa: o carro sai
+        if not chave.isdigit():                # placa: SÓ o carro sai
             estadia = self._carro_no_estacionamento(chave)
-            if estadia is not None:
-                if self._saida_do_carro(estadia):
-                    self.campo_saida_rapida.delete(0, tk.END)
-                return "break"
+            if estadia is None:
+                # nunca dá saída na pessoa pela placa: ela pode ter saído a
+                # pé e voltado, e continua no campus (QA1 A1)
+                mensagens.erro("Saída rápida", self._sem_carro(chave, texto))
+            elif self._saida_do_carro(estadia):
+                self.campo_saida_rapida.delete(0, tk.END)
+            return "break"
         encontrados = encontrar_dentro(self.app.registros, texto)
         if not encontrados:
             if not self._so_o_carro_do_cpf(chave):
@@ -1129,6 +1151,15 @@ class AbaCadastro:
         if self._dar_saida(encontrados):
             self.campo_saida_rapida.delete(0, tk.END)
         return "break"
+
+    @staticmethod
+    def _sem_carro(chave, texto):
+        if not placa_valida(chave):
+            return (f"“{texto}” não é um CPF nem uma placa.\nDigite os 11 "
+                    "números do CPF ou a placa (ABC1234 ou ABC1D23).")
+        return (f"O carro {formatar_placa(chave)} não está no "
+                "estacionamento.\nPela placa só sai o carro. Para a saída de "
+                "uma pessoa, digite o CPF dela ou use o Movimento.")
 
     def _so_o_carro_do_cpf(self, chave):
         """CPF de quem não está no campus, mas deixou o carro: oferece a
@@ -1157,7 +1188,8 @@ class AbaCadastro:
             if resposta is None:
                 return False
             if resposta == JUNTO and visita is not None:
-                return self._dar_saida([visita], com_veiculo={visita["id"]})
+                return self._dar_saida([visita],
+                                       com_veiculo={visita["id"]: estadia["id"]})
         return self._sair_so_o_carro(estadia)
 
     def _sair_so_o_carro(self, estadia):
@@ -1179,24 +1211,29 @@ class AbaCadastro:
         return True
 
     def _perguntar_veiculos(self, registros):
-        """Quem sai e tem carro no estacionamento: saiu com ele? Devolve
-        ({ids que saem de carro}, {id: placa que fica}) ou None (cancelou)."""
+        """Quem sai e tem carro no estacionamento: saiu com ele? Com dois
+        carros (saiu a pé e voltou com outro), pergunta primeiro pelo carro
+        desta visita e depois pelos outros, até um "Saiu de carro".
+        Devolve ({id da visita: id da estadia que sai},
+        {id da visita: [placas que ficam]}) ou None (cancelou)."""
         ok, estadias = self.app.tentar(self.app.banco.listar_estacionamento)
         if not ok:
             return None
-        por_cpf = {e["cpf"]: e for e in estadias}
-        de_carro, a_pe = set(), {}
+        por_cpf = {}
+        for e in sorted(estadias, key=lambda e: (e["entrada"], e["id"])):
+            por_cpf.setdefault(e["cpf"], []).append(e)
+        de_carro, a_pe = {}, {}
         for r in registros:
-            estadia = por_cpf.get(r["cpf"])
-            if estadia is None:
-                continue
-            resposta = saiu_com_o_veiculo(self.app, r["nome"], estadia)
-            if resposta is None:
-                return None
-            if resposta == COM_CARRO:
-                de_carro.add(r["id"])
-            else:
-                a_pe[r["id"]] = estadia["placa"]
+            carros = sorted(por_cpf.get(r["cpf"], []),
+                            key=lambda e: e["registro_id"] != r["id"])
+            for estadia in carros:
+                resposta = saiu_com_o_veiculo(self.app, r["nome"], estadia)
+                if resposta is None:
+                    return None
+                if resposta == COM_CARRO:
+                    de_carro[r["id"]] = estadia["id"]
+                    break
+                a_pe.setdefault(r["id"], []).append(estadia["placa"])
         return de_carro, a_pe
 
     def _dar_saida(self, registros, com_veiculo=None):
@@ -1233,7 +1270,7 @@ class AbaCadastro:
         ok, gravados = self.app.tentar(
             self.app.banco.registrar_saidas, [r["id"] for r in prontos], saida,
             autor=self.app.autor, autorizacao=autorizacao,
-            com_veiculo=set(com_veiculo))
+            com_veiculo=dict(com_veiculo))
         if not ok:
             return False
         # a linha pode estar desatualizada: só conta o que o banco gravou
@@ -1264,7 +1301,8 @@ class AbaCadastro:
         ids = {r["id"] for r in gravadas}
         if ids & set(com_veiculo):
             return " (saiu de carro)" if len(ids) == 1 else " (com os carros)"
-        ficam = [formatar_placa(p) for i, p in a_pe.items() if i in ids]
+        ficam = [formatar_placa(p) for i, placas in a_pe.items() if i in ids
+                 for p in placas]
         if ficam:
             return f" (a pé; o carro {', '.join(ficam)} fica no estacionamento)"
         return ""

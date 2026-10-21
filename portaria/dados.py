@@ -27,10 +27,12 @@ Permissões (`autor` = login de quem faz, conferido NO BANCO):
 Veículos (v8): o carro tem uma ESTADIA própria (estadias_veiculo), com
 entrada e saída independentes da visita. A visita com placa abre a estadia
 (o responsável é a pessoa dela); a pessoa pode sair a pé e deixar o carro,
-voltar a pé e depois sair com ele. Uma placa só tem uma estadia aberta por
-vez (índice único). Apagar a visita de origem apaga a estadia (ON DELETE
-CASCADE); corrigir a placa, o CPF ou a entrada de uma visita aberta corrige
-a estadia aberta por ela.
+voltar a pé (ou com outro carro) e depois sair com ele. Uma placa só tem
+uma estadia aberta por vez (índice único). Excluir a visita de origem NÃO
+tira do estacionamento o carro que ainda está lá (a estadia aberta só
+perde a ligação com a visita); as encerradas vão junto (ON DELETE
+CASCADE). Corrigir a placa, o CPF ou a entrada de uma visita aberta
+corrige a estadia aberta por ela.
 
 Exceções de horário (horarios.py): a tela pede a autorização do
 administrador e a passa em `autorizacao` ({"autorizado_por", "regras",
@@ -70,6 +72,9 @@ FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
 VERSAO_ESQUEMA = 9
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
+REGISTRO_MUDOU = ("Este registro foi alterado em outra estação enquanto a "
+                  "correção estava aberta (por exemplo, recebeu a saída).\n"
+                  "Nada foi gravado. Feche a janela e abra a correção de novo.")
 
 log = logging.getLogger("portaria.dados")
 log.addHandler(logging.NullHandler())   # sem log configurado, não imprime nada
@@ -1017,9 +1022,19 @@ class Banco:
         Devolve os ids que de fato receberam a saída (outra estação pode ter
         dado a saída ou excluído a visita antes). Visita que passaria de
         24 h precisa da `autorizacao` (senão nada é gravado), e é a ela que
-        a "Exceção autorizada" fica ligada. As visitas em `com_veiculo`
-        saem com o carro: a estadia aberta do responsável fecha junto.
+        a "Exceção autorizada" fica ligada.
+
+        `com_veiculo`: as visitas que saem com o carro. Um dicionário
+        {id da visita: id da estadia} diz QUAL carro (a pessoa pode ter dois
+        no estacionamento); num conjunto de ids, sai o carro com que ela
+        entrou nesta visita ou, sem ele, o mais antigo dela.
+
+        Duas estações dando a saída da mesma visita: o UPDATE só grava se a
+        visita ainda estiver aberta, então a segunda não sobrescreve a
+        primeira (nem duplica o evento no histórico).
         """
+        escolhas = (com_veiculo if isinstance(com_veiculo, dict)
+                    else dict.fromkeys(com_veiculo))
         gravados = []
         saida_iso = para_iso(saida)
         with self._conexao() as con:
@@ -1033,14 +1048,17 @@ class Banco:
                 nome, entrada = linha
                 acima_de_24h = _duracao_iso(entrada, saida_iso)
                 self._exigir_autorizacao_24h(acima_de_24h, autorizacao, nome)
-                con.execute("UPDATE registros SET saida = ? WHERE id = ?",
-                            (saida_iso, i))
+                cursor = con.execute("UPDATE registros SET saida = ? "
+                                     "WHERE id = ? AND saida = ''", (saida_iso, i))
+                if not cursor.rowcount:      # outra estação chegou antes
+                    continue
                 gravados.append(i)
                 self._evento(con, autor, "Saída registrada", f"#{i}", i)
                 if acima_de_24h:
                     self._registrar_excecao(con, autorizacao, autor, i, nome)
-                if i in com_veiculo:
-                    self._fechar_estadia_do_responsavel(con, i, saida_iso, autor)
+                if i in escolhas:
+                    self._fechar_estadia_do_responsavel(con, i, saida_iso, autor,
+                                                        escolhas[i])
         return gravados
 
     def desfazer_saidas(self, ids, autor=None, saida=None):
@@ -1074,8 +1092,19 @@ class Banco:
         return desfeitas
 
     def excluir(self, ids, autor):
-        """Apaga os registros (RN02: só administrador); o histórico guarda o
-        que foi apagado, com o CPF mascarado."""
+        """
+        Apaga os registros (RN02: só administrador); o histórico guarda o
+        que foi apagado, com o CPF mascarado.
+
+        O carro que a visita trouxe e que AINDA ESTÁ no estacionamento não
+        some com ela: ele está fisicamente lá (RN25). A estadia aberta só
+        perde a ligação com a visita (o responsável continua pelo CPF e pelo
+        cadastro) e o histórico registra "Veículo mantido no
+        estacionamento"; o carro sai pela placa, como qualquer outro. As
+        estadias já encerradas daquela visita vão junto com ela. Devolve as
+        placas que continuaram no estacionamento.
+        """
+        mantidas = []
         with self._conexao() as con:
             self._exigir(con, autor, para="excluir registros")
             for i in ids:
@@ -1084,11 +1113,23 @@ class Banco:
                     (i,)).fetchone()
                 if linha is None:
                     continue
-                con.execute("DELETE FROM registros WHERE id = ?", (i,))
                 nome, cpf, entrada, saida = linha
+                placas = [p for (p,) in con.execute(
+                    "SELECT placa FROM estadias_veiculo WHERE registro_id = ? "
+                    "AND saida = ''", (i,))]
+                con.execute("UPDATE estadias_veiculo SET registro_id = NULL "
+                            "WHERE registro_id = ? AND saida = ''", (i,))
+                con.execute("DELETE FROM registros WHERE id = ?", (i,))
+                for placa in placas:
+                    self._evento(con, autor, "Veículo mantido no estacionamento",
+                                 f"Placa {formatar_placa(placa)}: a visita #{i} "
+                                 f"de {nome} foi excluída e o carro continua no "
+                                 "estacionamento (sai pela placa).")
                 self._evento(con, autor, "Exclusão de registro",
                              f"#{i} {nome}, CPF {mascarar_cpf(cpf)}, entrada "
                              f"{de_iso(entrada)}, saída {de_iso(saida) or '—'}", i)
+                mantidas += placas
+        return mantidas
 
     def buscar(self, id_registro):
         """Um registro pelo id (datas no formato da tela), ou None."""
@@ -1097,7 +1138,8 @@ class Banco:
                                 "WHERE id = ?", (id_registro,)).fetchone()
         return _registro(linha) if linha else None
 
-    def editar(self, id_registro, novo, alteracoes, autor, autorizacao=None):
+    def editar(self, id_registro, novo, alteracoes, autor, autorizacao=None,
+               original=None):
         """
         Corrige um registro e grava no histórico o que mudou (`alteracoes`,
         já descritas). Porteiro só corrige visitas com entrada (a original e
@@ -1107,6 +1149,12 @@ class Banco:
           CPF errado é removida se ficar sem nenhuma visita.
         Exceção de horário: com `autorizacao` (obrigatória se as datas
         mudarem e a visita passar de 24 h), grava a "Exceção autorizada".
+
+        `original`: o registro como a tela o leu ao abrir a correção. Se
+        outra estação mudou a visita nesse meio-tempo (ex.: deu a saída), a
+        correção é RECUSADA sem gravar nada (trava otimista: a condição vai
+        no próprio UPDATE). Antes, salvar só o nome reabria a visita e
+        apagava a saída dada pela outra estação.
         """
         with self._conexao() as con:
             usuario = self._exigir(con, autor, so_admin=False)
@@ -1126,12 +1174,22 @@ class Banco:
             if datas != (linha[2], linha[3]):       # só se as datas mudaram
                 self._exigir_autorizacao_24h(_duracao_iso(*datas), autorizacao,
                                              novo["nome"])
-            con.execute(
+            condicao, como_estava = "", ()
+            if original is not None:
+                condicao = (" AND nome = ? AND cpf = ? AND celular = ? AND "
+                            "placa = ? AND tipo = ? AND entrada = ? AND saida = ?")
+                como_estava = (original["nome"], original["cpf"],
+                               original["celular"], original.get("placa", ""),
+                               original["tipo"], para_iso(original["entrada"]),
+                               para_iso(original["saida"]))
+            cursor = con.execute(
                 "UPDATE registros SET nome = ?, cpf = ?, celular = ?, placa = ?, "
-                "tipo = ?, entrada = ?, saida = ? WHERE id = ?",
+                "tipo = ?, entrada = ?, saida = ? WHERE id = ?" + condicao,
                 (novo["nome"], novo["cpf"], novo["celular"], novo["placa"],
                  novo["tipo"], para_iso(novo["entrada"]), para_iso(novo["saida"]),
-                 id_registro))
+                 id_registro, *como_estava))
+            if not cursor.rowcount:
+                raise ErroDados(REGISTRO_MUDOU)
             # Pessoa do CPF (novo): cria se ainda não existe
             con.execute("INSERT INTO pessoas (cpf, nome, celular, placa, tipo) "
                         "VALUES (?, ?, ?, ?, ?) ON CONFLICT (cpf) DO NOTHING",
@@ -1206,8 +1264,10 @@ class Banco:
                 prazo = horarios.prazo_saida(
                     config, r["tipo"], datetime.strptime(r["entrada"], FORMATO))
                 saida = prazo.strftime(FORMATO_ISO)
-                con.execute("UPDATE registros SET saida = ? WHERE id = ? "
-                            "AND saida = ''", (saida, r["id"]))
+                cursor = con.execute("UPDATE registros SET saida = ? WHERE "
+                                     "id = ? AND saida = ''", (saida, r["id"]))
+                if not cursor.rowcount:   # a saída real veio de outra estação
+                    continue
                 self._evento(con, autor, "Saída automática (encerramento)",
                              f"#{r['id']} {r['nome']}: saída marcada em "
                              f"{de_iso(saida)}, prazo de saída do dia da "
@@ -1220,7 +1280,8 @@ class Banco:
     # --------------------------------------------------------------
     @staticmethod
     def _estadia_aberta(con, coluna, valor):
-        """Estadia aberta pela placa ou pelo CPF do responsável, ou None."""
+        """Estadia aberta pela placa, pelo CPF do responsável (a mais
+        antiga), pelo id ou pela visita que a abriu, ou None."""
         linha = con.execute(f"SELECT {COLUNAS_ESTADIA} {DE_ESTADIAS} "
                             f"WHERE e.saida = '' AND e.{coluna} = ? "
                             "ORDER BY e.entrada LIMIT 1", (valor,)).fetchone()
@@ -1233,6 +1294,15 @@ class Banco:
             if placa:
                 return self._estadia_aberta(con, "placa", placa)
             return self._estadia_aberta(con, "cpf", cpf)
+
+    def estadias_abertas_do_cpf(self, cpf):
+        """Os carros desse responsável no estacionamento (pode haver mais
+        de um: saiu a pé e voltou com outro), do mais antigo ao mais novo."""
+        with self._conexao() as con:
+            linhas = con.execute(f"SELECT {COLUNAS_ESTADIA} {DE_ESTADIAS} "
+                                 "WHERE e.saida = '' AND e.cpf = ? "
+                                 "ORDER BY e.entrada, e.id", (cpf,)).fetchall()
+        return [_estadia(linha) for linha in linhas]
 
     def listar_estacionamento(self):
         """Veículos no estacionamento (estadias abertas), do mais recente
@@ -1266,11 +1336,21 @@ class Banco:
              (autor or AUTOR_SISTEMA) if saida else "", id_registro))
 
     @classmethod
-    def _fechar_estadia_do_responsavel(cls, con, id_registro, saida, autor):
-        """Saída "de carro": fecha a estadia aberta do responsável da visita."""
+    def _fechar_estadia_do_responsavel(cls, con, id_registro, saida, autor,
+                                       id_estadia=None):
+        """Saída "de carro": fecha a estadia `id_estadia` (aberta e do
+        responsável da visita) ou, sem ela, a aberta por esta visita ou,
+        por fim, a mais antiga do responsável."""
         cpf, nome = con.execute("SELECT cpf, nome FROM registros WHERE id = ?",
                                 (id_registro,)).fetchone()
-        estadia = cls._estadia_aberta(con, "cpf", cpf)
+        estadia = None
+        if id_estadia is not None:
+            estadia = cls._estadia_aberta(con, "id", id_estadia)
+            if estadia is not None and estadia["cpf"] != cpf:
+                raise ErroDados("O carro escolhido não está com essa pessoa. "
+                                "Atualize a tela e tente de novo.")
+        estadia = (estadia or cls._estadia_aberta(con, "registro_id", id_registro)
+                   or cls._estadia_aberta(con, "cpf", cpf))
         if estadia is None:
             return
         con.execute("UPDATE estadias_veiculo SET saida = ?, autor_saida = ?, "

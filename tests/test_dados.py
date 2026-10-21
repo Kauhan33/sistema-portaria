@@ -309,7 +309,7 @@ class TestAuditoria(BaseTemp):
 
     def test_operacoes_com_autor_ficam_no_historico(self):
         self.criar_equipe()
-        id_ = self.banco.inserir(registro(), autor="paulo")
+        id_ = self.banco.inserir(registro(placa=""), autor="paulo")
         self.banco.registrar_saida(id_, "16/10/2026 09:00", autor="paulo")
         self.banco.excluir([id_], autor="ana")
         self.assertEqual(self.acoes()[:3], [("ana", "Exclusão de registro"),

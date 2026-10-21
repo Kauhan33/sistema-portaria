@@ -40,31 +40,58 @@ class BaseRegras(unittest.TestCase):
 
 
 class TestFuncionamento(BaseRegras):
+    def janelas(self, dia):
+        return [(j.abre, j.fecha) for j in h.janelas_do_dia(self.config, dia)]
+
     def test_padrao_semana_sabado_e_domingo(self):
-        semana = h.expediente(self.config, SEGUNDA)
-        self.assertEqual((semana.abre, semana.fecha),
-                         (em(SEGUNDA, "06:30"), em(SEGUNDA, "23:00")))
-        sabado = h.expediente(self.config, SABADO)
-        self.assertEqual((sabado.abre, sabado.fecha),
-                         (em(SABADO, "07:00"), em(SABADO, "14:00")))
-        self.assertIsNone(h.expediente(self.config, DOMINGO))
+        self.assertEqual(self.janelas(SEGUNDA),
+                         [(em(SEGUNDA, "06:30"), em(SEGUNDA, "23:00"))])
+        self.assertEqual(self.janelas(SABADO),
+                         [(em(SABADO, "07:00"), em(SABADO, "14:00"))])
+        self.assertEqual(self.janelas(DOMINGO), [])
         self.assertEqual(h.motivo_fechado(self.config, DOMINGO), "domingo")
 
     def test_feriado_fecha_o_campus(self):
         self.config.feriados[SEGUNDA] = "Dia do Professor"
-        self.assertIsNone(h.expediente(self.config, SEGUNDA))
+        self.assertEqual(self.janelas(SEGUNDA), [])
         self.assertEqual(h.motivo_fechado(self.config, SEGUNDA),
                          "feriado: Dia do Professor")
 
-    def test_evento_substitui_o_funcionamento_mesmo_em_domingo_e_feriado(self):
+    def test_evento_e_a_unica_janela_em_domingo_e_feriado(self):
         self.config.feriados[SEGUNDA] = "Feriado municipal"
         noite = Horario(hora("18:00"), hora("23:00"))
-        for dia in (SEGUNDA, SABADO, DOMINGO):
+        for dia in (SEGUNDA, DOMINGO):
             self.config.eventos[dia] = Evento(dia, noite, "Formatura")
-            aberto = h.expediente(self.config, dia)
-            self.assertEqual((aberto.abre, aberto.fecha, aberto.origem),
-                             (em(dia, "18:00"), em(dia, "23:00"),
-                              "Evento: Formatura"))
+            janelas = h.janelas_do_dia(self.config, dia)
+            self.assertEqual([(j.abre, j.fecha, j.origem) for j in janelas],
+                             [(em(dia, "18:00"), em(dia, "23:00"),
+                               "Evento: Formatura")])
+
+    def test_evento_soma_ao_funcionamento_do_sabado(self):
+        """Regra do coordenador: a formatura de sábado 18–23 não cancela
+        a manhã 07–14; o campus abre nas duas janelas."""
+        self.config.eventos[SABADO] = Evento(
+            SABADO, Horario(hora("18:00"), hora("23:00")), "Formatura")
+        self.assertEqual(self.janelas(SABADO),
+                         [(em(SABADO, "07:00"), em(SABADO, "14:00")),
+                          (em(SABADO, "18:00"), em(SABADO, "23:00"))])
+        self.assertEqual(h.fechamento_do_dia(self.config, em(SABADO, "08:00")),
+                         em(SABADO, "23:00"))         # fim da última janela
+
+    def test_janelas_que_se_cruzam_viram_uma(self):
+        self.config.eventos[SEGUNDA] = Evento(
+            SEGUNDA, Horario(hora("20:00"), hora("23:45")), "Show")
+        self.assertEqual(self.janelas(SEGUNDA),
+                         [(em(SEGUNDA, "06:30"), em(SEGUNDA, "23:45"))])
+
+    def test_aviso_antes_de_fechar_vale_para_cada_janela(self):
+        self.config.eventos[SABADO] = Evento(
+            SABADO, Horario(hora("18:00"), hora("23:00")), "Formatura")
+        self.assertEqual(h.minutos_para_fechar(self.config, em(SABADO, "13:40")),
+                         20)
+        self.assertIsNone(h.minutos_para_fechar(self.config, em(SABADO, "15:00")))
+        self.assertEqual(h.minutos_para_fechar(self.config, em(SABADO, "22:50")),
+                         10)
 
 
 class TestJanelaPorCategoria(BaseRegras):
@@ -135,11 +162,36 @@ class TestJanelaPorCategoria(BaseRegras):
             self.assertFalse(self.permitido("Aluno", em(dia, "17:59")))
             self.assertTrue(self.permitido("Professor", em(dia, "17:30")))
 
-    def test_evento_no_sabado_a_noite(self):
+    def test_evento_no_sabado_a_noite_soma_a_manha(self):
         self.config.eventos[SABADO] = Evento(
             SABADO, Horario(hora("18:00"), hora("23:00")), "Calourada")
         self.assertTrue(self.permitido("Aluno", em(SABADO, "20:00")))
-        self.assertFalse(self.permitido("Aluno", em(SABADO, "10:00")))  # substitui
+        self.assertTrue(self.permitido("Aluno", em(SABADO, "08:00")))   # soma
+        self.assertFalse(self.permitido("Professor", em(SABADO, "15:00")))
+        self.assertFalse(self.permitido("Aluno", em(SABADO, "15:00")))  # entre
+        self.assertTrue(self.permitido("Professor", em(SABADO, "17:30")))
+        self.assertEqual(self.excecoes("Aluno", em(SABADO, "15:00")),
+                         ["Aluno: entrada às 15:00 fora do horário permitido "
+                          "(07:00–13:30, 18:00–22:30)."])
+
+    def test_janela_fixa_so_dentro_do_campus_aberto(self):
+        """QA2 A2: visitante 08:00 num domingo com evento 18–23 era
+        aceito sem autorização."""
+        self.config.eventos[DOMINGO] = Evento(
+            DOMINGO, Horario(hora("18:00"), hora("23:00")), "Formatura")
+        for tipo, momento in (("Visitante", "08:00"), ("Visitante", "10:00"),
+                              ("Entregador", "07:00"),
+                              ("Prestador de serviço", "07:30")):
+            with self.subTest(tipo=tipo, momento=momento):
+                self.assertFalse(self.permitido(tipo, em(DOMINGO, momento)))
+        self.assertTrue(self.permitido("Prestador de serviço",
+                                       em(DOMINGO, "18:30")))
+        self.assertIn("a janela da categoria não cabe",
+                      self.excecoes("Visitante", em(DOMINGO, "08:00"))[0])
+        # dia útil com evento à noite: a janela fixa não começa antes da abertura
+        self.config.funcionamento[0] = Horario(hora("09:00"), hora("17:00"))
+        self.assertFalse(self.permitido("Visitante", em(SEGUNDA, "08:30")))
+        self.assertTrue(self.permitido("Visitante", em(SEGUNDA, "09:00")))
 
     def test_tipo_sem_regra_nao_tem_restricao_de_horario(self):
         self.assertTrue(self.permitido("Outro", em(SEGUNDA, "03:00")))
@@ -323,6 +375,16 @@ class TestPermanenciaESituacao(BaseRegras):
                          {NO_CAMPUS: 1, TEMPO_EXCEDIDO: 1, SAIDA_PENDENTE: 1})
 
 
+class TestDataAbsurda(BaseRegras):
+    def test_ano_9999_no_banco_nao_derruba_a_situacao(self):
+        """QA2 M3: uma visita de 31/12/9999 derrubava o login."""
+        r = {"tipo": "Aluno", "entrada": "31/12/9999 23:00", "saida": ""}
+        self.assertEqual(h.situacao(self.config, r, em(SEGUNDA, "10:00")),
+                         NO_CAMPUS)
+        self.assertEqual(h.contar_situacoes(self.config, [r],
+                                            em(SEGUNDA, "10:00"))[NO_CAMPUS], 1)
+
+
 class TestAvisoDeFechamento(BaseRegras):
     def test_aviso_nos_ultimos_30_minutos(self):
         self.assertIsNone(h.minutos_para_fechar(self.config, em(SEGUNDA, "22:29")))
@@ -452,6 +514,47 @@ class TestLancamentoRetroativo(BaseRegras):
                               em(DOMINGO + timedelta(days=1), "07:00"))
         self.assertTrue(excecoes.so_com_senha)
         self.assertIn("meia-noite de 25/10/2026", excecoes.regras[0])
+
+    def saida(self, tipo, momento, agora):
+        return h.retroativo(self.config, "Saída", momento, agora, tipo)
+
+    def test_b_saida_com_o_campus_fechado_e_excecao_mesmo_recente(self):
+        """QA1 M4: 00:30 lançando a saída de 00:10 passava sem nada."""
+        terca = SEGUNDA + timedelta(days=1)
+        casos = [(em(terca, "00:10"), em(terca, "00:30")),     # madrugada
+                 (em(terca, "02:00"), em(terca, "05:50")),
+                 (em(DOMINGO, "10:00"), em(DOMINGO, "10:30"))]  # domingo
+        for momento, agora in casos:
+            with self.subTest(momento=momento):
+                excecoes = self.saida("Aluno", momento, agora)
+                self.assertFalse(excecoes.so_com_senha)
+                self.assertIn("campus fechado", excecoes.regras[-1])
+        # sábado com evento: entre as janelas (14:00–18:00) também é fechado
+        self.config.eventos[SABADO] = Evento(
+            SABADO, Horario(hora("18:00"), hora("23:00")), "Formatura")
+        excecoes = self.saida("Aluno", em(SABADO, "15:00"), em(SABADO, "15:30"))
+        self.assertIn("aberto 07:00–14:00, 18:00–23:00", excecoes.regras[0])
+        self.assertFalse(self.saida("Aluno", em(SABADO, "19:00"),
+                                    em(SABADO, "19:30")))
+
+    def test_c_usa_o_prazo_da_categoria(self):
+        """QA1 M6: a saída real às 23:00 da funcionária (tolerância até
+        23:30), lançada às 23:10, não pede a senha."""
+        self.assertFalse(self.saida("Funcionário", em(SEGUNDA, "23:00"),
+                                    em(SEGUNDA, "23:10")))
+        self.assertFalse(self.saida("Funcionário", em(SEGUNDA, "23:20"),
+                                    em(SEGUNDA, "23:28")))      # na tolerância
+        senha = self.saida("Funcionário", em(SEGUNDA, "23:00"),
+                           em(SEGUNDA, "23:40"))
+        self.assertTrue(senha.so_com_senha)
+        self.assertIn("tolerância da categoria até 23:30", senha.regras[0])
+        self.assertTrue(self.saida("Aluno", em(SEGUNDA, "23:00"),
+                                   em(SEGUNDA, "23:10")).so_com_senha)
+
+    def test_os_segundos_do_relogio_nao_contam(self):
+        """QA2 B6: 13:00:30 (a tela mostra 13:00) ainda é 3 h exatas."""
+        agora = em(SEGUNDA, "13:00").replace(second=30)
+        self.assertFalse(self.retro(em(SEGUNDA, "10:00"), agora))
 
     def test_saida_digitada_no_cadastro_tambem_conta(self):
         r = visita("Aluno", em(SEGUNDA, "21:00"), em(SEGUNDA, "22:00"))

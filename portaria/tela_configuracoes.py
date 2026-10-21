@@ -8,7 +8,8 @@ Três seções, escolhidas no seletor do topo:
 - Categorias: janela de entrada, permanência máxima e tolerância depois do
   fechamento de cada tipo de acesso;
 - Feriados e eventos: datas com o campus fechado e datas com horário
-  especial (o evento substitui o funcionamento do dia).
+  especial (o evento SOMA ao funcionamento do dia: num sábado normal com
+  formatura à noite o campus abre nas duas janelas).
 
 Tudo o que é digitado passa pelas funções horarios.ler_* (fecha depois de
 abre, hh:mm válido, números nos limites) antes de ir ao banco, que confere
@@ -32,7 +33,7 @@ PERMANENCIAS = {"Até fechar +": True, "No máximo": False}
 JANELA_FIXA_PADRAO = ("08:00", "18:00")
 DICA_CATEGORIAS = ("Do funcionamento: De = min antes de abrir; Até = 0 (até "
                    "fechar) ou negativo (min antes de fechar). Horário fixo: "
-                   "hh:mm, só em dia aberto. Ninguém entra depois de fechar. "
+                   "hh:mm, só com o campus aberto. Ninguém entra depois de fechar. "
                    "Tolerância = min depois do fechamento até a saída pendente.")
 LARGURA_HORA = 84
 LARGURA_HORA_RELOGIO = 104    # hh:mm com o ícone do relógio
@@ -136,10 +137,12 @@ class AbaConfiguracoes:
         grupo.pack(fill="x", pady=(0, px(12)))
         self.horas_retroativo = campo.entrada
         nota = Aviso(m)
-        nota.mostrar("neutro", "Entrada ou saída mais antiga que esse limite e "
+        nota.mostrar("neutro", "Entrada ou saída mais antiga que esse limite, "
+                               "saída num horário com o campus fechado e "
                                f"visitas com mais de {horarios.LIMITE_VISITA_HORAS}"
-                               " h pedem autorização do administrador. De um "
-                               "dia que já fechou, só com a senha dele.")
+                               " h pedem autorização do administrador. Depois "
+                               "do prazo do dia (fechamento + tolerância), só "
+                               "com a senha dele.")
         nota.pack(fill="x")
         Botao(m, "Salvar funcionamento", self.salvar_funcionamento, "primario"
               ).pack(side="bottom", anchor="e")
@@ -306,7 +309,7 @@ class AbaConfiguracoes:
         self.faixa_feriados.antes_de = quadro
 
         m = self._cartao_lista(secao, 1, "Eventos",
-                               "horário especial que substitui o do dia",
+                               "abre também nesse horário (soma ao do dia)",
                                self.remover_evento)
         linha = tk.Frame(m, bg=COR["superficie"])
         linha.pack(fill="x")

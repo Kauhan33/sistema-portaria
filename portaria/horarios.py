@@ -16,13 +16,20 @@ naquele dia. "Aluno entrando domingo às 10:00" é uma entrada válida, mas
 não faz sentido: vira uma EXCEÇÃO, que só passa com autorização do
 administrador.
 
+O campus num dia (janelas_do_dia): o funcionamento da semana e, se houver,
+o EVENTO, que SOMA ao funcionamento (não substitui): num sábado 07:00–14:00
+com formatura 18:00–23:00 o campus abre nas duas janelas; num domingo ou
+feriado o evento é a única janela. O "fechamento do dia" (saída pendente,
+Encerrar o dia, permanência "até o fechamento") é o fim da ÚLTIMA janela.
+
 Como cada categoria é descrita (RegraCategoria):
-- janela "do funcionamento" (relativa = True): a entrada vale de
-  (abertura − abre_antes) até (fechamento + fecha_depois) minutos.
+- janela "do funcionamento" (relativa = True): em cada janela do dia, a
+  entrada vale de (abertura − abre_antes) até (fechamento + fecha_depois).
   fecha_depois é 0 (até o fechamento) ou negativo, o corte de entrada: o
   aluno tem −30, ou seja, só entra até 30 min antes de fechar;
 - janela "fixa" (relativa = False): das horas `janela.abre` às
-  `janela.fecha`, e só em dia em que o campus abre;
+  `janela.fecha`, mas só DENTRO de alguma janela aberta do dia (visitante
+  08–18 num domingo com evento 18–23 não tem janela: é exceção);
 - RN23: NINGUÉM entra depois do fechamento sem autorização. Qualquer
   janela termina, no máximo, no fechamento do dia (um visitante às 16:00
   de sábado, com o campus fechando às 14:00, é exceção);
@@ -34,14 +41,20 @@ Como cada categoria é descrita (RegraCategoria):
   funcionário, 0 para os outros).
 
 Lançamento retroativo (RN24): uma data/hora no passado (entrada ou saída)
-  a) até `horas_retroativo` (3 h) atrás, com o fechamento daquele dia
-     ainda por vir: normal;
-  b) mais antiga que isso: exceção, com autorização do administrador;
-  c) de um dia que JÁ FECHOU (ex.: 23:10 lançando 22:00, ou lançando
-     ontem): exceção que só passa com a SENHA de um administrador, mesmo
-     com o administrador logado.
+  a) até `horas_retroativo` (3 h) atrás, num horário em que a categoria
+     podia estar no campus e com o prazo do dia ainda por vir: normal;
+  b) mais antiga que isso, OU uma saída num horário com o campus FECHADO
+     para a categoria (madrugada, domingo sem evento, entre duas janelas),
+     mesmo que recente: exceção, com autorização do administrador (a
+     entrada nesse horário já é exceção pela janela da categoria);
+  c) de um dia cujo PRAZO DA CATEGORIA já passou (fechamento + tolerância:
+     23:10 lançando 22:00 de um aluno, ou lançando ontem): exceção que só
+     passa com a SENHA de um administrador, mesmo com ele logado. A saída
+     real às 23:00 de uma funcionária (tolerância até 23:30), lançada às
+     23:10, é normal.
 Até MINUTOS_TOLERANCIA_AGORA (5) minutos no passado ainda conta como
-"agora": quem digita 10:00 às 10:03 não está lançando nada retroativo.
+"agora": quem digita 10:00 às 10:03 não está lançando nada retroativo. Os
+segundos do relógio não contam (a tela só mostra hh:mm).
 """
 
 import math
@@ -89,8 +102,8 @@ class Horario:
 
 @dataclass(frozen=True)
 class Evento:
-    """Data com horário especial: substitui o funcionamento do dia,
-    mesmo num domingo ou feriado."""
+    """Data com horário especial: SOMA ao funcionamento do dia (abre o
+    campus também nesse horário); num domingo ou feriado é a única janela."""
     data: date
     horario: Horario
     descricao: str
@@ -156,21 +169,43 @@ def configuracao_padrao():
 # ------------------------------------------------------------------
 # O campus num dia
 # ------------------------------------------------------------------
-def expediente(config, dia):
-    """Horário do campus no dia (Expediente) ou None se fechado.
-    O evento vale mais que tudo; depois o feriado; depois a semana."""
+def janelas_do_dia(config, dia):
+    """Janelas (Expediente) em que o campus abre no dia, em ordem e sem
+    sobreposição. O evento SOMA ao funcionamento da semana; no feriado (e
+    no dia fechado da semana) só o evento abre. Lista vazia = fechado."""
+    janelas = []
+    horario = config.funcionamento.get(dia.weekday())
+    if horario and dia not in config.feriados:
+        janelas.append(_no_dia(dia, horario, "funcionamento"))
     evento = config.eventos.get(dia)
     if evento is not None:
-        return _no_dia(dia, evento.horario, f"Evento: {evento.descricao}")
-    if dia in config.feriados:
-        return None
-    horario = config.funcionamento.get(dia.weekday())
-    return _no_dia(dia, horario, "funcionamento") if horario else None
+        janelas.append(_no_dia(dia, evento.horario,
+                               f"Evento: {evento.descricao}"))
+    return _juntar(sorted(janelas, key=lambda j: j.abre))
+
+
+def _juntar(janelas):
+    """Janelas que se tocam ou se cruzam viram uma só."""
+    juntas = []
+    for janela in janelas:
+        if juntas and janela.abre <= juntas[-1].fecha:
+            ultima = juntas[-1]
+            juntas[-1] = Expediente(ultima.abre, max(ultima.fecha, janela.fecha),
+                                    f"{ultima.origem} + {janela.origem}")
+        else:
+            juntas.append(janela)
+    return juntas
 
 
 def _no_dia(dia, horario, origem):
     return Expediente(datetime.combine(dia, horario.abre),
                       datetime.combine(dia, horario.fecha), origem)
+
+
+def janela_atual(config, agora):
+    """A janela do campus aberta agora (Expediente), ou None."""
+    return next((j for j in janelas_do_dia(config, agora.date())
+                 if j.abre <= agora < j.fecha), None)
 
 
 def motivo_fechado(config, dia):
@@ -180,33 +215,69 @@ def motivo_fechado(config, dia):
     return DIAS_SEMANA[dia.weekday()].lower()
 
 
-def janela_entrada(config, tipo, dia):
-    """(início, fim) em que a categoria pode entrar no dia, ou None se o
-    campus não abre. Sem regra para o tipo: o dia inteiro. Nenhuma janela
-    passa do fechamento (RN23: depois de fechar, só com autorização)."""
-    aberto = expediente(config, dia)
-    if aberto is None:
-        return None
+def descrever_janelas(janelas):
+    """[(início, fim)] ou [Expediente] -> '07:00–14:00, 18:00–23:00'."""
+    pares = [(j.abre, j.fecha) if isinstance(j, Expediente) else j
+             for j in janelas]
+    return ", ".join(f"{a:%H:%M}–{b:%H:%M}" for a, b in pares)
+
+
+def janelas_entrada(config, tipo, dia):
+    """[(início, fim)] em que a categoria pode entrar no dia, uma por
+    janela do campus. Vazia se o campus não abre ou se a janela fixa da
+    categoria não cruza nenhuma janela aberta. Sem regra para o tipo: o
+    dia inteiro. Nenhuma passa do fechamento da sua janela (RN23)."""
+    abertas = janelas_do_dia(config, dia)
+    if not abertas:
+        return []
     regra = config.regras.get(tipo)
     if regra is None:
         meia_noite = datetime.combine(dia, time())
-        return meia_noite, meia_noite + timedelta(days=1)
-    if regra.relativa:
-        inicio = aberto.abre - timedelta(minutes=regra.abre_antes)
-        fim = aberto.fecha + timedelta(minutes=regra.fecha_depois)
-    else:
-        inicio = datetime.combine(dia, regra.janela.abre)
-        fim = datetime.combine(dia, regra.janela.fecha)
-    return inicio, min(fim, aberto.fecha)
+        return [(meia_noite, meia_noite + timedelta(days=1))]
+    resultado = []
+    for aberto in abertas:
+        if regra.relativa:
+            inicio = aberto.abre - timedelta(minutes=regra.abre_antes)
+            fim = aberto.fecha + timedelta(minutes=regra.fecha_depois)
+        else:          # a janela fixa só vale com o campus aberto
+            inicio = max(datetime.combine(dia, regra.janela.abre), aberto.abre)
+            fim = datetime.combine(dia, regra.janela.fecha)
+        fim = min(fim, aberto.fecha)
+        if inicio < fim:
+            resultado.append((inicio, fim))
+    return resultado
+
+
+def _dias_vizinhos(momento):
+    """O dia do momento, o anterior e o seguinte."""
+    return [momento.date() + timedelta(days=d) for d in (-1, 0, 1)]
 
 
 def entrada_permitida(config, tipo, entrada):
-    """A entrada cai na janela da categoria? Olha também a janela do dia
-    anterior e a do seguinte (ex.: funcionário que entra 60 min antes de
+    """A entrada cai numa janela da categoria? Olha também as do dia
+    anterior e do seguinte (ex.: funcionário que entra 60 min antes de
     um campus que abre à meia-noite e meia)."""
-    for desvio in (-1, 0, 1):
-        janela = janela_entrada(config, tipo, entrada.date() + timedelta(days=desvio))
-        if janela and janela[0] <= entrada <= janela[1]:
+    return any(inicio <= entrada <= fim
+               for dia in _dias_vizinhos(entrada)
+               for inicio, fim in janelas_entrada(config, tipo, dia))
+
+
+def presenca_permitida(config, tipo, momento):
+    """A categoria podia estar no campus nesse momento? Dentro de uma
+    janela do dia (desde o `abre_antes` dela) ou na tolerância dela depois
+    do fechamento do dia. Fora disso, o campus estava FECHADO para ela
+    (RN24 b). Tipo sem regra: sempre."""
+    regra = config.regras.get(tipo)
+    if tipo is not None and regra is None:
+        return True
+    antes = timedelta(minutes=regra.abre_antes if regra and regra.relativa
+                      else 0)
+    for dia in _dias_vizinhos(momento):
+        janelas = janelas_do_dia(config, dia)
+        if any(j.abre - antes <= momento <= j.fecha for j in janelas):
+            return True
+        if janelas and janelas[-1].fecha < momento <= prazo_do_dia(
+                config, tipo, dia):
             return True
     return False
 
@@ -230,25 +301,47 @@ class Excecoes:
         return self
 
 
-def retroativo(config, rotulo, momento, agora):
+def retroativo(config, rotulo, momento, agora, tipo=None):
     """
-    RN24: lançamento de `momento` (entrada ou saída) visto do `agora`.
-    Até MINUTOS_TOLERANCIA_AGORA no passado é "agora" (nada a autorizar);
-    num dia que já fechou, só com a senha de um administrador; mais antigo
-    que o limite de horas, com autorização. Devolve Excecoes.
+    RN24: lançamento de `momento` (entrada ou saída) da categoria `tipo`,
+    visto do `agora` sem os segundos (a tela só mostra hh:mm). Até
+    MINUTOS_TOLERANCIA_AGORA no passado é "agora" (nada a autorizar).
+    Depois do prazo do dia da categoria (fechamento + tolerância), só com
+    a senha de um administrador. Com autorização: mais antigo que o limite
+    de horas, ou uma SAÍDA num horário com o campus fechado para a
+    categoria (a entrada nesse horário já cai fora da janela dela).
+    Devolve Excecoes.
     """
+    agora = agora.replace(second=0, microsecond=0)
     atraso = agora - momento
     if atraso <= timedelta(minutes=MINUTOS_TOLERANCIA_AGORA):
         return Excecoes()
     fechou = fechamento_do_dia(config, momento)
-    if agora > fechou:
+    prazo = prazo_do_dia(config, tipo, momento.date())
+    if agora > prazo:
+        tolerancia = (f"; tolerância da categoria até {prazo:%H:%M}"
+                      if prazo > fechou else "")
         return Excecoes([f"{rotulo} retroativa: {momento:{FORMATO}} é de um "
-                         f"dia já encerrado (fechou {_quando_fechou(fechou)})."
-                         " Só com a senha de um administrador."], True)
+                         f"dia já encerrado (fechou {_quando_fechou(fechou)}"
+                         f"{tolerancia}). Só com a senha de um administrador."],
+                        True)
+    excecoes = Excecoes()
     if atraso > timedelta(hours=config.horas_retroativo):
-        return Excecoes([f"{rotulo} retroativa: {momento:{FORMATO}} é de mais "
-                         f"de {config.horas_retroativo} h atrás."])
-    return Excecoes()
+        excecoes.regras.append(f"{rotulo} retroativa: {momento:{FORMATO}} é "
+                               f"de mais de {config.horas_retroativo} h atrás.")
+    if rotulo == "Saída" and not presenca_permitida(config, tipo, momento):
+        excecoes.regras.append(f"{rotulo} retroativa: {momento:{FORMATO}} é de "
+                               "um horário com o campus fechado ("
+                               f"{_como_abre(config, momento.date())}).")
+    return excecoes
+
+
+def _como_abre(config, dia):
+    """'aberto 07:00–14:00, 18:00–23:00' ou o motivo de estar fechado."""
+    janelas = janelas_do_dia(config, dia)
+    if not janelas:
+        return f"{dia:{FORMATO_DATA}}: {motivo_fechado(config, dia)}"
+    return f"aberto {descrever_janelas(janelas)}"
 
 
 def _quando_fechou(fechou):
@@ -260,7 +353,7 @@ def _quando_fechou(fechou):
 def excecoes_da_entrada(config, tipo, entrada, agora):
     """Regras que a entrada (datetime) viola: lançamento retroativo e fora
     da janela da categoria (inclusive campus fechado). Vazio = normal."""
-    excecoes = retroativo(config, "Entrada", entrada, agora)
+    excecoes = retroativo(config, "Entrada", entrada, agora, tipo)
     if not entrada_permitida(config, tipo, entrada):
         excecoes.regras.append(_fora_da_janela(config, tipo, entrada))
     return excecoes
@@ -268,12 +361,17 @@ def excecoes_da_entrada(config, tipo, entrada, agora):
 
 def _fora_da_janela(config, tipo, entrada):
     dia = entrada.date()
-    janela = janela_entrada(config, tipo, dia)
-    if janela is None:
+    abertas = janelas_do_dia(config, dia)
+    if not abertas:
         return (f"Campus fechado em {dia:{FORMATO_DATA}} "
                 f"({motivo_fechado(config, dia)}).")
+    janelas = janelas_entrada(config, tipo, dia)
+    if not janelas:
+        return (f"{tipo}: entrada às {entrada:%H:%M} fora do horário "
+                "permitido (a janela da categoria não cabe no horário do "
+                f"campus neste dia: {descrever_janelas(abertas)}).")
     return (f"{tipo}: entrada às {entrada:%H:%M} fora do horário permitido "
-            f"({janela[0]:%H:%M}–{janela[1]:%H:%M}).")
+            f"({descrever_janelas(janelas)}).")
 
 
 def excecoes_da_duracao(entrada, saida):
@@ -299,7 +397,8 @@ def excecoes_do_registro(config, registro, agora):
     excecoes = excecoes_da_entrada(config, registro["tipo"], entrada, agora)
     if registro.get("saida"):
         saida = converter_data(registro["saida"])
-        excecoes.juntar(retroativo(config, "Saída", saida, agora))
+        excecoes.juntar(retroativo(config, "Saída", saida, agora,
+                                   registro["tipo"]))
         excecoes.regras += excecoes_da_duracao(entrada, saida)
     return excecoes
 
@@ -324,7 +423,8 @@ def excecoes_da_correcao(config, original, novo, agora):
         excecoes.regras.append(_fora_da_janela(config, novo["tipo"], entrada))
     if novo["saida"] and mudou_saida:
         excecoes.juntar(retroativo(config, "Saída",
-                                   converter_data(novo["saida"]), agora))
+                                   converter_data(novo["saida"]), agora,
+                                   novo["tipo"]))
     if novo["saida"] and (mudou_entrada or mudou_saida):
         excecoes.regras += excecoes_da_duracao(entrada,
                                                converter_data(novo["saida"]))
@@ -335,12 +435,20 @@ def excecoes_da_correcao(config, original, novo, agora):
 # Permanência, saída pendente e situação da visita
 # ------------------------------------------------------------------
 def fechamento_do_dia(config, momento):
-    """Fechamento do dia de `momento` (23:00 de segunda a sexta, ou o fim
-    do evento). Dia sem expediente (domingo, feriado): a meia-noite."""
-    aberto = expediente(config, momento.date())
-    if aberto is None:
+    """Fechamento do dia de `momento`: o fim da ÚLTIMA janela (23:00 de
+    segunda a sexta, ou o fim do evento da noite). Dia sem janela
+    (domingo, feriado): a meia-noite."""
+    janelas = janelas_do_dia(config, momento.date())
+    if not janelas:
         return datetime.combine(momento.date() + timedelta(days=1), time())
-    return aberto.fecha
+    return janelas[-1].fecha
+
+
+def prazo_do_dia(config, tipo, dia):
+    """Fechamento do dia + a tolerância da categoria (RN21)."""
+    regra = config.regras.get(tipo)
+    tolerancia = timedelta(minutes=regra.tolerancia_min if regra else 0)
+    return fechamento_do_dia(config, datetime.combine(dia, time())) + tolerancia
 
 
 def limite_permanencia(config, tipo, entrada):
@@ -363,9 +471,7 @@ def prazo_saida(config, tipo, entrada):
     entrada, ou seja, a visita já nasce pendente, porque o dia dela acabou.
     É também o horário da saída automática do "Encerrar o dia".
     """
-    regra = config.regras.get(tipo)
-    tolerancia = timedelta(minutes=regra.tolerancia_min if regra else 0)
-    prazo = max(fechamento_do_dia(config, entrada) + tolerancia, entrada)
+    prazo = max(prazo_do_dia(config, tipo, entrada.date()), entrada)
     return min(prazo, entrada + timedelta(hours=LIMITE_VISITA_HORAS))
 
 
@@ -377,10 +483,13 @@ def situacao(config, registro, agora):
     if registro["saida"]:
         return SAIU
     entrada = converter_data(registro["entrada"])
-    if agora > prazo_saida(config, registro["tipo"], entrada):
-        return SAIDA_PENDENTE
-    if agora > limite_permanencia(config, registro["tipo"], entrada):
-        return TEMPO_EXCEDIDO
+    try:
+        if agora > prazo_saida(config, registro["tipo"], entrada):
+            return SAIDA_PENDENTE
+        if agora > limite_permanencia(config, registro["tipo"], entrada):
+            return TEMPO_EXCEDIDO
+    except OverflowError:   # data absurda já gravada (ano 9999): não derruba
+        pass
     return NO_CAMPUS
 
 
@@ -393,8 +502,11 @@ def situacao_veiculo(config, estadia, agora):
     placa quando alguém o tirar.
     """
     entrada = converter_data(estadia["entrada"])
-    if agora > prazo_saida(config, estadia["tipo"], entrada):
-        return VEICULO_PENDENTE
+    try:
+        if agora > prazo_saida(config, estadia["tipo"], entrada):
+            return VEICULO_PENDENTE
+    except OverflowError:   # data absurda já gravada: não derruba a tela
+        pass
     return NO_ESTACIONAMENTO
 
 
@@ -408,10 +520,11 @@ def contar_situacoes(config, registros, agora):
 
 
 def minutos_para_fechar(config, agora):
-    """Minutos até o fechamento de hoje, se faltam no máximo
-    `config.minutos_aviso` (com o campus aberto); senão None."""
-    aberto = expediente(config, agora.date())
-    if aberto is None or not aberto.abre <= agora < aberto.fecha:
+    """Minutos até o fim da janela aberta agora, se faltam no máximo
+    `config.minutos_aviso`; senão None. Num sábado com evento à noite,
+    avisa o fim de cada janela (14:00 e 23:00)."""
+    aberto = janela_atual(config, agora)
+    if aberto is None:
         return None
     faltam = math.ceil((aberto.fecha - agora) / timedelta(minutes=1))
     return faltam if faltam <= config.minutos_aviso else None

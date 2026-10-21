@@ -495,8 +495,9 @@ class TestLancamentoRetroativoNaTela(BaseHorarios):
                       self.excecoes()[0]["detalhe"])
 
     def test_saida_digitada_no_cadastro_tambem_e_conferida(self):
+        # aluno: sem tolerância, o prazo do dia acabou às 23:00
         self.mudar_relogio(AGORA.replace(hour=23, minute=10))
-        self.preencher(tipo="Professor")
+        self.preencher(tipo="Aluno")
         self.app.entrada.delete(0, tk.END)
         self.app.entrada.insert(0, tela(AGORA.replace(hour=21)))
         self.app.saida.insert(0, tela(AGORA.replace(hour=22)))
@@ -528,7 +529,7 @@ class TestRetroativoComAdminLogado(BaseHorarios):
             dialogo.justificativa.insert(0, "Evento da reitoria autorizado")
             dialogo.confirmar()
         self.responder_autorizacao = so_justificativa
-        self.preencher(tipo="Professor")
+        self.preencher(tipo="Aluno")      # sem tolerância depois de fechar
         self.app.entrada.delete(0, tk.END)
         self.app.entrada.insert(0, tela(AGORA.replace(hour=22)))
         self.app.cadastrar()

@@ -436,7 +436,7 @@ ESQUEMA_V7 = [
         data      TEXT PRIMARY KEY,          -- 'AAAA-MM-DD'
         descricao TEXT NOT NULL CHECK (descricao <> '')
     )""",
-    # evento: horário especial que substitui o funcionamento da data
+    # evento: horário especial que soma ao funcionamento da data
     """CREATE TABLE IF NOT EXISTS eventos (
         data      TEXT PRIMARY KEY,
         abre      TEXT NOT NULL,

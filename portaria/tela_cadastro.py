@@ -625,7 +625,7 @@ class AbaCadastro:
 
         minutos = horarios.minutos_para_fechar(self.config, agora)
         if minutos is not None:
-            fecha = horarios.expediente(self.config, agora.date()).fecha
+            fecha = horarios.janela_atual(self.config, agora).fecha
             dentro = sum(contagem.values())
             texto = (f"Campus fecha às {fecha:%H:%M} (em {minutos} min)  ·  "
                      + (f"{dentro} no campus" if dentro else "ninguém no campus"))

@@ -468,7 +468,7 @@ def aplicar_tema(janela):
             ("Treeitem.text", {"side": "left", "sticky": ""})]})])
     s.layout("Tabela.Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
     # versão compacta (histórico dentro de diálogos)
-    s.configure("Compacta.Tabela.Treeview", rowheight=px(30))
+    s.configure("Compacta.Tabela.Treeview", rowheight=px(27))
 
     # Barra de rolagem fina, sem setas
     s.layout("Fina.Vertical.TScrollbar", [

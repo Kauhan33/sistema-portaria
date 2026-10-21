@@ -393,6 +393,63 @@ class TestTelaPequena(BaseInterface):
         self.assertLessEqual(dialogo.winfo_reqheight(), 536 - 30)  # - barra
         self.assertLessEqual(dialogo.winfo_reqwidth(), 1093)
 
+    def dentro_da_janela(self, widget):
+        widget.update()
+        return (widget.winfo_ismapped() and
+                widget.winfo_rooty() + widget.winfo_height()
+                <= self.janela.winfo_rooty() + self.janela.winfo_height())
+
+    def test_configuracoes_botao_e_mensagens_sempre_visiveis(self):
+        """QA1 A2/A3/B13: no notebook o erro empurrava "Salvar
+        funcionamento" para fora da tela, e o erro/"Salvo" de Categorias
+        ficava abaixo do cartão; o erro antigo não sumia ao reler."""
+        self.tamanho(self.PEQUENA)
+        self.app.ir_para(self.app.aba_configuracoes)
+        tela = self.app.tela_configuracoes
+        tela.horas_retroativo.delete(0, tk.END)
+        tela.horas_retroativo.insert(0, "0")
+        tela.salvar_funcionamento()
+        self.assertEqual(tela.faixa_funcionamento.tipo, "erro")
+        faixa = tela.faixa_funcionamento               # o texto aparece
+        self.assertLess(faixa.lbl.winfo_rooty() + faixa.lbl.winfo_height(),
+                        self.janela.winfo_rooty() + self.janela.winfo_height())
+        self.assertTrue(self.dentro_da_janela(tela.btn_salvar_funcionamento))
+        tela.atualizar()                            # reler a página
+        self.assertEqual(tela.faixa_funcionamento.tipo, "neutro")
+        self.assertTrue(self.dentro_da_janela(tela.btn_salvar_funcionamento))
+        tela.seletor.selecionar("Categorias")
+        tela.categorias["Aluno"]["ate"].delete(0, tk.END)
+        tela.categorias["Aluno"]["ate"].insert(0, "30")
+        tela.salvar_regras()
+        self.assertEqual(tela.faixa_categorias.tipo, "erro")
+        self.assertTrue(self.dentro_da_janela(tela.faixa_categorias))
+        tela.categorias["Aluno"]["ate"].delete(0, tk.END)
+        tela.categorias["Aluno"]["ate"].insert(0, "-30")
+        tela.salvar_regras()
+        self.assertEqual(tela.faixa_categorias.tipo, "sucesso")
+        self.assertTrue(self.dentro_da_janela(tela.faixa_categorias))
+
+    def test_aviso_com_desfazer_cabe_e_movimento_com_pendencias(self):
+        """QA1 M5: com a faixa de pendências o Movimento mostrava 1 a 2
+        linhas, e o aviso com Desfazer era cortado e encostava no status."""
+        self.agora = AGORA.replace(hour=23, minute=45)
+        self.app.atualizar_tabela()
+        self.tamanho(self.PEQUENA)
+        tela = self.app.tela_cadastro
+        self.assertTrue(tela.faixa_pendentes.winfo_ismapped())
+        self.assertGreaterEqual(self.linhas_visiveis(), 4)
+        tela.avisar("Saída de Bruno registrada às 23:10 (a pé; o carro "
+                    "QWE-1D23 fica no estacionamento).", desfazer=[1])
+        self.janela.update()
+        self.assertFalse(tela.lbl_status.winfo_ismapped())  # não disputa
+        aviso, rodape = tela.quadro_aviso, tela.rodape_mov
+        self.assertLessEqual(aviso.winfo_rootx() + aviso.winfo_width(),
+                             rodape.winfo_rootx() + rodape.winfo_width())
+        self.assertTrue(tela.btn_desfazer.winfo_ismapped())
+        tela._esconder_aviso()
+        self.janela.update()
+        self.assertTrue(tela.lbl_status.winfo_ismapped())
+
     def test_colunas_do_movimento_cabem_na_largura(self):
         self.tamanho(self.PEQUENA)
         tabela = self.app.tabela

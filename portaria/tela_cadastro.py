@@ -94,10 +94,15 @@ ESPACOS = {
     "normal": {"topo": (20, 16), "cartao": 18, "titulo": 10,
                "movimento": (ESPACO_CARTOES, MARGEM), "miolo_mov": 8,
                "barra": (6, 12), "rodape": (8, 2)},
-    "compacta": {"topo": (8, 8), "cartao": 12, "titulo": 6,
-                 "movimento": (8, 12), "miolo_mov": 4,
-                 "barra": (2, 6), "rodape": (4, 0)},
+    "compacta": {"topo": (6, 6), "cartao": 10, "titulo": 6,
+                 "movimento": (6, 10), "miolo_mov": 2,
+                 "barra": (2, 4), "rodape": (2, 0)},
 }
+# Na compacta o rótulo "Saída rápida (F2)" sai de cima do campo e vai para
+# dentro dele (sobra altura para o Movimento)
+DICA_SAIDA_RAPIDA = {"normal": "CPF ou placa",
+                     "compacta": "Saída rápida (F2): CPF ou placa"}
+DICA_BUSCA = "Buscar: nome, placa, CPF…"
 
 
 # Situação da visita -> (token da cor da bolinha, marca da linha em
@@ -160,15 +165,17 @@ class AbaCadastro:
                                       bg=COR["fundo"], fg=COR["sucesso"])
         self.lbl_no_campus.pack(side="left")
 
-        tk.Label(cab.acoes, text="Saída rápida (F2)", font=FONTE["rotulo"],
-                 bg=COR["fundo"], fg=COR["texto_2"]).pack(anchor="w",
-                                                          pady=(0, px(4)))
+        self.lbl_saida_rapida = tk.Label(cab.acoes, text="Saída rápida (F2)",
+                                         font=FONTE["rotulo"], bg=COR["fundo"],
+                                         fg=COR["texto_2"])
+        self.lbl_saida_rapida.pack(anchor="w", pady=(0, px(4)))
         linha = tk.Frame(cab.acoes, bg=COR["fundo"])
         linha.pack()
         campo = Campo(linha, fundo_pai=COR["fundo"], largura=230,
                       icone=ICONE["busca"], acao_icone=self.saida_rapida,
-                      dica_vazio="CPF ou placa")
+                      dica_vazio=DICA_SAIDA_RAPIDA["normal"])
         campo.pack(side="left")
+        self.campo_saida_rapida_quadro = campo
         self.campo_saida_rapida = campo.entrada
         self.campo_saida_rapida.bind("<Return>", self.saida_rapida)
         self.campo_saida_rapida.bind("<KP_Enter>", self.saida_rapida)
@@ -262,8 +269,21 @@ class AbaCadastro:
         if compacta == self.compacta:
             return
         self.compacta = compacta
-        e = ESPACOS["compacta" if compacta else "normal"]
+        densidade = "compacta" if compacta else "normal"
+        e = ESPACOS[densidade]
         self.cabecalho.pack_configure(pady=_px(e["topo"]))
+        if compacta:
+            self.lbl_saida_rapida.pack_forget()
+        else:
+            self.lbl_saida_rapida.pack(anchor="w", pady=(0, px(4)),
+                                       before=self.campo_saida_rapida_quadro.master)
+        self.campo_saida_rapida_quadro.lbl_vazio.config(
+            text=DICA_SAIDA_RAPIDA[densidade])
+        if compacta:                       # a busca fica com a largura
+            self.titulo_mov.pack_forget()
+        else:
+            self.titulo_mov.pack(side="left", before=self.seletor_lista)
+        self.seletor_lista.pack_configure(padx=(0 if compacta else px(16), 0))
         self.cartao_form.miolo.pack_configure(padx=px(e["cartao"]),
                                               pady=px(e["cartao"]))
         self.cab_form.pack_configure(pady=(0, px(e["titulo"])))
@@ -365,13 +385,13 @@ class AbaCadastro:
         m.pack_configure(padx=px(1))
         self.barra_mov = barra = tk.Frame(m, bg=COR["superficie"])
         barra.pack(fill="x", padx=px(19))
-        titulo_cartao(barra, "Movimento").pack(side="left")
+        self.titulo_mov = titulo_cartao(barra, "Movimento")
+        self.titulo_mov.pack(side="left")
         self.seletor_lista = Seletor(barra, LISTAS, self.mostrar_lista,
                                      fundo_pai=COR["superficie"])
         self.seletor_lista.pack(side="left", padx=(px(16), 0))
         self.campo_busca = Campo(barra, largura=300, icone=ICONE["busca"],
-                                 dica_vazio="Buscar no histórico: nome, CPF, "
-                                            "placa…")
+                                 dica_vazio=DICA_BUSCA)
         self.busca = self.campo_busca.entrada
         self.espera_busca = EsperaDigitacao(self.busca, self.atualizar_tabela)
         self.busca.bind("<Return>", lambda e: "break")   # Enter na busca não cadastra
@@ -391,14 +411,15 @@ class AbaCadastro:
         self.lbl_status = tk.Label(rodape, text="", font=FONTE["dica"],
                                    bg=COR["superficie"], fg=COR["texto_3"])
         self.lbl_status.pack(side="left")
-        # aviso que some sozinho (com o Desfazer da saída)
-        aviso = tk.Frame(rodape, bg=COR["superficie"])
-        aviso.pack(side="right")
+        # aviso que some sozinho (com o Desfazer da saída): enquanto ele
+        # aparece, ocupa a linha toda no lugar do status (não corta)
+        self.quadro_aviso = aviso = tk.Frame(rodape, bg=COR["superficie"])
         self.lbl_aviso_icone = tk.Label(aviso, text="", font=fonte_icone(10),
                                         bg=COR["superficie"], fg=COR["sucesso"])
         self.lbl_aviso_icone.pack(side="left", padx=(0, px(6)))
         self.lbl_aviso = tk.Label(aviso, text="", font=FONTE["corpo_semi"],
-                                  bg=COR["superficie"], fg=COR["sucesso"])
+                                  bg=COR["superficie"], fg=COR["sucesso"],
+                                  justify="left", anchor="w")
         self.lbl_aviso.pack(side="left")
         self.btn_desfazer = link(aviso, "Desfazer", self.desfazer_saida)
 
@@ -659,7 +680,9 @@ class AbaCadastro:
             partes.append(plural(carros, "veículo pendente",
                                  "veículos pendentes"))
         texto = " e ".join(partes) + " depois do fechamento."
-        if pendentes and not admin:
+        if 1 < self.aba.winfo_height() < px(ALTURA_CONFORTAVEL):
+            pass         # tela baixa: uma linha só (sobra altura ao Movimento)
+        elif pendentes and not admin:
             texto += (" Registre a saída ou chame um administrador para "
                       "encerrar o dia.")
         elif carros and not pendentes:
@@ -1360,6 +1383,14 @@ class AbaCadastro:
             self.btn_desfazer.pack(side="left", padx=(px(10), 0))
         else:
             self.btn_desfazer.pack_forget()
+        if texto:
+            self.lbl_status.pack_forget()
+            self.quadro_aviso.pack(side="left", fill="x")
+            largura = self.rodape_mov.winfo_width()
+            self.lbl_aviso.config(wraplength=max(largura - px(130), px(240))
+                                  if largura > 1 else 0)
+        else:
+            self._mostrar_status_no_rodape()
         self._timer_aviso = self.aba.after(SEGUNDOS_PARA_DESFAZER * 1000,
                                            self._esconder_aviso)
 
@@ -1369,3 +1400,8 @@ class AbaCadastro:
         self.lbl_aviso.config(text="")
         self.lbl_aviso_icone.config(text="")
         self.btn_desfazer.pack_forget()
+        self._mostrar_status_no_rodape()
+
+    def _mostrar_status_no_rodape(self):
+        self.quadro_aviso.pack_forget()
+        self.lbl_status.pack(side="left")

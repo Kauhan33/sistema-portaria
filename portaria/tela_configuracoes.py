@@ -14,6 +14,11 @@ Três seções, escolhidas no seletor do topo:
 Tudo o que é digitado passa pelas funções horarios.ler_* (fecha depois de
 abre, hh:mm válido, números nos limites) antes de ir ao banco, que confere
 o perfil de administrador e registra cada mudança no histórico.
+
+O resultado de Salvar (erro ou "Salvo") aparece NO LUGAR da nota de ajuda
+da seção, junto do botão: a altura da página não muda, então no notebook
+(1366x670) o botão e a mensagem continuam visíveis. Reler a página
+(abri-la de novo) traz a nota de volta.
 """
 
 import tkinter as tk
@@ -36,6 +41,13 @@ DICA_CATEGORIAS = ("Do funcionamento: De = min antes de abrir; Até = 0 (até "
                    "hh:mm, só com o campus aberto. Ninguém entra depois de fechar. "
                    "Tolerância = min depois do fechamento até a saída pendente.")
 LARGURA_HORA_RELOGIO = 104    # hh:mm com o ícone do relógio
+ABERTO = {True: "Aberto", False: "Fechado"}
+NOTA_FUNCIONAMENTO = (
+    "Entrada ou saída mais antiga que esse limite, saída num horário com o "
+    f"campus fechado e visitas com mais de {horarios.LIMITE_VISITA_HORAS} h "
+    "pedem autorização do administrador. Depois do prazo do dia "
+    "(fechamento + tolerância), só com a senha dele. Feriado fecha o dia; "
+    "evento soma um horário ao dia.")
 LARGURA_NUMERO = 72           # minutos ou hh:mm na tabela de categorias
 COLUNAS_FERIADOS = [("data", "Data", 96, "w"), ("dia", "Dia", 56, "w"),
                     ("descricao", "Descrição", 200, "w")]
@@ -62,6 +74,7 @@ class AbaConfiguracoes:
         self.app = app
         self.config = None
         self.dias = []          # 7 x (var aberto, campo abre, campo fecha)
+        self.alternadores = []  # "Aberto" ou "Fechado" de cada dia
         self.categorias = {}    # tipo -> campos da linha
 
         cab = Cabecalho(aba, "Configurações",
@@ -96,9 +109,10 @@ class AbaConfiguracoes:
         cab = tk.Frame(m, bg=COR["superficie"])
         cab.pack(fill="x", pady=(0, px(8)))
         titulo_cartao(cab, "Horário de funcionamento").pack(side="left")
-        tk.Label(cab, text="feriados e eventos mudam um dia só",
-                 font=FONTE["dica"], bg=COR["superficie"],
-                 fg=COR["texto_3"]).pack(side="right")
+        # no topo: nenhuma mensagem empurra o botão para fora da tela
+        self.btn_salvar_funcionamento = Botao(
+            cab, "Salvar funcionamento", self.salvar_funcionamento, "primario")
+        self.btn_salvar_funcionamento.pack(side="right")
         grade = tk.Frame(m, bg=COR["superficie"])
         grade.pack(fill="x")
         for coluna, texto in enumerate(("Dia", "", "Abre", "Fecha")):
@@ -116,12 +130,14 @@ class AbaConfiguracoes:
             for campo in (abre, fecha):      # dia fechado: campo apagado, liso
                 campo.entrada.config(disabledbackground=COR["superficie"],
                                      disabledforeground=COR["texto_3"])
-            Alternador(grade, "Aberto", aberto,
-                       comando=lambda d=dia: self._ao_alternar_dia(d)
-                       ).grid(row=linha, column=1, sticky="w", padx=(0, px(16)))
+            alternador = Alternador(
+                grade, ABERTO[True], aberto, textos=tuple(ABERTO.values()),
+                comando=lambda d=dia: self._ao_alternar_dia(d))
+            alternador.grid(row=linha, column=1, sticky="w", padx=(0, px(16)))
             abre.grid(row=linha, column=2, pady=1, padx=(0, px(8)))
             fecha.grid(row=linha, column=3, pady=1)
             self.dias.append((aberto, abre.entrada, fecha.entrada))
+            self.alternadores.append(alternador)
 
         lado = Cartao(secao, pad=16)
         lado.grid(row=0, column=1, sticky="nsew")
@@ -135,20 +151,12 @@ class AbaConfiguracoes:
                                       "horas sem autorização", numeros=2)
         grupo.pack(fill="x", pady=(0, px(12)))
         self.horas_retroativo = campo.entrada
-        nota = Aviso(m)
-        nota.mostrar("neutro", "Entrada ou saída mais antiga que esse limite, "
-                               "saída num horário com o campus fechado e "
-                               f"visitas com mais de {horarios.LIMITE_VISITA_HORAS}"
-                               " h pedem autorização do administrador. Depois "
-                               "do prazo do dia (fechamento + tolerância), só "
-                               "com a senha dele.")
-        nota.pack(fill="x")
-        Botao(m, "Salvar funcionamento", self.salvar_funcionamento, "primario"
-              ).pack(side="bottom", anchor="e")
-        self.faixa_funcionamento = Aviso(m)
+        # a nota de ajuda dá lugar ao resultado de Salvar
+        self.faixa_funcionamento = self._nota(m, NOTA_FUNCIONAMENTO)
 
     def _ao_alternar_dia(self, dia):
         aberto, abre, fecha = self.dias[dia]
+        self.alternadores[dia].definir_texto(ABERTO[bool(aberto.get())])
         estado = "normal" if aberto.get() else "disabled"
         for campo in (abre, fecha):
             campo.config(state=estado)
@@ -197,10 +205,10 @@ class AbaConfiguracoes:
         titulo_cartao(cab, "Regras por categoria").pack(side="left")
         Botao(cab, "Salvar regras", self.salvar_regras, "primario"
               ).pack(side="right")
-        tk.Label(m, text=DICA_CATEGORIAS, font=FONTE["dica"], bg=COR["superficie"],
-                 fg=COR["texto_3"], justify="left", anchor="w",
-                 wraplength=px(760)).pack(fill="x", pady=(px(2), px(8)))
-        self.faixa_categorias = Aviso(m)
+        # a dica dá lugar ao resultado de Salvar (logo abaixo do botão)
+        self.faixa_categorias = self._nota(m, DICA_CATEGORIAS)
+        self.faixa_categorias.pack_configure(pady=(px(8), px(8)))
+        self.faixa_categorias.definir_respiro(6)
         grade = tk.Frame(m, bg=COR["superficie"])
         grade.pack(fill="x")
         self.grade_categorias = grade
@@ -321,8 +329,9 @@ class AbaConfiguracoes:
                                         LARGURA_HORA_RELOGIO, seletor="hora")
         self.nome_evento = self._campo(linha, 2, 0, "Descrição", "ex.: Formatura",
                                        juntas=4)
+        # na linha da data: ao lado da descrição, era cortado no notebook
         Botao(linha, "Adicionar", self.adicionar_evento, "secundario",
-              icone=ICONE["mais"]).grid(row=3, column=4, sticky="e")
+              icone=ICONE["mais"]).grid(row=1, column=3, sticky="e")
         self.faixa_eventos = Aviso(m)
         quadro, self.tabela_eventos = tabela(m, COLUNAS_EVENTOS, altura=5)
         quadro.pack(fill="both", expand=True, pady=(px(12), 0))
@@ -436,13 +445,34 @@ class AbaConfiguracoes:
         if not ok:
             return
         self.config = config
+        self._limpar_resultados()
         self._preencher_funcionamento()
         self._preencher_categorias()
         self._preencher_calendario()
 
     @staticmethod
+    def _nota(pai, texto):
+        """Faixa neutra de ajuda que também mostra o resultado de Salvar."""
+        faixa = Aviso(pai)
+        faixa.nota = texto
+        faixa.mostrar("neutro", texto)
+        faixa.pack(fill="x")
+        return faixa
+
+    def _limpar_resultados(self):
+        """Ao reler a página, as notas voltam e as mensagens antigas somem."""
+        for faixa in (self.faixa_funcionamento, self.faixa_categorias,
+                      self.faixa_feriados, self.faixa_eventos):
+            nota = getattr(faixa, "nota", None)
+            if nota:
+                faixa.mostrar("neutro", nota)
+            else:
+                faixa.pack_forget()
+
+    @staticmethod
     def _resultado(faixa, tipo, texto):
-        """Mensagem perto de onde se digitou (antes da lista, se houver)."""
+        """Mensagem perto de onde se digitou: no lugar da nota de ajuda ou
+        antes da lista."""
         faixa.mostrar(tipo, texto)
         if not faixa.winfo_manager():
             antes = getattr(faixa, "antes_de", None)

@@ -1066,11 +1066,15 @@ class Seletor(tk.Frame):
 class Alternador(tk.Canvas):
     """Interruptor liga/desliga com texto (ex.: "Mostrar removidos")."""
 
-    def __init__(self, pai, texto, var, comando=None, fundo_pai=None):
+    def __init__(self, pai, texto, var, comando=None, fundo_pai=None,
+                 textos=()):
+        """`textos`: todos os textos que ele pode mostrar (definir_texto),
+        para a largura caber o maior (ex.: "Aberto" e "Fechado")."""
         self.fundo_pai = fundo_pai or COR["superficie"]
         self.texto, self.var, self.comando = texto, var, comando
         self.fonte = tkfont.Font(root=pai, font=FONTE["corpo"])
-        super().__init__(pai, width=px(44) + self.fonte.measure(texto),
+        maior = max(self.fonte.measure(t) for t in (texto, *textos))
+        super().__init__(pai, width=px(44) + maior,
                          height=px(ALTURA_CAMPO), bg=self.fundo_pai,
                          highlightthickness=0, bd=0, cursor="hand2",
                          takefocus=1)
@@ -1083,6 +1087,10 @@ class Alternador(tk.Canvas):
 
     def cget(self, chave):
         return self.texto if chave == "text" else super().cget(chave)
+
+    def definir_texto(self, texto):
+        self.texto = texto
+        self._desenhar()
 
     def alternar(self):
         self.var.set(not self.var.get())

@@ -513,8 +513,9 @@ class AbaCadastro:
         agora = self.app.relogio()
         texto = self.busca.get().strip()
         if texto:
-            ok, registros = self.app.tentar(self.app.banco.buscar_registros,
-                                            texto, LIMITE_BUSCA)
+            ok, registros = self.app.tentar(
+                self.app.banco.buscar_registros, texto, LIMITE_BUSCA,
+                so_cpf_completo=not eh_admin(self.app.usuario))
             if not ok:
                 return
         else:

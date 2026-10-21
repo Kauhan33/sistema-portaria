@@ -564,6 +564,19 @@ class TestPorteiro(BaseInterface):
     def test_porteiro_ve_a_aba_pessoas(self):
         self.assertIsNotNone(self.app.tela_pessoas)
 
+    def test_busca_do_porteiro_nao_revela_digitos_do_cpf(self):
+        """QA2 M2: '982247' (os dígitos visíveis) e pedaços maiores não
+        acham ninguém; o CPF completo acha."""
+        self.cadastrar_um()
+        self.buscar("5982247")
+        self.assertEqual(self.app.tabela.get_children(), ())
+        self.buscar("52998224725")
+        self.assertEqual(len(self.app.tabela.get_children()), 1)
+        pessoas = self.app.tela_pessoas
+        pessoas.busca.insert(0, "2998224")
+        pessoas.atualizar()
+        self.assertEqual(pessoas.tabela.get_children(), ())
+
     def test_porteiro_nao_consegue_excluir(self):  # RN02
         linha = self.cadastrar_um()
         self.app.tabela.selection_set(linha)

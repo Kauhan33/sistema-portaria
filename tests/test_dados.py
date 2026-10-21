@@ -919,6 +919,24 @@ class TestConsultasNoBanco(BaseTemp):
                 self.assertEqual(self.banco.buscar_pessoas(texto),
                                  filtrar(pessoas, texto))
 
+    def test_porteiro_so_acha_cpf_pelos_11_digitos(self):
+        """QA2 M2: com pedaços do CPF, o porteiro (que vê ***.982.247-**)
+        reconstruía o número inteiro em umas 20 buscas."""
+        busca_do_porteiro = [
+            lambda t: self.banco.buscar_registros(t, so_cpf_completo=True),
+            lambda t: self.banco.buscar_pessoas(t, so_cpf_completo=True)]
+        for buscar in busca_do_porteiro:
+            for pedaco in ("982247", "5982247", "2998224", "529982247",
+                           "5299822472"):
+                with self.subTest(pedaco=pedaco):
+                    self.assertFalse(any(r["cpf"] == "52998224725"
+                                         for r in buscar(pedaco)))
+            self.assertTrue(all(r["cpf"] == "52998224725"
+                                for r in buscar("529.982.247-25")))
+            self.assertTrue(buscar("529.982.247-25"))
+        # o administrador continua achando por qualquer pedaço
+        self.assertTrue(self.banco.buscar_registros("982247"))
+
 
     def test_contadores_da_barra_lateral(self):
         self.criar_equipe()

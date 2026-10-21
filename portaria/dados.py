@@ -290,11 +290,17 @@ def _estadia(linha):
             "responsavel_dentro": bool(dentro)}
 
 
-def _condicao_busca(texto, colunas):
+def _condicao_busca(texto, colunas, so_cpf_completo=False):
     """
     WHERE da busca com o MESMO critério de consultas.filtrar: o texto (em
     minúsculas) contido no nome, tipo ou placa, ou os dígitos dele contidos
     no CPF ou celular. Devolve (sql, parametros); sql vazio = sem filtro.
+
+    so_cpf_completo (porteiro, que vê o CPF mascarado): o CPF só é achado
+    pelos 11 dígitos exatos. Com pedaços, a busca respondia sobre os
+    dígitos escondidos e o CPF inteiro saía em umas 20 buscas (QA2 M2).
+    11 dígitos num campo de 11 dígitos é o mesmo que igualdade: `cpf = ?`
+    usa o índice.
     """
     texto = texto.strip().lower()
     if not texto:
@@ -303,8 +309,14 @@ def _condicao_busca(texto, colunas):
     partes = [f"instr(minusculo({c}), ?) > 0" for c in colunas["texto"]]
     params = [texto] * len(colunas["texto"])
     if numeros:
-        partes += [f"instr({c}, ?) > 0" for c in colunas["digitos"]]
-        params += [numeros] * len(colunas["digitos"])
+        for c in colunas["digitos"]:
+            if c.endswith("cpf") and (len(numeros) == 11 or so_cpf_completo):
+                if len(numeros) == 11:
+                    partes.append(f"{c} = ?")
+                    params.append(numeros)
+                continue
+            partes.append(f"instr({c}, ?) > 0")
+            params.append(numeros)
     return "(" + " OR ".join(partes) + ")", params
 
 
@@ -863,16 +875,16 @@ class Banco:
                 (inicio, fim, inicio, fim, inicio, fim, inicio)).fetchall()
         return [_registro(linha) for linha in linhas]
 
-    def buscar_registros(self, texto, limite=200):
+    def buscar_registros(self, texto, limite=200, so_cpf_completo=False):
         """
         Busca no histórico inteiro com o mesmo critério de consultas.filtrar
         (nome, tipo, placa; CPF e celular pelos dígitos), da visita mais
         recente para a mais antiga, no máximo `limite`. Texto vazio = as
-        mais recentes.
+        mais recentes. so_cpf_completo: ver _condicao_busca (porteiro).
         """
         condicao, params = _condicao_busca(
             texto, {"texto": ("nome", "tipo", "placa"),
-                    "digitos": ("cpf", "celular")})
+                    "digitos": ("cpf", "celular")}, so_cpf_completo)
         where = f"WHERE {condicao}" if condicao else ""
         with self._conexao() as con:
             linhas = con.execute(
@@ -1653,16 +1665,17 @@ class Banco:
                                  "ORDER BY p.nome COLLATE NOCASE").fetchall()
         return [self._pessoa(linha) for linha in linhas]
 
-    def buscar_pessoas(self, texto, limite=200):
+    def buscar_pessoas(self, texto, limite=200, so_cpf_completo=False):
         """
         Aba Pessoas sem carregar todo mundo: mesmo critério de
         consultas.filtrar (nome, tipo, placa; CPF e celular pelos dígitos),
         em ordem alfabética, no máximo `limite`. Passando do limite, quem
         está no campus entra primeiro (a lista abre ordenada pela situação).
+        so_cpf_completo: ver _condicao_busca (porteiro).
         """
         condicao, params = _condicao_busca(
             texto, {"texto": ("nome", "tipo", "placa"),
-                    "digitos": ("cpf", "celular")})
+                    "digitos": ("cpf", "celular")}, so_cpf_completo)
         where = f"WHERE {condicao}" if condicao else ""
         with self._conexao() as con:
             linhas = con.execute(

@@ -22,6 +22,7 @@ from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao,
                           plural, rotulo_campo, tabela, titulo_cartao)
 from .estilo import (COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, fonte_icone,
                      px)
+from .usuarios import eh_admin
 from .validacao import (TIPOS_ACESSO, converter_data,
                         formatar_celular, formatar_placa, normalizar,
                         validar_campos)
@@ -120,7 +121,8 @@ class AbaPessoas:
              "visitas": "Visitas", "ultima": "Última visita"},
             {"#0": self._ordem_situacao,
              "nome": lambda p: _sem_acento(p["nome"]),
-             "cpf": lambda p: p["cpf"],
+             # o porteiro ordena pelo que vê (o CPF mascarado)
+             "cpf": lambda p: self.app.exibir_cpf(p["cpf"]),
              "visitas": lambda p: p["visitas"],
              "ultima": lambda p: _data(p["ultima_visita"])},
             self.mostrar_lista, coluna="#0",
@@ -276,8 +278,9 @@ class AbaPessoas:
         return self._situacao_da_pessoa(p)[0]
 
     def atualizar(self):
-        ok, pessoas = self.app.tentar(self.app.banco.buscar_pessoas,
-                                      self.busca.get(), LIMITE_BUSCA)
+        ok, pessoas = self.app.tentar(
+            self.app.banco.buscar_pessoas, self.busca.get(), LIMITE_BUSCA,
+            so_cpf_completo=not eh_admin(self.app.usuario))
         if not ok:
             return
         ok, bloqueios = self.app.tentar(self.app.banco.listar_bloqueios)

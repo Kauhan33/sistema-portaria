@@ -9,6 +9,9 @@ histórico).
   (usuarios.entrar): a senha errada conta como tentativa e trava o login
   depois de várias. Só um administrador ativo autoriza.
 - Administrador logado: só confirma, com a justificativa (sem senha).
+- Lançamento num dia que JÁ FECHOU (RN24 c, so_com_senha): a senha é
+  obrigatória para todos. O administrador logado redigita a própria senha
+  (o login dele já vem preenchido; outro administrador pode trocar).
 
 O diálogo só devolve a autorização; quem grava é a tela, passando-a ao
 banco, que confere de novo e grava o evento "Exceção autorizada". A tela
@@ -20,7 +23,7 @@ import tkinter as tk
 
 from .componentes import Aviso, Dialogo, campo_rotulado
 from .estilo import COR, FONTE, ICONE, px
-from .horarios import MINIMO_JUSTIFICATIVA
+from .horarios import MINIMO_JUSTIFICATIVA, Excecoes
 from .usuarios import eh_admin, entrar
 
 TITULO = "Autorização do administrador"
@@ -29,18 +32,24 @@ SO_ADMIN = ("Somente um administrador pode autorizar a exceção.\n"
 
 
 class JanelaAutorizacao(Dialogo):
-    def __init__(self, app, regras, acao, dono=None):
+    def __init__(self, app, regras, acao, dono=None, so_com_senha=False):
         """
         regras: textos das regras violadas; acao: o que precisa da
         autorização ("A entrada de Ana Silva"). `resultado` fica com a
-        autorização ({"autorizado_por", "regras", "justificativa"}) quando
-        o administrador confirma; continua None se cancelar.
+        autorização ({"autorizado_por", "regras", "justificativa",
+        "com_senha"}) quando o administrador confirma; continua None se
+        cancelar. so_com_senha: até o administrador logado digita a senha.
         """
         self.app, self.regras = app, list(regras)
         self.resultado = None
         self.erro = ""                  # último erro mostrado na faixa
-        self.pede_senha = not eh_admin(app.usuario)
-        if self.pede_senha:
+        admin_logado = eh_admin(app.usuario)
+        self.pede_senha = so_com_senha or not admin_logado
+        if so_com_senha:
+            subtitulo = (f"{acao} lança um horário de um dia que já fechou. "
+                         "Isso só passa com a senha de um administrador"
+                         + (" (digite a sua)." if admin_logado else "."))
+        elif self.pede_senha:
             subtitulo = (f"{acao} foge das regras de horário. Um administrador "
                          "precisa autorizar com o login e a senha dele.")
         else:
@@ -53,8 +62,13 @@ class JanelaAutorizacao(Dialogo):
                              else "Confirmar exceção", self.confirmar,
                              "primario", dica_tecla="Enter")
         self.adicionar_botao("Cancelar", self.fechar)
-        self.abrir(confirmar=self.confirmar,
-                   foco=self.login if self.pede_senha else self.justificativa)
+        foco = self.justificativa
+        if self.pede_senha:
+            foco = self.login
+            if admin_logado:            # o login dele já vem preenchido
+                self.login.insert(0, app.autor)
+                foco = self.senha
+        self.abrir(confirmar=self.confirmar, foco=foco)
 
     def _montar(self):
         regras = Aviso(self.miolo)
@@ -101,7 +115,8 @@ class JanelaAutorizacao(Dialogo):
             return
         self.resultado = {"autorizado_por": autorizado_por,
                           "regras": self.regras,
-                          "justificativa": justificativa}
+                          "justificativa": justificativa,
+                          "com_senha": self.pede_senha}
         self.fechar()
 
     def _conferir_admin(self):
@@ -129,9 +144,9 @@ class JanelaAutorizacao(Dialogo):
         self.janela.wait_window()
 
 
-def pedir_autorizacao(app, regras, acao, dono=None):
+def pedir_autorizacao(app, regras, acao, dono=None, so_com_senha=False):
     """Abre o diálogo e espera a resposta: a autorização ou None."""
-    dialogo = JanelaAutorizacao(app, regras, acao, dono)
+    dialogo = JanelaAutorizacao(app, regras, acao, dono, so_com_senha)
     dialogo.esperar()
     if dialogo.janela.winfo_exists():
         dialogo.fechar()
@@ -143,6 +158,12 @@ def pedir_autorizacao(app, regras, acao, dono=None):
     return dialogo.resultado
 
 
-def autorizar_excecao(app, regras, acao, dono=None):
-    """Pela app.perguntar: se a sessão acabou com o diálogo aberto, None."""
-    return app.perguntar(pedir_autorizacao, app, regras, acao, dono)
+def autorizar_excecao(app, regras, acao, dono=None, so_com_senha=False):
+    """Pela app.perguntar: se a sessão acabou com o diálogo aberto, None.
+    `regras` pode ser uma lista de textos ou um horarios.Excecoes (que já
+    diz se a autorização exige a senha)."""
+    if isinstance(regras, Excecoes):
+        so_com_senha = so_com_senha or regras.so_com_senha
+        regras = regras.regras
+    return app.perguntar(pedir_autorizacao, app, regras, acao, dono,
+                         so_com_senha)

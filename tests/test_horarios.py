@@ -35,7 +35,8 @@ class BaseRegras(unittest.TestCase):
 
     def excecoes(self, tipo, momento, agora=None):
         return h.excecoes_da_entrada(self.config, tipo, momento,
-                                     agora or momento + timedelta(minutes=1))
+                                     agora or momento + timedelta(minutes=1)
+                                     ).regras
 
 
 class TestFuncionamento(BaseRegras):
@@ -81,15 +82,25 @@ class TestJanelaPorCategoria(BaseRegras):
         self.assertTrue(self.permitido("Professor", em(SEGUNDA, "23:00")))
         self.assertFalse(self.permitido("Professor", em(SEGUNDA, "23:01")))
 
-    def test_funcionario_uma_hora_antes_e_uma_depois(self):
+    def test_funcionario_uma_hora_antes_ate_o_fechamento(self):
         self.assertTrue(self.permitido("Funcionário", em(SEGUNDA, "05:30")))
         self.assertFalse(self.permitido("Funcionário", em(SEGUNDA, "05:29")))
-        # 23:00 + 1 h = meia-noite: a janela passa para o dia seguinte
-        self.assertTrue(self.permitido("Funcionário", em(SEGUNDA, "23:59")))
-        self.assertTrue(self.permitido("Funcionário",
-                                       em(SEGUNDA + timedelta(days=1), "00:00")))
-        self.assertFalse(self.permitido("Funcionário",
-                                        em(SEGUNDA + timedelta(days=1), "00:01")))
+        # era até 1 h depois de fechar; agora ninguém entra depois (RN23)
+        self.assertTrue(self.permitido("Funcionário", em(SEGUNDA, "23:00")))
+        self.assertFalse(self.permitido("Funcionário", em(SEGUNDA, "23:01")))
+        self.assertFalse(self.permitido("Funcionário", em(SEGUNDA, "23:59")))
+
+    def test_ninguem_entra_depois_de_fechar(self):
+        for tipo in self.config.regras:
+            with self.subTest(tipo=tipo):
+                self.assertFalse(self.permitido(tipo, em(SEGUNDA, "23:01")))
+                self.assertFalse(self.permitido(tipo, em(SABADO, "14:01")))
+
+    def test_ate_positivo_salvo_antes_nao_passa_do_fechamento(self):
+        # um banco antigo com "1 h depois de fechar" mudado pelo admin
+        self.config.regras["Funcionário"] = h.RegraCategoria(
+            True, 60, 90, permanencia_min=60)
+        self.assertFalse(self.permitido("Funcionário", em(SEGUNDA, "23:30")))
 
     def test_janelas_fixas_valem_so_em_dia_aberto(self):
         casos = [("Visitante", "08:00", "18:00"), ("Entregador", "07:00", "17:00"),
@@ -103,8 +114,10 @@ class TestJanelaPorCategoria(BaseRegras):
                 self.assertFalse(self.permitido(tipo, inicio))
                 self.assertFalse(self.permitido(tipo, fim))
                 self.assertFalse(self.permitido(tipo, em(DOMINGO, "10:00")))
-        # no sábado o campus abre: a janela fixa vale (mesmo depois das 14:00)
-        self.assertTrue(self.permitido("Visitante", em(SABADO, "16:00")))
+        # no sábado a janela fixa vale, mas só até o campus fechar (14:00)
+        self.assertTrue(self.permitido("Visitante", em(SABADO, "14:00")))
+        self.assertFalse(self.permitido("Visitante", em(SABADO, "14:01")))
+        self.assertFalse(self.permitido("Visitante", em(SABADO, "16:00")))
 
     def test_ninguem_entra_no_domingo_nem_no_feriado(self):
         self.config.feriados[SEGUNDA] = "Feriado"
@@ -148,9 +161,9 @@ class TestExcecoes(BaseRegras):
     def test_retroativa_antiga_e_excecao(self):
         entrada = em(SEGUNDA, "10:00")
         self.assertEqual(self.excecoes("Aluno", entrada,
-                                       entrada + timedelta(hours=12)), [])
+                                       entrada + timedelta(hours=3)), [])
         regras = self.excecoes("Aluno", entrada,
-                               entrada + timedelta(hours=12, minutes=1))
+                               entrada + timedelta(hours=3, minutes=1))
         self.assertEqual(len(regras), 1)
         self.assertIn("retroativa", regras[0])
 
@@ -158,7 +171,7 @@ class TestExcecoes(BaseRegras):
         self.config.horas_retroativo = 2
         entrada = em(SEGUNDA, "10:00")
         self.assertTrue(self.excecoes("Aluno", entrada,
-                                      entrada + timedelta(hours=3)))
+                                      entrada + timedelta(hours=2, minutes=30)))
 
     def test_visita_acima_de_24_h(self):
         entrada = em(SEGUNDA, "10:00")
@@ -171,25 +184,29 @@ class TestExcecoes(BaseRegras):
     def test_registro_com_saida_confere_entrada_e_duracao(self):
         r = visita("Aluno", em(DOMINGO, "10:00"),
                    em(DOMINGO, "10:00") + timedelta(hours=26))
-        regras = h.excecoes_do_registro(self.config, r,
-                                        em(DOMINGO, "10:00") + timedelta(days=2))
-        self.assertEqual(len(regras), 3)    # retroativa, fechado e 24 h
+        excecoes = h.excecoes_do_registro(self.config, r,
+                                          em(DOMINGO, "10:00") + timedelta(days=2))
+        # entrada retroativa, campus fechado, saída retroativa e 24 h
+        self.assertEqual(len(excecoes.regras), 4)
+        self.assertTrue(excecoes.so_com_senha)     # dias que já fecharam
 
     def test_correcao_so_confere_o_que_mudou(self):
         original = visita("Aluno", em(DOMINGO, "10:00"))     # já foi exceção
         agora = em(DOMINGO, "11:00")
         nome = dict(original, nome="Outro Nome")
-        self.assertEqual(h.excecoes_da_correcao(self.config, original, nome,
-                                                agora), [])
+        self.assertFalse(h.excecoes_da_correcao(self.config, original, nome,
+                                                agora))
         tipo = dict(original, tipo="Visitante")
         self.assertEqual(len(h.excecoes_da_correcao(self.config, original, tipo,
-                                                    agora)), 1)
+                                                    agora).regras), 1)
         fevereiro = dict(original, entrada="10/02/2026 08:00")
-        regras = h.excecoes_da_correcao(self.config, original, fevereiro, agora)
-        self.assertTrue(any("retroativa" in r for r in regras))
+        excecoes = h.excecoes_da_correcao(self.config, original, fevereiro, agora)
+        self.assertTrue(any("retroativa" in r for r in excecoes.regras))
+        self.assertTrue(excecoes.so_com_senha)
         saida = dict(fevereiro, saida="12/02/2026 08:00")
-        self.assertTrue(any("24 h" in r for r in h.excecoes_da_correcao(
-            self.config, fevereiro, saida, agora)))
+        regras = h.excecoes_da_correcao(self.config, fevereiro, saida, agora).regras
+        self.assertTrue(any("24 h" in r for r in regras))
+        self.assertTrue(any("Saída retroativa" in r for r in regras))
 
 
 class TestPermanenciaESituacao(BaseRegras):
@@ -199,7 +216,7 @@ class TestPermanenciaESituacao(BaseRegras):
     def test_permanencia_maxima_por_categoria(self):
         entrada = em(SEGUNDA, "10:00")
         esperado = {"Aluno": em(SEGUNDA, "23:00"),
-                    "Professor": em(SEGUNDA + timedelta(days=1), "00:00"),
+                    "Professor": em(SEGUNDA, "23:00"),
                     "Funcionário": em(SEGUNDA, "22:00"),
                     "Visitante": em(SEGUNDA, "14:00"),
                     "Entregador": em(SEGUNDA, "11:00"),
@@ -211,12 +228,13 @@ class TestPermanenciaESituacao(BaseRegras):
 
     def test_ninguem_passa_de_24_h(self):
         self.config.regras["Funcionário"] = h.RegraCategoria(
-            True, 60, 60, permanencia_min=40 * 60)
+            True, 60, 0, permanencia_min=40 * 60, tolerancia_min=30)
         entrada = em(SEGUNDA, "10:00")
         self.assertEqual(h.limite_permanencia(self.config, "Funcionário", entrada),
                          entrada + timedelta(hours=24))
+        # a saída pendente não depende da permanência: fechamento + 30 min
         self.assertEqual(h.prazo_saida(self.config, "Funcionário", entrada),
-                         entrada + timedelta(hours=24))
+                         em(SEGUNDA, "23:30"))
 
     def test_ok_excedido_e_pendente(self):
         entrada = em(SEGUNDA, "10:00")
@@ -238,12 +256,48 @@ class TestPermanenciaESituacao(BaseRegras):
         self.assertEqual(self.situacao("Aluno", entrada, em(SEGUNDA, "23:01")),
                          SAIDA_PENDENTE)
 
-    def test_professor_nao_fica_pendente_antes_da_hora_extra(self):
+    def test_professor_e_funcionario_tem_30_min_de_tolerancia(self):
         entrada = em(SEGUNDA, "18:00")
-        self.assertEqual(self.situacao("Professor", entrada, em(SEGUNDA, "23:30")),
-                         NO_CAMPUS)
-        self.assertEqual(h.prazo_saida(self.config, "Professor", entrada),
-                         em(SEGUNDA + timedelta(days=1), "00:00"))
+        for tipo in ("Professor", "Funcionário"):
+            with self.subTest(tipo=tipo):
+                self.assertEqual(h.prazo_saida(self.config, tipo, entrada),
+                                 em(SEGUNDA, "23:30"))
+                self.assertNotEqual(self.situacao(tipo, entrada,
+                                                  em(SEGUNDA, "23:30")),
+                                    SAIDA_PENDENTE)
+                self.assertEqual(self.situacao(tipo, entrada,
+                                               em(SEGUNDA, "23:31")),
+                                 SAIDA_PENDENTE)
+        # na tolerância o professor já passou da permanência (até fechar)
+        self.assertEqual(self.situacao("Professor", entrada, em(SEGUNDA, "23:10")),
+                         TEMPO_EXCEDIDO)
+
+    def test_as_outras_categorias_ficam_pendentes_no_fechamento(self):
+        # o caso do aluno: visitante que entrou 22:55 tinha prazo até 02:55
+        entrada = em(SEGUNDA, "22:55")
+        for tipo in ("Aluno", "Visitante", "Entregador", "Prestador de serviço"):
+            with self.subTest(tipo=tipo):
+                self.assertEqual(h.prazo_saida(self.config, tipo, entrada),
+                                 em(SEGUNDA, "23:00"))
+                self.assertEqual(self.situacao(tipo, entrada,
+                                               em(SEGUNDA, "23:01")),
+                                 SAIDA_PENDENTE)
+
+    def test_tolerancia_configuravel_por_categoria(self):
+        self.config.regras["Aluno"] = h.RegraCategoria(
+            True, 0, -30, ate_fechamento=True, tolerancia_min=15)
+        self.assertEqual(h.prazo_saida(self.config, "Aluno", em(SEGUNDA, "08:00")),
+                         em(SEGUNDA, "23:15"))
+
+    def test_entrada_depois_do_prazo_ja_nasce_pendente(self):
+        # só com autorização; o dia dela acabou: o prazo é a própria entrada
+        aluno = em(SEGUNDA, "23:10")
+        self.assertEqual(h.prazo_saida(self.config, "Aluno", aluno), aluno)
+        self.assertEqual(self.situacao("Aluno", aluno, em(SEGUNDA, "23:11")),
+                         SAIDA_PENDENTE)
+        # o professor ainda está na tolerância do dia
+        self.assertEqual(h.prazo_saida(self.config, "Professor", aluno),
+                         em(SEGUNDA, "23:30"))
 
     def test_pendente_no_fechamento_do_evento(self):
         self.config.eventos[SABADO] = Evento(
@@ -316,6 +370,14 @@ class TestLeituraDaConfiguracao(unittest.TestCase):
         self.assertIsNone(h.ler_regra("Aluno", True, "x", "0", True, "0")[0])
         self.assertIsNone(h.ler_regra("Visitante", False, "08:00", "18:00",
                                       False, "0")[0])      # permanência zero
+        regra, erro = h.ler_regra("Professor", True, "30", "0", True, "0", "30")
+        self.assertEqual((regra, erro),
+                         (configuracao_padrao().regras["Professor"], ""))
+        valor, erro = h.ler_regra("Funcionário", True, "60", "60", False, "720")
+        self.assertIsNone(valor)                # depois de fechar, não
+        self.assertIn("Ninguém entra depois de fechar", erro)
+        self.assertIsNone(h.ler_regra("Aluno", True, "0", "-30", True, "0",
+                                      "-5")[0])                # tolerância
 
     def test_parametros(self):
         self.assertEqual(h.ler_parametros("45", "6"), ((45, 6), ""))
@@ -345,10 +407,58 @@ class TestLeituraDaConfiguracao(unittest.TestCase):
                          "fechar; fica até o fechamento")
         self.assertEqual(h.descrever_regra("Professor", regras["Professor"]),
                          "Professor: entrada desde 30 min antes de abrir até o "
-                         "fechamento; fica até o fechamento + 1 h")
+                         "fechamento; fica até o fechamento; tolerância de "
+                         "30 min depois de fechar")
         self.assertEqual(h.descrever_regra("Visitante", regras["Visitante"]),
                          "Visitante: entrada das 08:00 às 18:00; fica no "
                          "máximo 4 h")
+
+
+class TestLancamentoRetroativo(BaseRegras):
+    """RN24: (a) até 3 h com o dia aberto: normal; (b) mais de 3 h:
+    autorização; (c) dia que já fechou: só com senha."""
+
+    def retro(self, momento, agora):
+        return h.retroativo(self.config, "Entrada", momento, agora)
+
+    def test_a_ate_3_h_com_o_dia_aberto_e_normal(self):
+        self.assertFalse(self.retro(em(SEGUNDA, "12:00"), em(SEGUNDA, "15:00")))
+
+    def test_ate_5_min_no_passado_e_agora(self):
+        self.assertFalse(self.retro(em(SEGUNDA, "22:58"), em(SEGUNDA, "23:03")))
+        self.assertTrue(self.retro(em(SEGUNDA, "22:57"), em(SEGUNDA, "23:03")))
+
+    def test_b_mais_de_3_h_pede_autorizacao_sem_senha(self):
+        excecoes = self.retro(em(SEGUNDA, "11:59"), em(SEGUNDA, "15:00"))
+        self.assertEqual(excecoes.regras, ["Entrada retroativa: 19/10/2026 11:59 "
+                                           "é de mais de 3 h atrás."])
+        self.assertFalse(excecoes.so_com_senha)
+
+    def test_c_depois_do_fechamento_so_com_senha(self):
+        casos = [(em(SEGUNDA, "22:00"), em(SEGUNDA, "23:10")),     # 1 h 10
+                 (em(SEGUNDA, "22:30"),
+                  em(SEGUNDA + timedelta(days=1), "00:10")),
+                 (em(SEGUNDA, "20:00"), em(SEGUNDA + timedelta(days=1), "08:00"))]
+        for momento, agora in casos:
+            with self.subTest(agora=agora):
+                excecoes = self.retro(momento, agora)
+                self.assertTrue(excecoes.so_com_senha)
+                self.assertIn("fechou às 23:00 de 19/10/2026",
+                              excecoes.regras[0])
+
+    def test_dia_sem_expediente_fecha_a_meia_noite(self):
+        self.assertFalse(self.retro(em(DOMINGO, "10:00"), em(DOMINGO, "12:00")))
+        excecoes = self.retro(em(DOMINGO, "10:00"),
+                              em(DOMINGO + timedelta(days=1), "07:00"))
+        self.assertTrue(excecoes.so_com_senha)
+        self.assertIn("meia-noite de 25/10/2026", excecoes.regras[0])
+
+    def test_saida_digitada_no_cadastro_tambem_conta(self):
+        r = visita("Aluno", em(SEGUNDA, "21:00"), em(SEGUNDA, "22:00"))
+        excecoes = h.excecoes_do_registro(self.config, r, em(SEGUNDA, "23:10"))
+        self.assertEqual(len(excecoes.regras), 2)          # entrada e saída
+        self.assertTrue(excecoes.regras[1].startswith("Saída retroativa"))
+        self.assertTrue(excecoes.so_com_senha)
 
 
 if __name__ == "__main__":

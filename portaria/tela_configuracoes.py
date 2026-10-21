@@ -4,8 +4,9 @@ Página Configurações (só administrador): os horários de acesso do campus
 
 Três seções, escolhidas no seletor do topo:
 - Funcionamento: horário de cada dia da semana, minutos do aviso antes de
-  fechar e o limite da entrada retroativa;
-- Categorias: janela de entrada e permanência máxima de cada tipo de acesso;
+  fechar e o limite do lançamento retroativo (3 h);
+- Categorias: janela de entrada, permanência máxima e tolerância depois do
+  fechamento de cada tipo de acesso;
 - Feriados e eventos: datas com o campus fechado e datas com horário
   especial (o evento substitui o funcionamento do dia).
 
@@ -29,9 +30,10 @@ SECOES = ("Funcionamento", "Categorias", "Feriados e eventos")
 JANELAS = {"Do funcionamento": True, "Horário fixo": False}
 PERMANENCIAS = {"Até fechar +": True, "No máximo": False}
 JANELA_FIXA_PADRAO = ("08:00", "18:00")
-DICA_CATEGORIAS = ("Do funcionamento: De = min antes de abrir; Até = min depois "
-                   "de fechar (negativo = antes). Horário fixo: hh:mm, só em "
-                   "dia aberto.")
+DICA_CATEGORIAS = ("Do funcionamento: De = min antes de abrir; Até = 0 (até "
+                   "fechar) ou negativo (min antes de fechar). Horário fixo: "
+                   "hh:mm, só em dia aberto. Ninguém entra depois de fechar. "
+                   "Tolerância = min depois do fechamento até a saída pendente.")
 LARGURA_HORA = 84
 COLUNAS_FERIADOS = [("data", "Data", 96, "w"), ("dia", "Dia", 56, "w"),
                     ("descricao", "Descrição", 200, "w")]
@@ -127,14 +129,15 @@ class AbaConfiguracoes:
                                       "minutos (0 = sem aviso)", numeros=3)
         grupo.pack(fill="x", pady=(0, px(12)))
         self.minutos_aviso = campo.entrada
-        grupo, campo = campo_rotulado(m, "Limite da entrada retroativa",
-                                      "horas", numeros=2)
+        grupo, campo = campo_rotulado(m, "Lançamento retroativo",
+                                      "horas sem autorização", numeros=2)
         grupo.pack(fill="x", pady=(0, px(12)))
         self.horas_retroativo = campo.entrada
         nota = Aviso(m)
-        nota.mostrar("neutro", "Entrada mais antiga que esse limite e visitas "
-                               f"com mais de {horarios.LIMITE_VISITA_HORAS} h "
-                               "pedem autorização do administrador.")
+        nota.mostrar("neutro", "Entrada ou saída mais antiga que esse limite e "
+                               f"visitas com mais de {horarios.LIMITE_VISITA_HORAS}"
+                               " h pedem autorização do administrador. De um "
+                               "dia que já fechou, só com a senha dele.")
         nota.pack(fill="x")
         Botao(m, "Salvar funcionamento", self.salvar_funcionamento, "primario"
               ).pack(side="bottom", anchor="e")
@@ -198,7 +201,7 @@ class AbaConfiguracoes:
         grade.pack(fill="x")
         self.grade_categorias = grade
         titulos = ("Categoria", "Janela de entrada", "De", "Até", "Permanência",
-                   "Minutos")
+                   "Minutos", "Tolerância")
         for coluna, texto in enumerate(titulos):
             tk.Label(grade, text=texto, font=FONTE["rotulo"], bg=COR["superficie"],
                      fg=COR["texto_2"]).grid(row=0, column=coluna, sticky="w",
@@ -218,10 +221,11 @@ class AbaConfiguracoes:
                   "de": Campo(grade, largura=LARGURA_HORA),
                   "ate": Campo(grade, largura=LARGURA_HORA),
                   "permanencia": Campo(grade, opcoes=PERMANENCIAS),
-                  "minutos": Campo(grade, largura=LARGURA_HORA, numeros=4)}
+                  "minutos": Campo(grade, largura=LARGURA_HORA, numeros=4),
+                  "tolerancia": Campo(grade, largura=LARGURA_HORA, numeros=3)}
         for coluna, campo in enumerate(campos.values(), start=1):
             campo.grid(row=linha, column=coluna, sticky="ew", pady=1,
-                       padx=(0, px(8) if coluna < 5 else 0))
+                       padx=(0, px(8) if coluna < len(campos) else 0))
         linha_campos = {chave: campo.entrada for chave, campo in campos.items()}
         linha_campos["memoria"] = {}       # o que cada janela tinha (trocar e voltar)
         linha_campos["janela"].bind("<<ComboboxSelected>>",
@@ -258,13 +262,15 @@ class AbaConfiguracoes:
             _texto(c["ate"], ate)
             c["permanencia"].set(nome_permanencia[regra.ate_fechamento])
             _texto(c["minutos"], str(regra.permanencia_min))
+            _texto(c["tolerancia"], str(regra.tolerancia_min))
 
     def salvar_regras(self):
         regras = {}
         for tipo, c in self.categorias.items():
             regra, erro = horarios.ler_regra(
                 tipo, JANELAS[c["janela"].get()], c["de"].get(), c["ate"].get(),
-                PERMANENCIAS[c["permanencia"].get()], c["minutos"].get())
+                PERMANENCIAS[c["permanencia"].get()], c["minutos"].get(),
+                c["tolerancia"].get())
             if erro:
                 self._resultado(self.faixa_categorias, "erro", erro)
                 return

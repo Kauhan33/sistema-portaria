@@ -33,8 +33,10 @@ class BaseHorarios(BaseInterface):
                   justificativa="Evento da reitoria autorizado"):
         """O "administrador" preenche o diálogo e clica em Autorizar."""
         def responder(dialogo):
-            if login is not None:
+            if dialogo.pede_senha and login is not None:
+                dialogo.login.delete(0, tk.END)
                 dialogo.login.insert(0, login)
+            if dialogo.pede_senha and senha is not None:
                 dialogo.senha.insert(0, senha)
             dialogo.justificativa.insert(0, justificativa)
             dialogo.confirmar()
@@ -175,9 +177,10 @@ class TestAutorizacaoComoAdmin(BaseHorarios):
 
     def test_corrigir_entrada_para_fevereiro_e_dar_saida(self):
         # o caso do aluno: cadastrou agora, corrigiu a entrada para fevereiro
-        # e registrou a saída. As duas exceções pedem confirmação, e a
-        # visita continua no Movimento (saiu hoje).
-        self.responder()
+        # e registrou a saída. As duas exceções pedem confirmação (fevereiro
+        # já fechou: o admin redigita a senha), e a visita continua no
+        # Movimento (saiu hoje).
+        self.responder(senha="senha123")
         self.preencher(tipo="Prestador de serviço")
         self.app.cadastrar()
         id_ = self.no_banco()[0]["id"]
@@ -391,6 +394,144 @@ class TestConfiguracoes(BaseHorarios):
         self.tela.tabela_feriados.selection_set("2026-12-25")
         self.tela.remover_feriado()
         self.assertEqual(self.banco.ler_configuracao().feriados, {})
+
+
+class TestLancamentoRetroativoNaTela(BaseHorarios):
+    """RN24 nas três situações, no cadastro e na correção."""
+    entrar_como = "porteiro"
+
+    def cadastrar_com_entrada(self, momento, tipo="Professor"):
+        self.preencher(tipo=tipo)
+        self.app.entrada.delete(0, tk.END)
+        self.app.entrada.insert(0, tela(momento))
+        self.app.cadastrar()
+
+    def test_a_ate_3_h_nao_pede_autorizacao(self):
+        self.cadastrar_com_entrada(AGORA - timedelta(hours=2))
+        self.assertEqual(self.autorizacoes, [])
+        self.assertEqual(self.no_banco()[0]["entrada"],
+                         tela(AGORA - timedelta(hours=2)))
+
+    def test_b_mais_de_3_h_pede_login_e_senha_ao_porteiro(self):
+        self.responder("ana.admin", "senha123")
+        self.cadastrar_com_entrada(AGORA - timedelta(hours=3, minutes=30))
+        dialogo = self.autorizacoes[0]
+        self.assertTrue(dialogo.pede_senha)
+        self.assertIn("mais de 3 h", dialogo.regras[0])
+        self.assertEqual(len(self.no_banco()), 1)
+
+    def test_c_dia_que_ja_fechou_porteiro_precisa_da_senha(self):
+        self.responder("ana.admin", "senha123")
+        self.cadastrar_com_entrada(ONTEM)
+        dialogo = self.autorizacoes[0]
+        self.assertIn("dia já encerrado", dialogo.regras[0])
+        self.assertEqual(len(self.no_banco()), 1)
+        self.assertIn("Senha do administrador conferida",
+                      self.excecoes()[0]["detalhe"])
+
+    def test_saida_digitada_no_cadastro_tambem_e_conferida(self):
+        self.mudar_relogio(AGORA.replace(hour=23, minute=10))
+        self.preencher(tipo="Professor")
+        self.app.entrada.delete(0, tk.END)
+        self.app.entrada.insert(0, tela(AGORA.replace(hour=21)))
+        self.app.saida.insert(0, tela(AGORA.replace(hour=22)))
+        self.app.cadastrar()                     # cancelou
+        self.assertEqual(len(self.autorizacoes[0].regras), 2)
+        self.assertEqual(self.no_banco(), [])
+
+
+class TestRetroativoComAdminLogado(BaseHorarios):
+    entrar_como = "admin"
+
+    def test_b_admin_so_confirma(self):
+        self.responder()
+        self.preencher(tipo="Professor")
+        self.app.entrada.delete(0, tk.END)
+        self.app.entrada.insert(0, tela(AGORA - timedelta(hours=3, minutes=30)))
+        self.app.cadastrar()
+        self.assertFalse(self.autorizacoes[0].pede_senha)
+        self.assertEqual(len(self.no_banco()), 1)
+
+    def test_c_admin_logado_redigita_a_propria_senha(self):
+        # 23:10 lançando 22:00: o fechamento (23:00) já passou
+        self.mudar_relogio(AGORA.replace(hour=23, minute=10))
+        vistos = []
+
+        def so_justificativa(dialogo):
+            vistos.append((dialogo.pede_senha, dialogo.login.get(),
+                           dialogo.lbl_subtitulo.cget("text")))
+            dialogo.justificativa.insert(0, "Evento da reitoria autorizado")
+            dialogo.confirmar()
+        self.responder_autorizacao = so_justificativa
+        self.preencher(tipo="Professor")
+        self.app.entrada.delete(0, tk.END)
+        self.app.entrada.insert(0, tela(AGORA.replace(hour=22)))
+        self.app.cadastrar()
+        pede_senha, login, subtitulo = vistos[0]
+        self.assertTrue(pede_senha)
+        self.assertEqual(login, "ana.admin")                  # já preenchido
+        self.assertIn("digite a sua", subtitulo)
+        self.assertEqual(self.no_banco(), [])                 # sem senha, não
+        self.responder(senha="senha123")
+        self.app.cadastrar()
+        self.assertEqual(len(self.no_banco()), 1)
+        self.assertEqual(self.excecoes()[0]["usuario"], "ana.admin")
+
+    def test_c_na_correcao_tambem_pede_a_senha(self):
+        id_ = self.banco.inserir(visita(tipo="Professor",
+                                        entrada=AGORA - timedelta(hours=1)))
+        self.app.atualizar_tabela()
+        self.app.tabela.selection_set(str(id_))
+        self.app.editar_selecionado()
+        janela = self.app.janela_edicao
+        janela.saida.insert(0, tela(ONTEM.replace(hour=12)))
+        janela.entrada.delete(0, tk.END)
+        janela.entrada.insert(0, tela(ONTEM))
+        self.responder()
+        janela.salvar()
+        self.assertTrue(self.autorizacoes[0].pede_senha)
+        self.assertEqual(self.banco.buscar(id_)["saida"], "")
+        self.responder(senha="senha123")
+        janela.salvar()
+        self.assertEqual(self.banco.buscar(id_)["saida"], tela(ONTEM.replace(hour=12)))
+
+
+class TestNinguemEntraDepoisDeFechar(BaseHorarios):
+    entrar_como = "porteiro"
+
+    def test_funcionario_depois_das_23h_pede_autorizacao(self):
+        self.mudar_relogio(AGORA.replace(hour=23, minute=10))
+        self.preencher(tipo="Funcionário")
+        self.app.cadastrar()
+        self.assertEqual(self.autorizacoes[0].regras,
+                         ["Funcionário: entrada às 23:10 fora do horário "
+                          "permitido (05:30–23:00)."])
+        self.assertEqual(self.no_banco(), [])
+
+
+class TestConfiguracoesTolerancia(BaseHorarios):
+    entrar_como = "admin"
+
+    def test_tolerancia_e_retroativo_aparecem_e_salvam(self):
+        self.app.ir_para(self.app.aba_configuracoes)
+        tela_ = self.app.tela_configuracoes
+        self.assertEqual(tela_.horas_retroativo.get(), "3")
+        categorias = tela_.categorias
+        self.assertEqual(categorias["Professor"]["tolerancia"].get(), "30")
+        self.assertEqual(categorias["Funcionário"]["tolerancia"].get(), "30")
+        self.assertEqual(categorias["Funcionário"]["ate"].get(), "0")
+        self.assertEqual(categorias["Aluno"]["tolerancia"].get(), "0")
+        categorias["Aluno"]["tolerancia"].insert(tk.END, "5")      # 05
+        categorias["Funcionário"]["ate"].delete(0, tk.END)
+        categorias["Funcionário"]["ate"].insert(0, "60")
+        tela_.salvar_regras()
+        self.assertIn("Ninguém entra depois de fechar",
+                      tela_.faixa_categorias.lbl.cget("text"))
+        categorias["Funcionário"]["ate"].delete(0, tk.END)
+        categorias["Funcionário"]["ate"].insert(0, "0")
+        tela_.salvar_regras()
+        self.assertEqual(self.banco.ler_configuracao().regras["Aluno"]
+                         .tolerancia_min, 5)
 
 
 class TestConfiguracoesPorteiro(BaseHorarios):

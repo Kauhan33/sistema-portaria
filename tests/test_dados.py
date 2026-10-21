@@ -550,8 +550,22 @@ def agora_menos(**delta):
     return (datetime.now() - timedelta(**delta)).strftime(FORMATO)
 
 
+def rebaixar_para_v7(caminho):
+    """Deixa um banco como a versão 7 deixava: sem a tolerância e com os
+    padrões antigos das regras de horário."""
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        ALTER TABLE regras_categoria DROP COLUMN tolerancia_min;
+        UPDATE regras_categoria SET fecha_depois = 60 WHERE tipo = 'Funcionário';
+        UPDATE regras_categoria SET permanencia_min = 60 WHERE tipo = 'Professor';
+        UPDATE parametros SET valor = 12 WHERE chave = 'horas_retroativo';
+        PRAGMA user_version = 7;""")
+    con.close()
+
+
 def rebaixar_para_v6(caminho):
     """Deixa um banco como a versão 6 deixava (sem o que a v7 criou)."""
+    rebaixar_para_v7(caminho)
     con = sqlite3.connect(caminho)
     con.executescript("""
         DROP INDEX idx_registros_saida;
@@ -782,11 +796,11 @@ class TestMigracaoV7(unittest.TestCase):
         rebaixar_para_v6(self.caminho)
         self.assertNotIn("idx_registros_saida", objetos_do_banco(self.caminho))
         banco = dados.Banco(self.caminho)
-        self.assertEqual(versao_do_arquivo(self.caminho), 7)
+        self.assertEqual(versao_do_arquivo(self.caminho), dados.VERSAO_ESQUEMA)
         self.assertIn("idx_registros_saida", objetos_do_banco(self.caminho))
         backups = os.listdir(os.path.join(self.pasta.name, "backups"))
         self.assertEqual(len(backups), 1)
-        self.assertIn("antes-v7-de-v6", backups[0])
+        self.assertIn(f"antes-v{dados.VERSAO_ESQUEMA}-de-v6", backups[0])
         self.assertEqual(len(banco.listar()), 1)
 
 

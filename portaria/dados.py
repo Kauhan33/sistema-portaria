@@ -54,7 +54,10 @@ FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
 # 7: índice das saídas (o Movimento mostra também quem saiu hoje) e
 #    configuração dos horários de acesso (funcionamento, feriados, eventos,
 #    regras por categoria e parâmetros)
-VERSAO_ESQUEMA = 7
+# 8: tolerância de cada categoria depois do fechamento, padrões novos das
+#    regras de horário (ninguém entra depois de fechar, retroativo de 3 h)
+#    e as estadias de veículo (o carro tem entrada e saída próprias)
+VERSAO_ESQUEMA = 8
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
 
@@ -446,18 +449,39 @@ def _passo_v7(banco, con, versao):
         con.execute("INSERT INTO funcionamento (dia, abre, fecha) VALUES "
                     "(?, ?, ?) ON CONFLICT (dia) DO NOTHING",
                     (dia, *_horario_iso(horario)))
-    for tipo, regra in padrao.regras.items():
-        con.execute("INSERT INTO regras_categoria " + _COLUNAS_REGRA +
-                    " ON CONFLICT (tipo) DO NOTHING", (tipo, *_regra_iso(regra)))
+    for tipo, regra in padrao.regras.items():     # a tolerância vem na v8
+        con.execute("INSERT INTO regras_categoria " + _COLUNAS_REGRA_V7 +
+                    " ON CONFLICT (tipo) DO NOTHING",
+                    (tipo, *_regra_iso(regra)[:-1]))
     for chave, valor in _parametros(padrao).items():
         con.execute("INSERT INTO parametros (chave, valor) VALUES (?, ?) "
                     "ON CONFLICT (chave) DO NOTHING", (chave, valor))
     con.execute("ANALYZE")
 
 
+_COLUNAS_REGRA_V7 = ("(tipo, relativa, abre_antes, fecha_depois, janela_abre, "
+                     "janela_fecha, ate_fechamento, permanencia_min) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
 _COLUNAS_REGRA = ("(tipo, relativa, abre_antes, fecha_depois, janela_abre, "
-                  "janela_fecha, ate_fechamento, permanencia_min) "
-                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+                  "janela_fecha, ate_fechamento, permanencia_min, "
+                  "tolerancia_min) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+
+# Padrões da v7 que mudaram na v8: só o que AINDA está no padrão antigo é
+# trocado (o que o administrador já tinha mudado fica como ele deixou).
+# (tabela, coluna, valor novo, condição que identifica o padrão antigo)
+PADROES_ANTIGOS_V8 = [
+    ("regras_categoria", "fecha_depois", 0,
+     "tipo = 'Funcionário' AND relativa = 1 AND fecha_depois = 60",
+     "Funcionário: entrada até o fechamento (era até 1 h depois)"),
+    ("regras_categoria", "permanencia_min", 0,
+     "tipo = 'Professor' AND ate_fechamento = 1 AND permanencia_min = 60",
+     "Professor: permanência até o fechamento (a hora extra virou a "
+     "tolerância de 30 min)"),
+    ("parametros", "valor", horarios.HORAS_RETROATIVO_PADRAO,
+     "chave = 'horas_retroativo' AND valor = 12",
+     f"Lançamento retroativo sem autorização: até "
+     f"{horarios.HORAS_RETROATIVO_PADRAO} h (era 12 h)"),
+]
 
 
 def _parametros(config):
@@ -477,7 +501,7 @@ def _regra_iso(regra):
     """RegraCategoria -> valores das colunas (sem o tipo)."""
     return (int(regra.relativa), regra.abre_antes, regra.fecha_depois,
             *_horario_iso(regra.janela), int(regra.ate_fechamento),
-            regra.permanencia_min)
+            regra.permanencia_min, regra.tolerancia_min)
 
 
 def _horario_do_banco(abre, fecha):
@@ -499,8 +523,40 @@ def _duracao_iso(entrada, saida):
                                         datetime.strptime(saida, FORMATO_ISO))
 
 
+def _passo_v8(banco, con, versao):
+    """
+    Regras de horário revistas pelo aluno:
+    - coluna da tolerância depois do fechamento (30 min para professor e
+      funcionário: só eles ficam um pouco além do fechamento sem virar
+      "Saída pendente");
+    - padrões novos (PADROES_ANTIGOS_V8), trocados só onde o valor ainda
+      era o padrão antigo. O que mudou vai num aviso para o administrador.
+    """
+    colunas = {c[1] for c in con.execute("PRAGMA table_info(regras_categoria)")}
+    if "tolerancia_min" not in colunas:
+        con.execute("ALTER TABLE regras_categoria ADD COLUMN tolerancia_min "
+                    "INTEGER NOT NULL DEFAULT 0 CHECK (tolerancia_min >= 0)")
+    padrao = horarios.configuracao_padrao()
+    for tipo, regra in padrao.regras.items():
+        if regra.tolerancia_min:
+            con.execute("UPDATE regras_categoria SET tolerancia_min = ? "
+                        "WHERE tipo = ?", (regra.tolerancia_min, tipo))
+    mudancas = []
+    for tabela, coluna, valor, condicao, descricao in PADROES_ANTIGOS_V8:
+        cursor = con.execute(f"UPDATE {tabela} SET {coluna} = ? "
+                             f"WHERE {condicao}", (valor,))
+        if cursor.rowcount:
+            mudancas.append(descricao)
+    if versao >= 7 and mudancas:
+        banco.avisos.append(
+            "Regras de horário atualizadas para os novos padrões:\n• "
+            + "\n• ".join(mudancas)
+            + "\nProfessor e funcionário têm 30 min de tolerância depois do "
+              "fechamento. Confira em Configurações.")
+
+
 # (versão alcançada, função) em ordem; uma migração nova entra no fim
-MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7)]
+MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7), (8, _passo_v8)]
 
 
 class Banco:
@@ -658,10 +714,12 @@ class Banco:
         """Evento "Exceção autorizada" no histórico da visita: quem
         autorizou (usuário do evento), quem operava, as regras e o porquê."""
         regras = " ".join(autorizacao.get("regras", []))
+        senha = (" Senha do administrador conferida."
+                 if autorizacao.get("com_senha") else "")
         cls._evento(con, autorizacao["autorizado_por"], "Exceção autorizada",
                     f"#{id_} {nome} — {regras} Justificativa: "
                     f"{autorizacao['justificativa'].strip()}. "
-                    f"Operador: {autor or AUTOR_SISTEMA}.", id_)
+                    f"Operador: {autor or AUTOR_SISTEMA}.{senha}", id_)
 
     @classmethod
     def _conferir_autor(cls, con, autor):
@@ -1066,10 +1124,13 @@ class Banco:
             funcionamento[dia] = _horario_do_banco(abre, fecha)
         regras = dict(padrao.regras)
         for (tipo, relativa, antes, depois, j_abre, j_fecha, ate_fechamento,
-             minutos) in con.execute("SELECT * FROM regras_categoria"):
+             minutos, tolerancia) in con.execute(
+                "SELECT tipo, relativa, abre_antes, fecha_depois, janela_abre, "
+                "janela_fecha, ate_fechamento, permanencia_min, tolerancia_min "
+                "FROM regras_categoria"):
             regras[tipo] = horarios.RegraCategoria(
                 bool(relativa), antes, depois, _horario_do_banco(j_abre, j_fecha),
-                bool(ate_fechamento), minutos)
+                bool(ate_fechamento), minutos, tolerancia)
         feriados = {date.fromisoformat(dia): descricao for dia, descricao
                     in con.execute("SELECT data, descricao FROM feriados")}
         eventos = {}
@@ -1124,7 +1185,7 @@ class Banco:
         novos = {"minutos_aviso": minutos_aviso,
                  "horas_retroativo": horas_retroativo}
         rotulos = {"minutos_aviso": ("Aviso antes de fechar", "min"),
-                   "horas_retroativo": ("Entrada retroativa", "h")}
+                   "horas_retroativo": ("Lançamento retroativo", "h")}
         with self._conexao() as con:
             self._exigir(con, autor, para="alterar as configurações")
             antes = _parametros(self._ler_configuracao(con))

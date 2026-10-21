@@ -10,8 +10,8 @@ from datetime import date, datetime
 from portaria import dados, horarios
 from portaria.horarios import Evento, Horario, RegraCategoria, hora
 
-from .test_dados import (objetos_do_banco, rebaixar_para_v6, registro,
-                         versao_do_arquivo)
+from .test_dados import (objetos_do_banco, rebaixar_para_v6,
+                         rebaixar_para_v7, registro, versao_do_arquivo)
 
 SEGUNDA = date(2026, 10, 19)
 
@@ -130,9 +130,10 @@ class TestEncerrarODia(BaseRegras):
         hoje = self.banco.inserir(registro(cpf="39053344705", tipo="Aluno",
                                            entrada="20/10/2026 08:00"))
         encerradas = self.banco.encerrar_pendentes(self.AGORA, autor="ana")
+        # o professor tem 30 min de tolerância depois do fechamento
         self.assertEqual(encerradas, [
             (aluno, "João Ávila", "19/10/2026 23:00"),
-            (professor, "João Ávila", "20/10/2026 00:00")])
+            (professor, "João Ávila", "19/10/2026 23:30")])
         self.assertEqual(self.banco.buscar(hoje)["saida"], "")
         acoes = [e["acao"] for e in self.banco.eventos_do_registro(aluno)]
         self.assertEqual(acoes, ["Saída automática (encerramento)"])
@@ -243,7 +244,7 @@ class TestMigracaoV6ParaV7(unittest.TestCase):
             rebaixar_para_v6(caminho)
             self.assertNotIn("funcionamento", objetos_do_banco(caminho))
             banco = dados.Banco(caminho)
-            self.assertEqual(versao_do_arquivo(caminho), 7)
+            self.assertEqual(versao_do_arquivo(caminho), dados.VERSAO_ESQUEMA)
             self.assertLessEqual({"funcionamento", "feriados", "eventos",
                                   "regras_categoria", "parametros",
                                   "idx_registros_saida"},
@@ -252,6 +253,39 @@ class TestMigracaoV6ParaV7(unittest.TestCase):
                              horarios.configuracao_padrao())
             self.assertEqual(len(banco.listar()), 1)
             self.assertEqual(len(os.listdir(os.path.join(pasta, "backups"))), 1)
+
+
+class TestMigracaoV7ParaV8(unittest.TestCase):
+    def setUp(self):
+        self.pasta = tempfile.TemporaryDirectory()
+        self.caminho = os.path.join(self.pasta.name, "portaria.db")
+        dados.Banco(self.caminho).inserir(registro())
+        rebaixar_para_v7(self.caminho)
+
+    def tearDown(self):
+        self.pasta.cleanup()
+
+    def test_padroes_antigos_viram_os_novos_e_ganham_tolerancia(self):
+        banco = dados.Banco(self.caminho)
+        self.assertEqual(versao_do_arquivo(self.caminho), 8)
+        self.assertEqual(banco.ler_configuracao(), horarios.configuracao_padrao())
+        self.assertIn("Funcionário: entrada até o fechamento", banco.avisos[0])
+        self.assertIn("antes-v8-de-v7",
+                      os.listdir(os.path.join(self.pasta.name, "backups"))[0])
+
+    def test_o_que_o_admin_mudou_continua_como_ele_deixou(self):
+        con = sqlite3.connect(self.caminho)
+        con.executescript("""
+            UPDATE regras_categoria SET fecha_depois = -15 WHERE tipo = 'Funcionário';
+            UPDATE regras_categoria SET permanencia_min = 90 WHERE tipo = 'Professor';
+            UPDATE parametros SET valor = 6 WHERE chave = 'horas_retroativo';""")
+        con.close()
+        config = dados.Banco(self.caminho).ler_configuracao()
+        self.assertEqual(config.regras["Funcionário"].fecha_depois, -15)
+        self.assertEqual(config.regras["Professor"].permanencia_min, 90)
+        self.assertEqual(config.horas_retroativo, 6)
+        self.assertEqual(config.regras["Professor"].tolerancia_min, 30)
+        self.assertEqual(config.regras["Aluno"].tolerancia_min, 0)
 
 
 if __name__ == "__main__":

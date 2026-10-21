@@ -1,8 +1,9 @@
 """
-Regras de horário de acesso (RN16 a RN22): funcionamento do campus por dia
-da semana, feriados, eventos, janela de entrada e permanência máxima de
-cada categoria, limite geral de 24 h, entrada retroativa e a situação de
-cada visita aberta (no campus, tempo excedido, saída pendente).
+Regras de horário de acesso (RN16 a RN24): funcionamento do campus por dia
+da semana, feriados, eventos, janela de entrada, permanência máxima e
+tolerância de cada categoria, limite geral de 24 h, lançamento retroativo
+e a situação de cada visita aberta (no campus, tempo excedido, saída
+pendente).
 
 Como validacao.py, tudo aqui é função pura: recebe a configuração e o
 momento ("agora" é sempre um parâmetro — o relógio é injetado) e devolve
@@ -18,12 +19,29 @@ administrador.
 Como cada categoria é descrita (RegraCategoria):
 - janela "do funcionamento" (relativa = True): a entrada vale de
   (abertura − abre_antes) até (fechamento + fecha_depois) minutos.
-  fecha_depois negativo é o corte de entrada: o aluno tem −30, ou seja,
-  só entra até 30 min antes de fechar;
+  fecha_depois é 0 (até o fechamento) ou negativo, o corte de entrada: o
+  aluno tem −30, ou seja, só entra até 30 min antes de fechar;
 - janela "fixa" (relativa = False): das horas `janela.abre` às
   `janela.fecha`, e só em dia em que o campus abre;
+- RN23: NINGUÉM entra depois do fechamento sem autorização. Qualquer
+  janela termina, no máximo, no fechamento do dia (um visitante às 16:00
+  de sábado, com o campus fechando às 14:00, é exceção);
 - permanência: `permanencia_min` minutos depois da entrada ou, com
-  ate_fechamento = True, até o fechamento + `permanencia_min`.
+  ate_fechamento = True, até o fechamento + `permanencia_min`. Passou
+  dela, a visita fica "Tempo excedido" (só um alerta);
+- tolerância (RN22): `tolerancia_min` minutos depois do fechamento até a
+  visita aberta virar "Saída pendente" (padrão: 30 para professor e
+  funcionário, 0 para os outros).
+
+Lançamento retroativo (RN24): uma data/hora no passado (entrada ou saída)
+  a) até `horas_retroativo` (3 h) atrás, com o fechamento daquele dia
+     ainda por vir: normal;
+  b) mais antiga que isso: exceção, com autorização do administrador;
+  c) de um dia que JÁ FECHOU (ex.: 23:10 lançando 22:00, ou lançando
+     ontem): exceção que só passa com a SENHA de um administrador, mesmo
+     com o administrador logado.
+Até MINUTOS_TOLERANCIA_AGORA (5) minutos no passado ainda conta como
+"agora": quem digita 10:00 às 10:03 não está lançando nada retroativo.
 """
 
 import math
@@ -37,11 +55,14 @@ DIAS_SEMANA = ["Segunda-feira", "Terça-feira", "Quarta-feira",
                "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
 LIMITE_VISITA_HORAS = 24          # regra geral: nenhuma visita passa disso
 MINUTOS_AVISO_PADRAO = 30         # aviso antes de fechar
-HORAS_RETROATIVO_PADRAO = 12      # entrada mais antiga que isso é exceção
+HORAS_RETROATIVO_PADRAO = 3       # lançamento mais antigo que isso é exceção
+MINUTOS_TOLERANCIA_AGORA = 5      # até isso no passado ainda é "agora"
+TOLERANCIA_PADRAO = 30            # professor e funcionário, depois de fechar
 MINIMO_JUSTIFICATIVA = 10         # caracteres da justificativa da exceção
 LIMITE_MINUTOS = 24 * 60          # nenhum ajuste passa de um dia
 MAXIMO_MINUTOS_AVISO = 180        # 0 = sem aviso antes de fechar
 MAXIMO_HORAS_RETROATIVO = 72
+MAXIMO_TOLERANCIA = 240           # minutos depois do fechamento
 FORMATO_HORA = "%H:%M"
 FORMATO_DATA = "%d/%m/%Y"
 _REGEX_HORA = re.compile(r"^\d{2}:\d{2}$")
@@ -76,10 +97,11 @@ class Evento:
 class RegraCategoria:
     relativa: bool                 # True: janela do funcionamento; False: fixa
     abre_antes: int = 0            # (relativa) minutos antes de abrir
-    fecha_depois: int = 0          # (relativa) minutos depois de fechar (−30 = corte)
+    fecha_depois: int = 0          # (relativa) 0 = até fechar; −30 = corte
     janela: Horario | None = None  # (fixa) ex.: 08:00–18:00
     ate_fechamento: bool = False   # permanência até o fechamento + permanencia_min
     permanencia_min: int = 0
+    tolerancia_min: int = 0        # depois do fechamento, até a saída pendente
 
 
 @dataclass
@@ -114,8 +136,9 @@ def configuracao_padrao():
     regras = {
         "Aluno": RegraCategoria(True, 0, -30, ate_fechamento=True),
         "Professor": RegraCategoria(True, 30, 0, ate_fechamento=True,
-                                    permanencia_min=60),
-        "Funcionário": RegraCategoria(True, 60, 60, permanencia_min=12 * 60),
+                                    tolerancia_min=TOLERANCIA_PADRAO),
+        "Funcionário": RegraCategoria(True, 60, 0, permanencia_min=12 * 60,
+                                      tolerancia_min=TOLERANCIA_PADRAO),
         "Visitante": RegraCategoria(False, janela=Horario(hora("08:00"), hora("18:00")),
                                     permanencia_min=4 * 60),
         "Entregador": RegraCategoria(False, janela=Horario(hora("07:00"), hora("17:00")),
@@ -156,7 +179,8 @@ def motivo_fechado(config, dia):
 
 def janela_entrada(config, tipo, dia):
     """(início, fim) em que a categoria pode entrar no dia, ou None se o
-    campus não abre. Sem regra para o tipo: o dia inteiro."""
+    campus não abre. Sem regra para o tipo: o dia inteiro. Nenhuma janela
+    passa do fechamento (RN23: depois de fechar, só com autorização)."""
     aberto = expediente(config, dia)
     if aberto is None:
         return None
@@ -165,15 +189,18 @@ def janela_entrada(config, tipo, dia):
         meia_noite = datetime.combine(dia, time())
         return meia_noite, meia_noite + timedelta(days=1)
     if regra.relativa:
-        return (aberto.abre - timedelta(minutes=regra.abre_antes),
-                aberto.fecha + timedelta(minutes=regra.fecha_depois))
-    return (datetime.combine(dia, regra.janela.abre),
-            datetime.combine(dia, regra.janela.fecha))
+        inicio = aberto.abre - timedelta(minutes=regra.abre_antes)
+        fim = aberto.fecha + timedelta(minutes=regra.fecha_depois)
+    else:
+        inicio = datetime.combine(dia, regra.janela.abre)
+        fim = datetime.combine(dia, regra.janela.fecha)
+    return inicio, min(fim, aberto.fecha)
 
 
 def entrada_permitida(config, tipo, entrada):
     """A entrada cai na janela da categoria? Olha também a janela do dia
-    anterior e a do seguinte (ex.: funcionário até 00:00 de terça)."""
+    anterior e a do seguinte (ex.: funcionário que entra 60 min antes de
+    um campus que abre à meia-noite e meia)."""
     for desvio in (-1, 0, 1):
         janela = janela_entrada(config, tipo, entrada.date() + timedelta(days=desvio))
         if janela and janela[0] <= entrada <= janela[1]:
@@ -184,16 +211,56 @@ def entrada_permitida(config, tipo, entrada):
 # ------------------------------------------------------------------
 # Exceções (VERIFICAÇÃO SEMÂNTICA 6): o que pede autorização do admin
 # ------------------------------------------------------------------
+@dataclass
+class Excecoes:
+    """Regras violadas (textos) e se a autorização só vale com a SENHA de
+    um administrador (lançamento num dia que já fechou, RN24 c)."""
+    regras: list = field(default_factory=list)
+    so_com_senha: bool = False
+
+    def __bool__(self):
+        return bool(self.regras)
+
+    def juntar(self, outras):
+        self.regras += outras.regras
+        self.so_com_senha = self.so_com_senha or outras.so_com_senha
+        return self
+
+
+def retroativo(config, rotulo, momento, agora):
+    """
+    RN24: lançamento de `momento` (entrada ou saída) visto do `agora`.
+    Até MINUTOS_TOLERANCIA_AGORA no passado é "agora" (nada a autorizar);
+    num dia que já fechou, só com a senha de um administrador; mais antigo
+    que o limite de horas, com autorização. Devolve Excecoes.
+    """
+    atraso = agora - momento
+    if atraso <= timedelta(minutes=MINUTOS_TOLERANCIA_AGORA):
+        return Excecoes()
+    fechou = fechamento_do_dia(config, momento)
+    if agora > fechou:
+        return Excecoes([f"{rotulo} retroativa: {momento:{FORMATO}} é de um "
+                         f"dia já encerrado (fechou {_quando_fechou(fechou)})."
+                         " Só com a senha de um administrador."], True)
+    if atraso > timedelta(hours=config.horas_retroativo):
+        return Excecoes([f"{rotulo} retroativa: {momento:{FORMATO}} é de mais "
+                         f"de {config.horas_retroativo} h atrás."])
+    return Excecoes()
+
+
+def _quando_fechou(fechou):
+    if fechou.time() == time():
+        return f"à meia-noite de {fechou - timedelta(days=1):{FORMATO_DATA}}"
+    return f"às {fechou:%H:%M} de {fechou:{FORMATO_DATA}}"
+
+
 def excecoes_da_entrada(config, tipo, entrada, agora):
-    """Regras que a entrada (datetime) viola: retroativa antiga e fora da
-    janela da categoria (inclusive campus fechado). Lista vazia = normal."""
-    regras = []
-    if agora - entrada > timedelta(hours=config.horas_retroativo):
-        regras.append(f"Entrada retroativa: {entrada:{FORMATO}} é de mais de "
-                      f"{config.horas_retroativo} h atrás.")
+    """Regras que a entrada (datetime) viola: lançamento retroativo e fora
+    da janela da categoria (inclusive campus fechado). Vazio = normal."""
+    excecoes = retroativo(config, "Entrada", entrada, agora)
     if not entrada_permitida(config, tipo, entrada):
-        regras.append(_fora_da_janela(config, tipo, entrada))
-    return regras
+        excecoes.regras.append(_fora_da_janela(config, tipo, entrada))
+    return excecoes
 
 
 def _fora_da_janela(config, tipo, entrada):
@@ -226,10 +293,12 @@ def formatar_horas(horas):
 def excecoes_do_registro(config, registro, agora):
     """Exceções de um registro novo (datas no formato da tela)."""
     entrada = converter_data(registro["entrada"])
-    regras = excecoes_da_entrada(config, registro["tipo"], entrada, agora)
+    excecoes = excecoes_da_entrada(config, registro["tipo"], entrada, agora)
     if registro.get("saida"):
-        regras += excecoes_da_duracao(entrada, converter_data(registro["saida"]))
-    return regras
+        saida = converter_data(registro["saida"])
+        excecoes.juntar(retroativo(config, "Saída", saida, agora))
+        excecoes.regras += excecoes_da_duracao(entrada, saida)
+    return excecoes
 
 
 def excecoes_da_correcao(config, original, novo, agora):
@@ -238,30 +307,36 @@ def excecoes_da_correcao(config, original, novo, agora):
     o nome de uma visita que já foi exceção não pede outra autorização).
     - entrada mudou: retroativa e janela;
     - só o tipo mudou: janela;
+    - saída mudou: retroativa;
     - entrada ou saída mudou e há saída: limite de 24 h.
     """
     entrada = converter_data(novo["entrada"])
     mudou_entrada = novo["entrada"] != original["entrada"]
-    regras = []
+    mudou_saida = novo["saida"] != original["saida"]
+    excecoes = Excecoes()
     if mudou_entrada:
-        regras += excecoes_da_entrada(config, novo["tipo"], entrada, agora)
+        excecoes = excecoes_da_entrada(config, novo["tipo"], entrada, agora)
     elif novo["tipo"] != original["tipo"] and not entrada_permitida(
             config, novo["tipo"], entrada):
-        regras.append(_fora_da_janela(config, novo["tipo"], entrada))
-    if novo["saida"] and (mudou_entrada or novo["saida"] != original["saida"]):
-        regras += excecoes_da_duracao(entrada, converter_data(novo["saida"]))
-    return regras
+        excecoes.regras.append(_fora_da_janela(config, novo["tipo"], entrada))
+    if novo["saida"] and mudou_saida:
+        excecoes.juntar(retroativo(config, "Saída",
+                                   converter_data(novo["saida"]), agora))
+    if novo["saida"] and (mudou_entrada or mudou_saida):
+        excecoes.regras += excecoes_da_duracao(entrada,
+                                               converter_data(novo["saida"]))
+    return excecoes
 
 
 # ------------------------------------------------------------------
 # Permanência, saída pendente e situação da visita
 # ------------------------------------------------------------------
-def fechamento_do_dia(config, entrada):
-    """Fechamento do dia da entrada. Se o campus não abriu nesse dia, ou a
-    entrada foi depois do fechamento (exceção), vale a meia-noite."""
-    aberto = expediente(config, entrada.date())
-    if aberto is None or aberto.fecha <= entrada:
-        return datetime.combine(entrada.date() + timedelta(days=1), time())
+def fechamento_do_dia(config, momento):
+    """Fechamento do dia de `momento` (23:00 de segunda a sexta, ou o fim
+    do evento). Dia sem expediente (domingo, feriado): a meia-noite."""
+    aberto = expediente(config, momento.date())
+    if aberto is None:
+        return datetime.combine(momento.date() + timedelta(days=1), time())
     return aberto.fecha
 
 
@@ -277,14 +352,17 @@ def limite_permanencia(config, tipo, entrada):
 
 def prazo_saida(config, tipo, entrada):
     """
-    Até quando a visita pode ficar aberta sem virar "Saída pendente": o
-    fechamento do dia da entrada (23:00 de segunda a sexta, ou o fim do
-    evento), nunca antes do fim da permanência da categoria (o professor
-    pode ficar até o fechamento + 1 h) e nunca depois de 24 h. É também o
-    horário da saída automática do "Encerrar o dia".
+    RN22: até quando a visita pode ficar aberta sem virar "Saída
+    pendente": o fechamento do dia da entrada (23:00 de segunda a sexta,
+    ou o fim do evento) + a tolerância da categoria (30 min para professor
+    e funcionário, 0 para os outros). Nunca passa de 24 h.
+    Entrada DEPOIS desse prazo (só com autorização): o prazo é a própria
+    entrada, ou seja, a visita já nasce pendente, porque o dia dela acabou.
+    É também o horário da saída automática do "Encerrar o dia".
     """
-    prazo = max(fechamento_do_dia(config, entrada),
-                limite_permanencia(config, tipo, entrada))
+    regra = config.regras.get(tipo)
+    tolerancia = timedelta(minutes=regra.tolerancia_min if regra else 0)
+    prazo = max(fechamento_do_dia(config, entrada) + tolerancia, entrada)
     return min(prazo, entrada + timedelta(hours=LIMITE_VISITA_HORAS))
 
 
@@ -371,7 +449,7 @@ def ler_parametros(minutos_aviso, horas_retroativo):
                                MAXIMO_MINUTOS_AVISO, "minutos")
     if erro:
         return None, erro
-    horas, erro = ler_numero(horas_retroativo, "Entrada retroativa", 1,
+    horas, erro = ler_numero(horas_retroativo, "Lançamento retroativo", 1,
                              MAXIMO_HORAS_RETROATIVO, "horas")
     if erro:
         return None, erro
@@ -392,17 +470,19 @@ def ler_funcionamento(linhas):
     return funcionamento, ""
 
 
-def ler_regra(tipo, relativa, de, ate, ate_fechamento, permanencia):
+def ler_regra(tipo, relativa, de, ate, ate_fechamento, permanencia,
+              tolerancia="0"):
     """Uma linha da tabela de categorias. Na janela do funcionamento,
-    `de` e `ate` são minutos; na fixa, horários hh:mm."""
+    `de` e `ate` são minutos; na fixa, horários hh:mm. `ate` nunca passa
+    do fechamento (RN23): 0 = até fechar, negativo = antes."""
     if relativa:
         abre_antes, erro = ler_minutos(de, f"{tipo} (antes de abrir)")
         if erro:
             return None, erro
-        fecha_depois, erro = ler_minutos(ate, f"{tipo} (depois de fechar)",
-                                         minimo=-LIMITE_MINUTOS)
+        fecha_depois, erro = ler_minutos(ate, f"{tipo} (até)",
+                                         minimo=-LIMITE_MINUTOS, maximo=0)
         if erro:
-            return None, erro
+            return None, erro + " Ninguém entra depois de fechar."
         janela = None
     else:
         abre_antes = fecha_depois = 0
@@ -413,8 +493,12 @@ def ler_regra(tipo, relativa, de, ate, ate_fechamento, permanencia):
                                 minimo=0 if ate_fechamento else 1)
     if erro:
         return None, erro
+    tolerancia, erro = ler_minutos(tolerancia, f"{tipo} (tolerância)",
+                                   maximo=MAXIMO_TOLERANCIA)
+    if erro:
+        return None, erro
     return RegraCategoria(relativa, abre_antes, fecha_depois, janela,
-                          ate_fechamento, minutos), ""
+                          ate_fechamento, minutos, tolerancia), ""
 
 
 def ler_data(texto, rotulo="Data"):
@@ -461,9 +545,7 @@ def descrever_regra(tipo, regra):
     de fechar; fica até o fechamento'."""
     if regra.relativa:
         antes = f"{regra.abre_antes} min antes de abrir" if regra.abre_antes else "a abertura"
-        if regra.fecha_depois > 0:
-            depois = f"{regra.fecha_depois} min depois de fechar"
-        elif regra.fecha_depois < 0:
+        if regra.fecha_depois < 0:
             depois = f"{-regra.fecha_depois} min antes de fechar"
         else:
             depois = "o fechamento"
@@ -476,4 +558,6 @@ def descrever_regra(tipo, regra):
             if regra.permanencia_min else "")
     else:
         fica = f"fica no máximo {formatar_horas(regra.permanencia_min / 60)}"
+    if regra.tolerancia_min:
+        fica += f"; tolerância de {regra.tolerancia_min} min depois de fechar"
     return f"{tipo}: {janela}; {fica}"

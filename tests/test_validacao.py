@@ -76,6 +76,14 @@ class TestCampos(unittest.TestCase):
         self.assertEqual(r["entrada"], "16/10/2026 08:00")
         self.assertEqual(r["saida"], "")
 
+    def test_normalizar_completa_a_hora_de_um_digito(self):
+        """QA2 B4: '9:5' era gravado certo, mas o aviso dizia 'às 6 9:5'
+        e a correção via mudança onde não havia."""
+        r = normalizar("Ana Silva", CPF_ANA, "31987654321", "", "Aluno",
+                       "16/10/2026 9:5", "16/10/2026 10:7")
+        self.assertEqual(r["entrada"], "16/10/2026 09:05")
+        self.assertEqual(r["saida"], "16/10/2026 10:07")
+
 
 class TestValidar(unittest.TestCase):
     """Casos de teste do cadastro: cada um diz a entrada e o resultado esperado."""
@@ -116,6 +124,11 @@ class TestValidar(unittest.TestCase):
 
     def test_entrada_no_futuro(self):  # falha F2 da v1
         self.assertRecusa(registro(entrada="16/10/2030 08:00"), "futuro")
+
+    def test_ano_absurdo_e_recusado(self):
+        """QA2 B5: '0026' passava e virava 'dia já encerrado'."""
+        self.assertRecusa(registro(entrada="21/10/0026 10:00"), "Confira o ano")
+        self.assertRecusa(registro(entrada="01/01/0001 00:00"), "Confira o ano")
 
     def test_saida_no_futuro(self):
         self.assertRecusa(registro(saida="16/10/2026 23:00"), "futuro")

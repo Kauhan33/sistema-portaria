@@ -22,8 +22,8 @@ import zlib
 from datetime import datetime
 from tkinter import ttk
 
-from .estilo import (ALTURA_CAMPO, COR, ESTADO, FONTE, ICONE, MARGEM,
-                     fonte_icone, px)
+from .estilo import (ALTURA_CAMPO, COR, ESTADO, FONTE, ICONE, MARGEM, TEMA,
+                     fonte_icone, pintar_barra_de_titulo, px)
 
 TAMANHO_PLACA = 7
 # Na tela pequena as colunas das tabelas encolhem até 85% da largura de projeto
@@ -36,6 +36,7 @@ MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
          "agosto", "setembro", "outubro", "novembro", "dezembro"]
 ICONE_DO_ESTADO = {"sucesso": "ok", "alerta": "alerta", "erro": "erro",
                    "info": "info", "neutro": "info"}
+ESPERA_BUSCA_MS = 300     # pausa na digitação antes de buscar
 
 
 def data_por_extenso(momento=None):
@@ -53,12 +54,14 @@ def plural(n, singular, plural_):
 # Imagens: cantos arredondados e bolinhas (guardadas por janela raiz)
 # ----------------------------------------------------------------------
 def _cache(widget):
-    """Imagens já feitas, guardadas na janela raiz: uma imagem do Tk só vale
-    para o interpretador que a criou (os testes criam várias raízes)."""
+    """Imagens já feitas do tema em uso, guardadas na janela raiz: uma imagem
+    do Tk só vale para o interpretador que a criou (os testes criam várias
+    raízes). Cada tema tem o seu cache: voltar ao tema anterior reaproveita
+    as imagens dele."""
     raiz = widget._root()
     if not hasattr(raiz, "imagens_guarita"):
         raiz.imagens_guarita = {}
-    return raiz.imagens_guarita
+    return raiz.imagens_guarita.setdefault(TEMA["atual"], {})
 
 
 def _rgb(h):
@@ -210,18 +213,21 @@ class Botao(tk.Canvas):
     tk.Button; invocar() aciona como um clique.
     """
 
-    VARIANTES = {
-        #             fundo, hover, pressionado, texto, borda
-        "primario": (COR["primario"], COR["primario_hover"], COR["primario_press"],
-                     COR["texto_invertido"], None),
-        "marca": (COR["marca"], COR["marca_escura"], "#9A0013",
-                  COR["texto_invertido"], None),
-        "secundario": (COR["superficie"], COR["superficie_2"], COR["hover"],
-                       COR["texto"], COR["borda_campo"]),
-        "perigo": (COR["superficie"], ESTADO["erro"][1], "#F9D9DE",
-                   ESTADO["erro"][0], ESTADO["erro"][2]),
-        "fantasma": (None, COR["hover"], "#DDE1E8", COR["texto"], None),
-    }
+    @staticmethod
+    def cores_da_variante(variante):
+        """(fundo, hover, pressionado, texto, borda) no tema em uso (lidas na
+        hora: uma tabela fixa ficaria com as cores do tema do import)."""
+        return {
+            "primario": (COR["primario"], COR["primario_hover"],
+                         COR["primario_press"], COR["texto_invertido"], None),
+            "marca": (COR["marca"], COR["marca_escura"], COR["marca_press"],
+                      COR["texto_sobre_marca"], None),
+            "secundario": (COR["superficie"], COR["superficie_2"], COR["hover"],
+                           COR["texto"], COR["borda_campo"]),
+            "perigo": (COR["superficie"], ESTADO["erro"][1], COR["erro_press"],
+                       ESTADO["erro"][0], ESTADO["erro"][2]),
+            "fantasma": (None, COR["hover"], COR["press"], COR["texto"], None),
+        }[variante]
 
     def __init__(self, pai, texto, comando=None, variante="secundario",
                  icone=None, fundo_pai=None, largura=None, altura=ALTURA_CAMPO,
@@ -231,7 +237,8 @@ class Botao(tk.Canvas):
         self.dica_tecla, self.variante = dica_tecla, variante
         self.largura_fixa = largura
         self.ativo, self.estado, self.focado = True, "normal", False
-        fundo, hover, press, self.cor_texto, self.cor_borda = self.VARIANTES[variante]
+        fundo, hover, press, self.cor_texto, self.cor_borda = \
+            self.cores_da_variante(variante)
         self.cores = {"normal": fundo or self.fundo_pai, "hover": hover,
                       "press": press}
         self.fonte = tkfont.Font(root=pai, font=FONTE["botao"])
@@ -272,7 +279,7 @@ class Botao(tk.Canvas):
         if variante and variante != self.variante:
             self.variante = variante
             fundo, hover, press, self.cor_texto, self.cor_borda = \
-                self.VARIANTES[variante]
+                self.cores_da_variante(variante)
             self.cores = {"normal": fundo or self.fundo_pai, "hover": hover,
                           "press": press}
         self.config(width=self._largura_natural())
@@ -338,10 +345,11 @@ class Botao(tk.Canvas):
                          font=FONTE["botao"], fill=cor_texto)
         if self.dica_tecla:
             x += self.fonte.measure(self.texto) + px(10)
-            claro = cor_texto == COR["texto_invertido"]
+            sobre_primario = cor_texto == COR["texto_invertido"]
             self.create_text(x, h / 2, text=self.dica_tecla, anchor="w",
                              font=FONTE["dica"],
-                             fill="#AEB7C6" if claro else COR["texto_3"])
+                             fill=COR["dica_invertida"] if sobre_primario
+                             else COR["texto_3"])
 
 
 class BotaoIcone(tk.Label):
@@ -400,13 +408,18 @@ class Campo(tk.Frame):
     e o texto em .var. Restrições de digitação (as mesmas em todas as telas):
         numeros=11   só dígitos, no máximo 11 (CPF, celular)
         placa=True   letras e números, até 7, sempre em maiúscula
-    icone + acao_icone: ícone clicável dentro do campo (relógio = agora).
+    icone + acao_icone: ícone clicável dentro do campo.
     dica_vazio: texto cinza mostrado enquanto o campo está vazio.
+    seletor="data_hora" | "data" | "hora": clicar no campo (ou no ícone)
+        abre o calendário/relógio (seletor_data.py); `relogio` é o "agora"
+        dele e `ao_escolher` é chamado depois de preencher. Digitar
+        continua valendo: a primeira tecla fecha o pop-up.
     """
 
     def __init__(self, pai, fundo_pai=None, opcoes=None, numeros=None,
                  placa=False, senha=False, icone=None, acao_icone=None,
-                 dica_vazio="", largura=None, var=None, **kw):
+                 dica_vazio="", largura=None, var=None, seletor=None,
+                 relogio=None, ao_escolher=None, **kw):
         self.fundo_pai = fundo_pai or COR["superficie"]
         super().__init__(pai, bg=self.fundo_pai, height=px(ALTURA_CAMPO))
         if largura:
@@ -439,10 +452,20 @@ class Campo(tk.Frame):
                                     bg=COR["superficie"], fg=COR["texto"],
                                     insertbackground=COR["texto"],
                                     disabledbackground=COR["superficie_2"],
+                                    disabledforeground=COR["texto_3"],
+                                    selectbackground=COR["selecao"],
+                                    selectforeground=COR["texto"],
                                     textvariable=self.var, **kw)
             direita = px(36) if icone else px(10)
             self.entrada.place(x=px(10), rely=0.5, anchor="w", relwidth=1,
                                width=-(px(10) + direita))
+        self.modo_seletor, self.relogio = seletor, relogio
+        self.ao_escolher, self.seletor_aberto = ao_escolher, None
+        if seletor:
+            icone = icone or ICONE["calendario" if seletor == "data" else "relogio"]
+            acao_icone = self.abrir_seletor
+            self.entrada.bind("<Button-1>", self.abrir_seletor, add="+")
+            self.entrada.bind("<Key>", self._tecla_com_seletor, add="+")
         self.acao_icone, self.lbl_icone = acao_icone, None
         if icone:
             self.lbl_icone = tk.Label(self, text=icone, font=fonte_icone(11),
@@ -461,6 +484,30 @@ class Campo(tk.Frame):
         self.entrada.bind("<FocusIn>", lambda e: self._foco(True), add="+")
         self.entrada.bind("<FocusOut>", lambda e: self._foco(False), add="+")
         self.cv.bind("<Configure>", lambda e: self._desenhar())
+
+    def abrir_seletor(self, event=None):
+        """Abre o calendário/relógio embaixo do campo (um por vez)."""
+        if str(self.entrada.cget("state")) == "disabled":
+            return
+        if self.seletor_aberto is not None and self.seletor_aberto.existe():
+            return
+        from .seletor_data import SeletorDataHora   # (importa componentes)
+        fechar_seletor()
+        self.seletor_aberto = SeletorDataHora(self, self.modo_seletor,
+                                              self.relogio, self.ao_escolher)
+        _SELETOR["aberto"] = self.seletor_aberto
+        topo = self.winfo_toplevel()
+        if not getattr(topo, "fecha_seletor_ligado", False):
+            topo.bind("<Button-1>", _clique_fora_do_seletor, add="+")
+            topo.fecha_seletor_ligado = True
+
+    def _tecla_com_seletor(self, event):
+        """Digitar fecha o pop-up (e o texto entra no campo); Esc só fecha."""
+        if self.seletor_aberto is not None and self.seletor_aberto.existe():
+            self.seletor_aberto.fechar()
+            if event.keysym == "Escape":
+                return "break"
+        return None
 
     def usar_icone(self):
         """O que o clique no ícone faz (ex.: relógio = data e hora de agora)."""
@@ -494,6 +541,57 @@ class Campo(tk.Frame):
                         COR["borda_campo"])
         cor, esp = (COR["foco"], px(2)) if self.focado else (COR["traco_campo"], 1)
         cv.create_rectangle(r, h - esp, w - r, h, fill=cor, width=0)
+
+
+class EsperaDigitacao:
+    """
+    Busca enquanto se digita sem travar a tela (RNF03): `acao` só roda
+    depois de `espera` ms sem teclas que mudem o texto. Digitar um CPF de
+    11 dígitos faz uma busca, não onze; Shift, setas e Tab não buscam.
+    """
+
+    def __init__(self, entrada, acao, espera=ESPERA_BUSCA_MS):
+        self.entrada, self.acao, self.espera = entrada, acao, espera
+        self._timer = None
+        self._visto = entrada.get()
+        entrada.bind("<KeyRelease>", self._ao_soltar_tecla, add="+")
+
+    def _ao_soltar_tecla(self, event=None):
+        texto = self.entrada.get()
+        if texto == self._visto:
+            return
+        self._visto = texto
+        self.cancelar()
+        self._timer = self.entrada.after(self.espera, self._disparar)
+
+    def cancelar(self):
+        if self._timer is not None:
+            self.entrada.after_cancel(self._timer)
+            self._timer = None
+
+    def _disparar(self):
+        self._timer = None
+        self.acao()
+
+
+_SELETOR = {"aberto": None}       # o calendário/relógio aberto agora
+
+
+def fechar_seletor():
+    aberto = _SELETOR["aberto"]
+    if aberto is not None:
+        aberto.fechar()
+    _SELETOR["aberto"] = None
+
+
+def _clique_fora_do_seletor(event):
+    """Clique em qualquer lugar da janela fora do campo fecha o pop-up."""
+    aberto = _SELETOR["aberto"]
+    if aberto is None or not aberto.existe():
+        return
+    campo = aberto.campo
+    if event.widget not in (campo.entrada, campo.lbl_icone):
+        fechar_seletor()
 
 
 def rotulo_campo(pai, texto, apoio="", fundo=None):
@@ -546,7 +644,7 @@ class Aviso(tk.Frame):
         self.lbl = tk.Label(self.interno, font=FONTE["corpo_semi"], anchor="w",
                             justify="left")
         self.lbl.pack(side="left", fill="x", expand=True)
-        self.acao = None
+        self.acao = self.comando = None
         self.cv.bind("<Configure>", self._ao_redimensionar)
         self.mostrar("neutro", "")
 
@@ -562,12 +660,17 @@ class Aviso(tk.Frame):
         if self.acao is not None:
             self.acao.destroy()
             self.acao = None
+        self.comando = comando if acao else None     # o que o link faz
         if acao:
             self.acao = link(self.interno, acao, comando or (lambda: None),
                              fundo=cor_fundo, cor=cor_texto)
             self.acao.pack(side="right", anchor="n", padx=(px(12), 0),
                            before=self.lbl)
         self._ao_redimensionar()
+
+    def definir_respiro(self, vertical):
+        """Espaço acima e abaixo do texto (px lógicos): menor na tela baixa."""
+        self.interno.pack_configure(pady=px(vertical))
 
     def _ao_redimensionar(self, event=None):
         # menos as margens internas e o ícone
@@ -620,24 +723,24 @@ class Placa(tk.Canvas):
             self.create_text(w / 2, h / 2 + px(11), text="ABC1234 ou ABC1D23",
                              font=FONTE["dica"], fill=COR["texto_3"])
             return
-        contorno = ESTADO["erro"][0] if self.bloqueada else COR["texto"]
-        ret_arredondado(self, 0, 0, w, h, r, "#FFFFFF", self.fundo_pai,
-                        contorno, px(3) if self.bloqueada else px(2))
+        branco = COR["placa_fundo"]
+        cor_texto = COR["placa_erro"] if self.bloqueada else COR["placa_texto"]
+        ret_arredondado(self, 0, 0, w, h, r, branco, self.fundo_pai,
+                        cor_texto, px(3) if self.bloqueada else px(2))
         faixa, e = round(h * 0.26), px(3) if self.bloqueada else px(2)
         ret_arredondado(self, e, e, w - e, e + faixa + r, max(1, r - e),
-                        COR["placa_azul"], "#FFFFFF")
+                        COR["placa_azul"], branco)
         self.create_rectangle(e, e + faixa, w - e, e + faixa + r,
-                              fill="#FFFFFF", width=0)
+                              fill=branco, width=0)
         self.create_text(w / 2, e + faixa / 2 + 1, text="BRASIL",
-                         font=FONTE["placa_pequena"], fill="#FFFFFF")
+                         font=FONTE["placa_pequena"], fill=branco)
         bx, by = w - e - px(16), e + px(4)
         self.create_rectangle(bx, by, bx + px(11), by + max(faixa - px(8), 2),
                               fill=COR["placa_verde"], width=0)
         self.create_text(e + px(10), e + faixa / 2 + 1, text="BR", anchor="w",
-                         font=(FONTE["placa_pequena"][0], 6), fill="#FFFFFF")
+                         font=(FONTE["placa_pequena"][0], 6), fill=branco)
         self.create_text(w / 2, e + faixa + (h - faixa - e) / 2 + 1,
-                         text=self.texto, font=FONTE["placa"],
-                         fill=ESTADO["erro"][0] if self.bloqueada else COR["texto"])
+                         text=self.texto, font=FONTE["placa"], fill=cor_texto)
 
 
 # ----------------------------------------------------------------------
@@ -724,7 +827,7 @@ def marca_cancela(pai, fundo_pai, tamanho=36, cor=None, traco=None):
     """Símbolo do sistema: uma cancela (poste + braço listrado) num
     quadrado vermelho UNA, desenhada no Canvas (não é o logotipo da UNA)."""
     cor = cor or COR["marca"]
-    traco = traco or COR["texto_invertido"]
+    traco = traco or COR["texto_sobre_marca"]
     t = px(tamanho)
     cv = tk.Canvas(pai, width=t, height=t, bg=fundo_pai, highlightthickness=0,
                    bd=0)
@@ -773,11 +876,13 @@ class Cabecalho(tk.Frame):
 # Tabelas
 # ----------------------------------------------------------------------
 def tabela(pai, colunas, situacao=None, mostrar=None, altura=None,
-           selecao="browse", rolagem=True, compacta=False):
+           selecao="browse", rolagem=True, compacta=False,
+           largura_situacao=112):
     """
     Tabela (Treeview no estilo Guarita) dentro de um Frame branco.
     colunas: lista de (id, título, largura, âncora).
-    situacao: título da 1ª coluna (bolinha + texto), ex.: "Situação".
+    situacao: título da 1ª coluna (bolinha + texto), ex.: "Situação",
+    com `largura_situacao` px lógicos.
     mostrar: ids das colunas visíveis (as outras continuam nos values).
     Devolve (quadro, tabela).
     """
@@ -791,9 +896,9 @@ def tabela(pai, colunas, situacao=None, mostrar=None, altura=None,
     larguras = {}                       # largura de projeto de cada coluna
     if situacao:
         tab.heading("#0", text=situacao, anchor="w")
-        larguras["#0"] = px(112)
-        tab.column("#0", width=px(112), minwidth=px(90), stretch=False,
-                   anchor="w")
+        larguras["#0"] = px(largura_situacao)
+        tab.column("#0", width=px(largura_situacao), minwidth=px(90),
+                   stretch=False, anchor="w")
     for col, titulo, largura, ancora in colunas:
         tab.heading(col, text=titulo, anchor="w" if ancora == "w" else ancora)
         larguras[col] = px(largura)
@@ -805,6 +910,9 @@ def tabela(pai, colunas, situacao=None, mostrar=None, altura=None,
              add="+")
     tab.tag_configure("zebra", background=COR["superficie_2"])
     tab.tag_configure("apagado", foreground=COR["texto_3"])
+    # linhas em destaque (Movimento): fundo claro do estado, sem zebra
+    tab.tag_configure("pendente", background=ESTADO["erro"][1])
+    tab.tag_configure("excedido", background=ESTADO["alerta"][1])
     tab.pack(side="left", fill="both", expand=True)
     if rolagem:
         barra = ttk.Scrollbar(quadro, orient="vertical", command=tab.yview,
@@ -835,9 +943,10 @@ def _encaixar_colunas(tab, larguras):
 
 
 def inserir_linha(tab, indice, values, iid=None, situacao=None, cor=None,
-                  tags=()):
-    """Linha com zebra; `situacao` + `cor` = texto e bolinha da 1ª coluna."""
-    tags = tuple(tags) + (("zebra",) if indice % 2 else ())
+                  tags=(), zebra=True):
+    """Linha com zebra (zebra=False para linha em destaque, que tem fundo
+    próprio); `situacao` + `cor` = texto e bolinha da 1ª coluna."""
+    tags = tuple(tags) + (("zebra",) if zebra and indice % 2 else ())
     opcoes = {"iid": iid} if iid is not None else {}
     if situacao is not None:
         opcoes["text"] = situacao
@@ -862,14 +971,110 @@ def preencher_eventos(tab, eventos):
                                e["detalhe"]))
 
 
+SETA_CRESCENTE, SETA_DECRESCENTE = chr(0x25B2), chr(0x25BC)
+
+
+class OrdenacaoTabela:
+    """
+    Ordenar a tabela clicando no cabeçalho: 1º clique em crescente, 2º em
+    decrescente (e assim por diante); a coluna em uso ganha a seta ▲ ou ▼.
+    titulos: {coluna: título}; chaves: {coluna: função item -> valor de
+    comparação} (datas e números comparados como datas e números, não como
+    texto); desempate: função do critério de desempate (sempre crescente).
+    ao_ordenar(): redesenha a tabela (a tela chama .ordenar(itens)).
+    """
+
+    def __init__(self, tab, titulos, chaves, ao_ordenar, coluna,
+                 desempate=None):
+        self.tab, self.titulos, self.chaves = tab, titulos, chaves
+        self.ao_ordenar, self.desempate = ao_ordenar, desempate
+        self.coluna, self.decrescente = coluna, False
+        for col in titulos:
+            tab.heading(col, command=lambda c=col: self.clicar(c))
+        self._mostrar_setas()
+
+    def clicar(self, coluna):
+        if coluna == self.coluna:
+            self.decrescente = not self.decrescente
+        else:
+            self.coluna, self.decrescente = coluna, False
+        self._mostrar_setas()
+        self.ao_ordenar()
+
+    def _mostrar_setas(self):
+        for col, titulo in self.titulos.items():
+            if col == self.coluna:
+                seta = SETA_DECRESCENTE if self.decrescente else SETA_CRESCENTE
+                titulo = f"{titulo} {seta}"
+            self.tab.heading(col, text=titulo)
+
+    def ordenar(self, itens):
+        """Lista nova, ordenada pela coluna escolhida (o sort do Python é
+        estável: o desempate vale nos dois sentidos)."""
+        itens = sorted(itens, key=self.desempate) if self.desempate else list(itens)
+        return sorted(itens, key=self.chaves[self.coluna],
+                      reverse=self.decrescente)
+
+
+class Seletor(tk.Frame):
+    """
+    Navegação entre as seções de uma página (como as abas do Windows 11):
+    a seção ativa fica em texto escuro com o traço vermelho UNA embaixo,
+    o mesmo sinal do item ativo da barra lateral. Tab leva o foco; Enter
+    ou Espaço escolhem. `comando(opcao)` é chamado na troca.
+    """
+
+    def __init__(self, pai, opcoes, comando, fundo_pai=None):
+        self.fundo_pai = fundo_pai or COR["fundo"]
+        super().__init__(pai, bg=self.fundo_pai)
+        self.comando, self.ativa = comando, None
+        self.itens = {}
+        for opcao in opcoes:
+            item = tk.Frame(self, bg=self.fundo_pai)
+            item.pack(side="left", padx=(0, px(20)))
+            rotulo = tk.Label(item, text=opcao, font=FONTE["corpo"],
+                              bg=self.fundo_pai, fg=COR["texto_2"],
+                              cursor="hand2", takefocus=1, padx=px(2),
+                              pady=px(4), highlightthickness=px(2),
+                              highlightcolor=COR["foco"],
+                              highlightbackground=self.fundo_pai)
+            rotulo.pack()
+            traco = tk.Frame(item, height=px(3), bg=self.fundo_pai)
+            traco.pack(fill="x")
+            for evento in ("<Button-1>", "<Return>", "<space>"):
+                rotulo.bind(evento, lambda e, o=opcao: self.selecionar(o))
+            self.itens[opcao] = (rotulo, traco)
+        linha = tk.Frame(self, bg=COR["borda"], height=1)
+        linha.place(relx=0, rely=1, relwidth=1, y=-1)
+        linha.lower()              # o traço da seção ativa fica por cima
+
+    def definir_texto(self, opcao, texto):
+        """Troca o texto mostrado de uma opção (ex.: "Veículos (2)")."""
+        self.itens[opcao][0].config(text=texto)
+
+    def selecionar(self, opcao):
+        self.ativa = opcao
+        for nome, (rotulo, traco) in self.itens.items():
+            ativa = nome == opcao
+            rotulo.config(font=FONTE["corpo_semi"] if ativa else FONTE["corpo"],
+                          fg=COR["texto"] if ativa else COR["texto_2"])
+            traco.config(bg=COR["marca"] if ativa else self.fundo_pai)
+        self.comando(opcao)
+        return "break"
+
+
 class Alternador(tk.Canvas):
     """Interruptor liga/desliga com texto (ex.: "Mostrar removidos")."""
 
-    def __init__(self, pai, texto, var, comando=None, fundo_pai=None):
+    def __init__(self, pai, texto, var, comando=None, fundo_pai=None,
+                 textos=()):
+        """`textos`: todos os textos que ele pode mostrar (definir_texto),
+        para a largura caber o maior (ex.: "Aberto" e "Fechado")."""
         self.fundo_pai = fundo_pai or COR["superficie"]
         self.texto, self.var, self.comando = texto, var, comando
         self.fonte = tkfont.Font(root=pai, font=FONTE["corpo"])
-        super().__init__(pai, width=px(44) + self.fonte.measure(texto),
+        maior = max(self.fonte.measure(t) for t in (texto, *textos))
+        super().__init__(pai, width=px(44) + maior,
                          height=px(ALTURA_CAMPO), bg=self.fundo_pai,
                          highlightthickness=0, bd=0, cursor="hand2",
                          takefocus=1)
@@ -882,6 +1087,10 @@ class Alternador(tk.Canvas):
 
     def cget(self, chave):
         return self.texto if chave == "text" else super().cget(chave)
+
+    def definir_texto(self, texto):
+        self.texto = texto
+        self._desenhar()
 
     def alternar(self):
         self.var.set(not self.var.get())
@@ -931,6 +1140,7 @@ class Dialogo:
         self.janela.configure(bg=COR["superficie"])
         self.janela.resizable(False, False)
         self.janela.transient(dono)
+        pintar_barra_de_titulo(self.janela)
         if ao_usar is not None:   # conta como uso (sessão por inatividade)
             for evento in ("<KeyPress>", "<ButtonPress>"):
                 self.janela.bind(evento, ao_usar, add="+")

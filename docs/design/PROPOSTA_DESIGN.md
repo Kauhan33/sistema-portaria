@@ -409,3 +409,233 @@ Diferenças conscientes em relação ao protótipo:
   que a área útil de um notebook 1366×768 a 125%).
 - `depois/cadastro_ok.png` era, por engano, a captura de outra janela; foi
   refeito a partir do protótipo aprovado (`prototipo.py cadastro --estado ok`).
+
+## 10. Tema escuro ("Guarita à noite")
+
+Pedido do aluno: modo noturno com três opções — **Claro**, **Escuro** e
+**Seguir o Windows** —, escolhido por **cada usuário** no menu da conta (três
+pontos no rodapé da barra lateral) e trocado **sem fechar o programa**.
+
+### Ideia
+
+A guarita à noite: ardósia azulada, nem preto puro (cansa e "vaza" o brilho
+das letras) nem o claro invertido. As superfícies **sobem de tom** em vez de
+ganhar sombra (fundo `#13171D` → barra lateral `#0F1217` → cartão `#1B2028` →
+cabeçalho e zebra `#222833`). A disciplina de cor continua a mesma: tela
+calma e cor só quando importa.
+
+Decisões:
+
+- **O botão principal vira claro** (`#E9EDF3` com texto `#13171D`, 15,3:1).
+  No claro ele é o ponto mais escuro da tela; no escuro, o mais claro: nos
+  dois temas é o elemento de maior contraste, que é o papel dele. A dica
+  "Enter" dentro dele ganhou token próprio (`dica_invertida`).
+- **Estados** viram texto claro sobre fundo escuro tingido (verde `#5FD08F`
+  sobre `#12291E`, âmbar `#F2B45A` sobre `#2E2210`, vermelho `#FF8A93` sobre
+  `#33161A`, azul `#8DB8FF` sobre `#14233D`), com borda um tom acima. As
+  linhas em destaque da tabela (saída pendente, tempo excedido) usam esses
+  fundos.
+- **Vermelho UNA**: `#E01A32` nos traços e na barra de "Hoje" (um pouco mais
+  vivo, para aparecer no escuro); o **painel do login** fica num vermelho mais
+  fundo, `#A8001A`, para não ofuscar à noite (texto branco a 7,8:1).
+- **Placa Mercosul continua branca** (é um objeto de verdade): tokens
+  `placa_fundo`, `placa_texto` e `placa_erro` iguais nos dois temas.
+- **Seleção** azul-acinzentada (`#263A5C`), **foco** e links em `#7DB1FF`.
+- **Gráficos**: barras horizontais em `texto_2`, barras dos 7 dias em `barra`
+  `#6F7A8C` e "Hoje" em vermelho UNA.
+- Cores de **tipo de acesso** clareadas para o fundo escuro (Aluno `#8DB8FF`,
+  Professor `#C3A2F0`, Funcionário `#5FD08F`, Visitante `#F2B45A`,
+  Entregador `#FF8A93`, Prestador `#B6BFCC`).
+- **Tela de login segue sempre o Windows**: ela pertence à estação, não a
+  um usuário; usar "o tema do último usuário" exigiria guardar quem usou o
+  computador por último (no banco, que é compartilhado entre as estações) e
+  mudaria a tela de um porteiro por causa de outro. Depois do login vale a
+  preferência de quem entrou; ao sair, volta o tema do Windows.
+- **Usuários que já existiam começam no Claro** (como o programa sempre
+  abriu: nada muda para eles até escolherem); usuários novos começam em
+  "Seguir o Windows".
+- **Barra de título**: no Windows 10 (20H1+) e 11 ela fica escura no tema
+  escuro (`DwmSetWindowAttribute`, atributo 20, via `ctypes`), também nos
+  diálogos. Se o Windows recusar, nada quebra: a barra fica como estava.
+
+Ajustes que valeram também para o claro: `barra` passou de `#AEB7C6` para
+`#858E9F` (bolinha "Saiu" e barras do gráfico com 3:1, o mínimo de elemento
+gráfico); o "Saiu" escrito no histórico da pessoa passou a usar `texto_3`
+(era a cor das barras, abaixo de 4,5:1); e o contorno bege que o tema `clam`
+desenhava em volta das páginas (Notebook) sumiu.
+
+### Paleta (mesmos nomes de token nos dois temas)
+
+| Token | Claro | Escuro |
+|---|---|---|
+| `marca` | #D9001B | #E01A32 |
+| `marca_escura` | #B80017 | #C8001C |
+| `marca_press` | #9A0013 | #B0001A |
+| `painel_login` | #D9001B | #A8001A |
+| `texto_sobre_marca` | #FFFFFF | #FFFFFF |
+| `fundo` | #F3F4F6 | #13171D |
+| `lateral` | #EEF0F3 | #0F1217 |
+| `superficie` | #FFFFFF | #1B2028 |
+| `superficie_2` | #F8F9FB | #222833 |
+| `borda` | #E1E4EA | #2D3440 |
+| `borda_campo` | #C5CBD5 | #3E4756 |
+| `traco_campo` | #8C95A6 | #7A8599 |
+| `texto` | #1B2330 | #E9EDF3 |
+| `texto_2` | #475467 | #B6BFCC |
+| `texto_3` | #5B6578 | #A0AABA |
+| `selecao` | #E3E9F4 | #263A5C |
+| `hover` | #E8EBF0 | #262D38 |
+| `press` | #DDE1E8 | #2F3744 |
+| `barra` | #858E9F | #6F7A8C |
+| `rolagem` | #CDD3DC | #4A5465 |
+| `primario` | #1B2330 | #E9EDF3 |
+| `primario_hover` | #2E3A4D | #D2D9E3 |
+| `primario_press` | #10161F | #B9C2CF |
+| `texto_invertido` | #FFFFFF | #13171D |
+| `dica_invertida` | #AEB7C6 | #4E5868 |
+| `foco` | #1F5FBF | #7DB1FF |
+| `sucesso` | #0B6B3A | #5FD08F |
+| `alerta` | #8A4600 | #F2B45A |
+| `erro` | #B00017 | #FF8A93 |
+| `erro_press` | #F9D9DE | #4A1E24 |
+| `info` | #1D4E9E | #8DB8FF |
+| `placa_fundo` | #FFFFFF | #FFFFFF |
+| `placa_texto` | #1B2330 | #1B2330 |
+| `placa_erro` | #B00017 | #B00017 |
+| `placa_azul` | #0B3C9C | #0B3C9C |
+| `placa_verde` | #009B3A | #009B3A |
+
+Estados (texto, fundo, borda) e cores de tipo: `ESTADOS` e `TIPOS_POR_TEMA`
+em `portaria/estilo.py`.
+
+### Como funciona no código
+
+- `estilo.py` tem `PALETAS`, `ESTADOS` e `TIPOS_POR_TEMA` (claro e escuro) e
+  `usar_tema(nome)`, que troca o **conteúdo** de `COR`, `ESTADO` e
+  `CORES_TIPO` (os mesmos dicionários de sempre: as telas continuam
+  escrevendo `COR["texto"]`). Nenhum módulo guarda uma cor numa constante
+  (ficaria com o tema da importação): as tabelas de situação guardam o nome
+  do token, e as cores dos botões são lidas na hora
+  (`Botao.cores_da_variante`).
+- `aplicar_tema(janela)` refaz os estilos ttk (Treeview: fundo, zebra,
+  seleção, cabeçalho; Combobox e a lista dele; barra de rolagem; Notebook) e
+  as cores padrão do tk (`option_add`: menu da conta, caixa de senha do
+  `simpledialog`).
+- As imagens de canto arredondado ficam num **cache por tema** (voltar ao
+  tema anterior reaproveita as dele).
+- `resolver_tema("sistema")` lê `AppsUseLightTheme` em
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`
+  (`winreg`); fora do Windows ou sem a chave, claro.
+- A troca (`app.trocar_tema`) grava a escolha (`usuarios.tema`, banco v9),
+  aplica as cores e **remonta** a barra lateral e as páginas, voltando à
+  mesma página e devolvendo o que estava digitado na Entrada e saída (CPF,
+  nome, celular, placa, tipo, entrada editada, saída, busca e a lista
+  Pessoas/Veículos). Janelas abertas (ex.: Corrigir) são fechadas.
+
+### Contraste (WCAG 2.x, conferido por teste)
+
+Fórmula da luminância relativa da WCAG; texto ≥ 4,5:1 e elemento gráfico
+(linha do campo, anel de foco, barras, bolinhas) ≥ 3:1. A lista sai de
+`estilo.pares_de_contraste()` e o teste
+`tests/test_tema.py::test_contraste_wcag_aa_em_todos_os_pares_dos_dois_temas`
+confere cada par nos dois temas: 74 pares por tema, todos passam (menor
+texto: 4,8:1 nos dois; menor gráfico: 3,0 no claro e 3,4 no escuro).
+
+| Par (frente / fundo) | Claro | Escuro | Mínimo |
+|---|---|---|---|
+| texto / fundo | 14,4 (#1B2330 / #F3F4F6) | 15,3 (#E9EDF3 / #13171D) | 4,5 |
+| texto_2 / fundo | 7,0 (#475467 / #F3F4F6) | 9,7 (#B6BFCC / #13171D) | 4,5 |
+| texto_3 / fundo | 5,3 (#5B6578 / #F3F4F6) | 7,7 (#A0AABA / #13171D) | 4,5 |
+| texto / lateral | 13,8 (#1B2330 / #EEF0F3) | 16,0 (#E9EDF3 / #0F1217) | 4,5 |
+| texto_2 / lateral | 6,7 (#475467 / #EEF0F3) | 10,1 (#B6BFCC / #0F1217) | 4,5 |
+| texto_3 / lateral | 5,1 (#5B6578 / #EEF0F3) | 8,0 (#A0AABA / #0F1217) | 4,5 |
+| texto / superficie | 15,8 (#1B2330 / #FFFFFF) | 13,9 (#E9EDF3 / #1B2028) | 4,5 |
+| texto_2 / superficie | 7,7 (#475467 / #FFFFFF) | 8,8 (#B6BFCC / #1B2028) | 4,5 |
+| texto_3 / superficie | 5,9 (#5B6578 / #FFFFFF) | 7,0 (#A0AABA / #1B2028) | 4,5 |
+| texto / superficie_2 | 15,0 (#1B2330 / #F8F9FB) | 12,6 (#E9EDF3 / #222833) | 4,5 |
+| texto_2 / superficie_2 | 7,3 (#475467 / #F8F9FB) | 8,0 (#B6BFCC / #222833) | 4,5 |
+| texto_3 / superficie_2 | 5,6 (#5B6578 / #F8F9FB) | 6,3 (#A0AABA / #222833) | 4,5 |
+| texto / hover | 13,2 (#1B2330 / #E8EBF0) | 11,8 (#E9EDF3 / #262D38) | 4,5 |
+| texto_2 / hover | 6,4 (#475467 / #E8EBF0) | 7,5 (#B6BFCC / #262D38) | 4,5 |
+| texto_3 / hover | 4,9 (#5B6578 / #E8EBF0) | 5,9 (#A0AABA / #262D38) | 4,5 |
+| texto / selecao | 13,0 (#1B2330 / #E3E9F4) | 9,7 (#E9EDF3 / #263A5C) | 4,5 |
+| texto_3 / selecao (linha apagada selecionada) | 4,8 (#5B6578 / #E3E9F4) | 4,9 (#A0AABA / #263A5C) | 4,5 |
+| foco (link) / superficie | 6,1 (#1F5FBF / #FFFFFF) | 7,5 (#7DB1FF / #1B2028) | 4,5 |
+| foco (link) / fundo | 5,5 (#1F5FBF / #F3F4F6) | 8,2 (#7DB1FF / #13171D) | 4,5 |
+| texto_invertido / primario | 15,8 (#FFFFFF / #1B2330) | 15,3 (#13171D / #E9EDF3) | 4,5 |
+| texto_invertido / primario_hover | 11,5 (#FFFFFF / #2E3A4D) | 12,6 (#13171D / #D2D9E3) | 4,5 |
+| texto_invertido / primario_press | 18,2 (#FFFFFF / #10161F) | 10,0 (#13171D / #B9C2CF) | 4,5 |
+| dica_invertida / primario | 7,8 (#AEB7C6 / #1B2330) | 6,1 (#4E5868 / #E9EDF3) | 4,5 |
+| dica_invertida / primario_hover | 5,7 (#AEB7C6 / #2E3A4D) | 5,1 (#4E5868 / #D2D9E3) | 4,5 |
+| texto_3 / hover (botão desativado) | 4,9 (#5B6578 / #E8EBF0) | 5,9 (#A0AABA / #262D38) | 4,5 |
+| texto_sobre_marca / marca | 5,3 (#FFFFFF / #D9001B) | 4,8 (#FFFFFF / #E01A32) | 4,5 |
+| texto_sobre_marca / marca_escura | 6,9 (#FFFFFF / #B80017) | 6,0 (#FFFFFF / #C8001C) | 4,5 |
+| texto_sobre_marca / marca_press | 8,8 (#FFFFFF / #9A0013) | 7,3 (#FFFFFF / #B0001A) | 4,5 |
+| texto_sobre_marca / painel_login | 5,3 (#FFFFFF / #D9001B) | 7,8 (#FFFFFF / #A8001A) | 4,5 |
+| estado sucesso: texto / fundo | 5,9 (#0B6B3A / #E8F5EE) | 8,0 (#5FD08F / #12291E) | 4,5 |
+| texto / fundo do estado sucesso (linha em destaque) | 14,1 (#1B2330 / #E8F5EE) | 13,1 (#E9EDF3 / #12291E) | 4,5 |
+| estado alerta: texto / fundo | 6,5 (#8A4600 / #FFF4E0) | 8,5 (#F2B45A / #2E2210) | 4,5 |
+| texto / fundo do estado alerta (linha em destaque) | 14,5 (#1B2330 / #FFF4E0) | 13,2 (#E9EDF3 / #2E2210) | 4,5 |
+| estado erro: texto / fundo | 6,4 (#B00017 / #FDECEE) | 7,3 (#FF8A93 / #33161A) | 4,5 |
+| texto / fundo do estado erro (linha em destaque) | 13,8 (#1B2330 / #FDECEE) | 14,1 (#E9EDF3 / #33161A) | 4,5 |
+| estado info: texto / fundo | 7,0 (#1D4E9E / #EAF1FC) | 7,8 (#8DB8FF / #14233D) | 4,5 |
+| texto / fundo do estado info (linha em destaque) | 13,9 (#1B2330 / #EAF1FC) | 13,4 (#E9EDF3 / #14233D) | 4,5 |
+| estado neutro: texto / fundo | 7,0 (#475467 / #F3F4F6) | 8,0 (#B6BFCC / #222833) | 4,5 |
+| texto / fundo do estado neutro (linha em destaque) | 14,4 (#1B2330 / #F3F4F6) | 12,6 (#E9EDF3 / #222833) | 4,5 |
+| sucesso / superficie | 6,6 (#0B6B3A / #FFFFFF) | 8,5 (#5FD08F / #1B2028) | 4,5 |
+| sucesso / fundo | 6,0 (#0B6B3A / #F3F4F6) | 9,3 (#5FD08F / #13171D) | 4,5 |
+| alerta / superficie | 7,1 (#8A4600 / #FFFFFF) | 8,9 (#F2B45A / #1B2028) | 4,5 |
+| alerta / fundo | 6,5 (#8A4600 / #F3F4F6) | 9,8 (#F2B45A / #13171D) | 4,5 |
+| erro / superficie | 7,3 (#B00017 / #FFFFFF) | 7,3 (#FF8A93 / #1B2028) | 4,5 |
+| erro / fundo | 6,7 (#B00017 / #F3F4F6) | 8,0 (#FF8A93 / #13171D) | 4,5 |
+| info / superficie | 8,0 (#1D4E9E / #FFFFFF) | 8,1 (#8DB8FF / #1B2028) | 4,5 |
+| info / fundo | 7,2 (#1D4E9E / #F3F4F6) | 8,9 (#8DB8FF / #13171D) | 4,5 |
+| tipo Aluno / superficie | 8,0 (#1D4E9E / #FFFFFF) | 8,1 (#8DB8FF / #1B2028) | 4,5 |
+| tipo Aluno / superficie_2 | 7,6 (#1D4E9E / #F8F9FB) | 7,4 (#8DB8FF / #222833) | 4,5 |
+| tipo Aluno / selecao | 6,5 (#1D4E9E / #E3E9F4) | 5,7 (#8DB8FF / #263A5C) | 4,5 |
+| tipo Professor / superficie | 7,4 (#6B3FA0 / #FFFFFF) | 7,6 (#C3A2F0 / #1B2028) | 4,5 |
+| tipo Professor / superficie_2 | 7,0 (#6B3FA0 / #F8F9FB) | 6,9 (#C3A2F0 / #222833) | 4,5 |
+| tipo Professor / selecao | 6,1 (#6B3FA0 / #E3E9F4) | 5,3 (#C3A2F0 / #263A5C) | 4,5 |
+| tipo Funcionário / superficie | 6,6 (#0B6B3A / #FFFFFF) | 8,5 (#5FD08F / #1B2028) | 4,5 |
+| tipo Funcionário / superficie_2 | 6,3 (#0B6B3A / #F8F9FB) | 7,7 (#5FD08F / #222833) | 4,5 |
+| tipo Funcionário / selecao | 5,4 (#0B6B3A / #E3E9F4) | 5,9 (#5FD08F / #263A5C) | 4,5 |
+| tipo Visitante / superficie | 7,1 (#8A4600 / #FFFFFF) | 8,9 (#F2B45A / #1B2028) | 4,5 |
+| tipo Visitante / superficie_2 | 6,7 (#8A4600 / #F8F9FB) | 8,1 (#F2B45A / #222833) | 4,5 |
+| tipo Visitante / selecao | 5,8 (#8A4600 / #E3E9F4) | 6,2 (#F2B45A / #263A5C) | 4,5 |
+| tipo Entregador / superficie | 7,3 (#B00017 / #FFFFFF) | 7,3 (#FF8A93 / #1B2028) | 4,5 |
+| tipo Entregador / superficie_2 | 7,0 (#B00017 / #F8F9FB) | 6,6 (#FF8A93 / #222833) | 4,5 |
+| tipo Entregador / selecao | 6,0 (#B00017 / #E3E9F4) | 5,1 (#FF8A93 / #263A5C) | 4,5 |
+| tipo Prestador de serviço / superficie | 7,7 (#475467 / #FFFFFF) | 8,8 (#B6BFCC / #1B2028) | 4,5 |
+| tipo Prestador de serviço / superficie_2 | 7,3 (#475467 / #F8F9FB) | 8,0 (#B6BFCC / #222833) | 4,5 |
+| tipo Prestador de serviço / selecao | 6,3 (#475467 / #E3E9F4) | 6,1 (#B6BFCC / #263A5C) | 4,5 |
+| placa: caracteres / placa | 15,8 (#1B2330 / #FFFFFF) | 15,8 (#1B2330 / #FFFFFF) | 4,5 |
+| placa bloqueada / placa | 7,3 (#B00017 / #FFFFFF) | 7,3 (#B00017 / #FFFFFF) | 4,5 |
+| placa: BRASIL / faixa azul | 9,8 (#FFFFFF / #0B3C9C) | 9,8 (#FFFFFF / #0B3C9C) | 4,5 |
+| traco_campo / superficie (linha do campo) | 3,0 (#8C95A6 / #FFFFFF) | 4,4 (#7A8599 / #1B2028) | 3,0 |
+| foco / superficie (anel de foco) | 6,1 (#1F5FBF / #FFFFFF) | 7,5 (#7DB1FF / #1B2028) | 3,0 |
+| barra / superficie (gráfico, bolinha Saiu) | 3,3 (#858E9F / #FFFFFF) | 3,8 (#6F7A8C / #1B2028) | 3,0 |
+| barra / superficie_2 (bolinha na zebra) | 3,1 (#858E9F / #F8F9FB) | 3,4 (#6F7A8C / #222833) | 3,0 |
+| marca / superficie (barra de hoje) | 5,3 (#D9001B / #FFFFFF) | 3,4 (#E01A32 / #1B2028) | 3,0 |
+| texto_2 / superficie_2 (barra horizontal) | 7,3 (#475467 / #F8F9FB) | 8,0 (#B6BFCC / #222833) | 3,0 |
+
+### Limitações
+
+- As **caixas de mensagem nativas** do Windows (aviso, erro, Sim/Não) e o
+  "Salvar como" continuam no visual do Windows (claro ou escuro conforme o
+  próprio Windows; o Tk não controla essas janelas).
+- O **menu da conta** fica escuro, mas a moldura dele é desenhada pelo
+  Windows (contorno claro fino). Por isso o tema fica direto no menu, sem
+  submenu: a seta de submenu do Windows sairia preta.
+- "Seguir o Windows" é lido ao entrar e ao escolher no menu; se o Windows
+  mudar de tema com o programa aberto, a troca acontece no próximo login (ou
+  escolhendo de novo no menu) — trocar sozinho fecharia janelas abertas no
+  meio do trabalho.
+- Ao trocar o tema, a página volta para a primeira seção dela (ex.:
+  Configurações volta para "Funcionamento") e a seleção das tabelas se perde.
+
+Prints (tamanho normal e 1366×670, escala 125%, dados fictícios):
+`final/escuro_*.png` — login, Entrada e saída (ficha, bloqueado, pendências,
+veículos), calendário e relógio, "Saiu com o veículo?", Pessoas (ficha e
+visitas), Bloqueios, Painel, Usuários, Configurações (as três seções),
+autorização do administrador, trocar senha, menu da conta, barra de título
+e a troca para o claro sem fechar (`escuro_troca_para_claro.png`).

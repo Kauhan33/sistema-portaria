@@ -1,30 +1,71 @@
 """
 Página Pessoas: lista + ficha. À esquerda, todo mundo que já passou pela
-portaria (busca no banco, banco.buscar_pessoas); à direita, a ficha da
-pessoa escolhida: placa desenhada, número de visitas, faixa de bloqueio e
-o formulário para corrigir o cadastro ou começar uma nova entrada.
+portaria (busca no banco, banco.buscar_pessoas), ordenada pela coluna
+clicada no cabeçalho (1º clique crescente, 2º decrescente; abre ordenada
+pela situação: no campus, bloqueado, fora, e depois pelo nome). À direita,
+a ficha da pessoa escolhida: placa desenhada, número de visitas, faixa de
+bloqueio e duas seções:
+- Cadastro: o formulário para corrigir o cadastro ou começar uma entrada;
+- Visitas: o histórico de visitas dela, da mais recente para a mais
+  antiga (entrada, saída, duração, tipo, placa e situação), com os dados
+  que foram preenchidos em cada registro.
 """
 
 import tkinter as tk
+import unicodedata
+from datetime import datetime
+from tkinter import ttk
 
-from . import mensagens
-from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao, Placa,
-                          inserir_linha, plural, rotulo_campo, tabela,
-                          titulo_cartao)
+from . import horarios, mensagens
+from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao,
+                          EsperaDigitacao, OrdenacaoTabela, Placa, Seletor, inserir_linha,
+                          plural, rotulo_campo, tabela, titulo_cartao)
 from .estilo import (COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, fonte_icone,
                      px)
-from .validacao import (TIPOS_ACESSO, formatar_celular, formatar_placa,
-                        normalizar, validar_campos)
+from .usuarios import eh_admin
+from .validacao import (TIPOS_ACESSO, converter_data,
+                        formatar_celular, formatar_placa, normalizar,
+                        validar_campos)
 
-COLUNAS = [("nome", "Nome", 190, "w"), ("cpf", "CPF", 118, "w"),
+COLUNAS = [("nome", "Nome", 160, "w"), ("cpf", "CPF", 112, "w"),
            ("celular", "Celular", 115, "w"), ("placa", "Placa", 80, "w"),
-           ("tipo", "Tipo", 110, "w"), ("visitas", "Visitas", 64, "center"),
-           ("ultima", "Última visita", 128, "w"),
+           ("tipo", "Tipo", 110, "w"), ("visitas", "Visitas", 66, "center"),
+           ("ultima", "Última visita", 124, "w"),
            ("situacao", "Situação", 95, "w")]
 # a ficha mostra o resto; os values continuam completos
 COLUNAS_VISIVEIS = ("nome", "cpf", "visitas", "ultima")
 LIMITE_BUSCA = 200
 SEM_SELECAO = "Escolha uma pessoa na lista para ver a ficha."
+SECOES_FICHA = ("Cadastro", "Visitas")
+LIMITE_VISITAS = 200
+SEM_VISITAS = "Nenhuma visita registrada."
+
+# Situação na lista: (ordem, texto da bolinha, cor). Crescente = quem está
+# no campus primeiro (o que a guarita mais procura), depois os bloqueados.
+NO_CAMPUS, BLOQUEADO, FORA = 0, 1, 2
+# token da cor de cada situação de visita (as do Movimento); o nome, e não
+# a cor, porque a cor depende do tema em uso
+COR_SITUACAO = {horarios.NO_CAMPUS: "sucesso",
+                horarios.TEMPO_EXCEDIDO: "alerta",
+                horarios.SAIDA_PENDENTE: "erro",
+                horarios.SAIU: "texto_3"}   # é texto: precisa de 4,5:1
+
+
+def _sem_acento(texto):
+    """'Érico' -> 'erico': a ordem alfabética não separa os acentuados."""
+    decomposto = unicodedata.normalize("NFD", texto.casefold())
+    return "".join(c for c in decomposto if not unicodedata.combining(c))
+
+
+def _data(texto):
+    """Data da tela para comparar como data (vazio = a mais antiga)."""
+    return (converter_data(texto) if texto else None) or datetime.min
+
+
+def duracao(entrada, saida):
+    """'4 h 30 min' entre dois momentos (datetime)."""
+    minutos = max(0, round((saida - entrada).total_seconds() / 60))
+    return horarios.formatar_horas(minutos / 60)
 
 
 class AbaPessoas:
@@ -34,6 +75,7 @@ class AbaPessoas:
         self.pessoas = []
         self.bloqueados = {}          # cpf -> motivo do bloqueio ativo
         self.selecionada = None
+        self.visitas = []             # visitas da pessoa (mais recente primeiro)
 
         cab = Cabecalho(aba, "Pessoas").posicionar()
         self.lbl_total = cab.subtitulo
@@ -59,7 +101,7 @@ class AbaPessoas:
                       dica_vazio="Buscar por nome, CPF, celular, placa ou tipo")
         campo.pack(fill="x")
         self.busca = campo.entrada
-        self.busca.bind("<KeyRelease>", lambda e: self.atualizar())
+        self.espera_busca = EsperaDigitacao(self.busca, self.atualizar)
         self.busca.bind("<Return>", lambda e: "break")
 
         rodape = tk.Frame(m, bg=COR["superficie"])
@@ -72,7 +114,24 @@ class AbaPessoas:
                                      mostrar=COLUNAS_VISIVEIS)
         quadro.pack(fill="both", expand=True, padx=px(12))
         self.tabela.bind("<<TreeviewSelect>>", self.ao_selecionar)
-        self.tabela.bind("<Double-1>", lambda e: self.registrar_entrada())
+        self.tabela.bind("<Double-1>", self._ao_duplo_clique)
+        self.ordenacao = OrdenacaoTabela(
+            self.tabela,
+            {"#0": "Situação", "nome": "Nome", "cpf": "CPF",
+             "visitas": "Visitas", "ultima": "Última visita"},
+            {"#0": self._ordem_situacao,
+             "nome": lambda p: _sem_acento(p["nome"]),
+             # o porteiro ordena pelo que vê (o CPF mascarado)
+             "cpf": lambda p: self.app.exibir_cpf(p["cpf"]),
+             "visitas": lambda p: p["visitas"],
+             "ultima": lambda p: _data(p["ultima_visita"])},
+            self.mostrar_lista, coluna="#0",
+            desempate=lambda p: _sem_acento(p["nome"]))
+
+    def _ao_duplo_clique(self, event):
+        # duplo clique no cabeçalho ordena; só na linha começa a entrada
+        if self.tabela.identify_region(event.x, event.y) in ("cell", "tree"):
+            self.registrar_entrada()
 
     def _montar_ficha(self, corpo):
         cartao = Cartao(corpo, pad=20)
@@ -97,7 +156,7 @@ class AbaPessoas:
                                 fg=COR["texto_2"])
         self.lbl_cpf.pack(anchor="w")
 
-        linha = tk.Frame(c, bg=fundo)
+        self.linha_placa = linha = tk.Frame(c, bg=fundo)
         linha.pack(fill="x", pady=(px(12), 0))
         self.desenho_placa = Placa(linha, fundo, largura=170)
         self.desenho_placa.pack(side="left")
@@ -107,10 +166,17 @@ class AbaPessoas:
         self.lbl_ultima = self._numero(numeros, "última vinda")
 
         self.faixa = Aviso(c)
-        self.separador = tk.Frame(c, bg=COR["borda"], height=1)
-        self.separador.pack(fill="x", pady=px(14))
+        self.seletor_ficha = Seletor(c, SECOES_FICHA, self.mostrar_secao,
+                                     fundo_pai=fundo)
+        self.seletor_ficha.pack(fill="x", pady=(px(12), px(12)))
+        self.secoes = {"Cadastro": self._montar_cadastro(c),
+                       "Visitas": self._montar_visitas(c)}
+        self.seletor_ficha.selecionar(SECOES_FICHA[0])
 
-        form = tk.Frame(c, bg=fundo)
+    def _montar_cadastro(self, c):
+        fundo = COR["superficie"]
+        secao = tk.Frame(c, bg=fundo)
+        form = tk.Frame(secao, bg=fundo)
         form.pack(fill="x")
         form.columnconfigure((0, 1), weight=1, uniform="p")
 
@@ -134,12 +200,55 @@ class AbaPessoas:
         self.tipo = grupo("Tipo de acesso", 4, 0, Campo(form, opcoes=TIPOS_ACESSO),
                           juntas=2).entrada
 
-        botoes = tk.Frame(c, bg=fundo)
+        botoes = tk.Frame(secao, bg=fundo)
         botoes.pack(fill="x", pady=(px(4), 0))
         Botao(botoes, "Registrar entrada", self.registrar_entrada,
               "primario").pack(side="left")
         Botao(botoes, "Salvar alterações", self.salvar,
               "secundario").pack(side="left", padx=(px(8), 0))
+        return secao
+
+    def _montar_visitas(self, c):
+        """Histórico de visitas: um "cartão" de texto por visita, com
+        rolagem (cabe na largura da ficha, ao contrário de uma tabela de
+        seis colunas)."""
+        fundo = COR["superficie"]
+        secao = tk.Frame(c, bg=fundo)
+        self.lista_visitas = tk.Text(
+            secao, bg=fundo, fg=COR["texto"], font=FONTE["corpo"], wrap="word",
+            relief="flat", bd=0, highlightthickness=0, cursor="arrow",
+            padx=0, pady=0, spacing1=0, spacing3=0, height=8, width=10,
+            tabs=(px(318), "right"))
+        barra = ttk.Scrollbar(secao, orient="vertical",
+                              command=self.lista_visitas.yview,
+                              style="Fina.Vertical.TScrollbar")
+        self.lista_visitas.configure(yscrollcommand=barra.set)
+        barra.pack(side="right", fill="y")
+        self.lista_visitas.pack(side="left", fill="both", expand=True)
+        t = self.lista_visitas
+        t.tag_configure("situacao", font=FONTE["corpo_semi"])
+        t.tag_configure("datas", font=FONTE["corpo"], foreground=COR["texto"])
+        t.tag_configure("detalhe", font=FONTE["dica"], foreground=COR["texto_2"])
+        t.tag_configure("como", font=FONTE["dica"], foreground=COR["texto_3"])
+        t.tag_configure("separa", font=(FONTE["dica"][0], 4))
+        for situacao, token in COR_SITUACAO.items():
+            t.tag_configure(situacao, foreground=COR[token])
+        t.bind("<MouseWheel>", lambda e: t.yview_scroll(
+            -1 if e.delta > 0 else 1, "units") or "break")
+        return secao
+
+    def mostrar_secao(self, nome):
+        """Cadastro ou Visitas. Nas visitas a placa e os números saem da
+        frente: sobra altura para a lista (tela pequena)."""
+        if nome == SECOES_FICHA[1]:
+            self.linha_placa.pack_forget()
+        else:
+            self.linha_placa.pack(fill="x", pady=(px(12), 0), after=self.lbl_cpf)
+        for secao, frame in getattr(self, "secoes", {}).items():
+            if secao == nome:
+                frame.pack(fill="both", expand=True)
+            else:
+                frame.pack_forget()
 
     @staticmethod
     def _numero(pai, legenda):
@@ -155,34 +264,30 @@ class AbaPessoas:
     # --------------------------------------------------------------
     # Dados
     # --------------------------------------------------------------
+    def _situacao_da_pessoa(self, p):
+        """(ordem, texto da coluna Situação, texto da bolinha, cor)."""
+        if p["cpf"] in self.bloqueados:
+            texto = ("No campus · " if p["dentro_desde"] else "") + "Bloqueado"
+            ordem = NO_CAMPUS if p["dentro_desde"] else BLOQUEADO
+            return ordem, texto, "Bloqueado", COR["erro"]
+        if p["dentro_desde"]:
+            return NO_CAMPUS, "No campus", "No campus", COR["sucesso"]
+        return FORA, "—", "Fora", COR["barra"]
+
+    def _ordem_situacao(self, p):
+        return self._situacao_da_pessoa(p)[0]
+
     def atualizar(self):
-        ok, pessoas = self.app.tentar(self.app.banco.buscar_pessoas,
-                                      self.busca.get(), LIMITE_BUSCA)
+        ok, pessoas = self.app.tentar(
+            self.app.banco.buscar_pessoas, self.busca.get(), LIMITE_BUSCA,
+            so_cpf_completo=not eh_admin(self.app.usuario))
         if not ok:
             return
-        self.pessoas = pessoas
         ok, bloqueios = self.app.tentar(self.app.banco.listar_bloqueios)
         self.bloqueados = {b["valor"]: b["motivo"] for b in (bloqueios or [])
                            if b["tipo"] == "cpf"}
-        selecao = self.tabela.selection()
-        self.tabela.delete(*self.tabela.get_children())
-        for i, p in enumerate(pessoas):
-            bloqueado = p["cpf"] in self.bloqueados
-            if bloqueado:
-                situacao = ("No campus · " if p["dentro_desde"] else "") + "Bloqueado"
-                texto, cor = "Bloqueado", COR["erro"]
-            elif p["dentro_desde"]:
-                situacao = texto = "No campus"
-                cor = COR["sucesso"]
-            else:
-                situacao, texto, cor = "—", "Fora", COR["barra"]
-            inserir_linha(self.tabela, i, (
-                p["nome"], self.app.exibir_cpf(p["cpf"]),
-                formatar_celular(p["celular"]), formatar_placa(p["placa"]) or "—",
-                p["tipo"], p["visitas"], p["ultima_visita"] or "—", situacao),
-                iid=str(p["id"]), situacao=texto, cor=cor)
-        if selecao and self.tabela.exists(selecao[0]):
-            self.tabela.selection_set(selecao[0])
+        self.pessoas = pessoas
+        self.mostrar_lista()
 
         ok, n = self.app.tentar(self.app.banco.contadores)
         if ok:
@@ -193,8 +298,22 @@ class AbaPessoas:
         status = plural(len(pessoas), "pessoa na lista", "pessoas na lista")
         if len(pessoas) >= LIMITE_BUSCA:
             status += f" (as {LIMITE_BUSCA} primeiras: refine a busca)"
-        self.lbl_status.config(text=status + "  ·  duplo clique começa uma "
-                                             "nova entrada")
+        self.lbl_status.config(text=status + "  ·  o cabeçalho ordena  ·  "
+                                             "duplo clique: nova entrada")
+
+    def mostrar_lista(self):
+        """Redesenha a lista na ordem escolhida (mantém a seleção)."""
+        selecao = self.tabela.selection()
+        self.tabela.delete(*self.tabela.get_children())
+        for i, p in enumerate(self.ordenacao.ordenar(self.pessoas)):
+            _, situacao, texto, cor = self._situacao_da_pessoa(p)
+            inserir_linha(self.tabela, i, (
+                p["nome"], self.app.exibir_cpf(p["cpf"]),
+                formatar_celular(p["celular"]), formatar_placa(p["placa"]) or "—",
+                p["tipo"], p["visitas"], p["ultima_visita"] or "—", situacao),
+                iid=str(p["id"]), situacao=texto, cor=cor)
+        if selecao and self.tabela.exists(selecao[0]):
+            self.tabela.selection_set(selecao[0])
 
     def ao_selecionar(self, event=None):
         selecao = self.tabela.selection()
@@ -222,10 +341,77 @@ class AbaPessoas:
         else:
             self.faixa.pack_forget()
         self._mostrar_placa()
+        self.mostrar_visitas(p)
+
+    # --------------------------------------------------------------
+    # Histórico de visitas da pessoa
+    # --------------------------------------------------------------
+    def mostrar_visitas(self, pessoa):
+        ok, visitas = self.app.tentar(self.app.banco.visitas_da_pessoa,
+                                      pessoa["id"], LIMITE_VISITAS)
+        if not ok:
+            return
+        ok, config = self.app.tentar(self.app.banco.ler_configuracao)
+        agora = self.app.relogio()
+        self.visitas = [self._descrever_visita(r, pessoa, config if ok else None,
+                                               agora) for r in visitas]
+        total = max(pessoa["visitas"], len(visitas))   # a contagem real
+        self.seletor_ficha.definir_texto(
+            "Visitas", f"Visitas ({total})" if total else "Visitas")
+        t = self.lista_visitas
+        t.config(state="normal")
+        t.delete("1.0", tk.END)
+        if not self.visitas:
+            t.insert(tk.END, SEM_VISITAS, "como")
+        elif total > len(visitas):
+            t.insert(tk.END, f"Mostrando as {len(visitas)} mais recentes de "
+                             f"{total} visitas.", "como")
+            t.insert(tk.END, "\n", "separa")
+        for i, v in enumerate(self.visitas):
+            if i:
+                t.insert(tk.END, "\n", "separa")
+            t.insert(tk.END, chr(0x25CF) + " ", v["situacao"])
+            t.insert(tk.END, v["situacao"], ("situacao", v["situacao"]))
+            t.insert(tk.END, f"\t{v['duracao']}\n", "detalhe")
+            t.insert(tk.END, f"{v['entrada']}  {chr(0x2192)}  {v['saida']}\n",
+                     "datas")
+            t.insert(tk.END, f"{v['tipo']}  ·  {v['placa'] or 'a pé'}\n",
+                     "detalhe")
+            if v["como"]:
+                t.insert(tk.END, f"Registrado como {v['como']}\n", "como")
+        t.config(state="disabled")
+        t.yview_moveto(0)
+
+    @staticmethod
+    def _descrever_visita(r, pessoa, config, agora):
+        """Os campos da visita como a ficha mostra: saída só com a hora se
+        foi no mesmo dia; duração até agora se ainda está no campus; nome e
+        celular da época, se eram outros."""
+        entrada = converter_data(r["entrada"])
+        if r["saida"]:
+            fim = converter_data(r["saida"])
+            saida = (r["saida"][-5:] if r["saida"][:10] == r["entrada"][:10]
+                     else r["saida"])
+            tempo = duracao(entrada, fim)
+            situacao = horarios.SAIU
+        else:
+            saida = "sem saída"
+            tempo = duracao(entrada, agora) + " até agora"
+            situacao = (horarios.situacao(config, r, agora) if config
+                        else horarios.NO_CAMPUS)
+        diferentes = []
+        if r["nome"] != pessoa["nome"]:
+            diferentes.append(r["nome"])
+        if r["celular"] != pessoa["celular"]:
+            diferentes.append(formatar_celular(r["celular"]))
+        return {"id": r["id"], "entrada": r["entrada"], "saida": saida,
+                "duracao": tempo, "tipo": r["tipo"],
+                "placa": formatar_placa(r["placa"]), "situacao": situacao,
+                "como": " · ".join(diferentes)}
 
     def _faixa(self, tipo, texto):
         self.faixa.mostrar(tipo, texto)
-        self.faixa.pack(fill="x", pady=(px(14), 0), before=self.separador)
+        self.faixa.pack(fill="x", pady=(px(14), 0), before=self.seletor_ficha)
 
     def _mostrar_placa(self):
         self.desenho_placa.mostrar(self.var_placa.get().strip())

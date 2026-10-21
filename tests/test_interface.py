@@ -10,9 +10,11 @@ import unittest
 from datetime import date, datetime, timedelta
 from unittest import mock
 
-from portaria import dados
+from portaria import dados, estilo
 from portaria.componentes import Botao
 from portaria.interface import AppPortaria
+from portaria.tela_autorizacao import JanelaAutorizacao
+from portaria.tela_veiculo import JanelaVeiculo
 from portaria.usuarios import (LIMITE_TENTATIVAS, MINUTOS_INATIVIDADE,
                                autenticar, gerar_hash)
 from portaria.validacao import FORMATO, converter_data
@@ -23,19 +25,25 @@ VISITA_ANTIGA = {"nome": "Beto Rocha", "cpf": "11144477735",
                  "saida": "15/10/2026 12:00"}
 
 
+# Relógio fixo do app nos testes: uma quarta-feira às 10:00, com o campus
+# aberto e todas as categorias dentro do horário (as regras de horário não
+# dependem da hora em que os testes rodam).
+AGORA = datetime(2026, 10, 21, 10, 0)
+
+
 def ha_uma_hora():
-    return (datetime.now() - timedelta(hours=1)).strftime(FORMATO)
+    return (AGORA - timedelta(hours=1)).strftime(FORMATO)
 
 
 def agora_menos(minutos):
     """Momento de hoje (não vira ontem perto da meia-noite)."""
-    momento = max(datetime.now() - timedelta(minutes=minutos),
-                  datetime.now().replace(hour=0, minute=0))
+    momento = max(AGORA - timedelta(minutes=minutos),
+                  AGORA.replace(hour=0, minute=0))
     return momento.strftime(FORMATO)
 
 
 def agora_texto():
-    return datetime.now().strftime(FORMATO)
+    return AGORA.strftime(FORMATO)
 
 
 def criar_usuario(banco, nome, login, perfil, senha, autor=None):
@@ -86,7 +94,48 @@ class BaseInterface(unittest.TestCase):
                                       filedialog=self.arquivo)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # o diálogo de autorização não trava o teste: cada teste diz como
+        # "responder" (responder_autorizacao); sem resposta = Cancelar
+        self.autorizacoes = []
+        self.responder_autorizacao = None
 
+        def esperar(dialogo):
+            self.autorizacoes.append(dialogo)
+            if self.responder_autorizacao:
+                self.responder_autorizacao(dialogo)
+
+        patcher = mock.patch.object(JanelaAutorizacao, "esperar", esperar)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # a pergunta do carro ("Saiu com o veículo?") também: sem resposta
+        # definida, escolhe o botão principal (saiu de carro / saiu junto);
+        # responder_veiculo = valor escolhido, ou None para Cancelar
+        self.perguntas_veiculo = []
+        self.responder_veiculo = "principal"
+
+        def esperar_veiculo(dialogo):
+            self.perguntas_veiculo.append(dialogo.janela.title())
+            if callable(self.responder_veiculo):
+                self.responder_veiculo(dialogo)
+            elif self.responder_veiculo == "principal":
+                dialogo.escolher(dialogo.opcoes[0][1])
+            elif self.responder_veiculo is not None:
+                dialogo.escolher(self.responder_veiculo)
+
+        patcher = mock.patch.object(JanelaVeiculo, "esperar", esperar_veiculo)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        # "Seguir o Windows" lê o registro: nos testes o Windows está sempre
+        # no claro (o resultado não depende do tema do computador) e cada
+        # teste termina com o tema claro de volta
+        patcher = mock.patch("portaria.estilo.windows_usa_tema_escuro",
+                             return_value=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(estilo.usar_tema, "claro")
+
+        self.agora = AGORA
         self.banco = dados.Banco(self.caminho_db)
         if self.com_usuarios:
             self.admin = criar_usuario(self.banco, "Ana Admin", "ana.admin",
@@ -96,7 +145,8 @@ class BaseInterface(unittest.TestCase):
         usuario = {"admin": getattr(self, "admin", None),
                    "porteiro": getattr(self, "porteiro", None)}.get(self.entrar_como)
         self.app = AppPortaria(self.caminho_db, self.janela,
-                               json_antigo=self.caminho_json, usuario=usuario)
+                               json_antigo=self.caminho_json, usuario=usuario,
+                               relogio=lambda: self.agora)
 
     def tearDown(self):
         # cancela os temporizadores (ex.: o aviso que some em 10 s) para não
@@ -257,6 +307,23 @@ class TestLinhaDesatualizada(BaseInterface):
         self.assertEqual(self.banco.buscar(self.ana)["saida"], saida_da_outra)
         self.assertEqual(self.banco.buscar(self.beto)["saida"], "")
 
+    def test_correcao_aberta_antes_da_saida_de_outra_estacao(self):
+        """QA2 A1: corrigir só o nome reabria a visita que outra estação
+        tinha fechado (a saída sumia sem rastro)."""
+        self.app.tabela.selection_set(str(self.ana))
+        self.app.editar_selecionado()
+        janela = self.app.janela_edicao
+        saida_da_outra = agora_texto()
+        self.banco.registrar_saida(self.ana, saida_da_outra, autor="paulo")
+        janela.nome.delete(0, tk.END)
+        janela.nome.insert(0, "Ana Silva Souza")
+        janela.salvar()
+        self.assertIn("alterado em outra estação",
+                      self.msg.showerror.call_args[0][1])
+        registro = self.banco.buscar(self.ana)
+        self.assertEqual((registro["nome"], registro["saida"]),
+                         ("Ana Silva", saida_da_outra))
+
     def test_enter_com_o_foco_na_tabela_nao_cadastra(self):
         # a tecla vai para quem tem o foco: a janela precisa estar visível
         self.app.janela.deiconify()
@@ -281,7 +348,7 @@ class TestTelaPequena(BaseInterface):
         super().setUp()
         for i, cpf in enumerate(("52998224725", "11144477735", "39053344705",
                                  "15350946056", "71428793860")):
-            self.banco.inserir(dict(VISITA_ANTIGA, cpf=cpf, saida="",
+            self.banco.inserir(dict(VISITA_ANTIGA, cpf=cpf, saida="", placa="",
                                     entrada=agora_menos(10 * i + 5)))
         self.app.atualizar_tabela()
         self.janela.deiconify()
@@ -325,6 +392,63 @@ class TestTelaPequena(BaseInterface):
         dialogo.update()
         self.assertLessEqual(dialogo.winfo_reqheight(), 536 - 30)  # - barra
         self.assertLessEqual(dialogo.winfo_reqwidth(), 1093)
+
+    def dentro_da_janela(self, widget):
+        widget.update()
+        return (widget.winfo_ismapped() and
+                widget.winfo_rooty() + widget.winfo_height()
+                <= self.janela.winfo_rooty() + self.janela.winfo_height())
+
+    def test_configuracoes_botao_e_mensagens_sempre_visiveis(self):
+        """QA1 A2/A3/B13: no notebook o erro empurrava "Salvar
+        funcionamento" para fora da tela, e o erro/"Salvo" de Categorias
+        ficava abaixo do cartão; o erro antigo não sumia ao reler."""
+        self.tamanho(self.PEQUENA)
+        self.app.ir_para(self.app.aba_configuracoes)
+        tela = self.app.tela_configuracoes
+        tela.horas_retroativo.delete(0, tk.END)
+        tela.horas_retroativo.insert(0, "0")
+        tela.salvar_funcionamento()
+        self.assertEqual(tela.faixa_funcionamento.tipo, "erro")
+        faixa = tela.faixa_funcionamento               # o texto aparece
+        self.assertLess(faixa.lbl.winfo_rooty() + faixa.lbl.winfo_height(),
+                        self.janela.winfo_rooty() + self.janela.winfo_height())
+        self.assertTrue(self.dentro_da_janela(tela.btn_salvar_funcionamento))
+        tela.atualizar()                            # reler a página
+        self.assertEqual(tela.faixa_funcionamento.tipo, "neutro")
+        self.assertTrue(self.dentro_da_janela(tela.btn_salvar_funcionamento))
+        tela.seletor.selecionar("Categorias")
+        tela.categorias["Aluno"]["ate"].delete(0, tk.END)
+        tela.categorias["Aluno"]["ate"].insert(0, "30")
+        tela.salvar_regras()
+        self.assertEqual(tela.faixa_categorias.tipo, "erro")
+        self.assertTrue(self.dentro_da_janela(tela.faixa_categorias))
+        tela.categorias["Aluno"]["ate"].delete(0, tk.END)
+        tela.categorias["Aluno"]["ate"].insert(0, "-30")
+        tela.salvar_regras()
+        self.assertEqual(tela.faixa_categorias.tipo, "sucesso")
+        self.assertTrue(self.dentro_da_janela(tela.faixa_categorias))
+
+    def test_aviso_com_desfazer_cabe_e_movimento_com_pendencias(self):
+        """QA1 M5: com a faixa de pendências o Movimento mostrava 1 a 2
+        linhas, e o aviso com Desfazer era cortado e encostava no status."""
+        self.agora = AGORA.replace(hour=23, minute=45)
+        self.app.atualizar_tabela()
+        self.tamanho(self.PEQUENA)
+        tela = self.app.tela_cadastro
+        self.assertTrue(tela.faixa_pendentes.winfo_ismapped())
+        self.assertGreaterEqual(self.linhas_visiveis(), 4)
+        tela.avisar("Saída de Bruno registrada às 23:10 (a pé; o carro "
+                    "QWE-1D23 fica no estacionamento).", desfazer=[1])
+        self.janela.update()
+        self.assertFalse(tela.lbl_status.winfo_ismapped())  # não disputa
+        aviso, rodape = tela.quadro_aviso, tela.rodape_mov
+        self.assertLessEqual(aviso.winfo_rootx() + aviso.winfo_width(),
+                             rodape.winfo_rootx() + rodape.winfo_width())
+        self.assertTrue(tela.btn_desfazer.winfo_ismapped())
+        tela._esconder_aviso()
+        self.janela.update()
+        self.assertTrue(tela.lbl_status.winfo_ismapped())
 
     def test_colunas_do_movimento_cabem_na_largura(self):
         self.tamanho(self.PEQUENA)
@@ -407,7 +531,10 @@ class TestDashboard(BaseInterface):
 
     def test_sem_registros_mostra_zeros(self):
         self.assertEqual(set(self.app.cards),
-                         {"dentro", "hoje", "permanencia", "veiculos"})
+                         {"dentro", "hoje", "permanencia", "estacionamento",
+                          "excedido"})
+        self.assertEqual(self.valor("estacionamento"), "0")
+        self.assertEqual(self.valor("excedido"), "0")
         self.assertEqual(self.valor("dentro"), "0")
         self.assertEqual(self.valor("hoje"), "0")
         self.assertEqual(self.valor("permanencia"), "—")
@@ -424,8 +551,9 @@ class TestDashboard(BaseInterface):
         self.app.atualizar_tabela()
         self.assertEqual(self.valor("dentro"), "1")
         self.assertEqual(self.valor("hoje"), "1")
-        self.assertEqual(self.valor("veiculos"), "1")
-        self.assertEqual(self.apoio("veiculos"), "de 2 registros")
+        # o carro da visita antiga já saiu com ela: o estacionamento está vazio
+        self.assertEqual(self.valor("estacionamento"), "0")
+        self.assertEqual(self.apoio("estacionamento"), "1 visita com veículo")
         self.assertEqual(self.valor("permanencia"), "5h 00min")
         self.assertEqual(self.apoio("permanencia"), "em 1 visita encerrada")
         self.assertIn("2 registros desde o início",
@@ -492,6 +620,19 @@ class TestPorteiro(BaseInterface):
 
     def test_porteiro_ve_a_aba_pessoas(self):
         self.assertIsNotNone(self.app.tela_pessoas)
+
+    def test_busca_do_porteiro_nao_revela_digitos_do_cpf(self):
+        """QA2 M2: '982247' (os dígitos visíveis) e pedaços maiores não
+        acham ninguém; o CPF completo acha."""
+        self.cadastrar_um()
+        self.buscar("5982247")
+        self.assertEqual(self.app.tabela.get_children(), ())
+        self.buscar("52998224725")
+        self.assertEqual(len(self.app.tabela.get_children()), 1)
+        pessoas = self.app.tela_pessoas
+        pessoas.busca.insert(0, "2998224")
+        pessoas.atualizar()
+        self.assertEqual(pessoas.tabela.get_children(), ())
 
     def test_porteiro_nao_consegue_excluir(self):  # RN02
         linha = self.cadastrar_um()
@@ -632,6 +773,60 @@ class TestPrimeiroAcesso(BaseInterface):
         self.assertEqual(len(self.app.tabela.get_children()), 1)
 
 
+class TestBuscaEViradaDoDia(BaseInterface):
+    def test_busca_espera_a_pausa_na_digitacao(self):
+        """QA2 M5: cada tecla buscava no histórico (1,6 s de tela travada
+        para digitar um CPF)."""
+        tela = self.app.tela_cadastro
+        chamadas = []
+        tela.espera_busca.acao = lambda: chamadas.append(tela.busca.get())
+        # a tecla vai para quem tem o foco: a janela precisa estar visível
+        self.app.janela.deiconify()
+        self.app.janela.update()
+        tela.busca.focus_force()
+        self.app.janela.update()
+        for digito in "52998224725":
+            tela.busca.insert(tk.END, digito)
+            tela.busca.event_generate("<KeyRelease>")
+        tela.busca.event_generate("<KeyRelease>")       # Shift: nada muda
+        self.raiz.update()
+        self.assertEqual(chamadas, [])                   # ainda digitando
+        self.raiz.after(400)
+        self.raiz.update()
+        self.app.janela.withdraw()
+        self.assertEqual(chamadas, ["52998224725"])      # uma busca só
+
+    def test_virada_da_meia_noite_rele_o_dia(self):
+        """QA1 B4 / QA2 B9: às 00:05 o cabeçalho e a contagem continuavam
+        de ontem."""
+        self.cadastrar_um()
+        tela = self.app.tela_cadastro
+        self.agora = AGORA.replace(hour=23, minute=50)
+        tela.ao_passar_o_tempo()
+        self.agora = AGORA.replace(hour=0, minute=5) + timedelta(days=1)
+        tela.ao_passar_o_tempo()
+        self.assertIn("22 de outubro", tela.cabecalho.subtitulo.cget("text"))
+        self.assertIn("0 entradas hoje", self.app.lbl_status.cget("text"))
+
+
+class TestDataAbsurdaNoBanco(BaseInterface):
+    def test_visita_do_ano_9999_nao_derruba_o_login_nem_o_painel(self):
+        """QA2 M3: uma linha de 31/12/9999 (importada sem validação nas
+        versões anteriores) levantava OverflowError no login e no Painel."""
+        con = sqlite3.connect(self.caminho_db)
+        with con:
+            con.execute("INSERT INTO registros (nome, cpf, celular, placa, "
+                        "tipo, entrada) VALUES ('Ana Silva', '52998224725', "
+                        "'31987654321', '', 'Aluno', '9999-12-31 23:00')")
+        con.close()
+        self.app.sair()
+        self.app.entrar(self.admin)
+        self.assertEqual(self.app.tabela.item(self.app.tabela.get_children()[0])
+                         ["text"], "No campus")
+        self.app.ir_para(self.app.aba_dash)
+        self.app.atualizar_tabela()
+
+
 class TestSessao(BaseInterface):
     entrar_como = "porteiro"
 
@@ -719,7 +914,7 @@ class TestSessao(BaseInterface):
 
     def test_inatividade_fecha_as_janelas_abertas(self):
         dialogo = self.app.trocar_senha()
-        self.app.relogio = lambda: datetime.now() + timedelta(hours=1)
+        self.agora = AGORA + timedelta(hours=1)     # relógio do app
         self.app.conferir_inatividade()
         self.assertFalse(dialogo.janela.winfo_exists())
 
@@ -803,15 +998,20 @@ class TestSessaoExpiraComCaixaAberta(BaseInterface):
         self.assertNotIn("Exportação de registros", [a for _, a in self.acoes()])
         self.assert_sessao_encerrada_avisada()
 
-    def test_saida_rapida_de_varios(self):
-        for cpf in ("52998224725", "11144477735"):
-            self.preencher(cpf=cpf, placa="ABC1234")
-            self.app.cadastrar()
+    def test_saida_rapida_com_a_pergunta_do_carro(self):
+        # uma placa não entra duas vezes: a caixa aberta agora é a do carro
+        self.preencher(cpf="52998224725", placa="ABC1234")
+        self.app.cadastrar()
         tela = self.app.tela_cadastro
-        tela.campo_saida_rapida.insert(0, "ABC1234")
-        self.msg.askyesno.side_effect = self.expirar_e_responder(True)
+        tela.campo_saida_rapida.insert(0, "52998224725")
+
+        def expira(dialogo):
+            dialogo.escolher(dialogo.opcoes[0][1])       # "Saiu de carro"...
+            self.app.sair(inatividade=True)              # ...tarde demais
+        self.responder_veiculo = expira
         tela.saida_rapida()
         self.assertTrue(all(not r["saida"] for r in self.no_banco()))
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="ABC1234"))
         self.assert_sessao_encerrada_avisada()
 
     def test_inatividade_fecha_janelas_dentro_das_paginas(self):
@@ -1165,6 +1365,119 @@ class TestAbaPessoas(BaseInterface):
 
 
 
+class TestHistoricoEOrdemNaPaginaPessoas(BaseInterface):
+    """Item 6 (histórico de visitas na ficha) e 7 (ordenar pelo cabeçalho)."""
+
+    def setUp(self):
+        super().setUp()
+        self.banco.inserir(dict(VISITA_ANTIGA))                  # 15/10, de carro
+        self.banco.inserir(dict(VISITA_ANTIGA, celular="31900001111", placa="",
+                                tipo="Visitante", entrada="16/10/2026 09:00",
+                                saida="17/10/2026 08:00"))
+        self.banco.inserir(dict(VISITA_ANTIGA, placa="", tipo="Professor",
+                                entrada=ha_uma_hora(), saida=""))
+        pessoas = [("Ana Silva", "52998224725", "30/09/2026 08:00", 1),
+                   ("Zeca Alves", "39053344705", "02/10/2026 08:00", 1),
+                   ("Érico Lima", "15350946056", "01/10/2026 08:00", 10)]
+        for nome, cpf, entrada, vezes in pessoas:
+            for dia in range(vezes):
+                inicio = datetime.strptime(entrada, FORMATO) - timedelta(days=dia)
+                self.banco.inserir({"nome": nome, "cpf": cpf,
+                                    "celular": "31987654321", "placa": "",
+                                    "tipo": "Aluno",
+                                    "entrada": inicio.strftime(FORMATO),
+                                    "saida": (inicio + timedelta(hours=1))
+                                    .strftime(FORMATO)})
+        self.aba = self.app.tela_pessoas
+        self.aba.atualizar()
+        self.ids = {p["nome"].split()[0]: str(p["id"]) for p in self.aba.pessoas}
+
+    def ordem(self):
+        nomes = {v: k for k, v in self.ids.items()}
+        return [nomes[i] for i in self.aba.tabela.get_children()]
+
+    def titulo(self, coluna):
+        return self.aba.tabela.heading(coluna)["text"]
+
+    def test_abre_ordenada_pela_situacao_e_depois_pelo_nome(self):
+        self.banco.bloquear("cpf", "39053344705", "Motivo válido", "ana.admin")
+        self.aba.atualizar()
+        self.assertEqual(self.ordem(), ["Beto", "Zeca", "Ana", "Érico"])
+        self.assertEqual(self.titulo("#0"), "Situação " + chr(0x25B2))
+        self.assertEqual(self.titulo("nome"), "Nome")
+
+    def test_primeiro_clique_crescente_segundo_decrescente(self):
+        self.aba.ordenacao.clicar("nome")
+        self.assertEqual(self.ordem(), ["Ana", "Beto", "Érico", "Zeca"])  # Érico
+        self.assertEqual(self.titulo("nome"), "Nome " + chr(0x25B2))
+        self.assertEqual(self.titulo("#0"), "Situação")
+        self.aba.ordenacao.clicar("nome")
+        self.assertEqual(self.ordem(), ["Zeca", "Érico", "Beto", "Ana"])
+        self.assertEqual(self.titulo("nome"), "Nome " + chr(0x25BC))
+
+    def test_numeros_e_datas_na_ordem_certa(self):
+        self.aba.ordenacao.clicar("visitas")         # 1, 1, 3, 10 (não "10" < "3")
+        self.assertEqual(self.ordem(), ["Ana", "Zeca", "Beto", "Érico"])
+        self.aba.ordenacao.clicar("ultima")          # 30/09 < 02/10 < 21/10
+        self.assertEqual(self.ordem(), ["Ana", "Érico", "Zeca", "Beto"])
+        self.aba.ordenacao.clicar("ultima")
+        self.assertEqual(self.ordem(), ["Beto", "Zeca", "Érico", "Ana"])
+
+    def test_ordem_continua_depois_de_atualizar(self):
+        self.aba.ordenacao.clicar("visitas")
+        self.aba.ordenacao.clicar("visitas")
+        self.aba.atualizar()
+        self.assertEqual(self.ordem()[0], "Érico")
+
+    def test_ficha_com_mais_visitas_que_o_limite_mostra_o_total_real(self):
+        """QA2 B8: 503 visitas apareciam como 'Visitas (200)'."""
+        from portaria import tela_pessoas
+        with unittest.mock.patch.object(tela_pessoas, "LIMITE_VISITAS", 4):
+            self.aba.tabela.selection_set(self.ids["Érico"])
+            self.aba.ao_selecionar()
+        self.assertEqual(self.aba.seletor_ficha.itens["Visitas"][0].cget("text"),
+                         "Visitas (10)")
+        self.assertEqual(len(self.aba.visitas), 4)
+        self.assertIn("Mostrando as 4 mais recentes de 10 visitas",
+                      self.aba.lista_visitas.get("1.0", "end"))
+
+    def test_ficha_mostra_o_historico_de_visitas(self):
+        self.aba.tabela.selection_set(self.ids["Beto"])
+        self.aba.ao_selecionar()
+        self.assertEqual(self.aba.seletor_ficha.itens["Visitas"][0].cget("text"),
+                         "Visitas (3)")
+        hoje, dia_16, dia_15 = self.aba.visitas           # mais recente primeiro
+        self.assertEqual((hoje["situacao"], hoje["saida"], hoje["duracao"]),
+                         ("No campus", "sem saída", "1 h até agora"))
+        self.assertEqual((dia_16["saida"], dia_16["duracao"], dia_16["tipo"],
+                          dia_16["placa"], dia_16["como"]),
+                         ("17/10/2026 08:00", "23 h", "Visitante", "",
+                          "(31) 90000-1111"))
+        self.assertEqual((dia_15["entrada"], dia_15["saida"], dia_15["duracao"],
+                          dia_15["placa"], dia_15["situacao"]),
+                         ("15/10/2026 07:00", "12:00", "5 h", "QWE-1234", "Saiu"))
+        self.aba.seletor_ficha.selecionar("Visitas")
+        self.assertTrue(self.aba.secoes["Visitas"].winfo_manager())
+        self.assertFalse(self.aba.secoes["Cadastro"].winfo_manager())
+        texto = self.aba.lista_visitas.get("1.0", tk.END)
+        self.assertIn("15/10/2026 07:00  " + chr(0x2192) + "  12:00", texto)
+        self.assertIn("Registrado como (31) 90000-1111", texto)
+        self.assertIn("Visitante  ·  a pé", texto)
+
+
+class TestFichaDoPorteiro(BaseInterface):
+    entrar_como = "porteiro"
+
+    def test_ficha_com_cpf_mascarado(self):
+        self.banco.inserir(dict(VISITA_ANTIGA))
+        aba = self.app.tela_pessoas
+        aba.atualizar()
+        aba.tabela.selection_set(aba.tabela.get_children()[0])
+        aba.ao_selecionar()
+        self.assertEqual(aba.lbl_cpf.cget("text"), "CPF ***.444.777-**")
+        self.assertEqual(len(aba.visitas), 1)
+
+
 class TestSaidaRapida(BaseInterface):
     entrar_como = "porteiro"
 
@@ -1172,7 +1485,7 @@ class TestSaidaRapida(BaseInterface):
         super().setUp()
         entrada = ha_uma_hora()
         pessoas = [("Beto Rocha", "11144477735", "QWE1234"),
-                   ("Ana Silva", "52998224725", "QWE1234"),     # mesma carona
+                   ("Ana Silva", "52998224725", ""),     # carona: a pé
                    ("Duda Reis", "39053344705", "")]
         self.ids = {}
         for nome, cpf, placa in pessoas:
@@ -1209,22 +1522,39 @@ class TestSaidaRapida(BaseInterface):
         self.msg.showinfo.assert_not_called()      # não trava com caixinha
         self.assertIn(("paulo", "Saída registrada"), self.acoes())
 
-    def test_placa_de_duas_pessoas_pergunta_antes(self):
-        self.msg.askyesno.return_value = False
+    def test_placa_tira_o_carro_e_pergunta_pelo_responsavel(self):
+        self.responder_veiculo = None                  # Cancelar
         self.digitar("qwe-1234")
-        self.assertIn("Beto Rocha", self.msg.askyesno.call_args[0][1])
-        self.assertEqual((self.saida("Beto"), self.saida("Ana")), ("", ""))
-        self.msg.askyesno.return_value = True
+        self.assertEqual(self.perguntas_veiculo[0],
+                         "Beto saiu junto com o carro?")
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="QWE1234"))
+        self.responder_veiculo = "principal"           # "Saiu junto"
         self.digitar("qwe-1234")
-        self.assertTrue(self.saida("Beto") and self.saida("Ana"))
-        self.assertIn("Beto e Ana", self.aviso())
+        self.assertTrue(self.saida("Beto"))
+        self.assertIsNone(self.banco.estadia_aberta(placa="QWE1234"))
+        self.assertIn("Saída de Beto registrada", self.aviso())
 
     def test_cpf_ou_placa_sem_ninguem_dentro(self):
-        for texto in ["12345678909", "111444777", "ZZZ9999"]:
+        for texto in ["12345678909", "111444777"]:
             with self.subTest(texto=texto):
                 self.digitar(texto)
                 self.assertIn("Ninguém no campus", self.msg.showerror.call_args[0][1])
+        self.digitar("ZZZ9999")
+        self.assertIn("ZZZ-9999 não está no estacionamento",
+                      self.msg.showerror.call_args[0][1])
         self.assertTrue(all(not r["saida"] for r in self.no_banco()))
+
+    def test_placa_de_carro_que_ja_saiu_nao_da_saida_na_pessoa(self):
+        """QA1 A1: 'Só o carro saiu' e a placa de novo davam a saída do
+        Beto, que continuava no campus."""
+        self.responder_veiculo = "so_carro"
+        self.digitar("QWE1234")
+        self.assertIsNone(self.banco.estadia_aberta(placa="QWE1234"))
+        self.assertEqual(self.saida("Beto"), "")
+        self.digitar("QWE1234")                       # segunda leitura
+        self.assertEqual(self.saida("Beto"), "")      # continua no campus
+        self.assertIn("não está no estacionamento",
+                      self.msg.showerror.call_args[0][1])
 
     def test_quem_ja_saiu_nao_e_encontrado_de_novo(self):
         self.digitar("39053344705")
@@ -1264,6 +1594,211 @@ class TestSaidaRapida(BaseInterface):
 
     def test_f2_vai_para_a_saida_rapida(self):
         self.assertTrue(self.janela.bind("<F2>"))
+
+
+class TestEstadiaDeVeiculo(BaseInterface):
+    """Saída parcial: o carro tem entrada e saída próprias."""
+    entrar_como = "porteiro"
+    CPF = "52998224725"
+
+    def setUp(self):
+        super().setUp()
+        self.preencher(cpf=self.CPF, placa="ABC1234", tipo="Professor")
+        self.app.cadastrar()
+        self.visita = self.no_banco()[0]["id"]
+        self.tela = self.app.tela_cadastro
+
+    def estadia(self):
+        return self.banco.estadia_aberta(placa="ABC1234")
+
+    def sair_pelo_cpf(self, resposta):
+        from portaria.tela_veiculo import A_PE, COM_CARRO
+        self.responder_veiculo = {"carro": COM_CARRO, "a_pe": A_PE}[resposta]
+        self.tela.campo_saida_rapida.insert(0, self.CPF)
+        self.tela.saida_rapida()
+
+    def test_entrada_com_placa_abre_a_estadia_do_carro(self):
+        estadia = self.estadia()
+        self.assertEqual((estadia["cpf"], estadia["registro_id"], estadia["entrada"]),
+                         (self.CPF, self.visita, agora_texto()))
+        self.assertEqual(self.tela.tabela_veiculos.get_children(),
+                         (str(estadia["id"]),))
+        self.assertEqual(self.tela.seletor_lista.itens["Veículos"][0].cget("text"),
+                         "Veículos (1)")
+
+    def test_placa_que_ja_esta_no_estacionamento_nao_entra_de_novo(self):
+        self.app.limpar()
+        self.preencher(cpf="11144477735", nome="Beto Rocha", placa="ABC1234")
+        self.assertIn("estacionamento", self.tela.lbl_placa_status.cget("text"))
+        self.app.cadastrar()
+        titulo, texto = self.msg.showerror.call_args[0]
+        self.assertEqual(titulo, "Veículo no estacionamento")
+        self.assertIn("O carro ABC-1234 já está no estacionamento desde 10:00",
+                      texto)
+        self.assertEqual(len(self.no_banco()), 1)
+
+    def test_saiu_de_carro_fecha_visita_e_estadia(self):
+        self.sair_pelo_cpf("carro")
+        self.assertEqual(self.perguntas_veiculo[0],
+                         "Saiu com o veículo ABC-1234?")
+        self.assertTrue(self.banco.buscar(self.visita)["saida"])
+        self.assertIsNone(self.estadia())
+        self.assertIn("(saiu de carro)", self.app.lbl_aviso.cget("text"))
+        self.assertIn(("paulo", "Saída de veículo"), self.acoes())
+
+    def test_saiu_a_pe_volta_a_pe_e_sai_de_carro(self):
+        self.sair_pelo_cpf("a_pe")
+        self.assertTrue(self.banco.buscar(self.visita)["saida"])
+        self.assertIsNotNone(self.estadia())                 # o carro fica
+        self.assertIn("a pé; o carro ABC-1234 fica", self.app.lbl_aviso.cget("text"))
+        linha = self.tela.tabela_veiculos.item(str(self.estadia()["id"]))
+        self.assertEqual(linha["values"][-1], "Fora do campus")
+        # volta (só o CPF): faixa do carro e entrada a pé
+        self.agora = AGORA + timedelta(hours=1)
+        self.app.limpar()
+        self.app.cpf.insert(0, self.CPF)
+        self.assertIn("O carro ABC-1234 está no estacionamento desde 10:00",
+                      self.app.lbl_pessoa.cget("text"))
+        self.assertEqual(self.app.var_placa.get(), "")       # não preencheu
+        self.app.cadastrar()
+        volta = max(r["id"] for r in self.no_banco())
+        self.assertEqual(self.banco.buscar(volta)["placa"], "")
+        # na saída seguinte, a pergunta de novo: agora sai de carro
+        self.tela.campo_saida_rapida.delete(0, tk.END)
+        self.sair_pelo_cpf("carro")
+        self.assertTrue(self.banco.buscar(volta)["saida"])
+        self.assertIsNone(self.estadia())
+        self.assertEqual(len(self.perguntas_veiculo), 2)
+
+    def test_saida_pela_placa_com_o_responsavel_fora_nao_pergunta(self):
+        self.sair_pelo_cpf("a_pe")
+        self.tela.campo_saida_rapida.delete(0, tk.END)
+        self.tela.campo_saida_rapida.insert(0, "abc-1234")
+        self.tela.saida_rapida()
+        self.assertEqual(len(self.perguntas_veiculo), 1)
+        self.assertIsNone(self.estadia())
+        self.assertIn("Saída do carro ABC-1234", self.app.lbl_aviso.cget("text"))
+        self.app.desfazer_saida()                            # Desfazer
+        self.assertIsNotNone(self.estadia())
+
+    def test_so_o_carro_sai_pela_placa(self):
+        from portaria.tela_veiculo import SO_CARRO
+        self.responder_veiculo = SO_CARRO
+        self.tela.campo_saida_rapida.insert(0, "ABC1234")
+        self.tela.saida_rapida()
+        self.assertIsNone(self.estadia())
+        self.assertEqual(self.banco.buscar(self.visita)["saida"], "")
+
+    def test_lista_de_veiculos_no_movimento(self):
+        self.tela.seletor_lista.selecionar("Veículos")
+        self.assertTrue(self.tela.quadro_veiculos.winfo_manager())
+        self.assertFalse(self.tela.quadro_pessoas.winfo_manager())
+        self.assertFalse(self.tela.campo_busca.winfo_manager())
+        iid = self.tela.tabela_veiculos.get_children()[0]
+        linha = self.tela.tabela_veiculos.item(iid)
+        self.assertEqual(linha["text"], "No estacionamento")
+        self.assertEqual(linha["values"][:2], ["ABC-1234", "Ana Silva"])
+        self.assertEqual(linha["values"][-1], "No campus")
+        self.tela.tabela_veiculos.selection_set(iid)
+        self.responder_veiculo = "principal"                 # saiu junto
+        self.app.registrar_saida()
+        self.assertIsNone(self.estadia())
+        self.assertTrue(self.banco.buscar(self.visita)["saida"])
+
+    def test_veiculo_pendente_depois_do_fechamento(self):
+        self.sair_pelo_cpf("a_pe")
+        self.agora = AGORA.replace(hour=23, minute=31)       # tolerância: 23:30
+        self.tela.ao_passar_o_tempo()
+        iid = self.tela.tabela_veiculos.get_children()[0]
+        self.assertEqual(self.tela.tabela_veiculos.item(iid)["text"],
+                         "Veículo pendente")
+        faixa = self.tela.faixa_pendentes
+        self.assertIn("1 veículo pendente depois do fechamento",
+                      faixa.lbl.cget("text"))
+        self.assertEqual(faixa.acao.cget("text"), "Ver veículos")
+
+    def voltar_com_outro_carro(self):
+        """Ana sai a pé (ABC1234 fica) e volta com XYZ9A87."""
+        self.sair_pelo_cpf("a_pe")
+        self.agora = AGORA + timedelta(hours=1)
+        self.app.limpar()
+        self.preencher(cpf=self.CPF, placa="XYZ9A87", tipo="Professor")
+        self.app.cadastrar()
+        self.tela.campo_saida_rapida.delete(0, tk.END)
+        return max(r["id"] for r in self.no_banco())
+
+    def test_dois_carros_pergunta_primeiro_pelo_da_visita(self):
+        """QA1 M3: perguntava pelo ABC-1234 e fechava o carro errado."""
+        volta = self.voltar_com_outro_carro()
+        self.sair_pelo_cpf("carro")
+        self.assertEqual(self.perguntas_veiculo[-1],
+                         "Saiu com o veículo XYZ9A87?")
+        self.assertTrue(self.banco.buscar(volta)["saida"])
+        self.assertIsNone(self.banco.estadia_aberta(placa="XYZ9A87"))
+        self.assertIsNotNone(self.estadia())               # ABC-1234 fica
+
+    def test_dois_carros_a_pe_no_da_visita_pergunta_pelo_outro(self):
+        from portaria.tela_veiculo import A_PE, COM_CARRO
+        self.voltar_com_outro_carro()
+        respostas = [A_PE, COM_CARRO]
+        self.responder_veiculo = lambda d: d.escolher(respostas.pop(0))
+        self.tela.campo_saida_rapida.insert(0, self.CPF)
+        self.tela.saida_rapida()
+        self.assertEqual(self.perguntas_veiculo[-2:],
+                         ["Saiu com o veículo XYZ9A87?",
+                          "Saiu com o veículo ABC-1234?"])
+        self.assertIsNone(self.estadia())                  # saiu com o ABC
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="XYZ9A87"))
+
+    def test_placa_do_segundo_carro_saiu_junto_fecha_esse_carro(self):
+        """QA2 M1: pela placa KLM, "saiu junto" fechava o carro mais antigo."""
+        self.voltar_com_outro_carro()
+        self.responder_veiculo = "principal"               # saiu junto
+        self.tela.campo_saida_rapida.insert(0, "XYZ9A87")
+        self.tela.saida_rapida()
+        self.assertIsNone(self.banco.estadia_aberta(placa="XYZ9A87"))
+        self.assertIsNotNone(self.estadia())
+
+
+class TestExcluirVisitaComCarro(BaseInterface):
+    entrar_como = "admin"
+
+    def test_confirmacao_avisa_e_o_carro_continua(self):
+        """QA1 M1: excluir a visita que trouxe o carro tirava o carro do
+        estacionamento sem avisar."""
+        self.preencher(cpf="52998224725", placa="ABC1234")
+        self.app.cadastrar()
+        visita = self.no_banco()[0]["id"]
+        self.app.tabela.selection_set(str(visita))
+        self.app.excluir_selecionado()
+        texto = self.msg.askyesno.call_args[0][1]
+        self.assertIn("O carro ABC-1234 dessa visita continua no "
+                      "estacionamento", texto)
+        self.assertEqual(self.no_banco(), [])
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="ABC1234"))
+        self.assertIn("ABC-1234 continua(m) no estacionamento",
+                      self.app.lbl_aviso.cget("text"))
+
+
+class TestVeiculoNoEncerramento(BaseInterface):
+    entrar_como = "admin"
+
+    def test_encerrar_o_dia_nao_tira_o_carro(self):
+        self.preencher(cpf="52998224725", placa="ABC1234", tipo="Aluno")
+        self.app.cadastrar()
+        self.agora = AGORA.replace(hour=23, minute=5)
+        self.app.atualizar_tabela()
+        faixa = self.app.tela_cadastro.faixa_pendentes
+        self.assertIn("1 saída pendente e 1 veículo pendente",
+                      faixa.lbl.cget("text"))
+        faixa.comando()                                      # Encerrar o dia
+        self.assertIn("o carro está lá", self.msg.askyesno.call_args[0][1])
+        self.assertTrue(self.no_banco()[0]["saida"])
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="ABC1234"))
+        self.app.ir_para(self.app.aba_dash)
+        valor, apoio = self.app.cards["estacionamento"]
+        self.assertEqual((valor.cget("text"), apoio.cget("text")),
+                         ("1", "1 veículo pendente"))
 
 
 class CasosCorrigir:

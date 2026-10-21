@@ -1,6 +1,9 @@
 """
-Página Painel: quatro números do movimento (no campus agora, entradas de
-hoje, permanência média e com veículo) e dois gráficos (pessoas por tipo de
+Página Painel: cinco números do movimento (no campus agora, entradas de
+hoje, permanência média, veículos no estacionamento agora — com os
+pendentes depois do fechamento, ou o total de visitas com veículo, no
+apoio — e tempo excedido — as visitas abertas acima da permanência máxima
+da categoria, com as saídas pendentes no apoio) e dois gráficos (pessoas por tipo de
 acesso e entradas nos últimos 7 dias). Os números vêm do banco
 (banco.resumo_painel, calculado no SQL); o desenho fica em graficos.py.
 O administrador exporta os registros de um período para planilha (CSV).
@@ -9,7 +12,7 @@ O administrador exporta os registros de um período para planilha (CSV).
 import tkinter as tk
 from datetime import datetime, timedelta
 
-from . import backup, mensagens
+from . import backup, horarios, mensagens
 from .componentes import (Aviso, Botao, Cabecalho, Cartao, Dialogo,
                           campo_rotulado, plural, titulo_cartao)
 from .consultas import formatar_duracao
@@ -24,7 +27,9 @@ PLURAL_TIPO = {"Aluno": "Alunos", "Professor": "Professores",
                "Prestador de serviço": "Prestadores"}
 # (chave, rótulo); o primeiro é o destaque
 NUMEROS = [("dentro", "No campus agora"), ("hoje", "Entradas hoje"),
-           ("permanencia", "Permanência média"), ("veiculos", "Com veículo")]
+           ("permanencia", "Permanência média"),
+           ("estacionamento", "No estacionamento"),
+           ("excedido", "Tempo excedido")]
 ALTURA_GRAFICO = 230
 FORMATO_DIA = "%d/%m/%Y"
 
@@ -34,6 +39,7 @@ class AbaDashboard:
         self.aba = aba
         self.app = app
         self.cards = {}                            # chave -> (valor, apoio)
+        self.com_veiculo = 0                       # visitas com placa (total)
         self.dados = {"tipos": [], "dias": []}     # dados prontos dos gráficos
         self.btn_exportar = None
         self.dialogo = None
@@ -59,7 +65,7 @@ class AbaDashboard:
         linha.columnconfigure(tuple(range(len(NUMEROS))), weight=1,
                               uniform="numeros")
         for coluna, (chave, rotulo) in enumerate(NUMEROS):
-            cartao = Cartao(linha, pad=18)
+            cartao = Cartao(linha, pad=14)
             cartao.grid(row=0, column=coluna, sticky="nsew",
                         padx=px(ESPACO_CARTOES // 2))
             m = cartao.miolo
@@ -114,15 +120,15 @@ class AbaDashboard:
         self.lbl_subtitulo.config(
             text=f"{plural(r['total'], 'registro', 'registros')} desde o início"
                  f"  ·  {plural(r['saidas'], 'visita encerrada', 'visitas encerradas')}")
-        self._mostrar("dentro", r["dentro"], "entradas ainda sem saída")
+        self._mostrar("dentro", r["dentro"], "ainda sem saída")
         self._mostrar("hoje", r["entradas_hoje"], hoje.strftime(FORMATO_DIA))
         if r["permanencia_media"] is not None:
             self._mostrar("permanencia", formatar_duracao(r["permanencia_media"]),
                           f"em {plural(r['saidas'], 'visita encerrada', 'visitas encerradas')}")
         else:
             self._mostrar("permanencia", "—", "sem saídas registradas")
-        self._mostrar("veiculos", r["com_veiculo"],
-                      f"de {plural(r['total'], 'registro', 'registros')}")
+        self.com_veiculo = r["com_veiculo"]
+        self._mostrar_horarios()
 
         self.dados["tipos"] = [
             (PLURAL_TIPO.get(t, t), por_tipo[t][0], f"{por_tipo[t][1]} no campus")
@@ -130,6 +136,37 @@ class AbaDashboard:
         self.dados["dias"] = [(d.strftime("%d/%m"), n)
                               for d, n in r["por_dia"].items()]
         self.redesenhar_graficos()
+
+    def _mostrar_horarios(self):
+        """Tempo excedido e saídas pendentes, com o relógio do app."""
+        ok, config = self.app.tentar(self.app.banco.ler_configuracao)
+        if not ok:
+            return
+        ok, abertas = self.app.tentar(self.app.banco.listar_abertas)
+        if not ok:
+            return
+        agora = self.app.relogio()
+        contagem = horarios.contar_situacoes(config, abertas, agora)
+        excedidos = contagem[horarios.TEMPO_EXCEDIDO]
+        pendentes = contagem[horarios.SAIDA_PENDENTE]
+        self._mostrar("excedido", excedidos,
+                      "+ " + plural(pendentes, "saída pendente", "saídas pendentes")
+                      if pendentes else "acima da permanência da categoria")
+        self.cards["excedido"][0].config(
+            fg=COR["alerta"] if excedidos else COR["texto"])
+        self.cards["excedido"][1].config(
+            fg=COR["erro"] if pendentes else COR["texto_3"])
+        ok, veiculos = self.app.tentar(self.app.banco.listar_estacionamento)
+        if not ok:
+            return
+        carros = sum(1 for e in veiculos if horarios.situacao_veiculo(
+            config, e, agora) == horarios.VEICULO_PENDENTE)
+        self._mostrar("estacionamento", len(veiculos),
+                      plural(carros, "veículo pendente", "veículos pendentes")
+                      if carros else plural(self.com_veiculo, "visita com veículo",
+                                            "visitas com veículo"))
+        self.cards["estacionamento"][1].config(
+            fg=COR["erro"] if carros else COR["texto_3"])
 
     def _mostrar(self, chave, valor, apoio):
         self.cards[chave][0].config(text=str(valor))
@@ -171,10 +208,12 @@ class DialogoExportar(Dialogo):
         datas = tk.Frame(self.miolo, bg=COR["superficie"])
         datas.pack(fill="x")
         datas.columnconfigure((0, 1), weight=1, uniform="d")
-        grupo, campo = campo_rotulado(datas, "De", "dd/mm/aaaa")
+        grupo, campo = campo_rotulado(datas, "De", "dd/mm/aaaa", seletor="data",
+                                      relogio=app.relogio)
         grupo.grid(row=0, column=0, sticky="ew", padx=(0, px(12)))
         self.desde = campo.entrada
-        grupo, campo = campo_rotulado(datas, "Até", "dd/mm/aaaa")
+        grupo, campo = campo_rotulado(datas, "Até", "dd/mm/aaaa", seletor="data",
+                                      relogio=app.relogio)
         grupo.grid(row=0, column=1, sticky="ew")
         self.ate = campo.entrada
         self.faixa = Aviso(self.miolo)

@@ -8,13 +8,13 @@ e digita o número inteiro de novo (com o documento em mãos).
 """
 
 import tkinter as tk
-from datetime import datetime
 
-from . import mensagens
+from . import horarios, mensagens
 from .componentes import (Aviso, Campo, Dialogo, preencher_eventos,
                           rotulo_campo, tabela_eventos)
 from .consultas import descrever_alteracoes
 from .estilo import COR, FONTE, ICONE, px
+from .tela_autorizacao import autorizar_excecao
 from .usuarios import eh_admin, pode_editar
 from .validacao import (FORMATO_EXIBICAO, TIPOS_ACESSO,
                         checar_bloqueio_correcao, mascarar_cpf, normalizar,
@@ -76,8 +76,10 @@ class JanelaEdicao(Dialogo):
         self.var_placa, self.caixa_placa = campo_placa.var, campo_placa.entrada
         self.tipo = novo("Tipo de acesso", 2, 1, r["tipo"],
                          opcoes=TIPOS_ACESSO).entrada
-        self.entrada = novo("Entrada", 2, 2, r["entrada"], FORMATO_EXIBICAO).entrada
-        self.saida = novo("Saída", 2, 3, r["saida"], "vazio = no campus").entrada
+        self.entrada = novo("Entrada", 2, 2, r["entrada"], FORMATO_EXIBICAO,
+                            seletor="data_hora", relogio=self.app.relogio).entrada
+        self.saida = novo("Saída", 2, 3, r["saida"], "vazio = no campus",
+                          seletor="data_hora", relogio=self.app.relogio).entrada
         self.cpf.config(font=FONTE["cpf"])
 
     def _montar_historico(self):
@@ -137,14 +139,15 @@ class JanelaEdicao(Dialogo):
                            parent=self.janela)
             return
         # o porteiro também não pode mover o registro para outro dia
-        ok, msg = pode_editar(self.app.usuario, novo, datetime.now())
+        agora = self.app.relogio()
+        ok, msg = pode_editar(self.app.usuario, novo, agora)
         if ok:
             ok, anteriores = self.app.tentar(self.app.banco.listar_por_cpf,
                                              novo["cpf"])
             if not ok:
                 return
             outros = [r for r in anteriores if r["id"] != self.original["id"]]
-            ok, msg = validar(novo, outros)
+            ok, msg = validar(novo, outros, agora)
         if not ok:
             mensagens.erro("Dados inválidos", msg, parent=self.janela)
             return
@@ -155,10 +158,31 @@ class JanelaEdicao(Dialogo):
         if not ok:
             mensagens.erro("Acesso negado", msg, parent=self.janela)
             return
+        autorizacao, ok = self._autorizar(novo, agora)
+        if not ok:
+            return
+        # `original`: se outra estação mudou a visita depois que esta janela
+        # abriu (ex.: deu a saída), o banco recusa em vez de desfazer aquilo
         if not self.app.gravar(self.app.banco.editar, self.original["id"],
-                               novo, alteracoes):
+                               novo, alteracoes, autorizacao=autorizacao,
+                               original=self.original):
             return
         self.app.atualizar_tabela()
         self.app.avisar(f"Registro de {novo['nome'].split()[0]} corrigido "
                         f"({len(alteracoes)} alteração(ões)).")
         self.fechar()
+
+    def _autorizar(self, novo, agora):
+        """Correção que vira exceção de horário (entrada movida para fora
+        do horário, retroativa antiga, mais de 24 h) pede a autorização.
+        Devolve (autorização ou None, pode seguir?)."""
+        ok, config = self.app.tentar(self.app.banco.ler_configuracao)
+        if not ok:
+            return None, False
+        regras = horarios.excecoes_da_correcao(config, self.original, novo, agora)
+        if not regras:
+            return None, True
+        autorizacao = autorizar_excecao(
+            self.app, regras, f"A correção do registro de {novo['nome']}",
+            dono=self.janela)
+        return autorizacao, autorizacao is not None

@@ -7,7 +7,7 @@ import unittest
 from datetime import date, datetime, timedelta
 from unittest import mock
 
-from portaria import dados
+from portaria import dados, horarios
 from portaria.consultas import filtrar, resumo
 from portaria.validacao import FORMATO
 
@@ -16,6 +16,8 @@ def registro(**mudancas):
     r = {"nome": "João Ávila", "cpf": "52998224725", "celular": "31987654321",
          "placa": "ABC1D23", "tipo": "Funcionário",
          "entrada": "16/10/2026 08:00", "saida": ""}
+    if "cpf" in mudancas and "placa" not in mudancas:
+        r["placa"] = ""     # um carro só entra uma vez: os outros CPFs vêm a pé
     r.update(mudancas)
     return r
 
@@ -307,7 +309,7 @@ class TestAuditoria(BaseTemp):
 
     def test_operacoes_com_autor_ficam_no_historico(self):
         self.criar_equipe()
-        id_ = self.banco.inserir(registro(), autor="paulo")
+        id_ = self.banco.inserir(registro(placa=""), autor="paulo")
         self.banco.registrar_saida(id_, "16/10/2026 09:00", autor="paulo")
         self.banco.excluir([id_], autor="ana")
         self.assertEqual(self.acoes()[:3], [("ana", "Exclusão de registro"),
@@ -533,6 +535,30 @@ class TestMigracao(BaseTemp):
         self.assertIn("4 registro(s) com dados inválidos", aviso)
         self.assertTrue(os.path.exists(self.caminho_json + ".migrado"))
 
+    def test_importacao_aplica_as_regras_do_cadastro(self):
+        """QA2 M3: visita de 8 dias, tipo 'Hacker', CPF 000..., ano 9999
+        entravam sem validação, sem histórico e sem a estadia do carro."""
+        self.escrever_json([
+            registro(entrada="10/10/2026 08:00", saida="18/10/2026 08:00"),
+            registro(cpf="11144477735", tipo="Hacker"),
+            registro(cpf="00000000000"),
+            registro(cpf="39053344705", entrada="31/12/9999 23:00"),
+            registro(cpf="39053344705", entrada="16/10/0026 10:00"),
+            registro(entrada="16/10/2026 08:00"),            # aberta, com placa
+        ])
+        aviso = self.banco.importar_json(self.caminho_json)
+        self.assertEqual([r["cpf"] for r in self.banco.listar()],
+                         ["52998224725"])
+        self.assertIn("5 registro(s) com dados inválidos", aviso)
+        self.assertIn("visita de mais de 24 h (1)", aviso)
+        self.assertIn("A entrada não pode estar no futuro (1)", aviso)
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="ABC1D23"))
+        evento = self.banco.listar_eventos()[0]
+        self.assertEqual((evento["usuario"], evento["acao"]),
+                         (dados.AUTOR_SISTEMA, "Importação do arquivo antigo"))
+        self.assertIn("1 registro(s) importado(s)", evento["detalhe"])
+        self.assertNotIn("João", evento["detalhe"])            # sem nomes
+
     def test_json_danificado_e_guardado_e_nada_importado(self):
         self.escrever_json('[{"nome": "Ana"')   # cortado no meio
         aviso = self.banco.importar_json(self.caminho_json)
@@ -550,8 +576,58 @@ def agora_menos(**delta):
     return (datetime.now() - timedelta(**delta)).strftime(FORMATO)
 
 
+def rebaixar_para_v9(caminho):
+    """Deixa um banco como a versão 9 deixava: sem a tabela meta."""
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        DROP TABLE IF EXISTS meta;
+        PRAGMA user_version = 9;""")
+    con.close()
+
+
+def rebaixar_para_v8(caminho):
+    """Deixa um banco como a versão 8 deixava: sem o tema de cada usuário."""
+    rebaixar_para_v9(caminho)
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        ALTER TABLE usuarios DROP COLUMN tema;
+        PRAGMA user_version = 8;""")
+    con.close()
+
+
+def rebaixar_para_v7(caminho):
+    """Deixa um banco como a versão 7 deixava: sem a tolerância e com os
+    padrões antigos das regras de horário."""
+    rebaixar_para_v8(caminho)
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        DROP TABLE estadias_veiculo;
+        ALTER TABLE regras_categoria DROP COLUMN tolerancia_min;
+        UPDATE regras_categoria SET fecha_depois = 60 WHERE tipo = 'Funcionário';
+        UPDATE regras_categoria SET permanencia_min = 60 WHERE tipo = 'Professor';
+        UPDATE parametros SET valor = 12 WHERE chave = 'horas_retroativo';
+        PRAGMA user_version = 7;""")
+    con.close()
+
+
+def rebaixar_para_v6(caminho):
+    """Deixa um banco como a versão 6 deixava (sem o que a v7 criou)."""
+    rebaixar_para_v7(caminho)
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        DROP INDEX idx_registros_saida;
+        DROP TABLE funcionamento;
+        DROP TABLE feriados;
+        DROP TABLE eventos;
+        DROP TABLE regras_categoria;
+        DROP TABLE parametros;
+        PRAGMA user_version = 6;""")
+    con.close()
+
+
 def rebaixar_para_v5(caminho):
-    """Deixa um banco como a versão 5 deixava (sem o que a v6 criou)."""
+    """Deixa um banco como a versão 5 deixava (sem o que a v6 e a v7 criaram)."""
+    rebaixar_para_v6(caminho)
     con = sqlite3.connect(caminho)
     con.executescript("""
         DROP INDEX idx_um_aberto_por_cpf;
@@ -647,6 +723,60 @@ class TestIntegridade(BaseTemp):
             self.assertEqual(hashlib.sha256(f.read()).hexdigest(), antes)
         self.assertEqual(versao_do_arquivo(self.caminho_db), 99)
 
+    def test_versao_mais_nova_na_meta_e_recusada_mesmo_rebaixada(self):
+        """Proteção para o futuro: um programa antigo regrava o
+        user_version, mas a tabela meta guarda a versão de verdade."""
+        con = sqlite3.connect(self.caminho_db)
+        con.execute("PRAGMA journal_mode = DELETE")
+        con.execute("UPDATE meta SET valor = 11 WHERE chave = 'versao_esquema'")
+        con.execute("PRAGMA user_version = 5")       # o programa antigo
+        con.commit()
+        con.close()
+        with self.assertRaises(dados.ErroDados) as erro:
+            dados.Banco(self.caminho_db)
+        self.assertIn("versão mais nova", str(erro.exception))
+
+    def test_banco_rebaixado_por_programa_antigo_abre_e_avisa(self):
+        """QA2 B3: o programa da v5 regravava user_version = 5; ao reabrir,
+        a migração da v8 reinseria as estadias e falhava com "Este veículo
+        já está no estacionamento" (o programa não abria mais)."""
+        self.banco.inserir(registro())                     # carro dentro
+        con = sqlite3.connect(self.caminho_db)
+        con.execute("PRAGMA user_version = 5")
+        con.close()
+        banco = dados.Banco(self.caminho_db)
+        self.assertEqual(versao_do_arquivo(self.caminho_db),
+                         dados.VERSAO_ESQUEMA)
+        self.assertEqual(len(banco.listar_estacionamento()), 1)
+        self.assertIn("versão ANTIGA do programa", banco.avisos[0])
+        self.assertIn("v10 → v5", banco.avisos[0])
+        # a tolerância que o administrador mudou não volta ao padrão
+        self.criar_equipe()
+        regras = banco.ler_configuracao().regras
+        regras["Professor"] = horarios.RegraCategoria(
+            True, 30, 0, ate_fechamento=True, tolerancia_min=45)
+        banco.salvar_regras(regras, autor="ana")
+        con = sqlite3.connect(self.caminho_db)
+        con.execute("PRAGMA user_version = 5")
+        con.close()
+        banco = dados.Banco(self.caminho_db)
+        self.assertEqual(
+            banco.ler_configuracao().regras["Professor"].tolerancia_min, 45)
+
+    def test_migracao_recusada_diz_que_e_a_atualizacao(self):
+        def passo_que_recusa(banco, con, versao):
+            raise sqlite3.IntegrityError("UNIQUE constraint failed: "
+                                         "estadias_veiculo.placa")
+        rebaixar_para_v9(self.caminho_db)
+        migracoes = [(alvo, passo_que_recusa if alvo == 10 else passo)
+                     for alvo, passo in dados.MIGRACOES]
+        with mock.patch.object(dados, "MIGRACOES", migracoes):
+            with self.assertRaises(dados.ErroDados) as erro:
+                dados.Banco(self.caminho_db)
+        self.assertIn("Não foi possível atualizar o banco", str(erro.exception))
+        self.assertNotIn("veículo", str(erro.exception))
+        self.assertEqual(versao_do_arquivo(self.caminho_db), 9)
+
     def test_visita_retroativa_nao_sobrescreve_a_pessoa(self):
         self.banco.inserir(registro())                       # visita de hoje
         self.banco.inserir(registro(nome="João Velho", celular="31911112222",
@@ -683,13 +813,13 @@ class TestMigracaoV6(unittest.TestCase):
         dados.Banco(self.caminho).inserir(registro())
         rebaixar_para_v5(self.caminho)
         banco = dados.Banco(self.caminho)
-        self.assertEqual(versao_do_arquivo(self.caminho), 6)
+        self.assertEqual(versao_do_arquivo(self.caminho), dados.VERSAO_ESQUEMA)
         self.assertLessEqual({"idx_um_aberto_por_cpf", "idx_registros_entrada",
                               "idx_auditoria_momento", "tentativas_login"},
                              objetos_do_banco(self.caminho))
         backups = os.listdir(os.path.join(self.pasta.name, "backups"))
         self.assertEqual(len(backups), 1)
-        self.assertIn("antes-v6-de-v5", backups[0])
+        self.assertIn(f"antes-v{dados.VERSAO_ESQUEMA}-de-v5", backups[0])
         self.assertEqual(len(banco.listar()), 1)
         self.assertEqual(banco.avisos, [])
 
@@ -723,7 +853,7 @@ class TestMigracaoV6(unittest.TestCase):
         self.assertNotIn("idx_um_aberto_por_cpf", objetos)
         self.assertNotIn("tentativas_login", objetos)
         dados.Banco(self.caminho)                   # na próxima vez, migra
-        self.assertEqual(versao_do_arquivo(self.caminho), 6)
+        self.assertEqual(versao_do_arquivo(self.caminho), dados.VERSAO_ESQUEMA)
 
     def test_banco_com_visitas_abertas_duplicadas_abre_e_corrige(self):
         dados.Banco(self.caminho)
@@ -752,6 +882,27 @@ class TestMigracaoV6(unittest.TestCase):
         self.assertEqual(len(eventos), 2)
         self.assertEqual(eventos[0]["usuario"], dados.AUTOR_SISTEMA)
         self.assertIn("idx_um_aberto_por_cpf", objetos_do_banco(self.caminho))
+
+
+class TestMigracaoV7(unittest.TestCase):
+    def setUp(self):
+        self.pasta = tempfile.TemporaryDirectory()
+        self.caminho = os.path.join(self.pasta.name, "portaria.db")
+
+    def tearDown(self):
+        self.pasta.cleanup()
+
+    def test_v6_vira_v7_com_indice_das_saidas_e_backup_antes(self):
+        dados.Banco(self.caminho).inserir(registro())
+        rebaixar_para_v6(self.caminho)
+        self.assertNotIn("idx_registros_saida", objetos_do_banco(self.caminho))
+        banco = dados.Banco(self.caminho)
+        self.assertEqual(versao_do_arquivo(self.caminho), dados.VERSAO_ESQUEMA)
+        self.assertIn("idx_registros_saida", objetos_do_banco(self.caminho))
+        backups = os.listdir(os.path.join(self.pasta.name, "backups"))
+        self.assertEqual(len(backups), 1)
+        self.assertIn(f"antes-v{dados.VERSAO_ESQUEMA}-de-v6", backups[0])
+        self.assertEqual(len(banco.listar()), 1)
 
 
 class TestConsultasNoBanco(BaseTemp):
@@ -790,6 +941,43 @@ class TestConsultasNoBanco(BaseTemp):
             ("JOSÉ ÉRICO", "16/10/2026 09:00"),
             ("Fábio Melo", "16/10/2026 00:00"),
             ("Beto Rocha", "14/10/2026 22:00")])
+
+    def test_movimento_inclui_quem_saiu_hoje_com_entrada_em_outro_dia(self):
+        # bug: entrada de outro dia (ex.: corrigida para fevereiro) e saída
+        # registrada hoje sumia do Movimento (só aparecia na busca)
+        id_ = self.banco.inserir(registro(
+            nome="Gil Prestes", cpf="12345678909", tipo="Prestador de serviço",
+            entrada="15/10/2026 22:00", saida="16/10/2026 06:00"))
+        self.banco.inserir(registro(
+            nome="Hugo Neves", cpf="98765432100", entrada="14/10/2026 07:00",
+            saida="15/10/2026 06:00"))                  # saiu ontem: não
+        movimento = self.banco.listar_movimento(self.HOJE)
+        self.assertEqual([r["id"] for r in movimento].count(id_), 1)
+        self.assertNotIn("Hugo Neves", [r["nome"] for r in movimento])
+
+    def test_movimento_usa_indice_em_todas_as_partes(self):
+        con = sqlite3.connect(self.caminho_db)
+        plano = " ".join(str(linha[3]) for linha in con.execute(
+            "EXPLAIN QUERY PLAN SELECT id FROM registros "
+            "WHERE saida >= '2026-10-16 00:00' AND saida < '2026-10-17 00:00' "
+            "AND +entrada < '2026-10-16 00:00'"))
+        con.close()
+        self.assertIn("idx_registros_saida", plano)
+        self.assertNotIn("SCAN registros", plano)
+
+    def test_busca_pelo_cpf_completo_usa_o_indice(self):
+        """QA2 M5: com 100 mil visitas a busca de um CPF varria a tabela
+        (0,25 s por consulta)."""
+        condicao, params = dados._condicao_busca(
+            "529.982.247-25", "registros", dados.COLUNAS_BUSCA)
+        con = sqlite3.connect(self.caminho_db)
+        plano = " ".join(str(linha[3]) for linha in con.execute(
+            f"EXPLAIN QUERY PLAN SELECT id FROM registros WHERE {condicao} "
+            "ORDER BY entrada DESC, id DESC LIMIT 200", params))
+        con.close()
+        self.assertIn("idx_registros_cpf", plano)
+        self.assertNotIn("SCAN registros USING INDEX idx_registros_entrada",
+                         plano)
 
     def test_buscar_registros_igual_ao_filtrar(self):
         todos = self.banco.listar()
@@ -833,6 +1021,24 @@ class TestConsultasNoBanco(BaseTemp):
                 self.assertEqual(self.banco.buscar_pessoas(texto),
                                  filtrar(pessoas, texto))
 
+    def test_porteiro_so_acha_cpf_pelos_11_digitos(self):
+        """QA2 M2: com pedaços do CPF, o porteiro (que vê ***.982.247-**)
+        reconstruía o número inteiro em umas 20 buscas."""
+        busca_do_porteiro = [
+            lambda t: self.banco.buscar_registros(t, so_cpf_completo=True),
+            lambda t: self.banco.buscar_pessoas(t, so_cpf_completo=True)]
+        for buscar in busca_do_porteiro:
+            for pedaco in ("982247", "5982247", "2998224", "529982247",
+                           "5299822472"):
+                with self.subTest(pedaco=pedaco):
+                    self.assertFalse(any(r["cpf"] == "52998224725"
+                                         for r in buscar(pedaco)))
+            self.assertTrue(all(r["cpf"] == "52998224725"
+                                for r in buscar("529.982.247-25")))
+            self.assertTrue(buscar("529.982.247-25"))
+        # o administrador continua achando por qualquer pedaço
+        self.assertTrue(self.banco.buscar_registros("982247"))
+
 
     def test_contadores_da_barra_lateral(self):
         self.criar_equipe()
@@ -840,7 +1046,8 @@ class TestConsultasNoBanco(BaseTemp):
         id_ = self.banco.bloquear("cpf", "11144477735", "Motivo válido", "ana")
         self.banco.desbloquear(id_, "ana")                     # removido não conta
         self.assertEqual(self.banco.contadores(),
-                         {"pessoas": 6, "no_campus": 2, "bloqueios": 1})
+                         {"pessoas": 6, "no_campus": 2, "bloqueios": 1,
+                          "veiculos": 0})
 
 
 class TestPermissoesNoBanco(BaseTemp):

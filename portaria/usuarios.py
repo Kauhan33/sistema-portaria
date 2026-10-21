@@ -7,12 +7,19 @@ guarda as tentativas erradas no banco (continuam valendo se o programa for
 fechado e aberto de novo) e registra o "Login recusado" sem gravar o texto
 digitado quando ele não é um login existente (pode ser uma senha digitada
 no campo errado).
+
+Autorização de exceção (diálogo do administrador na guarita):
+`conferir_autorizador`. Ele NÃO usa o contador do login (N04): errar a
+senha ali trava só o diálogo, naquela estação, e nunca o login do
+administrador (antes, 5 chutes no diálogo travavam o administrador em
+todas as estações, inclusive no login normal).
 """
 
 import hashlib
 import hmac
 import math
 import os
+import platform
 import re
 import time
 from datetime import datetime, timedelta
@@ -20,6 +27,10 @@ from datetime import datetime, timedelta
 from .validacao import converter_data, nome_valido
 
 PERFIS = {"admin": "Administrador", "porteiro": "Porteiro"}
+# Tema escolhido por cada usuário (menu da conta). "sistema" = seguir o
+# Windows. Os textos do menu ficam em estilo.PREFERENCIAS_TEMA.
+TEMAS = ("claro", "escuro", "sistema")
+TEMA_PADRAO = "sistema"
 SENHA_MINIMA = 8
 SENHA_MAXIMA = 128
 REGEX_LOGIN = re.compile(r"^[a-z0-9._]{3,20}$")
@@ -51,6 +62,10 @@ SENHAS_COMUNS = {
 # histórico não guarda o texto digitado (pode ser a senha no campo errado).
 CHAVE_LOGIN_INEXISTENTE = "*"
 LOGIN_INEXISTENTE = "(login inexistente)"
+# Contador do diálogo de autorização, um por estação (computador), na mesma
+# tabela das tentativas de login: o "@" não cabe num login, então as chaves
+# nunca se misturam com as dos usuários.
+CHAVE_AUTORIZACAO = "autorizacao@{}"
 
 
 # ------------------------------------------------------------------
@@ -226,7 +241,7 @@ def entrar(banco, login, senha, agora=None):
     if _conferir(banco, u, senha):
         if falhas or bloqueios:
             banco.gravar_tentativas_login(chave, 0, 0, None)
-        return {k: u[k] for k in ("id", "login", "nome", "perfil")}, ""
+        return {k: u[k] for k in ("id", "login", "nome", "perfil", "tema")}, ""
 
     falhas += 1
     motivo = "Usuário ou senha incorretos."
@@ -241,6 +256,62 @@ def entrar(banco, login, senha, agora=None):
     else:
         banco.gravar_tentativas_login(chave, falhas, bloqueios, None)
         banco.registrar_evento(quem, "Login recusado")
+    return None, motivo
+
+
+def estacao_atual():
+    """Nome deste computador (identifica a estação no contador e no
+    histórico da autorização)."""
+    return platform.node() or "esta estação"
+
+
+def conferir_autorizador(banco, login, senha, estacao, operador, agora=None):
+    """
+    Confere quem autoriza uma exceção no diálogo "Autorização do
+    administrador". Devolve (usuario, "") ou (None, motivo).
+
+    N04: as senhas erradas contam num contador PRÓPRIO da estação
+    (CHAVE_AUTORIZACAO), com a mesma espera crescente do login. Depois de
+    LIMITE_TENTATIVAS erros seguidos, o diálogo fica travado nesta estação;
+    o login do administrador continua funcionando em todas (inclusive
+    nesta). O contador fica no banco: fechar e abrir o programa não zera.
+    Cada senha errada vira "Autorização recusada" no histórico, e a trava,
+    "Autorização travada", com quem estava operando como autor (o texto
+    digitado só aparece se for um login que existe).
+    """
+    agora = agora or datetime.now()
+    login = normalizar_login(login or "")
+    if not login or not senha:
+        return None, "Informe o login e a senha do administrador."
+    chave = CHAVE_AUTORIZACAO.format(estacao)
+    falhas, bloqueios, bloqueado_ate = banco.ler_tentativas_login(chave)
+    if bloqueado_ate is not None and bloqueado_ate > agora:
+        restante = math.ceil((bloqueado_ate - agora).total_seconds())
+        return None, (f"Muitas senhas erradas nesta estação: a autorização "
+                      f"fica travada por mais {restante} s.\nO login do "
+                      "administrador não foi afetado.")
+    u = banco.buscar_usuario(login)
+    if _conferir(banco, u, senha):
+        if falhas or bloqueios:
+            banco.gravar_tentativas_login(chave, 0, 0, None)
+        return {k: u[k] for k in ("id", "login", "nome", "perfil")}, ""
+    falhas += 1
+    quem = u["login"] if u else LOGIN_INEXISTENTE
+    motivo = "Usuário ou senha incorretos."
+    if falhas >= LIMITE_TENTATIVAS:
+        segundos = segundos_de_bloqueio(bloqueios)
+        banco.gravar_tentativas_login(chave, 0, bloqueios + 1,
+                                      agora + timedelta(seconds=segundos))
+        banco.registrar_evento(operador, "Autorização travada",
+                               f"{LIMITE_TENTATIVAS} senhas erradas seguidas "
+                               f"(última para {quem}) na estação {estacao}; "
+                               f"diálogo travado por {segundos} s")
+        motivo += ("\nMuitas senhas erradas: a autorização fica travada "
+                   f"nesta estação por {segundos} s.")
+    else:
+        banco.gravar_tentativas_login(chave, falhas, bloqueios, None)
+        banco.registrar_evento(operador, "Autorização recusada",
+                               f"Senha errada para {quem} na estação {estacao}")
     return None, motivo
 
 

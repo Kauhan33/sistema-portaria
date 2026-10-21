@@ -1,7 +1,7 @@
 """
 Banco de dados SQLite: pessoas, registros de acesso (visitas), usuários,
-histórico de ações (auditoria), tentativas de login, lista de bloqueio e
-migração do antigo arquivo JSON.
+histórico de ações (auditoria), tentativas de login, lista de bloqueio,
+configuração dos horários de acesso e migração do antigo arquivo JSON.
 
 Cada visita aponta para a pessoa (pessoa_id), mas guarda também uma cópia
 dos dados daquele dia: se a pessoa trocar de celular, o histórico antigo
@@ -23,18 +23,39 @@ Permissões (`autor` = login de quem faz, conferido NO BANCO):
   desativado com a sessão aberta não continua operando). Sem autor elas
   são chamadas internas (importação do JSON antigo, testes) e não vão
   para o histórico.
+
+Veículos (v8): o carro tem uma ESTADIA própria (estadias_veiculo), com
+entrada e saída independentes da visita. A visita com placa abre a estadia
+(o responsável é a pessoa dela); a pessoa pode sair a pé e deixar o carro,
+voltar a pé (ou com outro carro) e depois sair com ele. Uma placa só tem
+uma estadia aberta por vez (índice único). Excluir a visita de origem NÃO
+tira do estacionamento o carro que ainda está lá (a estadia aberta só
+perde a ligação com a visita); as encerradas vão junto (ON DELETE
+CASCADE). Corrigir a placa, o CPF ou a entrada de uma visita aberta
+corrige a estadia aberta por ela.
+
+Exceções de horário (horarios.py): a tela pede a autorização do
+administrador e a passa em `autorizacao` ({"autorizado_por", "regras",
+"justificativa"}). O banco confere de novo (defesa em profundidade): uma
+visita com mais de 24 h só é gravada com a autorização de um
+administrador ativo, e toda autorização vira um evento "Exceção
+autorizada" no histórico daquela visita, na mesma transação.
 """
 
 import json
 import logging
 import os
+import re
 import sqlite3
 from contextlib import closing, contextmanager
 from datetime import date, datetime, timedelta
 
-from .usuarios import LOGIN_INEXISTENTE, SESSAO_ENCERRADA, pode_editar
-from .validacao import (FORMATO, TIPOS_ACESSO, mascarar_cpf,
-                        mascarar_cpfs_no_texto, so_digitos)
+from . import horarios
+from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
+                       pode_editar)
+from .validacao import (FORMATO, TIPOS_ACESSO, formatar_placa, mascarar_cpf,
+                        mascarar_cpfs_no_texto, normalizar, so_digitos,
+                        validar)
 
 FORMATO_ISO = "%Y-%m-%d %H:%M"
 FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
@@ -43,9 +64,21 @@ FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
 # 5: + bloqueios (lista de CPFs e placas com acesso negado)
 # 6: uma visita aberta por CPF garantida no banco, índices de desempenho
 #    e tentativas de login guardadas no banco
-VERSAO_ESQUEMA = 6
+# 7: índice das saídas (o Movimento mostra também quem saiu hoje) e
+#    configuração dos horários de acesso (funcionamento, feriados, eventos,
+#    regras por categoria e parâmetros)
+# 8: tolerância de cada categoria depois do fechamento, padrões novos das
+#    regras de horário (ninguém entra depois de fechar, retroativo de 3 h)
+#    e as estadias de veículo (o carro tem entrada e saída próprias)
+# 9: tema (claro, escuro ou seguir o Windows) escolhido por cada usuário
+# 10: tabela meta com a versão do esquema, que um programa antigo não
+#     conhece: se ele rebaixar o user_version, o programa novo percebe
+VERSAO_ESQUEMA = 10
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
+REGISTRO_MUDOU = ("Este registro foi alterado em outra estação enquanto a "
+                  "correção estava aberta (por exemplo, recebeu a saída).\n"
+                  "Nada foi gravado. Feche a janela e abra a correção de novo.")
 
 log = logging.getLogger("portaria.dados")
 log.addHandler(logging.NullHandler())   # sem log configurado, não imprime nada
@@ -143,6 +176,19 @@ FROM pessoas p LEFT JOIN registros r ON r.pessoa_id = p.id
 """
 
 COLUNAS_REGISTRO = "id, nome, cpf, celular, placa, tipo, entrada, saida"
+# Busca (visitas e pessoas): texto no nome, tipo e placa; dígitos no CPF
+# e no celular
+COLUNAS_BUSCA = {"texto": ("nome", "tipo", "placa"),
+                 "digitos": ("cpf", "celular")}
+
+# Estadia de veículo com o tipo de acesso do responsável (da visita de
+# origem ou, se ela foi apagada, do cadastro) e se ele está no campus
+COLUNAS_ESTADIA = """e.id, e.placa, e.cpf, e.nome, e.entrada, e.saida,
+    e.registro_id, COALESCE(r.tipo, p.tipo, ''),
+    EXISTS (SELECT 1 FROM registros a WHERE a.cpf = e.cpf AND a.saida = '')"""
+DE_ESTADIAS = """FROM estadias_veiculo e
+    LEFT JOIN registros r ON r.id = e.registro_id
+    LEFT JOIN pessoas p ON p.id = e.pessoa_id"""
 
 
 class ErroDados(Exception):
@@ -180,6 +226,10 @@ def mensagem_amigavel(erro):
                     "Registre a saída antes de uma nova entrada.")
         if "usuarios.login" in texto:
             return "Já existe um usuário com esse login."
+        if "estadias_veiculo.placa" in texto:
+            return ("Este veículo já está no estacionamento.\n"
+                    "Registre a saída dele pela placa antes de uma nova "
+                    "entrada com ele.")
         if "bloqueios.tipo" in texto:
             return "Este CPF ou placa já está bloqueado."
         if "foreign key" in texto:
@@ -240,21 +290,48 @@ def _registro(linha):
             "saida": de_iso(saida)}
 
 
-def _condicao_busca(texto, colunas):
+def _estadia(linha):
+    i, placa, cpf, nome, entrada, saida, registro_id, tipo, dentro = linha
+    return {"id": i, "placa": placa, "cpf": cpf, "nome": nome,
+            "entrada": de_iso(entrada), "saida": de_iso(saida),
+            "registro_id": registro_id, "tipo": tipo,
+            "responsavel_dentro": bool(dentro)}
+
+
+def _condicao_busca(texto, tabela, colunas, so_cpf_completo=False):
     """
     WHERE da busca com o MESMO critério de consultas.filtrar: o texto (em
     minúsculas) contido no nome, tipo ou placa, ou os dígitos dele contidos
     no CPF ou celular. Devolve (sql, parametros); sql vazio = sem filtro.
+
+    so_cpf_completo (porteiro, que vê o CPF mascarado): o CPF só é achado
+    pelos 11 dígitos exatos. Com pedaços, a busca respondia sobre os
+    dígitos escondidos e o CPF inteiro saía em umas 20 buscas (QA2 M2).
+    11 dígitos num campo de 11 dígitos é o mesmo que igualdade: `cpf = ?`
+    usa o índice.
     """
     texto = texto.strip().lower()
     if not texto:
         return "", []
     numeros = so_digitos(texto)
+    if len(numeros) == 11 and re.fullmatch(r"[\d.\-\s]+", texto):
+        # CPF ou celular completo: nome, tipo e placa não têm 11 dígitos
+        # seguidos. Pelo índice do CPF (com OR o SQLite varria a tabela
+        # inteira pela ordem da entrada: 0,25 s com 100 mil visitas)
+        partes = " UNION ".join(f"SELECT id FROM {tabela} WHERE {c} = ?"
+                                for c in colunas["digitos"])
+        return f"id IN ({partes})", [numeros] * len(colunas["digitos"])
     partes = [f"instr(minusculo({c}), ?) > 0" for c in colunas["texto"]]
     params = [texto] * len(colunas["texto"])
     if numeros:
-        partes += [f"instr({c}, ?) > 0" for c in colunas["digitos"]]
-        params += [numeros] * len(colunas["digitos"])
+        for c in colunas["digitos"]:
+            if c.endswith("cpf") and (len(numeros) == 11 or so_cpf_completo):
+                if len(numeros) == 11:
+                    partes.append(f"{c} = ?")
+                    params.append(numeros)
+                continue
+            partes.append(f"instr({c}, ?) > 0")
+            params.append(numeros)
     return "(" + " OR ".join(partes) + ")", params
 
 
@@ -379,18 +456,283 @@ def _passo_v6(banco, con, versao):
     con.execute("ANALYZE")
 
 
-# (versão alcançada, função) em ordem; uma migração nova entra no fim
-MIGRACOES = [(5, _passo_v5), (6, _passo_v6)]
+ESQUEMA_V7 = [
+    # horário do campus por dia da semana (0 = segunda); vazio = fechado
+    """CREATE TABLE IF NOT EXISTS funcionamento (
+        dia    INTEGER PRIMARY KEY CHECK (dia BETWEEN 0 AND 6),
+        abre   TEXT NOT NULL DEFAULT '',     -- 'HH:MM'
+        fecha  TEXT NOT NULL DEFAULT '',
+        CHECK ((abre = '' AND fecha = '') OR (abre <> '' AND fecha > abre))
+    )""",
+    """CREATE TABLE IF NOT EXISTS feriados (
+        data      TEXT PRIMARY KEY,          -- 'AAAA-MM-DD'
+        descricao TEXT NOT NULL CHECK (descricao <> '')
+    )""",
+    # evento: horário especial que soma ao funcionamento da data
+    """CREATE TABLE IF NOT EXISTS eventos (
+        data      TEXT PRIMARY KEY,
+        abre      TEXT NOT NULL,
+        fecha     TEXT NOT NULL,
+        descricao TEXT NOT NULL CHECK (descricao <> ''),
+        CHECK (fecha > abre)
+    )""",
+    """CREATE TABLE IF NOT EXISTS regras_categoria (
+        tipo            TEXT PRIMARY KEY,
+        relativa        INTEGER NOT NULL CHECK (relativa IN (0, 1)),
+        abre_antes      INTEGER NOT NULL DEFAULT 0,
+        fecha_depois    INTEGER NOT NULL DEFAULT 0,
+        janela_abre     TEXT NOT NULL DEFAULT '',
+        janela_fecha    TEXT NOT NULL DEFAULT '',
+        ate_fechamento  INTEGER NOT NULL DEFAULT 0 CHECK (ate_fechamento IN (0, 1)),
+        permanencia_min INTEGER NOT NULL CHECK (permanencia_min >= 0),
+        CHECK (relativa = 1 OR janela_fecha > janela_abre)
+    )""",
+    # minutos_aviso (antes de fechar) e horas_retroativo
+    """CREATE TABLE IF NOT EXISTS parametros (
+        chave TEXT PRIMARY KEY,
+        valor INTEGER NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_registros_saida ON registros (saida)",
+]
+
+
+def _passo_v7(banco, con, versao):
+    """
+    - índice das saídas: o Movimento passa a mostrar também quem SAIU hoje
+      (ex.: entrada corrigida para outro dia e saída registrada agora), sem
+      varrer a tabela inteira;
+    - tabelas da configuração dos horários de acesso, já com os horários
+      padrão (horarios.configuracao_padrao), que o administrador muda na
+      página Configurações.
+    """
+    for sql in ESQUEMA_V7:
+        con.execute(sql)
+    padrao = horarios.configuracao_padrao()
+    for dia, horario in padrao.funcionamento.items():
+        con.execute("INSERT INTO funcionamento (dia, abre, fecha) VALUES "
+                    "(?, ?, ?) ON CONFLICT (dia) DO NOTHING",
+                    (dia, *_horario_iso(horario)))
+    for tipo, regra in padrao.regras.items():     # a tolerância vem na v8
+        con.execute("INSERT INTO regras_categoria " + _COLUNAS_REGRA_V7 +
+                    " ON CONFLICT (tipo) DO NOTHING",
+                    (tipo, *_regra_iso(regra)[:-1]))
+    for chave, valor in _parametros(padrao).items():
+        con.execute("INSERT INTO parametros (chave, valor) VALUES (?, ?) "
+                    "ON CONFLICT (chave) DO NOTHING", (chave, valor))
+    con.execute("ANALYZE")
+
+
+_COLUNAS_REGRA_V7 = ("(tipo, relativa, abre_antes, fecha_depois, janela_abre, "
+                     "janela_fecha, ate_fechamento, permanencia_min) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+_COLUNAS_REGRA = ("(tipo, relativa, abre_antes, fecha_depois, janela_abre, "
+                  "janela_fecha, ate_fechamento, permanencia_min, "
+                  "tolerancia_min) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+
+# Padrões da v7 que mudaram na v8: só o que AINDA está no padrão antigo é
+# trocado (o que o administrador já tinha mudado fica como ele deixou).
+# (tabela, coluna, valor novo, condição que identifica o padrão antigo)
+PADROES_ANTIGOS_V8 = [
+    ("regras_categoria", "fecha_depois", 0,
+     "tipo = 'Funcionário' AND relativa = 1 AND fecha_depois = 60",
+     "Funcionário: entrada até o fechamento (era até 1 h depois)"),
+    ("regras_categoria", "permanencia_min", 0,
+     "tipo = 'Professor' AND ate_fechamento = 1 AND permanencia_min = 60",
+     "Professor: permanência até o fechamento (a hora extra virou a "
+     "tolerância de 30 min)"),
+    ("parametros", "valor", horarios.HORAS_RETROATIVO_PADRAO,
+     "chave = 'horas_retroativo' AND valor = 12",
+     f"Lançamento retroativo sem autorização: até "
+     f"{horarios.HORAS_RETROATIVO_PADRAO} h (era 12 h)"),
+]
+
+
+def _parametros(config):
+    return {"minutos_aviso": config.minutos_aviso,
+            "horas_retroativo": config.horas_retroativo}
+
+
+def _horario_iso(horario):
+    """Horario (ou None = fechado) -> ('HH:MM', 'HH:MM') para o banco."""
+    if horario is None:
+        return "", ""
+    return (horario.abre.strftime(horarios.FORMATO_HORA),
+            horario.fecha.strftime(horarios.FORMATO_HORA))
+
+
+def _regra_iso(regra):
+    """RegraCategoria -> valores das colunas (sem o tipo)."""
+    return (int(regra.relativa), regra.abre_antes, regra.fecha_depois,
+            *_horario_iso(regra.janela), int(regra.ate_fechamento),
+            regra.permanencia_min, regra.tolerancia_min)
+
+
+def _horario_do_banco(abre, fecha):
+    if not abre:
+        return None
+    return horarios.Horario(horarios.hora(abre), horarios.hora(fecha))
+
+
+def _descrever_evento(evento):
+    return (f"{evento.data:{horarios.FORMATO_DATA}} {evento.horario} — "
+            f"{evento.descricao}")
+
+
+def _duracao_iso(entrada, saida):
+    """Exceções do limite de 24 h, com as datas ISO do banco."""
+    if not saida:
+        return []
+    return horarios.excecoes_da_duracao(datetime.strptime(entrada, FORMATO_ISO),
+                                        datetime.strptime(saida, FORMATO_ISO))
+
+
+ESQUEMA_V8 = [
+    """CREATE TABLE IF NOT EXISTS estadias_veiculo (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        placa       TEXT NOT NULL CHECK (placa <> ''),
+        cpf         TEXT NOT NULL CHECK (length(cpf) = 11),  -- responsável
+        nome        TEXT NOT NULL,          -- nome do responsável na entrada
+        pessoa_id   INTEGER REFERENCES pessoas (id),
+        registro_id INTEGER REFERENCES registros (id) ON DELETE CASCADE,
+        entrada     TEXT NOT NULL,          -- ISO
+        saida       TEXT NOT NULL DEFAULT '',
+        -- visita com que o carro saiu (para o Desfazer da saída)
+        registro_saida_id INTEGER REFERENCES registros (id) ON DELETE SET NULL,
+        autor_entrada TEXT NOT NULL DEFAULT '',
+        autor_saida   TEXT NOT NULL DEFAULT '',
+        CHECK (saida = '' OR saida >= entrada)
+    )""",
+    # o mesmo carro não "entra" duas vezes: uma estadia aberta por placa
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_uma_estadia_aberta_por_placa
+        ON estadias_veiculo (placa) WHERE saida = ''""",
+    """CREATE INDEX IF NOT EXISTS idx_estadias_abertas_cpf
+        ON estadias_veiculo (cpf) WHERE saida = ''""",
+    """CREATE INDEX IF NOT EXISTS idx_estadias_registro
+        ON estadias_veiculo (registro_id)""",
+    """CREATE INDEX IF NOT EXISTS idx_estadias_registro_saida
+        ON estadias_veiculo (registro_saida_id)""",
+]
+
+# Cada visita aberta com placa vira uma estadia aberta. Se a mesma placa
+# está em mais de uma visita aberta (caronas, antes da v8), o responsável é
+# quem entrou primeiro com ela. Pode rodar de novo (banco rebaixado por um
+# programa antigo, QA2 B3): placa já no estacionamento ou visita que já
+# tem estadia não ganham outra.
+MIGRAR_ESTADIAS = f"""
+INSERT INTO estadias_veiculo (placa, cpf, nome, pessoa_id, registro_id,
+                              entrada, autor_entrada)
+SELECT r.placa, r.cpf, r.nome, r.pessoa_id, r.id, r.entrada, '{AUTOR_SISTEMA}'
+FROM registros r
+WHERE r.saida = '' AND r.placa <> ''
+  AND r.id = (SELECT r2.id FROM registros r2
+              WHERE r2.saida = '' AND r2.placa = r.placa
+              ORDER BY r2.entrada, r2.id LIMIT 1)
+  AND NOT EXISTS (SELECT 1 FROM estadias_veiculo e
+                  WHERE (e.saida = '' AND e.placa = r.placa)
+                     OR e.registro_id = r.id)
+"""
+
+
+def _passo_v8(banco, con, versao):
+    """
+    Regras de horário revistas pelo aluno:
+    - coluna da tolerância depois do fechamento (30 min para professor e
+      funcionário: só eles ficam um pouco além do fechamento sem virar
+      "Saída pendente");
+    - padrões novos (PADROES_ANTIGOS_V8), trocados só onde o valor ainda
+      era o padrão antigo. O que mudou vai num aviso para o administrador;
+    - estadias de veículo, já com os carros de quem está no campus.
+    """
+    for sql in ESQUEMA_V8:
+        con.execute(sql)
+    con.execute(MIGRAR_ESTADIAS)
+    colunas = {c[1] for c in con.execute("PRAGMA table_info(regras_categoria)")}
+    if "tolerancia_min" in colunas:
+        return          # já era v8 (rebaixado por um programa antigo)
+    con.execute("ALTER TABLE regras_categoria ADD COLUMN tolerancia_min "
+                "INTEGER NOT NULL DEFAULT 0 CHECK (tolerancia_min >= 0)")
+    padrao = horarios.configuracao_padrao()
+    for tipo, regra in padrao.regras.items():
+        if regra.tolerancia_min:
+            con.execute("UPDATE regras_categoria SET tolerancia_min = ? "
+                        "WHERE tipo = ?", (regra.tolerancia_min, tipo))
+    mudancas = []
+    for tabela, coluna, valor, condicao, descricao in PADROES_ANTIGOS_V8:
+        cursor = con.execute(f"UPDATE {tabela} SET {coluna} = ? "
+                             f"WHERE {condicao}", (valor,))
+        if cursor.rowcount:
+            mudancas.append(descricao)
+    if versao >= 7 and mudancas:
+        banco.avisos.append(
+            "Regras de horário atualizadas para os novos padrões:\n• "
+            + "\n• ".join(mudancas)
+            + "\nProfessor e funcionário têm 30 min de tolerância depois do "
+              "fechamento. Confira em Configurações.")
+
+
+def _passo_v9(banco, con, versao):
+    """Coluna do tema de cada usuário. Usuário novo começa em "seguir o
+    Windows"; quem já existia começa em "claro", que é como o programa
+    sempre abriu: nada muda para ele até escolher outro tema no menu da
+    conta."""
+    colunas = {c[1] for c in con.execute("PRAGMA table_info(usuarios)")}
+    if "tema" in colunas:
+        return
+    lista = ", ".join(f"'{t}'" for t in TEMAS)
+    con.execute(f"ALTER TABLE usuarios ADD COLUMN tema TEXT NOT NULL "
+                f"DEFAULT '{TEMA_PADRAO}' CHECK (tema IN ({lista}))")
+    if versao > 0:
+        con.execute("UPDATE usuarios SET tema = 'claro'")
+
+
+def _passo_v10(banco, con, versao):
+    """Tabela meta: guarda a versão do esquema num lugar que os programas
+    antigos não conhecem (eles só olham o PRAGMA user_version). O programa
+    das versões 5 e 6 regravava o user_version sem conferir; com a meta, o
+    programa novo percebe o rebaixamento (ver Banco._migrar)."""
+    con.execute("""CREATE TABLE IF NOT EXISTS meta (
+        chave TEXT PRIMARY KEY,
+        valor INTEGER NOT NULL
+    )""")
+
+
+# (versão alcançada, função) em ordem; uma migração nova entra no fim.
+# Cada passo pode rodar de novo sem estragar nada (banco rebaixado).
+MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7), (8, _passo_v8),
+             (9, _passo_v9), (10, _passo_v10)]
+
+VERSAO_MAIS_NOVA = ("Este banco de dados foi criado por uma versão mais nova "
+                    "do programa.\nAtualize o programa para abrir este banco "
+                    "(nada foi alterado nele).")
+REBAIXADO = ("Este banco foi aberto por uma versão ANTIGA do programa, que "
+             "rebaixou a versão dele (v{gravada} → v{versao}). O banco foi "
+             "atualizado de novo, com uma cópia em backups antes.\nConfira "
+             "os registros feitos na versão antiga e não use mais o "
+             "programa antigo neste banco.")
+
+
+def _versao_gravada(con):
+    """Versão do esquema guardada na tabela meta (0 se ainda não existe)."""
+    existe = con.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                         "AND name = 'meta'").fetchone()
+    if existe is None:
+        return 0
+    linha = con.execute("SELECT valor FROM meta WHERE chave = "
+                        "'versao_esquema'").fetchone()
+    return linha[0] if linha else 0
 
 
 class Banco:
-    def __init__(self, caminho, wal=True):
+    def __init__(self, caminho, wal=True, relogio=None):
         """
         Abre (e atualiza, se preciso) o banco. `wal=False` para banco em
         pasta de rede, onde o modo WAL do SQLite não funciona.
         `avisos` guarda mensagens da atualização para mostrar ao administrador.
+        `relogio`: função que devolve o agora (a tela passa o dela, para as
+        regras de horário e a RN11 usarem o mesmo relógio nos testes).
         """
         self.caminho = caminho
+        self.relogio = relogio or datetime.now
         self.avisos = []
         self._migrar(wal)
 
@@ -405,32 +747,55 @@ class Banco:
             raise _erro(e) from e
         try:
             versao = con.execute("PRAGMA user_version").fetchone()[0]
-            if versao > VERSAO_ESQUEMA:
-                raise ErroDados(
-                    "Este banco de dados foi criado por uma versão mais nova "
-                    "do programa.\nAtualize o programa para abrir este banco "
-                    "(nada foi alterado nele).",
-                    detalhe=f"user_version {versao} > {VERSAO_ESQUEMA}")
+            gravada = _versao_gravada(con)
+            if max(versao, gravada) > VERSAO_ESQUEMA:
+                raise ErroDados(VERSAO_MAIS_NOVA, detalhe=(
+                    f"user_version {versao}, meta {gravada} > {VERSAO_ESQUEMA}"))
+            if gravada > versao:
+                # um programa antigo (v5/v6) regravou o user_version: os
+                # passos rodam de novo (todos podem repetir) e o admin sabe
+                log.warning("Banco rebaixado: meta v%s, user_version v%s",
+                            gravada, versao)
+                self.avisos.append(REBAIXADO.format(gravada=gravada,
+                                                    versao=versao))
             if 0 < versao < VERSAO_ESQUEMA:
                 self._backup_antes_de_migrar(versao)
             for alvo, passo in MIGRACOES:
                 if versao >= alvo:
                     continue
-                con.execute("BEGIN IMMEDIATE")
-                try:
-                    passo(self, con, versao)
-                    con.execute(f"PRAGMA user_version = {int(alvo)}")
-                    con.execute("COMMIT")
-                except BaseException:
-                    con.execute("ROLLBACK")
-                    raise
+                self._passo(con, alvo, passo, versao)
                 versao = alvo
+            if gravada != VERSAO_ESQUEMA:
+                con.execute("INSERT INTO meta (chave, valor) VALUES "
+                            "('versao_esquema', ?) ON CONFLICT (chave) "
+                            "DO UPDATE SET valor = excluded.valor",
+                            (VERSAO_ESQUEMA,))
             if wal:
                 con.execute("PRAGMA journal_mode = WAL")
         except sqlite3.Error as e:
             raise _erro(e) from e
         finally:
             con.close()
+
+    def _passo(self, con, alvo, passo, versao):
+        """Um passo da migração numa transação; se falhar, nada muda e a
+        mensagem diz que foi a atualização (não um erro de cadastro)."""
+        con.execute("BEGIN IMMEDIATE")
+        try:
+            passo(self, con, versao)
+            con.execute(f"PRAGMA user_version = {int(alvo)}")
+            con.execute("COMMIT")
+        except sqlite3.IntegrityError as e:
+            con.execute("ROLLBACK")
+            log.error("Migração para a v%s recusada: %s", alvo, e)
+            raise ErroDados(
+                f"Não foi possível atualizar o banco de dados para a versão "
+                f"{alvo} (os dados atuais não passaram nas regras novas).\n"
+                "Nada foi alterado nele; há uma cópia na pasta backups. "
+                "Avise o administrador.", detalhe=str(e)) from e
+        except BaseException:
+            con.execute("ROLLBACK")
+            raise
 
     def _backup_antes_de_migrar(self, versao):
         """Cópia do banco antigo antes de mudar o esquema (pasta backups).
@@ -507,6 +872,42 @@ class Banco:
         return {"id": linha[0], "login": autor, "perfil": linha[1]}
 
     @classmethod
+    def _conferir_autorizacao(cls, con, autorizacao):
+        """
+        Exceção de horário: quem autoriza precisa ser administrador ativo
+        e a justificativa é obrigatória. Sem autorização, não faz nada.
+        """
+        if autorizacao is None:
+            return
+        if not autorizacao.get("autorizado_por"):
+            raise ErroDados("Falta o administrador que autorizou a exceção.")
+        cls._exigir(con, autorizacao["autorizado_por"],
+                    para="autorizar exceções de horário")
+        justificativa = autorizacao.get("justificativa", "").strip()
+        if len(justificativa) < horarios.MINIMO_JUSTIFICATIVA:
+            raise ErroDados("A exceção precisa de uma justificativa (pelo "
+                            f"menos {horarios.MINIMO_JUSTIFICATIVA} caracteres).")
+
+    @staticmethod
+    def _exigir_autorizacao_24h(acima_de_24h, autorizacao, nome):
+        """Defesa em profundidade: visita acima de 24 h só com autorização."""
+        if acima_de_24h and autorizacao is None:
+            raise ErroDados(f"{nome}: {acima_de_24h[0]}\nIsso só pode ser "
+                            "gravado com a autorização de um administrador.")
+
+    @classmethod
+    def _registrar_excecao(cls, con, autorizacao, autor, id_, nome):
+        """Evento "Exceção autorizada" no histórico da visita: quem
+        autorizou (usuário do evento), quem operava, as regras e o porquê."""
+        regras = " ".join(autorizacao.get("regras", []))
+        senha = (" Senha do administrador conferida."
+                 if autorizacao.get("com_senha") else "")
+        cls._evento(con, autorizacao["autorizado_por"], "Exceção autorizada",
+                    f"#{id_} {nome} — {regras} Justificativa: "
+                    f"{autorizacao['justificativa'].strip()}. "
+                    f"Operador: {autor or AUTOR_SISTEMA}.{senha}", id_)
+
+    @classmethod
     def _conferir_autor(cls, con, autor):
         """Escrita do dia a dia: o autor, quando informado, precisa existir
         e estar ativo. Sem autor é chamada interna (não vai ao histórico)."""
@@ -525,35 +926,40 @@ class Banco:
 
     def listar_movimento(self, hoje):
         """
-        Tabela principal: visitas com entrada no dia `hoje` (date) mais todas
-        as ainda abertas (quem está no campus), da entrada mais recente para
-        a mais antiga. Custo constante, não cresce com o histórico.
+        Tabela principal: o movimento do dia `hoje` (date) — visitas com
+        entrada hoje, todas as ainda abertas (quem está no campus) e as que
+        tiveram SAÍDA hoje mesmo com a entrada em outro dia (ex.: entrada
+        corrigida para fevereiro e saída registrada agora) —, da entrada mais
+        recente para a mais antiga. Custo constante, não cresce com o
+        histórico: cada parte usa um índice (entrada, aberta, saída).
         """
         inicio = _dia_iso(hoje)
         fim = _dia_iso((hoje.date() if isinstance(hoje, datetime) else hoje)
                        + timedelta(days=1))
-        # UNION ALL usa os dois índices; com OR viraria varredura da tabela.
-        # O '+' impede o índice de entrada na parte das abertas (seria pior).
+        # UNION ALL usa um índice por parte; com OR viraria varredura da
+        # tabela. As três partes não se repetem: a 2ª e a 3ª só pegam
+        # entradas de outros dias. O '+' impede o índice de entrada nelas.
         with self._conexao() as con:
             linhas = con.execute(
                 f"SELECT * FROM (SELECT {COLUNAS_REGISTRO} FROM registros "
                 "WHERE entrada >= ? AND entrada < ? "
                 f"UNION ALL SELECT {COLUNAS_REGISTRO} FROM registros "
-                "WHERE saida = '' AND (+entrada < ? OR +entrada >= ?)) "
+                "WHERE saida = '' AND (+entrada < ? OR +entrada >= ?) "
+                f"UNION ALL SELECT {COLUNAS_REGISTRO} FROM registros "
+                "WHERE saida >= ? AND saida < ? AND +entrada < ?) "
                 "ORDER BY entrada DESC, id DESC",
-                (inicio, fim, inicio, fim)).fetchall()
+                (inicio, fim, inicio, fim, inicio, fim, inicio)).fetchall()
         return [_registro(linha) for linha in linhas]
 
-    def buscar_registros(self, texto, limite=200):
+    def buscar_registros(self, texto, limite=200, so_cpf_completo=False):
         """
         Busca no histórico inteiro com o mesmo critério de consultas.filtrar
         (nome, tipo, placa; CPF e celular pelos dígitos), da visita mais
         recente para a mais antiga, no máximo `limite`. Texto vazio = as
-        mais recentes.
+        mais recentes. so_cpf_completo: ver _condicao_busca (porteiro).
         """
         condicao, params = _condicao_busca(
-            texto, {"texto": ("nome", "tipo", "placa"),
-                    "digitos": ("cpf", "celular")})
+            texto, "registros", COLUNAS_BUSCA, so_cpf_completo)
         where = f"WHERE {condicao}" if condicao else ""
         with self._conexao() as con:
             linhas = con.execute(
@@ -625,16 +1031,31 @@ class Banco:
                                      "WHERE saida = ''").fetchone()
             bloqueios, = con.execute("SELECT COUNT(*) FROM bloqueios "
                                      "WHERE ativo = 1").fetchone()
+            veiculos, = con.execute("SELECT COUNT(*) FROM estadias_veiculo "
+                                    "WHERE saida = ''").fetchone()
         return {"pessoas": pessoas, "no_campus": no_campus,
-                "bloqueios": bloqueios}
+                "bloqueios": bloqueios, "veiculos": veiculos}
 
-    def inserir(self, registro, autor=None):
-        """Grava um registro (datas no formato da tela) e devolve o id."""
+    def inserir(self, registro, autor=None, autorizacao=None):
+        """
+        Grava um registro (datas no formato da tela) e devolve o id. Com
+        `autorizacao`, a visita é uma exceção de horário autorizada.
+        """
         with self._conexao() as con:
             self._conferir_autor(con, autor)
+            self._conferir_autorizacao(con, autorizacao)
+            self._exigir_autorizacao_24h(
+                _duracao_iso(para_iso(registro["entrada"]),
+                             para_iso(registro.get("saida", ""))),
+                autorizacao, registro["nome"])
             id_ = self._inserir(con, registro)
             self._evento(con, autor, "Cadastro de entrada",
                          f"#{id_} {registro['nome']} ({registro['tipo']})", id_)
+            if registro.get("placa"):
+                self._abrir_estadia(con, registro, id_, autor)
+            if autorizacao:
+                self._registrar_excecao(con, autorizacao, autor, id_,
+                                        registro["nome"])
             return id_
 
     @staticmethod
@@ -676,26 +1097,55 @@ class Banco:
                 "placa = CASE WHEN ? <> '' THEN ? ELSE placa END WHERE id = ?",
                 (r["nome"], r["celular"], r["tipo"], placa, placa, pessoa))
 
-    def registrar_saida(self, id_registro, saida, autor=None):
+    def registrar_saida(self, id_registro, saida, autor=None, autorizacao=None):
         """Saída de uma visita; False se ela já tinha saída ou não existe."""
-        return bool(self.registrar_saidas([id_registro], saida, autor))
+        return bool(self.registrar_saidas([id_registro], saida, autor,
+                                          autorizacao))
 
-    def registrar_saidas(self, ids, saida, autor=None):
+    def registrar_saidas(self, ids, saida, autor=None, autorizacao=None,
+                         com_veiculo=()):
         """
         Saída de uma ou várias visitas na mesma transação; só das abertas.
         Devolve os ids que de fato receberam a saída (outra estação pode ter
-        dado a saída ou excluído a visita antes).
+        dado a saída ou excluído a visita antes). Visita que passaria de
+        24 h precisa da `autorizacao` (senão nada é gravado), e é a ela que
+        a "Exceção autorizada" fica ligada.
+
+        `com_veiculo`: as visitas que saem com o carro. Um dicionário
+        {id da visita: id da estadia} diz QUAL carro (a pessoa pode ter dois
+        no estacionamento); num conjunto de ids, sai o carro com que ela
+        entrou nesta visita ou, sem ele, o mais antigo dela.
+
+        Duas estações dando a saída da mesma visita: o UPDATE só grava se a
+        visita ainda estiver aberta, então a segunda não sobrescreve a
+        primeira (nem duplica o evento no histórico).
         """
+        escolhas = (com_veiculo if isinstance(com_veiculo, dict)
+                    else dict.fromkeys(com_veiculo))
         gravados = []
+        saida_iso = para_iso(saida)
         with self._conexao() as con:
             self._conferir_autor(con, autor)
+            self._conferir_autorizacao(con, autorizacao)
             for i in ids:
+                linha = con.execute("SELECT nome, entrada FROM registros "
+                                    "WHERE id = ? AND saida = ''", (i,)).fetchone()
+                if linha is None:
+                    continue
+                nome, entrada = linha
+                acima_de_24h = _duracao_iso(entrada, saida_iso)
+                self._exigir_autorizacao_24h(acima_de_24h, autorizacao, nome)
                 cursor = con.execute("UPDATE registros SET saida = ? "
-                                     "WHERE id = ? AND saida = ''",
-                                     (para_iso(saida), i))
-                if cursor.rowcount:
-                    gravados.append(i)
-                    self._evento(con, autor, "Saída registrada", f"#{i}", i)
+                                     "WHERE id = ? AND saida = ''", (saida_iso, i))
+                if not cursor.rowcount:      # outra estação chegou antes
+                    continue
+                gravados.append(i)
+                self._evento(con, autor, "Saída registrada", f"#{i}", i)
+                if acima_de_24h:
+                    self._registrar_excecao(con, autorizacao, autor, i, nome)
+                if i in escolhas:
+                    self._fechar_estadia_do_responsavel(con, i, saida_iso, autor,
+                                                        escolhas[i])
         return gravados
 
     def desfazer_saidas(self, ids, autor=None, saida=None):
@@ -711,6 +1161,9 @@ class Banco:
         with self._conexao() as con:
             self._conferir_autor(con, autor)
             for i in ids:
+                linha = con.execute("SELECT saida FROM registros WHERE id = ?",
+                                    (i,)).fetchone()
+                saida_antiga = linha[0] if linha else ""
                 cursor = con.execute(
                     "UPDATE registros SET saida = '' WHERE id = ? AND saida <> '' "
                     + so_esta +
@@ -721,11 +1174,24 @@ class Banco:
                 if cursor.rowcount:
                     desfeitas += 1
                     self._evento(con, autor, "Saída desfeita", f"#{i}", i)
+                    self._reabrir_estadias(con, "registro_saida_id = ?", i,
+                                           saida_antiga, autor)
         return desfeitas
 
     def excluir(self, ids, autor):
-        """Apaga os registros (RN02: só administrador); o histórico guarda o
-        que foi apagado, com o CPF mascarado."""
+        """
+        Apaga os registros (RN02: só administrador); o histórico guarda o
+        que foi apagado, com o CPF mascarado.
+
+        O carro que a visita trouxe e que AINDA ESTÁ no estacionamento não
+        some com ela: ele está fisicamente lá (RN25). A estadia aberta só
+        perde a ligação com a visita (o responsável continua pelo CPF e pelo
+        cadastro) e o histórico registra "Veículo mantido no
+        estacionamento"; o carro sai pela placa, como qualquer outro. As
+        estadias já encerradas daquela visita vão junto com ela. Devolve as
+        placas que continuaram no estacionamento.
+        """
+        mantidas = []
         with self._conexao() as con:
             self._exigir(con, autor, para="excluir registros")
             for i in ids:
@@ -734,11 +1200,23 @@ class Banco:
                     (i,)).fetchone()
                 if linha is None:
                     continue
-                con.execute("DELETE FROM registros WHERE id = ?", (i,))
                 nome, cpf, entrada, saida = linha
+                placas = [p for (p,) in con.execute(
+                    "SELECT placa FROM estadias_veiculo WHERE registro_id = ? "
+                    "AND saida = ''", (i,))]
+                con.execute("UPDATE estadias_veiculo SET registro_id = NULL "
+                            "WHERE registro_id = ? AND saida = ''", (i,))
+                con.execute("DELETE FROM registros WHERE id = ?", (i,))
+                for placa in placas:
+                    self._evento(con, autor, "Veículo mantido no estacionamento",
+                                 f"Placa {formatar_placa(placa)}: a visita #{i} "
+                                 f"de {nome} foi excluída e o carro continua no "
+                                 "estacionamento (sai pela placa).")
                 self._evento(con, autor, "Exclusão de registro",
                              f"#{i} {nome}, CPF {mascarar_cpf(cpf)}, entrada "
                              f"{de_iso(entrada)}, saída {de_iso(saida) or '—'}", i)
+                mantidas += placas
+        return mantidas
 
     def buscar(self, id_registro):
         """Um registro pelo id (datas no formato da tela), ou None."""
@@ -747,7 +1225,8 @@ class Banco:
                                 "WHERE id = ?", (id_registro,)).fetchone()
         return _registro(linha) if linha else None
 
-    def editar(self, id_registro, novo, alteracoes, autor):
+    def editar(self, id_registro, novo, alteracoes, autor, autorizacao=None,
+               original=None):
         """
         Corrige um registro e grava no histórico o que mudou (`alteracoes`,
         já descritas). Porteiro só corrige visitas com entrada (a original e
@@ -755,25 +1234,49 @@ class Banco:
         - se esta é a visita mais recente da pessoa, ela recebe os dados novos;
         - se o CPF mudou, a visita passa para a pessoa certa e a pessoa do
           CPF errado é removida se ficar sem nenhuma visita.
+        Exceção de horário: com `autorizacao` (obrigatória se as datas
+        mudarem e a visita passar de 24 h), grava a "Exceção autorizada".
+
+        `original`: o registro como a tela o leu ao abrir a correção. Se
+        outra estação mudou a visita nesse meio-tempo (ex.: deu a saída), a
+        correção é RECUSADA sem gravar nada (trava otimista: a condição vai
+        no próprio UPDATE). Antes, salvar só o nome reabria a visita e
+        apagava a saída dada pela outra estação.
         """
         with self._conexao() as con:
             usuario = self._exigir(con, autor, so_admin=False)
-            linha = con.execute("SELECT pessoa_id, nome, entrada FROM registros "
-                                "WHERE id = ?", (id_registro,)).fetchone()
+            self._conferir_autorizacao(con, autorizacao)
+            linha = con.execute("SELECT pessoa_id, nome, entrada, saida, placa "
+                                "FROM registros WHERE id = ?",
+                                (id_registro,)).fetchone()
             if linha is None:
                 raise ErroDados("Este registro não existe mais.")
             pessoa_antiga = linha[0]
-            agora = datetime.now()
+            agora = self.relogio()
             for entrada in (de_iso(linha[2]), novo["entrada"]):
                 ok, msg = pode_editar(usuario, {"entrada": entrada}, agora)
                 if not ok:
                     raise ErroDados(msg)
-            con.execute(
+            datas = (para_iso(novo["entrada"]), para_iso(novo["saida"]))
+            if datas != (linha[2], linha[3]):       # só se as datas mudaram
+                self._exigir_autorizacao_24h(_duracao_iso(*datas), autorizacao,
+                                             novo["nome"])
+            condicao, como_estava = "", ()
+            if original is not None:
+                condicao = (" AND nome = ? AND cpf = ? AND celular = ? AND "
+                            "placa = ? AND tipo = ? AND entrada = ? AND saida = ?")
+                como_estava = (original["nome"], original["cpf"],
+                               original["celular"], original.get("placa", ""),
+                               original["tipo"], para_iso(original["entrada"]),
+                               para_iso(original["saida"]))
+            cursor = con.execute(
                 "UPDATE registros SET nome = ?, cpf = ?, celular = ?, placa = ?, "
-                "tipo = ?, entrada = ?, saida = ? WHERE id = ?",
+                "tipo = ?, entrada = ?, saida = ? WHERE id = ?" + condicao,
                 (novo["nome"], novo["cpf"], novo["celular"], novo["placa"],
                  novo["tipo"], para_iso(novo["entrada"]), para_iso(novo["saida"]),
-                 id_registro))
+                 id_registro, *como_estava))
+            if not cursor.rowcount:
+                raise ErroDados(REGISTRO_MUDOU)
             # Pessoa do CPF (novo): cria se ainda não existe
             con.execute("INSERT INTO pessoas (cpf, nome, celular, placa, tipo) "
                         "VALUES (?, ?, ?, ?, ?) ON CONFLICT (cpf) DO NOTHING",
@@ -784,6 +1287,8 @@ class Banco:
             con.execute("UPDATE registros SET pessoa_id = ? WHERE id = ?",
                         (pessoa, id_registro))
             self._atualizar_pessoa_se_recente(con, pessoa, id_registro, novo)
+            self._sincronizar_estadia(con, id_registro, novo, linha[4],
+                                      pessoa, autor)
             if pessoa_antiga is not None and pessoa_antiga != pessoa:
                 con.execute("DELETE FROM pessoas WHERE id = ? AND NOT EXISTS "
                             "(SELECT 1 FROM registros WHERE pessoa_id = ?)",
@@ -791,6 +1296,9 @@ class Banco:
             self._evento(con, autor, "Registro corrigido",
                          f"#{id_registro} {linha[1]} — " + "; ".join(alteracoes),
                          id_registro)
+            if autorizacao:
+                self._registrar_excecao(con, autorizacao, autor, id_registro,
+                                        novo["nome"])
 
     def eventos_do_registro(self, id_registro):
         """Histórico de uma visita, do mais antigo para o mais recente."""
@@ -814,6 +1322,358 @@ class Banco:
                 "WHERE entrada >= ? AND entrada < ? ORDER BY entrada, id",
                 (_dia_iso(desde), _dia_iso(ate + timedelta(days=1)))).fetchall()
         return [_registro(linha) for linha in linhas]
+
+    def listar_abertas(self):
+        """Visitas sem saída (quem está no campus), da entrada mais recente
+        para a mais antiga: base do Painel (tempo excedido, pendentes)."""
+        with self._conexao() as con:
+            linhas = con.execute(f"SELECT {COLUNAS_REGISTRO} FROM registros "
+                                 "WHERE saida = '' "
+                                 "ORDER BY entrada DESC, id DESC").fetchall()
+        return [_registro(linha) for linha in linhas]
+
+    def encerrar_pendentes(self, agora, autor):
+        """
+        "Encerrar o dia" (só administrador): cada visita com SAÍDA PENDENTE
+        no momento `agora` recebe a saída no prazo dela (horarios.prazo_saida:
+        o fechamento do dia da entrada), com o evento "Saída automática
+        (encerramento)". Tudo numa transação. Devolve [(id, nome, saída)].
+        """
+        encerradas = []
+        with self._conexao() as con:
+            self._exigir(con, autor, para="encerrar o dia")
+            config = self._ler_configuracao(con)
+            abertas = con.execute(f"SELECT {COLUNAS_REGISTRO} FROM registros "
+                                  "WHERE saida = '' ORDER BY entrada, id")
+            for r in [_registro(linha) for linha in abertas.fetchall()]:
+                if horarios.situacao(config, r, agora) != horarios.SAIDA_PENDENTE:
+                    continue
+                prazo = horarios.prazo_saida(
+                    config, r["tipo"], datetime.strptime(r["entrada"], FORMATO))
+                saida = prazo.strftime(FORMATO_ISO)
+                cursor = con.execute("UPDATE registros SET saida = ? WHERE "
+                                     "id = ? AND saida = ''", (saida, r["id"]))
+                if not cursor.rowcount:   # a saída real veio de outra estação
+                    continue
+                self._evento(con, autor, "Saída automática (encerramento)",
+                             f"#{r['id']} {r['nome']}: saída marcada em "
+                             f"{de_iso(saida)}, prazo de saída do dia da "
+                             "entrada.", r["id"])
+                encerradas.append((r["id"], r["nome"], de_iso(saida)))
+        return encerradas
+
+    # --------------------------------------------------------------
+    # Estadias de veículo (o carro no estacionamento)
+    # --------------------------------------------------------------
+    @staticmethod
+    def _estadia_aberta(con, coluna, valor):
+        """Estadia aberta pela placa, pelo CPF do responsável (a mais
+        antiga), pelo id ou pela visita que a abriu, ou None."""
+        linha = con.execute(f"SELECT {COLUNAS_ESTADIA} {DE_ESTADIAS} "
+                            f"WHERE e.saida = '' AND e.{coluna} = ? "
+                            "ORDER BY e.entrada LIMIT 1", (valor,)).fetchone()
+        return _estadia(linha) if linha else None
+
+    def estadia_aberta(self, placa=None, cpf=None):
+        """O carro com essa placa (ou do responsável com esse CPF) que está
+        no estacionamento agora, ou None."""
+        with self._conexao() as con:
+            if placa:
+                return self._estadia_aberta(con, "placa", placa)
+            return self._estadia_aberta(con, "cpf", cpf)
+
+    def estadias_abertas_do_cpf(self, cpf):
+        """Os carros desse responsável no estacionamento (pode haver mais
+        de um: saiu a pé e voltou com outro), do mais antigo ao mais novo."""
+        with self._conexao() as con:
+            linhas = con.execute(f"SELECT {COLUNAS_ESTADIA} {DE_ESTADIAS} "
+                                 "WHERE e.saida = '' AND e.cpf = ? "
+                                 "ORDER BY e.entrada, e.id", (cpf,)).fetchall()
+        return [_estadia(linha) for linha in linhas]
+
+    def listar_estacionamento(self):
+        """Veículos no estacionamento (estadias abertas), do mais recente
+        para o mais antigo, com o tipo de acesso do responsável e se ele
+        está no campus."""
+        with self._conexao() as con:
+            linhas = con.execute(f"SELECT {COLUNAS_ESTADIA} {DE_ESTADIAS} "
+                                 "WHERE e.saida = '' "
+                                 "ORDER BY e.entrada DESC, e.id DESC").fetchall()
+        return [_estadia(linha) for linha in linhas]
+
+    @classmethod
+    def _abrir_estadia(cls, con, r, id_registro, autor):
+        """A visita chegou com o carro: abre a estadia dele (fechada junto,
+        se a visita já veio com saída). Placa já no estacionamento: recusa."""
+        aberta = cls._estadia_aberta(con, "placa", r["placa"])
+        if aberta is not None and not r.get("saida"):
+            raise ErroDados(
+                f"O veículo {formatar_placa(r['placa'])} já está no "
+                f"estacionamento desde {aberta['entrada']} (responsável: "
+                f"{aberta['nome']}).\nRegistre a saída dele pela placa ou "
+                "deixe a placa vazia (entrada a pé).")
+        saida = para_iso(r.get("saida", ""))
+        con.execute(
+            "INSERT INTO estadias_veiculo (placa, cpf, nome, pessoa_id, "
+            "registro_id, entrada, saida, registro_saida_id, autor_entrada, "
+            "autor_saida) SELECT ?, ?, ?, pessoa_id, id, entrada, saida, "
+            "CASE WHEN saida <> '' THEN id END, ?, ? FROM registros "
+            "WHERE id = ?",
+            (r["placa"], r["cpf"], r["nome"], autor or AUTOR_SISTEMA,
+             (autor or AUTOR_SISTEMA) if saida else "", id_registro))
+
+    @classmethod
+    def _fechar_estadia_do_responsavel(cls, con, id_registro, saida, autor,
+                                       id_estadia=None):
+        """Saída "de carro": fecha a estadia `id_estadia` (aberta e do
+        responsável da visita) ou, sem ela, a aberta por esta visita ou,
+        por fim, a mais antiga do responsável."""
+        cpf, nome = con.execute("SELECT cpf, nome FROM registros WHERE id = ?",
+                                (id_registro,)).fetchone()
+        estadia = None
+        if id_estadia is not None:
+            estadia = cls._estadia_aberta(con, "id", id_estadia)
+            if estadia is not None and estadia["cpf"] != cpf:
+                raise ErroDados("O carro escolhido não está com essa pessoa. "
+                                "Atualize a tela e tente de novo.")
+        estadia = (estadia or cls._estadia_aberta(con, "registro_id", id_registro)
+                   or cls._estadia_aberta(con, "cpf", cpf))
+        if estadia is None:
+            return
+        con.execute("UPDATE estadias_veiculo SET saida = ?, autor_saida = ?, "
+                    "registro_saida_id = ? WHERE id = ? AND saida = ''",
+                    (saida, autor or AUTOR_SISTEMA, id_registro, estadia["id"]))
+        cls._evento(con, autor, "Saída de veículo",
+                    f"Placa {formatar_placa(estadia['placa'])} saiu com "
+                    f"{nome} (#{id_registro}).", estadia["registro_id"])
+
+    def registrar_saida_veiculo(self, id_estadia, saida, autor=None):
+        """Só o carro sai (saída pela placa). False se ele já tinha saído."""
+        saida_iso = para_iso(saida)
+        with self._conexao() as con:
+            self._conferir_autor(con, autor)
+            linha = con.execute("SELECT placa, nome, registro_id "
+                                "FROM estadias_veiculo WHERE id = ? AND "
+                                "saida = ''", (id_estadia,)).fetchone()
+            if linha is None:
+                return False
+            placa, nome, registro_id = linha
+            con.execute("UPDATE estadias_veiculo SET saida = ?, autor_saida = ? "
+                        "WHERE id = ?", (saida_iso, autor or AUTOR_SISTEMA,
+                                         id_estadia))
+            self._evento(con, autor, "Saída de veículo",
+                         f"Placa {formatar_placa(placa)} saiu (responsável: "
+                         f"{nome}).", registro_id)
+            return True
+
+    def desfazer_saida_veiculos(self, ids, saida, autor=None):
+        """Desfaz a saída só do carro (botão Desfazer). Devolve quantas."""
+        with self._conexao() as con:
+            self._conferir_autor(con, autor)
+            return sum(self._reabrir_estadias(con, "id = ?", i, para_iso(saida),
+                                              autor) for i in ids)
+
+    @classmethod
+    def _reabrir_estadias(cls, con, condicao, valor, saida, autor):
+        """Volta para o estacionamento as estadias da condição que saíram
+        em `saida`, se a placa não tiver entrado de novo nesse meio-tempo."""
+        reabertas = 0
+        for id_, placa, registro_id in con.execute(
+                "SELECT id, placa, registro_id FROM estadias_veiculo "
+                f"WHERE {condicao} AND saida = ?", (valor, saida)).fetchall():
+            cursor = con.execute(
+                "UPDATE estadias_veiculo SET saida = '', autor_saida = '', "
+                "registro_saida_id = NULL WHERE id = ? AND NOT EXISTS (SELECT 1 "
+                "FROM estadias_veiculo o WHERE o.placa = ? AND o.saida = '')",
+                (id_, placa))
+            if cursor.rowcount:
+                reabertas += 1
+                cls._evento(con, autor, "Saída de veículo desfeita",
+                            f"Placa {formatar_placa(placa)}", registro_id)
+        return reabertas
+
+    @classmethod
+    def _sincronizar_estadia(cls, con, id_registro, novo, placa_da_visita,
+                             pessoa, autor):
+        """
+        Correção de uma visita mantém o carro dela coerente:
+        - estadia aberta por ela e placa apagada: era erro de digitação,
+          a estadia sai (fica no histórico);
+        - estadia aberta e placa ou entrada mudaram: corrige a estadia;
+        - visita aberta que ganhou placa: abre a estadia.
+        Estadia já fechada só acompanha o responsável (CPF digitado errado).
+        """
+        # o responsável acompanha a visita, mesmo nas estadias já fechadas
+        con.execute("UPDATE estadias_veiculo SET cpf = ?, nome = ?, "
+                    "pessoa_id = ? WHERE registro_id = ?",
+                    (novo["cpf"], novo["nome"], pessoa, id_registro))
+        linha = con.execute("SELECT id, placa, saida FROM estadias_veiculo "
+                            "WHERE registro_id = ? ORDER BY id DESC LIMIT 1",
+                            (id_registro,)).fetchone()
+        placa = novo["placa"]
+        if linha is None:
+            # só se a placa foi digitada agora (visita antiga, de carona,
+            # pode ter placa sem estadia)
+            if placa and placa != placa_da_visita and not novo["saida"]:
+                cls._abrir_estadia(con, novo, id_registro, autor)
+            return
+        id_estadia, placa_antiga, saida = linha
+        if saida:
+            return
+        if not placa:
+            con.execute("DELETE FROM estadias_veiculo WHERE id = ?", (id_estadia,))
+            cls._evento(con, autor, "Estadia de veículo removida",
+                        f"Placa {formatar_placa(placa_antiga)} apagada na "
+                        "correção da visita.", id_registro)
+            return
+        if placa != placa_antiga:
+            aberta = cls._estadia_aberta(con, "placa", placa)
+            if aberta is not None:
+                raise ErroDados(f"O veículo {formatar_placa(placa)} já está no "
+                                f"estacionamento desde {aberta['entrada']}.")
+        con.execute("UPDATE estadias_veiculo SET placa = ?, entrada = ? "
+                    "WHERE id = ?", (placa, para_iso(novo["entrada"]), id_estadia))
+
+    # --------------------------------------------------------------
+    # Configuração dos horários de acesso (página Configurações)
+    # --------------------------------------------------------------
+    def ler_configuracao(self):
+        """A configuração em vigor (horarios.Configuracao)."""
+        with self._conexao() as con:
+            return self._ler_configuracao(con)
+
+    @staticmethod
+    def _ler_configuracao(con):
+        padrao = horarios.configuracao_padrao()
+        funcionamento = dict(padrao.funcionamento)
+        for dia, abre, fecha in con.execute("SELECT dia, abre, fecha "
+                                            "FROM funcionamento"):
+            funcionamento[dia] = _horario_do_banco(abre, fecha)
+        regras = dict(padrao.regras)
+        for (tipo, relativa, antes, depois, j_abre, j_fecha, ate_fechamento,
+             minutos, tolerancia) in con.execute(
+                "SELECT tipo, relativa, abre_antes, fecha_depois, janela_abre, "
+                "janela_fecha, ate_fechamento, permanencia_min, tolerancia_min "
+                "FROM regras_categoria"):
+            regras[tipo] = horarios.RegraCategoria(
+                bool(relativa), antes, depois, _horario_do_banco(j_abre, j_fecha),
+                bool(ate_fechamento), minutos, tolerancia)
+        feriados = {date.fromisoformat(dia): descricao for dia, descricao
+                    in con.execute("SELECT data, descricao FROM feriados")}
+        eventos = {}
+        for dia, abre, fecha, descricao in con.execute(
+                "SELECT data, abre, fecha, descricao FROM eventos"):
+            eventos[date.fromisoformat(dia)] = horarios.Evento(
+                date.fromisoformat(dia), _horario_do_banco(abre, fecha),
+                descricao)
+        parametros = _parametros(padrao)
+        parametros.update(con.execute("SELECT chave, valor FROM parametros"))
+        return horarios.Configuracao(
+            funcionamento, regras, feriados, eventos,
+            parametros["minutos_aviso"], parametros["horas_retroativo"])
+
+    def salvar_funcionamento(self, funcionamento, autor):
+        """{dia: Horario ou None}; grava e registra só os dias que mudaram.
+        Devolve quantos mudaram."""
+        with self._conexao() as con:
+            self._exigir(con, autor, para="alterar as configurações")
+            antes = self._ler_configuracao(con).funcionamento
+            mudancas = []
+            for dia, horario in sorted(funcionamento.items()):
+                if horario == antes.get(dia):
+                    continue
+                con.execute("UPDATE funcionamento SET abre = ?, fecha = ? "
+                            "WHERE dia = ?", (*_horario_iso(horario), dia))
+                mudancas.append(
+                    f"{horarios.DIAS_SEMANA[dia]}: "
+                    f"{horarios.descrever_horario(antes.get(dia))} → "
+                    f"{horarios.descrever_horario(horario)}")
+            self._evento_de_configuracao(con, autor, "Funcionamento", mudancas)
+            return len(mudancas)
+
+    def salvar_regras(self, regras, autor):
+        """{tipo: RegraCategoria}; grava e registra só as que mudaram."""
+        with self._conexao() as con:
+            self._exigir(con, autor, para="alterar as configurações")
+            antes = self._ler_configuracao(con).regras
+            mudancas = []
+            for tipo, regra in regras.items():
+                if regra == antes.get(tipo):
+                    continue
+                con.execute("INSERT OR REPLACE INTO regras_categoria "
+                            + _COLUNAS_REGRA, (tipo, *_regra_iso(regra)))
+                mudancas.append(horarios.descrever_regra(tipo, regra))
+            self._evento_de_configuracao(con, autor, "Regras por categoria",
+                                         mudancas)
+            return len(mudancas)
+
+    def salvar_parametros(self, minutos_aviso, horas_retroativo, autor):
+        """Minutos do aviso antes de fechar e limite da entrada retroativa."""
+        novos = {"minutos_aviso": minutos_aviso,
+                 "horas_retroativo": horas_retroativo}
+        rotulos = {"minutos_aviso": ("Aviso antes de fechar", "min"),
+                   "horas_retroativo": ("Lançamento retroativo", "h")}
+        with self._conexao() as con:
+            self._exigir(con, autor, para="alterar as configurações")
+            antes = _parametros(self._ler_configuracao(con))
+            mudancas = []
+            for chave, valor in novos.items():
+                if valor == antes[chave]:
+                    continue
+                con.execute("INSERT OR REPLACE INTO parametros (chave, valor) "
+                            "VALUES (?, ?)", (chave, int(valor)))
+                rotulo, unidade = rotulos[chave]
+                mudancas.append(f"{rotulo}: {antes[chave]} → {valor} {unidade}")
+            self._evento_de_configuracao(con, autor, "Avisos e limites",
+                                         mudancas)
+            return len(mudancas)
+
+    def adicionar_feriado(self, dia, descricao, autor):
+        with self._conexao() as con:
+            self._exigir(con, autor, para="alterar as configurações")
+            con.execute("INSERT INTO feriados (data, descricao) VALUES (?, ?)",
+                        (dia.isoformat(), descricao.strip()))
+            self._evento_de_configuracao(
+                con, autor, "Feriado adicionado",
+                [f"{dia:{horarios.FORMATO_DATA}} — {descricao.strip()}"])
+
+    def remover_feriado(self, dia, autor):
+        with self._conexao() as con:
+            self._exigir(con, autor, para="alterar as configurações")
+            linha = con.execute("SELECT descricao FROM feriados WHERE data = ?",
+                                (dia.isoformat(),)).fetchone()
+            if linha is None:
+                raise ErroDados("Este feriado já foi removido.")
+            con.execute("DELETE FROM feriados WHERE data = ?", (dia.isoformat(),))
+            self._evento_de_configuracao(
+                con, autor, "Feriado removido",
+                [f"{dia:{horarios.FORMATO_DATA}} — {linha[0]}"])
+
+    def adicionar_evento(self, evento, autor):
+        with self._conexao() as con:
+            self._exigir(con, autor, para="alterar as configurações")
+            con.execute("INSERT INTO eventos (data, abre, fecha, descricao) "
+                        "VALUES (?, ?, ?, ?)",
+                        (evento.data.isoformat(), *_horario_iso(evento.horario),
+                         evento.descricao))
+            self._evento_de_configuracao(con, autor, "Evento adicionado",
+                                         [_descrever_evento(evento)])
+
+    def remover_evento(self, dia, autor):
+        with self._conexao() as con:
+            self._exigir(con, autor, para="alterar as configurações")
+            evento = self._ler_configuracao(con).eventos.get(dia)
+            if evento is None:
+                raise ErroDados("Este evento já foi removido.")
+            con.execute("DELETE FROM eventos WHERE data = ?", (dia.isoformat(),))
+            self._evento_de_configuracao(con, autor, "Evento removido",
+                                         [_descrever_evento(evento)])
+
+    @classmethod
+    def _evento_de_configuracao(cls, con, autor, assunto, mudancas):
+        if mudancas:
+            cls._evento(con, autor, "Configuração alterada",
+                        f"{assunto}: " + "; ".join(mudancas))
 
     # --------------------------------------------------------------
     # Lista de bloqueio
@@ -880,23 +1740,36 @@ class Banco:
                                  "ORDER BY p.nome COLLATE NOCASE").fetchall()
         return [self._pessoa(linha) for linha in linhas]
 
-    def buscar_pessoas(self, texto, limite=200):
+    def buscar_pessoas(self, texto, limite=200, so_cpf_completo=False):
         """
         Aba Pessoas sem carregar todo mundo: mesmo critério de
         consultas.filtrar (nome, tipo, placa; CPF e celular pelos dígitos),
-        em ordem alfabética, no máximo `limite`.
+        em ordem alfabética, no máximo `limite`. Passando do limite, quem
+        está no campus entra primeiro (a lista abre ordenada pela situação).
+        so_cpf_completo: ver _condicao_busca (porteiro).
         """
         condicao, params = _condicao_busca(
-            texto, {"texto": ("nome", "tipo", "placa"),
-                    "digitos": ("cpf", "celular")})
+            texto, "pessoas", COLUNAS_BUSCA, so_cpf_completo)
         where = f"WHERE {condicao}" if condicao else ""
         with self._conexao() as con:
             linhas = con.execute(
                 SELECT_PESSOAS + " WHERE p.id IN (SELECT id FROM pessoas "
-                f"{where} ORDER BY nome COLLATE NOCASE LIMIT ?) "
+                f"{where} ORDER BY NOT EXISTS (SELECT 1 FROM registros d "
+                "WHERE d.pessoa_id = pessoas.id AND d.saida = ''), "
+                "nome COLLATE NOCASE LIMIT ?) "
                 "GROUP BY p.id ORDER BY p.nome COLLATE NOCASE",
                 (*params, int(limite))).fetchall()
         return [self._pessoa(linha) for linha in linhas]
+
+    def visitas_da_pessoa(self, id_pessoa, limite=200):
+        """Visitas da pessoa (ficha da página Pessoas), da mais recente
+        para a mais antiga, com os dados preenchidos em cada uma."""
+        with self._conexao() as con:
+            linhas = con.execute(f"SELECT {COLUNAS_REGISTRO} FROM registros "
+                                 "WHERE pessoa_id = ? "
+                                 "ORDER BY entrada DESC, id DESC LIMIT ?",
+                                 (id_pessoa, int(limite))).fetchall()
+        return [_registro(linha) for linha in linhas]
 
     def buscar_pessoa(self, cpf):
         """Pessoa já cadastrada com esse CPF, ou None."""
@@ -933,13 +1806,25 @@ class Banco:
     def buscar_usuario(self, login):
         """Usuário com o hash da senha (só para conferir o login), ou None."""
         with self._conexao() as con:
-            linha = con.execute("SELECT id, login, nome, perfil, senha, ativo "
-                                "FROM usuarios WHERE login = ?", (login,)).fetchone()
+            linha = con.execute("SELECT id, login, nome, perfil, senha, ativo, "
+                                "tema FROM usuarios WHERE login = ?",
+                                (login,)).fetchone()
         if linha is None:
             return None
-        i, login, nome, perfil, senha, ativo = linha
+        i, login, nome, perfil, senha, ativo, tema = linha
         return {"id": i, "login": login, "nome": nome, "perfil": perfil,
-                "senha": senha, "ativo": bool(ativo)}
+                "senha": senha, "ativo": bool(ativo), "tema": tema}
+
+    def definir_tema(self, tema, autor):
+        """Cada usuário escolhe o PRÓPRIO tema (vale nos próximos logins).
+        Não vai para o histórico: é preferência de tela, não ação na
+        portaria."""
+        if tema not in TEMAS:
+            raise ErroDados("Tema desconhecido.", detalhe=repr(tema))
+        with self._conexao() as con:
+            self._exigir(con, autor, so_admin=False)
+            con.execute("UPDATE usuarios SET tema = ? WHERE login = ?",
+                        (tema, autor))
 
     def criar_usuario(self, nome, login, perfil, senha_hash, autor=None):
         """
@@ -1077,6 +1962,15 @@ class Banco:
         Copia os registros do JSON antigo para o banco, numa só transação, e
         renomeia o JSON para '.migrado' (fica de backup). Devolve um aviso
         para mostrar ao usuário, ou '' se não havia o que migrar.
+
+        Cada registro passa pelas MESMAS regras do cadastro (QA2 M3):
+        validacao.validar (nome, CPF, celular, placa, tipo, datas que
+        existem, não estão no futuro e são de 2000 em diante, sem cruzar
+        outra visita do CPF) e o limite de 24 h, que aqui não tem quem
+        autorize. O que não passa é ignorado e contado no aviso, com os
+        motivos. Visita aberta com placa abre a estadia do carro. O
+        histórico ganha "Importação do arquivo antigo" com as quantidades
+        (sem dados pessoais), feita por "(sistema)".
         """
         if not os.path.exists(caminho_json):
             return ""
@@ -1084,15 +1978,21 @@ class Banco:
         if aviso:
             return aviso
 
-        # Um registro que viola as regras da tabela é recusado sozinho;
-        # os demais continuam na mesma transação.
-        ignorados = 0
+        # Um registro recusado não impede os outros (mesma transação)
+        agora = self.relogio()
+        motivos = {}
         with self._conexao() as con:
-            for r in registros:
-                try:
-                    self._inserir(con, r)
-                except (KeyError, TypeError, ValueError, sqlite3.IntegrityError):
-                    ignorados += 1
+            for bruto in registros:
+                motivo = self._importar_registro(con, bruto, agora)
+                if motivo:
+                    motivos[motivo] = motivos.get(motivo, 0) + 1
+            ignorados = sum(motivos.values())
+            resumo = "; ".join(f"{m} ({n})" for m, n in sorted(
+                motivos.items(), key=lambda par: -par[1]))
+            self._evento(con, AUTOR_SISTEMA, "Importação do arquivo antigo",
+                         f"{len(registros) - ignorados} registro(s) importado(s)"
+                         f" de {os.path.basename(caminho_json)}; {ignorados} "
+                         "ignorado(s)" + (f": {resumo}" if resumo else "."))
 
         os.replace(caminho_json, caminho_json + ".migrado")
         aviso = (f"{len(registros) - ignorados} registro(s) do arquivo antigo "
@@ -1100,8 +2000,33 @@ class Banco:
         if ignorados:
             aviso += (f"\n{ignorados} registro(s) com dados inválidos não foram "
                       "importados; eles continuam no arquivo\n"
-                      f"{os.path.basename(caminho_json)}.migrado.")
+                      f"{os.path.basename(caminho_json)}.migrado.\n"
+                      f"Motivos: {resumo}.")
         return aviso
+
+    def _importar_registro(self, con, bruto, agora):
+        """Grava um registro do JSON antigo se ele passar nas regras do
+        cadastro. Devolve '' ou o motivo da recusa (sem dados pessoais)."""
+        if not isinstance(bruto, dict):
+            return "formato desconhecido"
+        campos = ("nome", "cpf", "celular", "placa", "tipo", "entrada", "saida")
+        r = normalizar(*(str(bruto.get(c) or "") for c in campos))
+        anteriores = [_registro(linha) for linha in con.execute(
+            f"SELECT {COLUNAS_REGISTRO} FROM registros WHERE cpf = ?",
+            (r["cpf"],))]
+        ok, msg = validar(r, anteriores, agora)
+        if not ok:
+            return msg.splitlines()[0].split(" (")[0].rstrip(".")
+        if _duracao_iso(para_iso(r["entrada"]), para_iso(r["saida"])):
+            return f"visita de mais de {horarios.LIMITE_VISITA_HORAS} h"
+        try:
+            id_ = self._inserir(con, r)
+        except sqlite3.IntegrityError:
+            return "recusado pelo banco"
+        if r["placa"] and not r["saida"] and \
+                self._estadia_aberta(con, "placa", r["placa"]) is None:
+            self._abrir_estadia(con, r, id_, AUTOR_SISTEMA)
+        return ""
 
 
 def ler_json(caminho):

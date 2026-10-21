@@ -72,6 +72,9 @@ NO_CAMPUS = "No campus"
 TEMPO_EXCEDIDO = "Tempo excedido"
 SAIDA_PENDENTE = "Saída pendente"
 SAIU = "Saiu"
+# Situação de um carro no estacionamento (estadia de veículo)
+NO_ESTACIONAMENTO = "No estacionamento"
+VEICULO_PENDENTE = "Veículo pendente"
 
 
 @dataclass(frozen=True)
@@ -379,6 +382,20 @@ def situacao(config, registro, agora):
     if agora > limite_permanencia(config, registro["tipo"], entrada):
         return TEMPO_EXCEDIDO
     return NO_CAMPUS
+
+
+def situacao_veiculo(config, estadia, agora):
+    """
+    RN25: o carro no estacionamento vira "Veículo pendente" no mesmo prazo
+    da visita do responsável (fechamento do dia em que o carro entrou + a
+    tolerância da categoria dele). Ao contrário da visita, o "Encerrar o
+    dia" não fecha a estadia: o carro está fisicamente lá, e só sai pela
+    placa quando alguém o tirar.
+    """
+    entrada = converter_data(estadia["entrada"])
+    if agora > prazo_saida(config, estadia["tipo"], entrada):
+        return VEICULO_PENDENTE
+    return NO_ESTACIONAMENTO
 
 
 def contar_situacoes(config, registros, agora):

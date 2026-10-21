@@ -905,6 +905,10 @@ class Seletor(tk.Frame):
         linha.place(relx=0, rely=1, relwidth=1, y=-1)
         linha.lower()              # o traço da seção ativa fica por cima
 
+    def definir_texto(self, opcao, texto):
+        """Troca o texto mostrado de uma opção (ex.: "Veículos (2)")."""
+        self.itens[opcao][0].config(text=texto)
+
     def selecionar(self, opcao):
         self.ativa = opcao
         for nome, (rotulo, traco) in self.itens.items():

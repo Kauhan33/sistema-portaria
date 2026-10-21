@@ -14,6 +14,7 @@ from portaria import dados
 from portaria.componentes import Botao
 from portaria.interface import AppPortaria
 from portaria.tela_autorizacao import JanelaAutorizacao
+from portaria.tela_veiculo import JanelaVeiculo
 from portaria.usuarios import (LIMITE_TENTATIVAS, MINUTOS_INATIVIDADE,
                                autenticar, gerar_hash)
 from portaria.validacao import FORMATO, converter_data
@@ -104,6 +105,24 @@ class BaseInterface(unittest.TestCase):
                 self.responder_autorizacao(dialogo)
 
         patcher = mock.patch.object(JanelaAutorizacao, "esperar", esperar)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # a pergunta do carro ("Saiu com o veículo?") também: sem resposta
+        # definida, escolhe o botão principal (saiu de carro / saiu junto);
+        # responder_veiculo = valor escolhido, ou None para Cancelar
+        self.perguntas_veiculo = []
+        self.responder_veiculo = "principal"
+
+        def esperar_veiculo(dialogo):
+            self.perguntas_veiculo.append(dialogo.janela.title())
+            if callable(self.responder_veiculo):
+                self.responder_veiculo(dialogo)
+            elif self.responder_veiculo == "principal":
+                dialogo.escolher(dialogo.opcoes[0][1])
+            elif self.responder_veiculo is not None:
+                dialogo.escolher(self.responder_veiculo)
+
+        patcher = mock.patch.object(JanelaVeiculo, "esperar", esperar_veiculo)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -303,7 +322,7 @@ class TestTelaPequena(BaseInterface):
         super().setUp()
         for i, cpf in enumerate(("52998224725", "11144477735", "39053344705",
                                  "15350946056", "71428793860")):
-            self.banco.inserir(dict(VISITA_ANTIGA, cpf=cpf, saida="",
+            self.banco.inserir(dict(VISITA_ANTIGA, cpf=cpf, saida="", placa="",
                                     entrada=agora_menos(10 * i + 5)))
         self.app.atualizar_tabela()
         self.janela.deiconify()
@@ -430,7 +449,8 @@ class TestDashboard(BaseInterface):
     def test_sem_registros_mostra_zeros(self):
         self.assertEqual(set(self.app.cards),
                          {"dentro", "hoje", "permanencia", "veiculos",
-                          "excedido"})
+                          "estacionamento", "excedido"})
+        self.assertEqual(self.valor("estacionamento"), "0")
         self.assertEqual(self.valor("excedido"), "0")
         self.assertEqual(self.valor("dentro"), "0")
         self.assertEqual(self.valor("hoje"), "0")
@@ -827,15 +847,20 @@ class TestSessaoExpiraComCaixaAberta(BaseInterface):
         self.assertNotIn("Exportação de registros", [a for _, a in self.acoes()])
         self.assert_sessao_encerrada_avisada()
 
-    def test_saida_rapida_de_varios(self):
-        for cpf in ("52998224725", "11144477735"):
-            self.preencher(cpf=cpf, placa="ABC1234")
-            self.app.cadastrar()
+    def test_saida_rapida_com_a_pergunta_do_carro(self):
+        # uma placa não entra duas vezes: a caixa aberta agora é a do carro
+        self.preencher(cpf="52998224725", placa="ABC1234")
+        self.app.cadastrar()
         tela = self.app.tela_cadastro
-        tela.campo_saida_rapida.insert(0, "ABC1234")
-        self.msg.askyesno.side_effect = self.expirar_e_responder(True)
+        tela.campo_saida_rapida.insert(0, "52998224725")
+
+        def expira(dialogo):
+            dialogo.escolher(dialogo.opcoes[0][1])       # "Saiu de carro"...
+            self.app.sair(inatividade=True)              # ...tarde demais
+        self.responder_veiculo = expira
         tela.saida_rapida()
         self.assertTrue(all(not r["saida"] for r in self.no_banco()))
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="ABC1234"))
         self.assert_sessao_encerrada_avisada()
 
     def test_inatividade_fecha_janelas_dentro_das_paginas(self):
@@ -1196,7 +1221,7 @@ class TestSaidaRapida(BaseInterface):
         super().setUp()
         entrada = ha_uma_hora()
         pessoas = [("Beto Rocha", "11144477735", "QWE1234"),
-                   ("Ana Silva", "52998224725", "QWE1234"),     # mesma carona
+                   ("Ana Silva", "52998224725", ""),     # carona: a pé
                    ("Duda Reis", "39053344705", "")]
         self.ids = {}
         for nome, cpf, placa in pessoas:
@@ -1233,15 +1258,17 @@ class TestSaidaRapida(BaseInterface):
         self.msg.showinfo.assert_not_called()      # não trava com caixinha
         self.assertIn(("paulo", "Saída registrada"), self.acoes())
 
-    def test_placa_de_duas_pessoas_pergunta_antes(self):
-        self.msg.askyesno.return_value = False
+    def test_placa_tira_o_carro_e_pergunta_pelo_responsavel(self):
+        self.responder_veiculo = None                  # Cancelar
         self.digitar("qwe-1234")
-        self.assertIn("Beto Rocha", self.msg.askyesno.call_args[0][1])
-        self.assertEqual((self.saida("Beto"), self.saida("Ana")), ("", ""))
-        self.msg.askyesno.return_value = True
+        self.assertEqual(self.perguntas_veiculo[0],
+                         "Beto saiu junto com o carro?")
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="QWE1234"))
+        self.responder_veiculo = "principal"           # "Saiu junto"
         self.digitar("qwe-1234")
-        self.assertTrue(self.saida("Beto") and self.saida("Ana"))
-        self.assertIn("Beto e Ana", self.aviso())
+        self.assertTrue(self.saida("Beto"))
+        self.assertIsNone(self.banco.estadia_aberta(placa="QWE1234"))
+        self.assertIn("Saída de Beto registrada", self.aviso())
 
     def test_cpf_ou_placa_sem_ninguem_dentro(self):
         for texto in ["12345678909", "111444777", "ZZZ9999"]:
@@ -1288,6 +1315,149 @@ class TestSaidaRapida(BaseInterface):
 
     def test_f2_vai_para_a_saida_rapida(self):
         self.assertTrue(self.janela.bind("<F2>"))
+
+
+class TestEstadiaDeVeiculo(BaseInterface):
+    """Saída parcial: o carro tem entrada e saída próprias."""
+    entrar_como = "porteiro"
+    CPF = "52998224725"
+
+    def setUp(self):
+        super().setUp()
+        self.preencher(cpf=self.CPF, placa="ABC1234", tipo="Professor")
+        self.app.cadastrar()
+        self.visita = self.no_banco()[0]["id"]
+        self.tela = self.app.tela_cadastro
+
+    def estadia(self):
+        return self.banco.estadia_aberta(placa="ABC1234")
+
+    def sair_pelo_cpf(self, resposta):
+        from portaria.tela_veiculo import A_PE, COM_CARRO
+        self.responder_veiculo = {"carro": COM_CARRO, "a_pe": A_PE}[resposta]
+        self.tela.campo_saida_rapida.insert(0, self.CPF)
+        self.tela.saida_rapida()
+
+    def test_entrada_com_placa_abre_a_estadia_do_carro(self):
+        estadia = self.estadia()
+        self.assertEqual((estadia["cpf"], estadia["registro_id"], estadia["entrada"]),
+                         (self.CPF, self.visita, agora_texto()))
+        self.assertEqual(self.tela.tabela_veiculos.get_children(),
+                         (str(estadia["id"]),))
+        self.assertEqual(self.tela.seletor_lista.itens["Veículos"][0].cget("text"),
+                         "Veículos (1)")
+
+    def test_placa_que_ja_esta_no_estacionamento_nao_entra_de_novo(self):
+        self.app.limpar()
+        self.preencher(cpf="11144477735", nome="Beto Rocha", placa="ABC1234")
+        self.assertIn("estacionamento", self.tela.lbl_placa_status.cget("text"))
+        self.app.cadastrar()
+        titulo, texto = self.msg.showerror.call_args[0]
+        self.assertEqual(titulo, "Veículo no estacionamento")
+        self.assertIn("O carro ABC-1234 já está no estacionamento desde 10:00",
+                      texto)
+        self.assertEqual(len(self.no_banco()), 1)
+
+    def test_saiu_de_carro_fecha_visita_e_estadia(self):
+        self.sair_pelo_cpf("carro")
+        self.assertEqual(self.perguntas_veiculo[0],
+                         "Saiu com o veículo ABC-1234?")
+        self.assertTrue(self.banco.buscar(self.visita)["saida"])
+        self.assertIsNone(self.estadia())
+        self.assertIn("(saiu de carro)", self.app.lbl_aviso.cget("text"))
+        self.assertIn(("paulo", "Saída de veículo"), self.acoes())
+
+    def test_saiu_a_pe_volta_a_pe_e_sai_de_carro(self):
+        self.sair_pelo_cpf("a_pe")
+        self.assertTrue(self.banco.buscar(self.visita)["saida"])
+        self.assertIsNotNone(self.estadia())                 # o carro fica
+        self.assertIn("a pé; o carro ABC-1234 fica", self.app.lbl_aviso.cget("text"))
+        linha = self.tela.tabela_veiculos.item(str(self.estadia()["id"]))
+        self.assertEqual(linha["values"][-1], "Fora do campus")
+        # volta (só o CPF): faixa do carro e entrada a pé
+        self.agora = AGORA + timedelta(hours=1)
+        self.app.limpar()
+        self.app.cpf.insert(0, self.CPF)
+        self.assertIn("O carro ABC-1234 está no estacionamento desde 10:00",
+                      self.app.lbl_pessoa.cget("text"))
+        self.assertEqual(self.app.var_placa.get(), "")       # não preencheu
+        self.app.cadastrar()
+        volta = max(r["id"] for r in self.no_banco())
+        self.assertEqual(self.banco.buscar(volta)["placa"], "")
+        # na saída seguinte, a pergunta de novo: agora sai de carro
+        self.tela.campo_saida_rapida.delete(0, tk.END)
+        self.sair_pelo_cpf("carro")
+        self.assertTrue(self.banco.buscar(volta)["saida"])
+        self.assertIsNone(self.estadia())
+        self.assertEqual(len(self.perguntas_veiculo), 2)
+
+    def test_saida_pela_placa_com_o_responsavel_fora_nao_pergunta(self):
+        self.sair_pelo_cpf("a_pe")
+        self.tela.campo_saida_rapida.delete(0, tk.END)
+        self.tela.campo_saida_rapida.insert(0, "abc-1234")
+        self.tela.saida_rapida()
+        self.assertEqual(len(self.perguntas_veiculo), 1)
+        self.assertIsNone(self.estadia())
+        self.assertIn("Saída do carro ABC-1234", self.app.lbl_aviso.cget("text"))
+        self.app.desfazer_saida()                            # Desfazer
+        self.assertIsNotNone(self.estadia())
+
+    def test_so_o_carro_sai_pela_placa(self):
+        from portaria.tela_veiculo import SO_CARRO
+        self.responder_veiculo = SO_CARRO
+        self.tela.campo_saida_rapida.insert(0, "ABC1234")
+        self.tela.saida_rapida()
+        self.assertIsNone(self.estadia())
+        self.assertEqual(self.banco.buscar(self.visita)["saida"], "")
+
+    def test_lista_de_veiculos_no_movimento(self):
+        self.tela.seletor_lista.selecionar("Veículos")
+        self.assertTrue(self.tela.quadro_veiculos.winfo_manager())
+        self.assertFalse(self.tela.quadro_pessoas.winfo_manager())
+        self.assertFalse(self.tela.campo_busca.winfo_manager())
+        iid = self.tela.tabela_veiculos.get_children()[0]
+        linha = self.tela.tabela_veiculos.item(iid)
+        self.assertEqual(linha["text"], "No estacionamento")
+        self.assertEqual(linha["values"][:2], ["ABC-1234", "Ana Silva"])
+        self.assertEqual(linha["values"][-1], "No campus")
+        self.tela.tabela_veiculos.selection_set(iid)
+        self.responder_veiculo = "principal"                 # saiu junto
+        self.app.registrar_saida()
+        self.assertIsNone(self.estadia())
+        self.assertTrue(self.banco.buscar(self.visita)["saida"])
+
+    def test_veiculo_pendente_depois_do_fechamento(self):
+        self.sair_pelo_cpf("a_pe")
+        self.agora = AGORA.replace(hour=23, minute=31)       # tolerância: 23:30
+        self.tela.ao_passar_o_tempo()
+        iid = self.tela.tabela_veiculos.get_children()[0]
+        self.assertEqual(self.tela.tabela_veiculos.item(iid)["text"],
+                         "Veículo pendente")
+        faixa = self.tela.faixa_pendentes
+        self.assertIn("1 veículo pendente depois do fechamento",
+                      faixa.lbl.cget("text"))
+        self.assertEqual(faixa.acao.cget("text"), "Ver veículos")
+
+
+class TestVeiculoNoEncerramento(BaseInterface):
+    entrar_como = "admin"
+
+    def test_encerrar_o_dia_nao_tira_o_carro(self):
+        self.preencher(cpf="52998224725", placa="ABC1234", tipo="Aluno")
+        self.app.cadastrar()
+        self.agora = AGORA.replace(hour=23, minute=5)
+        self.app.atualizar_tabela()
+        faixa = self.app.tela_cadastro.faixa_pendentes
+        self.assertIn("1 saída pendente e 1 veículo pendente",
+                      faixa.lbl.cget("text"))
+        faixa.comando()                                      # Encerrar o dia
+        self.assertIn("o carro está lá", self.msg.askyesno.call_args[0][1])
+        self.assertTrue(self.no_banco()[0]["saida"])
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="ABC1234"))
+        self.app.ir_para(self.app.aba_dash)
+        valor, apoio = self.app.cards["estacionamento"]
+        self.assertEqual((valor.cget("text"), apoio.cget("text")),
+                         ("1", "1 veículo pendente"))
 
 
 class CasosCorrigir:

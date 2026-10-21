@@ -16,6 +16,8 @@ def registro(**mudancas):
     r = {"nome": "João Ávila", "cpf": "52998224725", "celular": "31987654321",
          "placa": "ABC1D23", "tipo": "Funcionário",
          "entrada": "16/10/2026 08:00", "saida": ""}
+    if "cpf" in mudancas and "placa" not in mudancas:
+        r["placa"] = ""     # um carro só entra uma vez: os outros CPFs vêm a pé
     r.update(mudancas)
     return r
 
@@ -555,6 +557,7 @@ def rebaixar_para_v7(caminho):
     padrões antigos das regras de horário."""
     con = sqlite3.connect(caminho)
     con.executescript("""
+        DROP TABLE estadias_veiculo;
         ALTER TABLE regras_categoria DROP COLUMN tolerancia_min;
         UPDATE regras_categoria SET fecha_depois = 60 WHERE tipo = 'Funcionário';
         UPDATE regras_categoria SET permanencia_min = 60 WHERE tipo = 'Professor';
@@ -913,7 +916,8 @@ class TestConsultasNoBanco(BaseTemp):
         id_ = self.banco.bloquear("cpf", "11144477735", "Motivo válido", "ana")
         self.banco.desbloquear(id_, "ana")                     # removido não conta
         self.assertEqual(self.banco.contadores(),
-                         {"pessoas": 6, "no_campus": 2, "bloqueios": 1})
+                         {"pessoas": 6, "no_campus": 2, "bloqueios": 1,
+                          "veiculos": 0})
 
 
 class TestPermissoesNoBanco(BaseTemp):

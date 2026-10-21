@@ -1,8 +1,9 @@
 """
-Página Painel: cinco números do movimento (no campus agora, entradas de
-hoje, permanência média, com veículo e tempo excedido — as visitas abertas
-acima da permanência máxima da categoria, com as saídas pendentes no
-apoio) e dois gráficos (pessoas por tipo de
+Página Painel: seis números do movimento (no campus agora, entradas de
+hoje, permanência média, com veículo, veículos no estacionamento agora —
+com os pendentes depois do fechamento no apoio — e tempo excedido — as
+visitas abertas acima da permanência máxima da categoria, com as saídas
+pendentes no apoio) e dois gráficos (pessoas por tipo de
 acesso e entradas nos últimos 7 dias). Os números vêm do banco
 (banco.resumo_painel, calculado no SQL); o desenho fica em graficos.py.
 O administrador exporta os registros de um período para planilha (CSV).
@@ -27,6 +28,7 @@ PLURAL_TIPO = {"Aluno": "Alunos", "Professor": "Professores",
 # (chave, rótulo); o primeiro é o destaque
 NUMEROS = [("dentro", "No campus agora"), ("hoje", "Entradas hoje"),
            ("permanencia", "Permanência média"), ("veiculos", "Com veículo"),
+           ("estacionamento", "No estacionamento"),
            ("excedido", "Tempo excedido")]
 ALTURA_GRAFICO = 230
 FORMATO_DIA = "%d/%m/%Y"
@@ -143,7 +145,8 @@ class AbaDashboard:
         ok, abertas = self.app.tentar(self.app.banco.listar_abertas)
         if not ok:
             return
-        contagem = horarios.contar_situacoes(config, abertas, self.app.relogio())
+        agora = self.app.relogio()
+        contagem = horarios.contar_situacoes(config, abertas, agora)
         excedidos = contagem[horarios.TEMPO_EXCEDIDO]
         pendentes = contagem[horarios.SAIDA_PENDENTE]
         self._mostrar("excedido", excedidos,
@@ -153,6 +156,16 @@ class AbaDashboard:
             fg=COR["alerta"] if excedidos else COR["texto"])
         self.cards["excedido"][1].config(
             fg=COR["erro"] if pendentes else COR["texto_3"])
+        ok, veiculos = self.app.tentar(self.app.banco.listar_estacionamento)
+        if not ok:
+            return
+        carros = sum(1 for e in veiculos if horarios.situacao_veiculo(
+            config, e, agora) == horarios.VEICULO_PENDENTE)
+        self._mostrar("estacionamento", len(veiculos),
+                      plural(carros, "veículo pendente", "veículos pendentes")
+                      if carros else "veículos agora")
+        self.cards["estacionamento"][1].config(
+            fg=COR["erro"] if carros else COR["texto_3"])
 
     def _mostrar(self, chave, valor, apoio):
         self.cards[chave][0].config(text=str(valor))

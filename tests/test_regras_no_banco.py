@@ -255,6 +255,75 @@ class TestMigracaoV6ParaV7(unittest.TestCase):
             self.assertEqual(len(os.listdir(os.path.join(pasta, "backups"))), 1)
 
 
+class TestEstadiasDeVeiculo(BaseRegras):
+    """O carro tem estadia própria no banco (v8)."""
+
+    def com_carro(self, **mudancas):
+        return self.banco.inserir(registro(entrada="19/10/2026 08:00",
+                                           **mudancas), autor="paulo")
+
+    def test_visita_com_placa_abre_e_a_pe_nao(self):
+        visita = self.com_carro()
+        self.banco.inserir(registro(cpf="11144477735", entrada="19/10/2026 08:00"))
+        estadias = self.banco.listar_estacionamento()
+        self.assertEqual([(e["placa"], e["registro_id"], e["tipo"],
+                           e["responsavel_dentro"]) for e in estadias],
+                         [("ABC1D23", visita, "Funcionário", True)])
+        self.assertEqual(self.banco.contadores()["veiculos"], 1)
+
+    def test_placa_no_estacionamento_e_recusada_pelo_banco(self):
+        self.com_carro()
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.com_carro(cpf="11144477735", placa="ABC1D23")
+        self.assertIn("já está no estacionamento", str(erro.exception))
+        self.assertEqual(len(self.banco.listar()), 1)
+        con = sqlite3.connect(self.caminho)        # e pelo índice único
+        with self.assertRaises(sqlite3.IntegrityError):
+            con.execute("INSERT INTO estadias_veiculo (placa, cpf, nome, "
+                        "entrada) VALUES ('ABC1D23', '11144477735', 'X', "
+                        "'2026-10-19 09:00')")
+        con.close()
+
+    def test_sair_a_pe_de_carro_e_desfazer(self):
+        visita = self.com_carro()
+        self.banco.registrar_saidas([visita], "19/10/2026 09:00", autor="paulo")
+        self.assertIsNotNone(self.banco.estadia_aberta(cpf="52998224725"))
+        volta = self.banco.inserir(registro(placa="", entrada="19/10/2026 09:30"))
+        self.banco.registrar_saidas([volta], "19/10/2026 10:00", autor="paulo",
+                                    com_veiculo={volta})
+        self.assertIsNone(self.banco.estadia_aberta(placa="ABC1D23"))
+        self.assertIn("Saída de veículo",
+                      [e["acao"] for e in self.banco.eventos_do_registro(visita)])
+        self.banco.desfazer_saidas([volta], autor="paulo", saida="19/10/2026 10:00")
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="ABC1D23"))
+
+    def test_saida_so_do_carro_e_desfazer(self):
+        self.com_carro()
+        estadia = self.banco.estadia_aberta(placa="ABC1D23")
+        self.assertTrue(self.banco.registrar_saida_veiculo(
+            estadia["id"], "19/10/2026 09:00", autor="paulo"))
+        self.assertFalse(self.banco.registrar_saida_veiculo(
+            estadia["id"], "19/10/2026 09:00", autor="paulo"))
+        self.assertEqual(self.banco.listar()[0]["saida"], "")
+        self.assertEqual(self.banco.desfazer_saida_veiculos(
+            [estadia["id"]], "19/10/2026 09:00", autor="paulo"), 1)
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="ABC1D23"))
+
+    def test_corrigir_e_excluir_a_visita_acompanham_o_carro(self):
+        visita = self.com_carro()
+        original = self.banco.buscar(visita)
+        self.banco.editar(visita, dict(original, placa="XYZ9A87"), ["placa"],
+                          autor="ana")
+        self.assertEqual(self.banco.estadia_aberta(cpf="52998224725")["placa"],
+                         "XYZ9A87")
+        self.banco.editar(visita, dict(original, placa=""), ["placa"], autor="ana")
+        self.assertIsNone(self.banco.estadia_aberta(cpf="52998224725"))
+        self.banco.editar(visita, original, ["placa"], autor="ana")
+        self.assertIsNotNone(self.banco.estadia_aberta(placa="ABC1D23"))
+        self.banco.excluir([visita], autor="ana")
+        self.assertEqual(self.banco.listar_estacionamento(), [])
+
+
 class TestMigracaoV7ParaV8(unittest.TestCase):
     def setUp(self):
         self.pasta = tempfile.TemporaryDirectory()
@@ -272,6 +341,40 @@ class TestMigracaoV7ParaV8(unittest.TestCase):
         self.assertIn("Funcionário: entrada até o fechamento", banco.avisos[0])
         self.assertIn("antes-v8-de-v7",
                       os.listdir(os.path.join(self.pasta.name, "backups"))[0])
+
+    def test_carros_de_quem_esta_no_campus_viram_estadias(self):
+        con = sqlite3.connect(self.caminho)       # carona: mesma placa, depois
+        con.execute("INSERT INTO registros (nome, cpf, celular, placa, tipo, "
+                    "entrada) VALUES ('Beto Rocha', '11144477735', '31911112222',"
+                    " 'ABC1D23', 'Aluno', '2026-10-16 09:00')")
+        con.execute("INSERT INTO registros (nome, cpf, celular, placa, tipo, "
+                    "entrada, saida) VALUES ('Duda Reis', '39053344705', '3191',"
+                    " 'QWE1234', 'Aluno', '2026-10-15 09:00', '2026-10-15 10:00')")
+        con.commit()
+        con.close()
+        estadias = dados.Banco(self.caminho).listar_estacionamento()
+        self.assertEqual([(e["placa"], e["nome"], e["entrada"]) for e in estadias],
+                         [("ABC1D23", "João Ávila", "16/10/2026 08:00")])
+
+    @unittest.skipUnless(os.environ.get("PORTARIA_BANCO_V7"),
+                         "defina PORTARIA_BANCO_V7 com a CÓPIA de um banco v7 real")
+    def test_copia_de_um_banco_v7_real(self):
+        """Roda com uma cópia (nunca o original) de um banco v7 em uso."""
+        import shutil
+        destino = os.path.join(self.pasta.name, "copia.db")
+        shutil.copyfile(os.environ["PORTARIA_BANCO_V7"], destino)
+        con = sqlite3.connect(destino)
+        abertas_com_placa = con.execute(
+            "SELECT COUNT(DISTINCT placa) FROM registros "
+            "WHERE saida = '' AND placa <> ''").fetchone()[0]
+        visitas = con.execute("SELECT COUNT(*) FROM registros").fetchone()[0]
+        con.close()
+        banco = dados.Banco(destino)
+        self.assertEqual(versao_do_arquivo(destino), dados.VERSAO_ESQUEMA)
+        self.assertEqual(len(banco.listar()), visitas)
+        self.assertEqual(len(banco.listar_estacionamento()), abertas_com_placa)
+        self.assertEqual(banco.verificar_integridade(), (True, ""))
+        banco.ler_configuracao()
 
     def test_o_que_o_admin_mudou_continua_como_ele_deixou(self):
         con = sqlite3.connect(self.caminho)

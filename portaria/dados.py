@@ -24,6 +24,14 @@ Permissões (`autor` = login de quem faz, conferido NO BANCO):
   são chamadas internas (importação do JSON antigo, testes) e não vão
   para o histórico.
 
+Veículos (v8): o carro tem uma ESTADIA própria (estadias_veiculo), com
+entrada e saída independentes da visita. A visita com placa abre a estadia
+(o responsável é a pessoa dela); a pessoa pode sair a pé e deixar o carro,
+voltar a pé e depois sair com ele. Uma placa só tem uma estadia aberta por
+vez (índice único). Apagar a visita de origem apaga a estadia (ON DELETE
+CASCADE); corrigir a placa, o CPF ou a entrada de uma visita aberta corrige
+a estadia aberta por ela.
+
 Exceções de horário (horarios.py): a tela pede a autorização do
 administrador e a passa em `autorizacao` ({"autorizado_por", "regras",
 "justificativa"}). O banco confere de novo (defesa em profundidade): uma
@@ -41,7 +49,7 @@ from datetime import date, datetime, timedelta
 
 from . import horarios
 from .usuarios import LOGIN_INEXISTENTE, SESSAO_ENCERRADA, pode_editar
-from .validacao import (FORMATO, TIPOS_ACESSO, mascarar_cpf,
+from .validacao import (FORMATO, TIPOS_ACESSO, formatar_placa, mascarar_cpf,
                         mascarar_cpfs_no_texto, so_digitos)
 
 FORMATO_ISO = "%Y-%m-%d %H:%M"
@@ -158,6 +166,15 @@ FROM pessoas p LEFT JOIN registros r ON r.pessoa_id = p.id
 
 COLUNAS_REGISTRO = "id, nome, cpf, celular, placa, tipo, entrada, saida"
 
+# Estadia de veículo com o tipo de acesso do responsável (da visita de
+# origem ou, se ela foi apagada, do cadastro) e se ele está no campus
+COLUNAS_ESTADIA = """e.id, e.placa, e.cpf, e.nome, e.entrada, e.saida,
+    e.registro_id, COALESCE(r.tipo, p.tipo, ''),
+    EXISTS (SELECT 1 FROM registros a WHERE a.cpf = e.cpf AND a.saida = '')"""
+DE_ESTADIAS = """FROM estadias_veiculo e
+    LEFT JOIN registros r ON r.id = e.registro_id
+    LEFT JOIN pessoas p ON p.id = e.pessoa_id"""
+
 
 class ErroDados(Exception):
     """
@@ -194,6 +211,10 @@ def mensagem_amigavel(erro):
                     "Registre a saída antes de uma nova entrada.")
         if "usuarios.login" in texto:
             return "Já existe um usuário com esse login."
+        if "estadias_veiculo.placa" in texto:
+            return ("Este veículo já está no estacionamento.\n"
+                    "Registre a saída dele pela placa antes de uma nova "
+                    "entrada com ele.")
         if "bloqueios.tipo" in texto:
             return "Este CPF ou placa já está bloqueado."
         if "foreign key" in texto:
@@ -252,6 +273,14 @@ def _registro(linha):
     return {"id": i, "nome": nome, "cpf": cpf, "celular": cel,
             "placa": placa, "tipo": tipo, "entrada": de_iso(entrada),
             "saida": de_iso(saida)}
+
+
+def _estadia(linha):
+    i, placa, cpf, nome, entrada, saida, registro_id, tipo, dentro = linha
+    return {"id": i, "placa": placa, "cpf": cpf, "nome": nome,
+            "entrada": de_iso(entrada), "saida": de_iso(saida),
+            "registro_id": registro_id, "tipo": tipo,
+            "responsavel_dentro": bool(dentro)}
 
 
 def _condicao_busca(texto, colunas):
@@ -523,6 +552,48 @@ def _duracao_iso(entrada, saida):
                                         datetime.strptime(saida, FORMATO_ISO))
 
 
+ESQUEMA_V8 = [
+    """CREATE TABLE IF NOT EXISTS estadias_veiculo (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        placa       TEXT NOT NULL CHECK (placa <> ''),
+        cpf         TEXT NOT NULL CHECK (length(cpf) = 11),  -- responsável
+        nome        TEXT NOT NULL,          -- nome do responsável na entrada
+        pessoa_id   INTEGER REFERENCES pessoas (id),
+        registro_id INTEGER REFERENCES registros (id) ON DELETE CASCADE,
+        entrada     TEXT NOT NULL,          -- ISO
+        saida       TEXT NOT NULL DEFAULT '',
+        -- visita com que o carro saiu (para o Desfazer da saída)
+        registro_saida_id INTEGER REFERENCES registros (id) ON DELETE SET NULL,
+        autor_entrada TEXT NOT NULL DEFAULT '',
+        autor_saida   TEXT NOT NULL DEFAULT '',
+        CHECK (saida = '' OR saida >= entrada)
+    )""",
+    # o mesmo carro não "entra" duas vezes: uma estadia aberta por placa
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_uma_estadia_aberta_por_placa
+        ON estadias_veiculo (placa) WHERE saida = ''""",
+    """CREATE INDEX IF NOT EXISTS idx_estadias_abertas_cpf
+        ON estadias_veiculo (cpf) WHERE saida = ''""",
+    """CREATE INDEX IF NOT EXISTS idx_estadias_registro
+        ON estadias_veiculo (registro_id)""",
+    """CREATE INDEX IF NOT EXISTS idx_estadias_registro_saida
+        ON estadias_veiculo (registro_saida_id)""",
+]
+
+# Cada visita aberta com placa vira uma estadia aberta. Se a mesma placa
+# está em mais de uma visita aberta (caronas, antes da v8), o responsável é
+# quem entrou primeiro com ela.
+MIGRAR_ESTADIAS = f"""
+INSERT INTO estadias_veiculo (placa, cpf, nome, pessoa_id, registro_id,
+                              entrada, autor_entrada)
+SELECT r.placa, r.cpf, r.nome, r.pessoa_id, r.id, r.entrada, '{AUTOR_SISTEMA}'
+FROM registros r
+WHERE r.saida = '' AND r.placa <> ''
+  AND r.id = (SELECT r2.id FROM registros r2
+              WHERE r2.saida = '' AND r2.placa = r.placa
+              ORDER BY r2.entrada, r2.id LIMIT 1)
+"""
+
+
 def _passo_v8(banco, con, versao):
     """
     Regras de horário revistas pelo aluno:
@@ -530,8 +601,12 @@ def _passo_v8(banco, con, versao):
       funcionário: só eles ficam um pouco além do fechamento sem virar
       "Saída pendente");
     - padrões novos (PADROES_ANTIGOS_V8), trocados só onde o valor ainda
-      era o padrão antigo. O que mudou vai num aviso para o administrador.
+      era o padrão antigo. O que mudou vai num aviso para o administrador;
+    - estadias de veículo, já com os carros de quem está no campus.
     """
+    for sql in ESQUEMA_V8:
+        con.execute(sql)
+    con.execute(MIGRAR_ESTADIAS)
     colunas = {c[1] for c in con.execute("PRAGMA table_info(regras_categoria)")}
     if "tolerancia_min" not in colunas:
         con.execute("ALTER TABLE regras_categoria ADD COLUMN tolerancia_min "
@@ -846,8 +921,10 @@ class Banco:
                                      "WHERE saida = ''").fetchone()
             bloqueios, = con.execute("SELECT COUNT(*) FROM bloqueios "
                                      "WHERE ativo = 1").fetchone()
+            veiculos, = con.execute("SELECT COUNT(*) FROM estadias_veiculo "
+                                    "WHERE saida = ''").fetchone()
         return {"pessoas": pessoas, "no_campus": no_campus,
-                "bloqueios": bloqueios}
+                "bloqueios": bloqueios, "veiculos": veiculos}
 
     def inserir(self, registro, autor=None, autorizacao=None):
         """
@@ -864,6 +941,8 @@ class Banco:
             id_ = self._inserir(con, registro)
             self._evento(con, autor, "Cadastro de entrada",
                          f"#{id_} {registro['nome']} ({registro['tipo']})", id_)
+            if registro.get("placa"):
+                self._abrir_estadia(con, registro, id_, autor)
             if autorizacao:
                 self._registrar_excecao(con, autorizacao, autor, id_,
                                         registro["nome"])
@@ -913,13 +992,15 @@ class Banco:
         return bool(self.registrar_saidas([id_registro], saida, autor,
                                           autorizacao))
 
-    def registrar_saidas(self, ids, saida, autor=None, autorizacao=None):
+    def registrar_saidas(self, ids, saida, autor=None, autorizacao=None,
+                         com_veiculo=()):
         """
         Saída de uma ou várias visitas na mesma transação; só das abertas.
         Devolve os ids que de fato receberam a saída (outra estação pode ter
         dado a saída ou excluído a visita antes). Visita que passaria de
         24 h precisa da `autorizacao` (senão nada é gravado), e é a ela que
-        a "Exceção autorizada" fica ligada.
+        a "Exceção autorizada" fica ligada. As visitas em `com_veiculo`
+        saem com o carro: a estadia aberta do responsável fecha junto.
         """
         gravados = []
         saida_iso = para_iso(saida)
@@ -940,6 +1021,8 @@ class Banco:
                 self._evento(con, autor, "Saída registrada", f"#{i}", i)
                 if acima_de_24h:
                     self._registrar_excecao(con, autorizacao, autor, i, nome)
+                if i in com_veiculo:
+                    self._fechar_estadia_do_responsavel(con, i, saida_iso, autor)
         return gravados
 
     def desfazer_saidas(self, ids, autor=None, saida=None):
@@ -955,6 +1038,9 @@ class Banco:
         with self._conexao() as con:
             self._conferir_autor(con, autor)
             for i in ids:
+                linha = con.execute("SELECT saida FROM registros WHERE id = ?",
+                                    (i,)).fetchone()
+                saida_antiga = linha[0] if linha else ""
                 cursor = con.execute(
                     "UPDATE registros SET saida = '' WHERE id = ? AND saida <> '' "
                     + so_esta +
@@ -965,6 +1051,8 @@ class Banco:
                 if cursor.rowcount:
                     desfeitas += 1
                     self._evento(con, autor, "Saída desfeita", f"#{i}", i)
+                    self._reabrir_estadias(con, "registro_saida_id = ?", i,
+                                           saida_antiga, autor)
         return desfeitas
 
     def excluir(self, ids, autor):
@@ -1005,7 +1093,7 @@ class Banco:
         with self._conexao() as con:
             usuario = self._exigir(con, autor, so_admin=False)
             self._conferir_autorizacao(con, autorizacao)
-            linha = con.execute("SELECT pessoa_id, nome, entrada, saida "
+            linha = con.execute("SELECT pessoa_id, nome, entrada, saida, placa "
                                 "FROM registros WHERE id = ?",
                                 (id_registro,)).fetchone()
             if linha is None:
@@ -1036,6 +1124,8 @@ class Banco:
             con.execute("UPDATE registros SET pessoa_id = ? WHERE id = ?",
                         (pessoa, id_registro))
             self._atualizar_pessoa_se_recente(con, pessoa, id_registro, novo)
+            self._sincronizar_estadia(con, id_registro, novo, linha[4],
+                                      pessoa, autor)
             if pessoa_antiga is not None and pessoa_antiga != pessoa:
                 con.execute("DELETE FROM pessoas WHERE id = ? AND NOT EXISTS "
                             "(SELECT 1 FROM registros WHERE pessoa_id = ?)",
@@ -1106,6 +1196,158 @@ class Banco:
                              "entrada.", r["id"])
                 encerradas.append((r["id"], r["nome"], de_iso(saida)))
         return encerradas
+
+    # --------------------------------------------------------------
+    # Estadias de veículo (o carro no estacionamento)
+    # --------------------------------------------------------------
+    @staticmethod
+    def _estadia_aberta(con, coluna, valor):
+        """Estadia aberta pela placa ou pelo CPF do responsável, ou None."""
+        linha = con.execute(f"SELECT {COLUNAS_ESTADIA} {DE_ESTADIAS} "
+                            f"WHERE e.saida = '' AND e.{coluna} = ? "
+                            "ORDER BY e.entrada LIMIT 1", (valor,)).fetchone()
+        return _estadia(linha) if linha else None
+
+    def estadia_aberta(self, placa=None, cpf=None):
+        """O carro com essa placa (ou do responsável com esse CPF) que está
+        no estacionamento agora, ou None."""
+        with self._conexao() as con:
+            if placa:
+                return self._estadia_aberta(con, "placa", placa)
+            return self._estadia_aberta(con, "cpf", cpf)
+
+    def listar_estacionamento(self):
+        """Veículos no estacionamento (estadias abertas), do mais recente
+        para o mais antigo, com o tipo de acesso do responsável e se ele
+        está no campus."""
+        with self._conexao() as con:
+            linhas = con.execute(f"SELECT {COLUNAS_ESTADIA} {DE_ESTADIAS} "
+                                 "WHERE e.saida = '' "
+                                 "ORDER BY e.entrada DESC, e.id DESC").fetchall()
+        return [_estadia(linha) for linha in linhas]
+
+    @classmethod
+    def _abrir_estadia(cls, con, r, id_registro, autor):
+        """A visita chegou com o carro: abre a estadia dele (fechada junto,
+        se a visita já veio com saída). Placa já no estacionamento: recusa."""
+        aberta = cls._estadia_aberta(con, "placa", r["placa"])
+        if aberta is not None and not r.get("saida"):
+            raise ErroDados(
+                f"O veículo {formatar_placa(r['placa'])} já está no "
+                f"estacionamento desde {aberta['entrada']} (responsável: "
+                f"{aberta['nome']}).\nRegistre a saída dele pela placa ou "
+                "deixe a placa vazia (entrada a pé).")
+        saida = para_iso(r.get("saida", ""))
+        con.execute(
+            "INSERT INTO estadias_veiculo (placa, cpf, nome, pessoa_id, "
+            "registro_id, entrada, saida, registro_saida_id, autor_entrada, "
+            "autor_saida) SELECT ?, ?, ?, pessoa_id, id, entrada, saida, "
+            "CASE WHEN saida <> '' THEN id END, ?, ? FROM registros "
+            "WHERE id = ?",
+            (r["placa"], r["cpf"], r["nome"], autor or AUTOR_SISTEMA,
+             (autor or AUTOR_SISTEMA) if saida else "", id_registro))
+
+    @classmethod
+    def _fechar_estadia_do_responsavel(cls, con, id_registro, saida, autor):
+        """Saída "de carro": fecha a estadia aberta do responsável da visita."""
+        cpf, nome = con.execute("SELECT cpf, nome FROM registros WHERE id = ?",
+                                (id_registro,)).fetchone()
+        estadia = cls._estadia_aberta(con, "cpf", cpf)
+        if estadia is None:
+            return
+        con.execute("UPDATE estadias_veiculo SET saida = ?, autor_saida = ?, "
+                    "registro_saida_id = ? WHERE id = ? AND saida = ''",
+                    (saida, autor or AUTOR_SISTEMA, id_registro, estadia["id"]))
+        cls._evento(con, autor, "Saída de veículo",
+                    f"Placa {formatar_placa(estadia['placa'])} saiu com "
+                    f"{nome} (#{id_registro}).", estadia["registro_id"])
+
+    def registrar_saida_veiculo(self, id_estadia, saida, autor=None):
+        """Só o carro sai (saída pela placa). False se ele já tinha saído."""
+        saida_iso = para_iso(saida)
+        with self._conexao() as con:
+            self._conferir_autor(con, autor)
+            linha = con.execute("SELECT placa, nome, registro_id "
+                                "FROM estadias_veiculo WHERE id = ? AND "
+                                "saida = ''", (id_estadia,)).fetchone()
+            if linha is None:
+                return False
+            placa, nome, registro_id = linha
+            con.execute("UPDATE estadias_veiculo SET saida = ?, autor_saida = ? "
+                        "WHERE id = ?", (saida_iso, autor or AUTOR_SISTEMA,
+                                         id_estadia))
+            self._evento(con, autor, "Saída de veículo",
+                         f"Placa {formatar_placa(placa)} saiu (responsável: "
+                         f"{nome}).", registro_id)
+            return True
+
+    def desfazer_saida_veiculos(self, ids, saida, autor=None):
+        """Desfaz a saída só do carro (botão Desfazer). Devolve quantas."""
+        with self._conexao() as con:
+            self._conferir_autor(con, autor)
+            return sum(self._reabrir_estadias(con, "id = ?", i, para_iso(saida),
+                                              autor) for i in ids)
+
+    @classmethod
+    def _reabrir_estadias(cls, con, condicao, valor, saida, autor):
+        """Volta para o estacionamento as estadias da condição que saíram
+        em `saida`, se a placa não tiver entrado de novo nesse meio-tempo."""
+        reabertas = 0
+        for id_, placa, registro_id in con.execute(
+                "SELECT id, placa, registro_id FROM estadias_veiculo "
+                f"WHERE {condicao} AND saida = ?", (valor, saida)).fetchall():
+            cursor = con.execute(
+                "UPDATE estadias_veiculo SET saida = '', autor_saida = '', "
+                "registro_saida_id = NULL WHERE id = ? AND NOT EXISTS (SELECT 1 "
+                "FROM estadias_veiculo o WHERE o.placa = ? AND o.saida = '')",
+                (id_, placa))
+            if cursor.rowcount:
+                reabertas += 1
+                cls._evento(con, autor, "Saída de veículo desfeita",
+                            f"Placa {formatar_placa(placa)}", registro_id)
+        return reabertas
+
+    @classmethod
+    def _sincronizar_estadia(cls, con, id_registro, novo, placa_da_visita,
+                             pessoa, autor):
+        """
+        Correção de uma visita mantém o carro dela coerente:
+        - estadia aberta por ela e placa apagada: era erro de digitação,
+          a estadia sai (fica no histórico);
+        - estadia aberta e placa ou entrada mudaram: corrige a estadia;
+        - visita aberta que ganhou placa: abre a estadia.
+        Estadia já fechada só acompanha o responsável (CPF digitado errado).
+        """
+        # o responsável acompanha a visita, mesmo nas estadias já fechadas
+        con.execute("UPDATE estadias_veiculo SET cpf = ?, nome = ?, "
+                    "pessoa_id = ? WHERE registro_id = ?",
+                    (novo["cpf"], novo["nome"], pessoa, id_registro))
+        linha = con.execute("SELECT id, placa, saida FROM estadias_veiculo "
+                            "WHERE registro_id = ? ORDER BY id DESC LIMIT 1",
+                            (id_registro,)).fetchone()
+        placa = novo["placa"]
+        if linha is None:
+            # só se a placa foi digitada agora (visita antiga, de carona,
+            # pode ter placa sem estadia)
+            if placa and placa != placa_da_visita and not novo["saida"]:
+                cls._abrir_estadia(con, novo, id_registro, autor)
+            return
+        id_estadia, placa_antiga, saida = linha
+        if saida:
+            return
+        if not placa:
+            con.execute("DELETE FROM estadias_veiculo WHERE id = ?", (id_estadia,))
+            cls._evento(con, autor, "Estadia de veículo removida",
+                        f"Placa {formatar_placa(placa_antiga)} apagada na "
+                        "correção da visita.", id_registro)
+            return
+        if placa != placa_antiga:
+            aberta = cls._estadia_aberta(con, "placa", placa)
+            if aberta is not None:
+                raise ErroDados(f"O veículo {formatar_placa(placa)} já está no "
+                                f"estacionamento desde {aberta['entrada']}.")
+        con.execute("UPDATE estadias_veiculo SET placa = ?, entrada = ? "
+                    "WHERE id = ?", (placa, para_iso(novo["entrada"]), id_estadia))
 
     # --------------------------------------------------------------
     # Configuração dos horários de acesso (página Configurações)

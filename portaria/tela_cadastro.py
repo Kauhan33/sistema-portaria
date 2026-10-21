@@ -7,6 +7,14 @@ clique), desfazer a saída, corrigir e excluir registros.
 A tabela "Movimento" mostra o dia: as entradas e saídas de hoje e todo
 mundo que ainda está no campus (app.registros = banco.listar_movimento).
 Com texto na busca, ela procura no histórico inteiro (banco.buscar_registros).
+O seletor [Pessoas | Veículos] troca para os carros no estacionamento.
+
+Veículo com estadia própria (dados.py): a entrada com placa abre a estadia
+do carro, e a mesma placa não entra de novo enquanto ele estiver lá. Na
+saída de quem tem carro no estacionamento, a tela pergunta se ele saiu com
+o carro (tela_veiculo.py); a pessoa que volta a pé vê a faixa "O carro
+está no estacionamento" e, na próxima saída, a pergunta de novo. A saída
+rápida pela placa tira o carro (e pergunta se o responsável saiu junto).
 
 Regras de horário (horarios.py): entrada fora do horário da categoria,
 retroativa antiga ou visita acima de 24 h é uma EXCEÇÃO e pede a
@@ -25,18 +33,21 @@ Fala com a janela principal só pelo contrato público do app (ver
 interface.py).
 """
 
+import re
 import tkinter as tk
 from datetime import datetime
 
 from . import horarios, mensagens
-from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao, Placa, bolinha,
-                          data_por_extenso, inserir_linha, link, plural,
-                          rotulo_campo, tabela, titulo_cartao)
+from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao, Placa,
+                          Seletor, bolinha, data_por_extenso, inserir_linha,
+                          link, plural, rotulo_campo, tabela, titulo_cartao)
 from .consultas import encontrar_dentro
 from .estilo import (COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM,
                      fonte_icone, px)
 from .tela_autorizacao import autorizar_excecao
 from .tela_edicao import JanelaEdicao
+from .tela_veiculo import (COM_CARRO, JUNTO, responsavel_saiu_junto,
+                           saiu_com_o_veiculo)
 from .usuarios import eh_admin, pode_editar, pode_excluir
 from .validacao import (FORMATO, FORMATO_EXIBICAO, PLACA_OBRIGATORIA,
                         TIPOS_ACESSO, checar_bloqueio, checar_saida,
@@ -56,6 +67,12 @@ COLUNAS = [("Nome", "Nome", 170, "w"), ("CPF", "CPF", 118, "w"),
            ("Entrada", "Entrada", 128, "w"), ("Saida", "Saída", 128, "w")]
 # o celular continua nos values (mesma linha de antes), mas não aparece
 COLUNAS_VISIVEIS = ("Nome", "CPF", "Placa", "Tipo", "Entrada", "Saida")
+COLUNAS_VEICULOS = [("placa", "Placa", 100, "w"),
+                    ("responsavel", "Responsável", 200, "w"),
+                    ("tipo", "Tipo de acesso", 150, "w"),
+                    ("desde", "No estacionamento desde", 170, "w"),
+                    ("onde", "Responsável está", 150, "w")]
+LISTAS = ("Pessoas", "Veículos")
 
 # Abaixo desta altura da página (px lógicos) o layout fica compacto: num
 # notebook 1366x768 a 125% a página tem uns 540 (670 px reais).
@@ -86,7 +103,9 @@ ESPACOS = {
 APARENCIA = {horarios.NO_CAMPUS: (COR["sucesso"], None),
              horarios.TEMPO_EXCEDIDO: (COR["alerta"], "excedido"),
              horarios.SAIDA_PENDENTE: (COR["erro"], "pendente"),
-             horarios.SAIU: (COR["barra"], None)}
+             horarios.SAIU: (COR["barra"], None),
+             horarios.NO_ESTACIONAMENTO: (COR["sucesso"], None),
+             horarios.VEICULO_PENDENTE: (COR["erro"], "pendente")}
 LARGURA_SITUACAO = 140         # cabe "Saída pendente" com a bolinha
 MOSTRAR_NO_ENCERRAMENTO = 8    # nomes listados na confirmação
 
@@ -110,6 +129,8 @@ class AbaCadastro:
         self.compacta = None                # densidade em uso
         self.config = None                  # horários em vigor (horarios.py)
         self._entrada_automatica = None     # texto que o relógio pôs na Entrada
+        self.veiculos = []                  # carros no estacionamento
+        self.lista = LISTAS[0]              # lista mostrada no Movimento
 
         self._montar_cabecalho()
         self._montar_alertas()
@@ -242,8 +263,9 @@ class AbaCadastro:
         self.cartao_mov.miolo.pack_configure(pady=px(e["miolo_mov"]))
         self.barra_mov.pack_configure(pady=_px(e["barra"]))
         self.rodape_mov.pack_configure(pady=_px(e["rodape"]))
-        self.tabela.configure(style="Compacta.Tabela.Treeview" if compacta
-                              else "Tabela.Treeview")
+        for tab in (self.tabela, self.tabela_veiculos):
+            tab.configure(style="Compacta.Tabela.Treeview" if compacta
+                          else "Tabela.Treeview")
         for faixa in (self.faixa_pendentes, self.faixa_fechamento):
             faixa.definir_respiro(5 if compacta else 9)
 
@@ -339,10 +361,13 @@ class AbaCadastro:
         self.barra_mov = barra = tk.Frame(m, bg=COR["superficie"])
         barra.pack(fill="x", padx=px(19))
         titulo_cartao(barra, "Movimento").pack(side="left")
-        campo_busca = Campo(barra, largura=300, icone=ICONE["busca"],
-                            dica_vazio="Buscar no histórico: nome, CPF, placa…")
-        campo_busca.pack(side="left", padx=(px(16), 0))
-        self.busca = campo_busca.entrada
+        self.seletor_lista = Seletor(barra, LISTAS, self.mostrar_lista,
+                                     fundo_pai=COR["superficie"])
+        self.seletor_lista.pack(side="left", padx=(px(16), 0))
+        self.campo_busca = Campo(barra, largura=300, icone=ICONE["busca"],
+                                 dica_vazio="Buscar no histórico: nome, CPF, "
+                                            "placa…")
+        self.busca = self.campo_busca.entrada
         self.busca.bind("<KeyRelease>", lambda e: self.atualizar_tabela())
         self.busca.bind("<Return>", lambda e: "break")   # Enter na busca não cadastra
         self.busca.bind("<KP_Enter>", lambda e: "break")
@@ -351,11 +376,10 @@ class AbaCadastro:
         if pode_excluir(self.app.usuario):  # RN02: o porteiro nem vê o botão
             self.btn_excluir = Botao(barra, "Excluir", self.excluir_selecionado,
                                      "perigo", icone=ICONE["lixo"])
-            self.btn_excluir.pack(side="right")
-        Botao(barra, "Corrigir", self.editar_selecionado, "secundario",
-              icone=ICONE["editar"]).pack(side="right", padx=(0, px(8)))
-        Botao(barra, "Registrar saída", self.registrar_saida, "secundario",
-              icone=ICONE["seta"]).pack(side="right", padx=(0, px(8)))
+        self.btn_corrigir = Botao(barra, "Corrigir", self.editar_selecionado,
+                                  "secundario", icone=ICONE["editar"])
+        self.btn_saida = Botao(barra, "Registrar saída", self.registrar_saida,
+                               "secundario", icone=ICONE["seta"])
 
         self.rodape_mov = rodape = tk.Frame(m, bg=COR["superficie"])
         rodape.pack(side="bottom", fill="x", padx=px(19))
@@ -373,15 +397,45 @@ class AbaCadastro:
         self.lbl_aviso.pack(side="left")
         self.btn_desfazer = link(aviso, "Desfazer", self.desfazer_saida)
 
-        quadro, self.tabela = tabela(m, COLUNAS, situacao="Situação",
-                                     mostrar=COLUNAS_VISIVEIS,
-                                     selecao="extended",
-                                     largura_situacao=LARGURA_SITUACAO)
-        quadro.pack(fill="both", expand=True, padx=px(12))
+        self.quadro_pessoas, self.tabela = tabela(
+            m, COLUNAS, situacao="Situação", mostrar=COLUNAS_VISIVEIS,
+            selecao="extended", largura_situacao=LARGURA_SITUACAO)
         self.tabela.bind("<Double-1>", self._ao_duplo_clique)
-        # Enter com o foco na tabela não cadastra (o formulário está vazio)
-        self.tabela.bind("<Return>", lambda e: "break")
-        self.tabela.bind("<KP_Enter>", lambda e: "break")
+        self.quadro_veiculos, self.tabela_veiculos = tabela(
+            m, COLUNAS_VEICULOS, situacao="Situação",
+            largura_situacao=LARGURA_SITUACAO)
+        self.tabela_veiculos.bind("<Double-1>", self._ao_duplo_clique_veiculo)
+        for tab in (self.tabela, self.tabela_veiculos):
+            # Enter com o foco na tabela não cadastra (o formulário está vazio)
+            tab.bind("<Return>", lambda e: "break")
+            tab.bind("<KP_Enter>", lambda e: "break")
+        self.seletor_lista.selecionar(LISTAS[0])
+
+    def mostrar_lista(self, lista):
+        """Seletor do Movimento: as pessoas (visitas) ou os veículos no
+        estacionamento. Na lista de veículos não há busca, Corrigir nem
+        Excluir: o carro sai pela placa ou pelo "Registrar saída"."""
+        self.lista = lista
+        pessoas = lista == LISTAS[0]
+        barra = [self.btn_excluir, self.btn_corrigir, self.btn_saida,
+                 self.campo_busca]
+        for w in barra + [self.quadro_pessoas, self.quadro_veiculos]:
+            if w is not None:
+                w.pack_forget()
+        # a ordem do pack importa: a busca entra por último e encolhe se
+        # faltar largura (tela pequena), os botões não
+        if pessoas and self.btn_excluir is not None:
+            self.btn_excluir.pack(side="right")
+        if pessoas:
+            self.btn_corrigir.pack(side="right", padx=(0, px(8)))
+        self.btn_saida.pack(side="right", padx=(0, px(8)) if pessoas else 0)
+        if pessoas:
+            self.campo_busca.pack(side="left", fill="x", expand=True,
+                                  padx=(px(16), px(16)))
+        quadro = self.quadro_pessoas if pessoas else self.quadro_veiculos
+        quadro.pack(fill="both", expand=True, padx=px(12))
+        if hasattr(self, "lbl_status"):
+            self._mostrar_status()
 
     # --------------------------------------------------------------
     # Tabela
@@ -432,6 +486,15 @@ class AbaCadastro:
             tags = (destaque,) if destaque else (("zebra",) if i % 2 else ())
             self.tabela.item(iid, text=situacao, image=bolinha(self.tabela, cor),
                              tags=tags)
+        for i, iid in enumerate(self.tabela_veiculos.get_children()):
+            estadia = self._estadia(iid)
+            if estadia is None:
+                continue
+            situacao = self._situacao_do_veiculo(estadia, agora)
+            cor, destaque = APARENCIA[situacao]
+            tags = (destaque,) if destaque else (("zebra",) if i % 2 else ())
+            self.tabela_veiculos.item(iid, text=situacao, tags=tags,
+                                      image=bolinha(self.tabela_veiculos, cor))
 
     def _situacao_da_visita(self, registro, agora):
         if self.config is None:          # sem a configuração: só dentro/saiu
@@ -472,26 +535,73 @@ class AbaCadastro:
         manter = [i for i in selecao if self.tabela.exists(i)]
         if manter:
             self.tabela.selection_set(manter)
+        self._encontrados = len(registros) if texto else None
+        self._atualizar_veiculos(agora)
+        self._mostrar_status()
 
         dentro = sum(1 for r in self.app.registros if not r["saida"])
-        hoje = self.app.relogio().strftime("%d/%m/%Y")
-        entradas_hoje = sum(1 for r in self.app.registros
-                            if r["entrada"].startswith(hoje))
-        if texto:
-            status = plural(len(registros), "registro encontrado",
-                            "registros encontrados") + " no histórico"
-            if len(registros) >= LIMITE_BUSCA:
-                status += f" (os {LIMITE_BUSCA} mais recentes)"
-        else:
-            status = (f"{plural(entradas_hoje, 'entrada', 'entradas')} hoje"
-                      f"  ·  {dentro} no campus  ·  duplo clique registra a saída")
-        self.lbl_status.config(text=status)
         self.cabecalho.subtitulo.config(
             text=data_por_extenso(self.app.relogio()) + "  ·  ")
         self.lbl_no_campus.config(
             text="Ninguém no campus agora" if not dentro else
             plural(dentro, "pessoa", "pessoas") + " no campus agora")
         self.atualizar_alertas()
+
+    def _mostrar_status(self):
+        """Linha de rodapé do Movimento, conforme a lista mostrada."""
+        if self.lista == LISTAS[1]:
+            status = (plural(len(self.veiculos), "veículo", "veículos")
+                      + " no estacionamento  ·  duplo clique registra a saída "
+                        "do carro")
+        elif getattr(self, "_encontrados", None) is not None:
+            n = self._encontrados
+            status = plural(n, "registro encontrado",
+                            "registros encontrados") + " no histórico"
+            if n >= LIMITE_BUSCA:
+                status += f" (os {LIMITE_BUSCA} mais recentes)"
+        else:
+            dentro = sum(1 for r in self.app.registros if not r["saida"])
+            hoje = self.app.relogio().strftime("%d/%m/%Y")
+            entradas_hoje = sum(1 for r in self.app.registros
+                                if r["entrada"].startswith(hoje))
+            status = (f"{plural(entradas_hoje, 'entrada', 'entradas')} hoje"
+                      f"  ·  {dentro} no campus  ·  duplo clique registra a saída")
+        self.lbl_status.config(text=status)
+
+    # --------------------------------------------------------------
+    # Veículos no estacionamento
+    # --------------------------------------------------------------
+    def _situacao_do_veiculo(self, estadia, agora):
+        if self.config is None:
+            return horarios.NO_ESTACIONAMENTO
+        return horarios.situacao_veiculo(self.config, estadia, agora)
+
+    def _atualizar_veiculos(self, agora):
+        """Relê os carros no estacionamento e redesenha a lista deles."""
+        ok, veiculos = self.app.tentar(self.app.banco.listar_estacionamento)
+        if not ok:
+            return
+        self.veiculos = veiculos
+        tab = self.tabela_veiculos
+        selecao = tab.selection()
+        tab.delete(*tab.get_children())
+        for i, e in enumerate(veiculos):
+            situacao = self._situacao_do_veiculo(e, agora)
+            cor, destaque = APARENCIA[situacao]
+            inserir_linha(tab, i, (
+                formatar_placa(e["placa"]), e["nome"], e["tipo"] or "—",
+                self._quando(e["entrada"]),
+                "No campus" if e["responsavel_dentro"] else "Fora do campus"),
+                iid=str(e["id"]), situacao=situacao, cor=cor,
+                tags=(destaque,) if destaque else (), zebra=not destaque)
+        manter = [i for i in selecao if tab.exists(i)]
+        if manter:
+            tab.selection_set(manter)
+        self.seletor_lista.definir_texto(
+            LISTAS[1], f"Veículos ({len(veiculos)})" if veiculos else "Veículos")
+
+    def _estadia(self, iid):
+        return next((e for e in self.veiculos if e["id"] == int(iid)), None)
 
     # --------------------------------------------------------------
     # Faixas: saídas pendentes e aviso antes de fechar
@@ -505,16 +615,9 @@ class AbaCadastro:
         contagem = horarios.contar_situacoes(self.config, self.app.registros,
                                              agora)
         pendentes = contagem[horarios.SAIDA_PENDENTE]
-        if pendentes:
-            admin = eh_admin(self.app.usuario)
-            texto = (plural(pendentes, "saída pendente", "saídas pendentes")
-                     + " depois do fechamento."
-                     + ("" if admin else " Registre a saída ou chame um "
-                                         "administrador para encerrar o dia."))
-            self.faixa_pendentes.mostrar(
-                "erro", texto, icone=ICONE["alerta"],
-                acao="Encerrar o dia" if admin else None,
-                comando=self.encerrar_dia)
+        carros = self._veiculos_pendentes(agora)
+        if pendentes or carros:
+            self._mostrar_pendencias(pendentes, len(carros))
 
         minutos = horarios.minutos_para_fechar(self.config, agora)
         if minutos is not None:
@@ -524,11 +627,40 @@ class AbaCadastro:
                      + (f"{dentro} no campus" if dentro else "ninguém no campus"))
             self.faixa_fechamento.mostrar("info", texto, icone=ICONE["relogio"])
         self._posicionar_faixas([f for f, visivel in (
-            (self.faixa_pendentes, pendentes > 0),
+            (self.faixa_pendentes, pendentes > 0 or bool(carros)),
             (self.faixa_fechamento, minutos is not None)) if visivel])
         if self.aba.winfo_height() > 1:          # faixas mudam a altura livre
             self.alertas.update_idletasks()
             self._escolher_densidade(self.aba.winfo_height())
+
+    def _veiculos_pendentes(self, agora):
+        return [e for e in self.veiculos if self._situacao_do_veiculo(e, agora)
+                == horarios.VEICULO_PENDENTE]
+
+    def _mostrar_pendencias(self, pendentes, carros):
+        """Faixa vermelha: saídas pendentes (o administrador encerra o dia)
+        e carros que passaram do fechamento (saem só pela placa)."""
+        admin = eh_admin(self.app.usuario)
+        partes = []
+        if pendentes:
+            partes.append(plural(pendentes, "saída pendente", "saídas pendentes"))
+        if carros:
+            partes.append(plural(carros, "veículo pendente",
+                                 "veículos pendentes"))
+        texto = " e ".join(partes) + " depois do fechamento."
+        if pendentes and not admin:
+            texto += (" Registre a saída ou chame um administrador para "
+                      "encerrar o dia.")
+        elif carros and not pendentes:
+            texto += " Registre a saída do carro pela placa."
+        acao, comando = None, None
+        if pendentes and admin:
+            acao, comando = "Encerrar o dia", self.encerrar_dia
+        elif carros:
+            acao, comando = "Ver veículos", lambda: self.seletor_lista.selecionar(
+                LISTAS[1])
+        self.faixa_pendentes.mostrar("erro", texto, icone=ICONE["alerta"],
+                                     acao=acao, comando=comando)
 
     def _posicionar_faixas(self, faixas):
         """Uma faixa ocupa a largura toda; duas ficam lado a lado (sobra
@@ -578,12 +710,20 @@ class AbaCadastro:
                           f"saída {prazo:{FORMATO}}")
         if len(pendentes) > MOSTRAR_NO_ENCERRAMENTO:
             linhas.append(f"• e mais {len(pendentes) - MOSTRAR_NO_ENCERRAMENTO}")
+        carros = self._veiculos_pendentes(self.app.relogio())
+        aviso_carros = ("" if not carros else
+                        "\n\n" + plural(len(carros), "veículo continua",
+                                         "veículos continuam")
+                        + " no estacionamento: o carro está lá. Registre a "
+                          "saída dele pela placa quando sair.")
         return ("Dar saída automática a "
                 + plural(len(pendentes), "visita pendente", "visitas pendentes")
-                + ", no horário de fechamento do dia de cada entrada?\n\n"
+                + ", no prazo do dia de cada entrada (fechamento + tolerância "
+                  "da categoria)?\n\n"
                 + "\n".join(linhas)
                 + "\n\nCada uma fica no histórico como "
-                  "\"Saída automática (encerramento)\".")
+                  "\"Saída automática (encerramento)\"."
+                + aviso_carros)
 
     def _registro(self, iid):
         """Registro da linha da tabela (iid = id no banco). Se a linha já
@@ -617,6 +757,12 @@ class AbaCadastro:
             self._registrar_recusa(registro)
             mensagens.erro("Acesso negado", msg)
             return
+        if registro["placa"] and not registro["saida"]:
+            estadia = self._carro_no_estacionamento(registro["placa"])
+            if estadia is not None:
+                mensagens.erro("Veículo no estacionamento",
+                               self._texto_carro_ja_dentro(estadia))
+                return
         # a sobreposição é conferida com TODAS as visitas desse CPF no banco
         # (a tabela só tem o movimento do dia)
         ok, anteriores = self.app.tentar(self.app.banco.listar_por_cpf,
@@ -654,6 +800,18 @@ class AbaCadastro:
         if autorizacao is None:
             return "."
         return f" (exceção autorizada por {autorizacao['autorizado_por']})."
+
+    def _carro_no_estacionamento(self, placa):
+        if not placa_valida(placa):
+            return None
+        ok, estadia = self.app.tentar(self.app.banco.estadia_aberta, placa=placa)
+        return estadia if ok else None
+
+    def _texto_carro_ja_dentro(self, estadia):
+        return (f"O carro {formatar_placa(estadia['placa'])} já está no "
+                f"estacionamento desde {self._quando(estadia['entrada'])} "
+                f"(responsável: {estadia['nome']}).\nRegistre a saída dele "
+                "pela placa ou deixe a placa vazia (entrada a pé).")
 
     def _registrar_recusa(self, registro):
         detalhe = f"{registro['nome'] or '?'}, CPF {formatar_cpf(registro['cpf'])}"
@@ -694,8 +852,9 @@ class AbaCadastro:
             campo.delete(0, tk.END)
             campo.insert(0, valor)
 
-    def _situacao(self, tipo, texto, acao=None, comando=None):
-        self.aviso_pessoa.mostrar(tipo, texto, acao=acao, comando=comando)
+    def _situacao(self, tipo, texto, acao=None, comando=None, icone=None):
+        self.aviso_pessoa.mostrar(tipo, texto, icone=icone, acao=acao,
+                                  comando=comando)
 
     def _ao_digitar_cpf(self, *args):
         """Ao completar o CPF, busca a pessoa e preenche os campos vazios."""
@@ -715,7 +874,9 @@ class AbaCadastro:
         if not ok:
             return
         if pessoa is not None:
-            self._preencher_automatico(pessoa)
+            # o carro dele já está no estacionamento: a entrada é a pé
+            parado = self._carro_no_estacionamento(pessoa["placa"])
+            self._preencher_automatico(pessoa, sem_placa=parado is not None)
         self._mostrar_situacao(cpf, pessoa)
 
     def _mostrar_situacao(self, cpf, pessoa):
@@ -733,6 +894,13 @@ class AbaCadastro:
         else:
             self._situacao("sucesso", "Já cadastrado. Confira os dados e "
                                       "registre a entrada.")
+            ok, estadia = self.app.tentar(self.app.banco.estadia_aberta, cpf=cpf)
+            if ok and estadia:
+                self._situacao(
+                    "info", f"O carro {formatar_placa(estadia['placa'])} está "
+                            "no estacionamento desde "
+                            f"{self._quando(estadia['entrada'])}: a entrada é "
+                            "a pé.", icone=ICONE["carro"])
         bloqueio = self._bloqueio_ativo("cpf", cpf)
         if bloqueio:
             self._situacao("erro", f"CPF bloqueado: {bloqueio['motivo']}. "
@@ -779,12 +947,21 @@ class AbaCadastro:
         placa = self.var_placa.get().strip().upper()
         bloqueio = (self._bloqueio_ativo("placa", placa)
                     if placa_valida(placa) else None)
+        parado = None if bloqueio else self._carro_no_estacionamento(placa)
         self.desenho_placa.mostrar(placa, bloqueada=bloqueio is not None)
         if bloqueio:
             self.lbl_dica_placa.config(text="bloqueada", fg=COR["erro"],
                                        font=FONTE["rotulo"])
             self.lbl_placa_status.config(
-                text=f"Placa bloqueada: {bloqueio['motivo']}")
+                text=f"Placa bloqueada: {bloqueio['motivo']}", fg=COR["erro"])
+            self.lbl_placa_status.pack_configure(pady=(px(6), 0))
+        elif parado:
+            self.lbl_dica_placa.config(text="já no estacionamento",
+                                       fg=COR["alerta"], font=FONTE["rotulo"])
+            self.lbl_placa_status.config(
+                text=f"Já está no estacionamento desde "
+                     f"{self._quando(parado['entrada'])} ({parado['nome']}).",
+                fg=COR["alerta"])
             self.lbl_placa_status.pack_configure(pady=(px(6), 0))
         else:
             self.lbl_dica_placa.config(text=DICA_PLACA, fg=COR["texto_3"],
@@ -792,9 +969,11 @@ class AbaCadastro:
             self.lbl_placa_status.config(text="")
             self.lbl_placa_status.pack_configure(pady=0)
 
-    def _preencher_automatico(self, pessoa):
+    def _preencher_automatico(self, pessoa, sem_placa=False):
         preenchidos = {}
         for chave, campo in self._campos_pessoa().items():
+            if chave == "placa" and sem_placa:
+                continue
             if not campo.get().strip() and pessoa[chave]:
                 self._escrever(campo, pessoa[chave])
                 preenchidos[chave] = campo.get()
@@ -850,12 +1029,31 @@ class AbaCadastro:
     # Saída: botão, duplo clique e saída rápida por CPF ou placa
     # --------------------------------------------------------------
     def registrar_saida(self):
-        """Botão: saída (data/hora atual) das linhas selecionadas."""
+        """Botão: saída (data/hora atual) das linhas selecionadas; na lista
+        de veículos, a saída do carro selecionado."""
+        if self.lista == LISTAS[1]:
+            selecionado = self.tabela_veiculos.selection()
+            if not selecionado:
+                mensagens.aviso("Atenção", "Selecione um veículo na lista.")
+                return
+            self.registrar_saida_veiculo(selecionado[0])
+            return
         selecionado = self.tabela.selection()
         if not selecionado:
             mensagens.aviso("Atenção", "Selecione um registro na tabela.")
             return
         self._dar_saida([self._registro(i) for i in selecionado])
+
+    def _ao_duplo_clique_veiculo(self, event):
+        linha = self.tabela_veiculos.identify_row(event.y)
+        if linha:
+            self.registrar_saida_veiculo(linha)
+        return "break"
+
+    def registrar_saida_veiculo(self, iid):
+        estadia = self._estadia(iid)
+        if estadia is not None:
+            self._saida_do_carro(estadia)
 
     def _ao_duplo_clique(self, event):
         linha = self.tabela.identify_row(event.y)
@@ -875,10 +1073,18 @@ class AbaCadastro:
             mensagens.aviso("Saída rápida", "Digite o CPF ou a placa.")
             return "break"
         self.app.recarregar_registros()        # outra estação pode ter mudado
+        chave = re.sub(r"[\s.\-]", "", texto).upper()
+        if not chave.isdigit():                # placa: o carro sai
+            estadia = self._carro_no_estacionamento(chave)
+            if estadia is not None:
+                if self._saida_do_carro(estadia):
+                    self.campo_saida_rapida.delete(0, tk.END)
+                return "break"
         encontrados = encontrar_dentro(self.app.registros, texto)
         if not encontrados:
-            mensagens.erro("Saída rápida",
-                           f"Ninguém no campus com o CPF ou a placa “{texto}”.")
+            if not self._so_o_carro_do_cpf(chave):
+                mensagens.erro("Saída rápida", "Ninguém no campus nem veículo "
+                                               f"no estacionamento com “{texto}”.")
             return "break"
         if len(encontrados) > 1:
             nomes = "\n".join(f"• {r['nome']}" for r in encontrados)
@@ -892,9 +1098,80 @@ class AbaCadastro:
             self.campo_saida_rapida.delete(0, tk.END)
         return "break"
 
-    def _dar_saida(self, registros):
+    def _so_o_carro_do_cpf(self, chave):
+        """CPF de quem não está no campus, mas deixou o carro: oferece a
+        saída do carro. False se não há carro desse CPF."""
+        if len(chave) != 11:
+            return False
+        ok, estadia = self.app.tentar(self.app.banco.estadia_aberta, cpf=chave)
+        if not ok or estadia is None:
+            return False
+        if self.app.perguntar(
+                mensagens.confirmar, "Saída rápida",
+                f"{estadia['nome']} não está no campus, mas o carro "
+                f"{formatar_placa(estadia['placa'])} dele está no "
+                "estacionamento.\n\nRegistrar a saída do carro?"):
+            if self._sair_so_o_carro(estadia):
+                self.campo_saida_rapida.delete(0, tk.END)
+        return True
+
+    def _saida_do_carro(self, estadia):
+        """O carro sai (placa ou lista de veículos). Com o responsável no
+        campus, pergunta se ele saiu junto."""
+        if estadia["responsavel_dentro"]:
+            visita = next((r for r in self.app.registros if r["cpf"] ==
+                           estadia["cpf"] and not r["saida"]), None)
+            resposta = responsavel_saiu_junto(self.app, estadia)
+            if resposta is None:
+                return False
+            if resposta == JUNTO and visita is not None:
+                return self._dar_saida([visita], com_veiculo={visita["id"]})
+        return self._sair_so_o_carro(estadia)
+
+    def _sair_so_o_carro(self, estadia):
+        momento = self.app.relogio().replace(second=0, microsecond=0)
+        saida = momento.strftime(FORMATO)
+        ok, gravou = self.app.tentar(self.app.banco.registrar_saida_veiculo,
+                                     estadia["id"], saida, autor=self.app.autor)
+        if not ok:
+            return False
+        self.app.atualizar_tabela()
+        if not gravou:
+            mensagens.aviso("Saída", "Esse carro já tinha saído (outra "
+                                     "estação). A lista foi atualizada.")
+            return False
+        self._saida_para_desfazer = saida
+        self.avisar(f"Saída do carro {formatar_placa(estadia['placa'])} "
+                    f"registrada às {momento:%H:%M}.",
+                    desfazer={"veiculos": [estadia["id"]]})
+        return True
+
+    def _perguntar_veiculos(self, registros):
+        """Quem sai e tem carro no estacionamento: saiu com ele? Devolve
+        ({ids que saem de carro}, {id: placa que fica}) ou None (cancelou)."""
+        ok, estadias = self.app.tentar(self.app.banco.listar_estacionamento)
+        if not ok:
+            return None
+        por_cpf = {e["cpf"]: e for e in estadias}
+        de_carro, a_pe = set(), {}
+        for r in registros:
+            estadia = por_cpf.get(r["cpf"])
+            if estadia is None:
+                continue
+            resposta = saiu_com_o_veiculo(self.app, r["nome"], estadia)
+            if resposta is None:
+                return None
+            if resposta == COM_CARRO:
+                de_carro.add(r["id"])
+            else:
+                a_pe[r["id"]] = estadia["placa"]
+        return de_carro, a_pe
+
+    def _dar_saida(self, registros, com_veiculo=None):
         """Registra a saída agora; avisa sem travar a tela e oferece desfazer.
-        Visita que passaria de 24 h é exceção: pede a autorização antes."""
+        Quem tem carro no estacionamento responde se saiu com ele (a não ser
+        que `com_veiculo` já diga). Visita que passaria de 24 h é exceção:
+        pede a autorização antes."""
         momento = self.app.relogio().replace(second=0, microsecond=0)
         prontos, recusas = [], []
         for r in registros:
@@ -906,6 +1183,12 @@ class AbaCadastro:
         if not prontos:
             mensagens.info("Aviso", "\n".join(recusas))
             return False
+        a_pe = {}
+        if com_veiculo is None:
+            respostas = self._perguntar_veiculos(prontos)
+            if respostas is None:
+                return False
+            com_veiculo, a_pe = respostas
         regras = [f"{r['nome']}: {regra}" for r in prontos
                   for regra in horarios.excecoes_da_duracao(
                       datetime.strptime(r["entrada"], FORMATO), momento)]
@@ -917,7 +1200,8 @@ class AbaCadastro:
         saida = momento.strftime(FORMATO)
         ok, gravados = self.app.tentar(
             self.app.banco.registrar_saidas, [r["id"] for r in prontos], saida,
-            autor=self.app.autor, autorizacao=autorizacao)
+            autor=self.app.autor, autorizacao=autorizacao,
+            com_veiculo=set(com_veiculo))
         if not ok:
             return False
         # a linha pode estar desatualizada: só conta o que o banco gravou
@@ -932,6 +1216,7 @@ class AbaCadastro:
         if len(primeiros) > 1:
             nomes = ", ".join(primeiros[:-1]) + " e " + nomes
         texto = (f"Saída de {nomes} registrada às {momento:%H:%M}"
+                 + self._com_carro(gravadas, com_veiculo, a_pe)
                  + self._com_autorizacao(autorizacao))
         nao_gravadas = len(recusas) + len(prontos) - len(gravadas)
         if nao_gravadas:
@@ -941,11 +1226,32 @@ class AbaCadastro:
         self.avisar(texto, desfazer=gravados)
         return True
 
+    @staticmethod
+    def _com_carro(gravadas, com_veiculo, a_pe):
+        """' de carro' / ' a pé (o carro ABC-1234 fica)', se for o caso."""
+        ids = {r["id"] for r in gravadas}
+        if ids & set(com_veiculo):
+            return " (saiu de carro)" if len(ids) == 1 else " (com os carros)"
+        ficam = [formatar_placa(p) for i, p in a_pe.items() if i in ids]
+        if ficam:
+            return f" (a pé; o carro {', '.join(ficam)} fica no estacionamento)"
+        return ""
+
     def desfazer_saida(self):
         """Desfaz só as saídas que esta tela gravou, com o horário gravado
         (nunca a saída dada ou corrigida por outra estação)."""
         ids = self._para_desfazer
         if not ids:
+            return
+        if isinstance(ids, dict):            # saída só do carro
+            ok, desfeitas = self.app.tentar(
+                self.app.banco.desfazer_saida_veiculos, ids["veiculos"],
+                self._saida_para_desfazer, autor=self.app.autor)
+            if ok:
+                self.app.atualizar_tabela()
+                self.avisar("Saída desfeita: o carro voltou a constar no "
+                            "estacionamento." if desfeitas else "",
+                            icone=ICONE["desfazer"])
             return
         ok, desfeitas = self.app.tentar(self.app.banco.desfazer_saidas, ids,
                                         autor=self.app.autor,

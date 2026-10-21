@@ -288,12 +288,15 @@ class TestTrocaDeTemaSemFechar(BaseTema):
         menu = self.app.menu_usuario
         rotulos = [menu.entrycget(i, "label") for i in range(menu.index("end") + 1)
                    if menu.type(i) != "separator"]
-        self.assertEqual(rotulos, ["Trocar minha senha", "Tema", "Sair"])
-        tema = self.app.menu_tema
-        self.assertEqual([tema.entrycget(i, "label") for i in range(3)],
-                         ["Claro", "Escuro", "Seguir o Windows"])
-        tema.invoke(1)                          # Escuro
+        self.assertEqual(rotulos, ["Trocar minha senha", "Tema: Claro",
+                                   "Tema: Escuro", "Tema: Seguir o Windows",
+                                   "Sair"])
+        escuro = next(i for i in range(menu.index("end") + 1)
+                      if menu.type(i) == "radiobutton"
+                      and menu.entrycget(i, "value") == "escuro")
+        menu.invoke(escuro)
         self.assertEqual(estilo.TEMA["atual"], "escuro")
+        self.assertEqual(self.app.var_tema.get(), "escuro")
 
 
 class TestTemaPorUsuario(BaseTema):

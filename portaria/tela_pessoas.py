@@ -47,7 +47,7 @@ NO_CAMPUS, BLOQUEADO, FORA = 0, 1, 2
 COR_SITUACAO = {horarios.NO_CAMPUS: "sucesso",
                 horarios.TEMPO_EXCEDIDO: "alerta",
                 horarios.SAIDA_PENDENTE: "erro",
-                horarios.SAIU: "barra"}
+                horarios.SAIU: "texto_3"}   # é texto: precisa de 4,5:1
 
 
 def _sem_acento(texto):

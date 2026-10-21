@@ -485,8 +485,10 @@ def aplicar_tema(janela):
     # lateral; app.abas.select(...) continua valendo)
     s.layout("Paginas.TNotebook.Tab", [])
     s.layout("Paginas.TNotebook", [("Notebook.client", {"sticky": "nswe"})])
+    # (sem as cores de borda o clam desenha um contorno bege em volta)
     s.configure("Paginas.TNotebook", background=COR["fundo"], borderwidth=0,
-                tabmargins=0)
+                tabmargins=0, bordercolor=COR["fundo"],
+                lightcolor=COR["fundo"], darkcolor=COR["fundo"])
     return s
 
 

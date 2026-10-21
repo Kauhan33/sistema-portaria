@@ -547,13 +547,15 @@ class AppPortaria:
         self.menu_usuario = tk.Menu(self.janela, tearoff=0, **cores)
         self.menu_usuario.add_command(label="Trocar minha senha",
                                       command=self.trocar_senha)
+        # o tema fica à vista (sem submenu): um clique troca; a seta de
+        # submenu do Windows sairia preta no tema escuro
+        self.menu_usuario.add_separator()
         self.var_tema = tk.StringVar(self.janela)
-        self.menu_tema = tk.Menu(self.menu_usuario, tearoff=0, **cores)
         for preferencia, texto in PREFERENCIAS_TEMA.items():
-            self.menu_tema.add_radiobutton(
-                label=texto, value=preferencia, variable=self.var_tema,
+            self.menu_usuario.add_radiobutton(
+                label=f"Tema: {texto}", value=preferencia,
+                variable=self.var_tema,
                 command=lambda p=preferencia: self.trocar_tema(p))
-        self.menu_usuario.add_cascade(label="Tema", menu=self.menu_tema)
         self.menu_usuario.add_separator()
         self.menu_usuario.add_command(label="Sair", command=self.sair)
 

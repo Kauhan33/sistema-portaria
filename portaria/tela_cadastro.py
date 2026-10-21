@@ -1006,8 +1006,8 @@ class AbaCadastro:
                     "info", f"O carro {formatar_placa(estadia['placa'])} está "
                             "no estacionamento desde "
                             f"{self._quando(estadia['entrada'])}: a entrada é "
-                            f"a pé. {pessoa['nome'].split()[0]} é o dono e "
-                            "pode sair com ele (na saída, \"Saiu de carro\").",
+                            f"a pé. Na saída, {pessoa['nome'].split()[0]} "
+                            "pode sair com o carro (\"Saiu de carro\").",
                     icone=ICONE["carro"])
         bloqueio = self._bloqueio_ativo("cpf", cpf)
         if bloqueio:

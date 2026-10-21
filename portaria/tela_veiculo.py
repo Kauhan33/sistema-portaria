@@ -91,8 +91,8 @@ def vai_entrar_de_carro(app, nome, placa, veio_de_carro):
 
     return app.perguntar(
         _perguntar, app, f"{primeiro} vai entrar de carro?",
-        f"{nome} tem o veículo {formatar_placa(placa)} cadastrado. Ele entra "
-        "com a pessoa agora? A pé, a visita fica sem placa.", placa,
+        f"{nome} tem o veículo {formatar_placa(placa)} cadastrado. De carro, "
+        "a placa entra na visita; a pé, a visita fica sem placa.", placa,
         [(f"De carro — {formatar_placa(placa)}", COM_CARRO,
           variante(COM_CARRO)),
          ("A pé", A_PE, variante(A_PE)),

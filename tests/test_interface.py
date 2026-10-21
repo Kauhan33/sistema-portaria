@@ -1833,7 +1833,7 @@ class TestEstadiaDeVeiculo(BaseInterface):
         self.sair_pelo_cpf("a_pe")
         self.app.limpar()
         self.app.cpf.insert(0, self.CPF)
-        self.assertIn("Ana é o dono e pode sair com ele",
+        self.assertIn("Na saída, Ana pode sair com o carro",
                       self.app.lbl_pessoa.cget("text"))
 
     def test_veiculo_pendente_depois_do_fechamento(self):

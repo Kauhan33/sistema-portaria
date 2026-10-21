@@ -76,10 +76,11 @@ class AbaBloqueios:
         campo_motivo = Campo(linha, maximo=MAXIMO_MOTIVO)
         self.motivo = campo_motivo.entrada
         self.motivo.master.grid(row=1, column=2, sticky="ew", padx=(0, px(10)))
-        # "123/200" discreto acima do campo, à direita do rótulo
+        # "123/200" discreto embaixo do campo, à direita (no notebook o
+        # rótulo de apoio ocupa a linha de cima inteira)
         self.contador_motivo = Contador(linha, campo_motivo)
-        self.contador_motivo.grid(row=0, column=2, sticky="e",
-                                  padx=(0, px(10)), pady=(0, px(4)))
+        self.contador_motivo.grid(row=2, column=2, sticky="e",
+                                  padx=(0, px(10)), pady=(px(2), 0))
         self.motivo.bind("<Return>", lambda e: (self.bloquear(), "break")[1])
         botoes = tk.Frame(linha, bg=COR["superficie"])
         botoes.grid(row=1, column=3)

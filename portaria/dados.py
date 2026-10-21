@@ -1559,7 +1559,8 @@ class Banco:
         """
         Aba Pessoas sem carregar todo mundo: mesmo critério de
         consultas.filtrar (nome, tipo, placa; CPF e celular pelos dígitos),
-        em ordem alfabética, no máximo `limite`.
+        em ordem alfabética, no máximo `limite`. Passando do limite, quem
+        está no campus entra primeiro (a lista abre ordenada pela situação).
         """
         condicao, params = _condicao_busca(
             texto, {"texto": ("nome", "tipo", "placa"),
@@ -1568,10 +1569,22 @@ class Banco:
         with self._conexao() as con:
             linhas = con.execute(
                 SELECT_PESSOAS + " WHERE p.id IN (SELECT id FROM pessoas "
-                f"{where} ORDER BY nome COLLATE NOCASE LIMIT ?) "
+                f"{where} ORDER BY NOT EXISTS (SELECT 1 FROM registros d "
+                "WHERE d.pessoa_id = pessoas.id AND d.saida = ''), "
+                "nome COLLATE NOCASE LIMIT ?) "
                 "GROUP BY p.id ORDER BY p.nome COLLATE NOCASE",
                 (*params, int(limite))).fetchall()
         return [self._pessoa(linha) for linha in linhas]
+
+    def visitas_da_pessoa(self, id_pessoa, limite=200):
+        """Visitas da pessoa (ficha da página Pessoas), da mais recente
+        para a mais antiga, com os dados preenchidos em cada uma."""
+        with self._conexao() as con:
+            linhas = con.execute(f"SELECT {COLUNAS_REGISTRO} FROM registros "
+                                 "WHERE pessoa_id = ? "
+                                 "ORDER BY entrada DESC, id DESC LIMIT ?",
+                                 (id_pessoa, int(limite))).fetchall()
+        return [_registro(linha) for linha in linhas]
 
     def buscar_pessoa(self, cpf):
         """Pessoa já cadastrada com esse CPF, ou None."""

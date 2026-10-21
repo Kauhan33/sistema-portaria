@@ -1214,6 +1214,107 @@ class TestAbaPessoas(BaseInterface):
 
 
 
+class TestHistoricoEOrdemNaPaginaPessoas(BaseInterface):
+    """Item 6 (histórico de visitas na ficha) e 7 (ordenar pelo cabeçalho)."""
+
+    def setUp(self):
+        super().setUp()
+        self.banco.inserir(dict(VISITA_ANTIGA))                  # 15/10, de carro
+        self.banco.inserir(dict(VISITA_ANTIGA, celular="31900001111", placa="",
+                                tipo="Visitante", entrada="16/10/2026 09:00",
+                                saida="17/10/2026 08:00"))
+        self.banco.inserir(dict(VISITA_ANTIGA, placa="", tipo="Professor",
+                                entrada=ha_uma_hora(), saida=""))
+        pessoas = [("Ana Silva", "52998224725", "30/09/2026 08:00", 1),
+                   ("Zeca Alves", "39053344705", "02/10/2026 08:00", 1),
+                   ("Érico Lima", "15350946056", "01/10/2026 08:00", 10)]
+        for nome, cpf, entrada, vezes in pessoas:
+            for dia in range(vezes):
+                inicio = datetime.strptime(entrada, FORMATO) - timedelta(days=dia)
+                self.banco.inserir({"nome": nome, "cpf": cpf,
+                                    "celular": "31987654321", "placa": "",
+                                    "tipo": "Aluno",
+                                    "entrada": inicio.strftime(FORMATO),
+                                    "saida": (inicio + timedelta(hours=1))
+                                    .strftime(FORMATO)})
+        self.aba = self.app.tela_pessoas
+        self.aba.atualizar()
+        self.ids = {p["nome"].split()[0]: str(p["id"]) for p in self.aba.pessoas}
+
+    def ordem(self):
+        nomes = {v: k for k, v in self.ids.items()}
+        return [nomes[i] for i in self.aba.tabela.get_children()]
+
+    def titulo(self, coluna):
+        return self.aba.tabela.heading(coluna)["text"]
+
+    def test_abre_ordenada_pela_situacao_e_depois_pelo_nome(self):
+        self.banco.bloquear("cpf", "39053344705", "Motivo válido", "ana.admin")
+        self.aba.atualizar()
+        self.assertEqual(self.ordem(), ["Beto", "Zeca", "Ana", "Érico"])
+        self.assertEqual(self.titulo("#0"), "Situação " + chr(0x25B2))
+        self.assertEqual(self.titulo("nome"), "Nome")
+
+    def test_primeiro_clique_crescente_segundo_decrescente(self):
+        self.aba.ordenacao.clicar("nome")
+        self.assertEqual(self.ordem(), ["Ana", "Beto", "Érico", "Zeca"])  # Érico
+        self.assertEqual(self.titulo("nome"), "Nome " + chr(0x25B2))
+        self.assertEqual(self.titulo("#0"), "Situação")
+        self.aba.ordenacao.clicar("nome")
+        self.assertEqual(self.ordem(), ["Zeca", "Érico", "Beto", "Ana"])
+        self.assertEqual(self.titulo("nome"), "Nome " + chr(0x25BC))
+
+    def test_numeros_e_datas_na_ordem_certa(self):
+        self.aba.ordenacao.clicar("visitas")         # 1, 1, 3, 10 (não "10" < "3")
+        self.assertEqual(self.ordem(), ["Ana", "Zeca", "Beto", "Érico"])
+        self.aba.ordenacao.clicar("ultima")          # 30/09 < 02/10 < 21/10
+        self.assertEqual(self.ordem(), ["Ana", "Érico", "Zeca", "Beto"])
+        self.aba.ordenacao.clicar("ultima")
+        self.assertEqual(self.ordem(), ["Beto", "Zeca", "Érico", "Ana"])
+
+    def test_ordem_continua_depois_de_atualizar(self):
+        self.aba.ordenacao.clicar("visitas")
+        self.aba.ordenacao.clicar("visitas")
+        self.aba.atualizar()
+        self.assertEqual(self.ordem()[0], "Érico")
+
+    def test_ficha_mostra_o_historico_de_visitas(self):
+        self.aba.tabela.selection_set(self.ids["Beto"])
+        self.aba.ao_selecionar()
+        self.assertEqual(self.aba.seletor_ficha.itens["Visitas"][0].cget("text"),
+                         "Visitas (3)")
+        hoje, dia_16, dia_15 = self.aba.visitas           # mais recente primeiro
+        self.assertEqual((hoje["situacao"], hoje["saida"], hoje["duracao"]),
+                         ("No campus", "sem saída", "1 h até agora"))
+        self.assertEqual((dia_16["saida"], dia_16["duracao"], dia_16["tipo"],
+                          dia_16["placa"], dia_16["como"]),
+                         ("17/10/2026 08:00", "23 h", "Visitante", "",
+                          "(31) 90000-1111"))
+        self.assertEqual((dia_15["entrada"], dia_15["saida"], dia_15["duracao"],
+                          dia_15["placa"], dia_15["situacao"]),
+                         ("15/10/2026 07:00", "12:00", "5 h", "QWE-1234", "Saiu"))
+        self.aba.seletor_ficha.selecionar("Visitas")
+        self.assertTrue(self.aba.secoes["Visitas"].winfo_manager())
+        self.assertFalse(self.aba.secoes["Cadastro"].winfo_manager())
+        texto = self.aba.lista_visitas.get("1.0", tk.END)
+        self.assertIn("15/10/2026 07:00  " + chr(0x2192) + "  12:00", texto)
+        self.assertIn("Registrado como (31) 90000-1111", texto)
+        self.assertIn("Visitante  ·  a pé", texto)
+
+
+class TestFichaDoPorteiro(BaseInterface):
+    entrar_como = "porteiro"
+
+    def test_ficha_com_cpf_mascarado(self):
+        self.banco.inserir(dict(VISITA_ANTIGA))
+        aba = self.app.tela_pessoas
+        aba.atualizar()
+        aba.tabela.selection_set(aba.tabela.get_children()[0])
+        aba.ao_selecionar()
+        self.assertEqual(aba.lbl_cpf.cget("text"), "CPF ***.444.777-**")
+        self.assertEqual(len(aba.visitas), 1)
+
+
 class TestSaidaRapida(BaseInterface):
     entrar_como = "porteiro"
 

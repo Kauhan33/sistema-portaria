@@ -873,6 +873,51 @@ def preencher_eventos(tab, eventos):
                                e["detalhe"]))
 
 
+SETA_CRESCENTE, SETA_DECRESCENTE = chr(0x25B2), chr(0x25BC)
+
+
+class OrdenacaoTabela:
+    """
+    Ordenar a tabela clicando no cabeçalho: 1º clique em crescente, 2º em
+    decrescente (e assim por diante); a coluna em uso ganha a seta ▲ ou ▼.
+    titulos: {coluna: título}; chaves: {coluna: função item -> valor de
+    comparação} (datas e números comparados como datas e números, não como
+    texto); desempate: função do critério de desempate (sempre crescente).
+    ao_ordenar(): redesenha a tabela (a tela chama .ordenar(itens)).
+    """
+
+    def __init__(self, tab, titulos, chaves, ao_ordenar, coluna,
+                 desempate=None):
+        self.tab, self.titulos, self.chaves = tab, titulos, chaves
+        self.ao_ordenar, self.desempate = ao_ordenar, desempate
+        self.coluna, self.decrescente = coluna, False
+        for col in titulos:
+            tab.heading(col, command=lambda c=col: self.clicar(c))
+        self._mostrar_setas()
+
+    def clicar(self, coluna):
+        if coluna == self.coluna:
+            self.decrescente = not self.decrescente
+        else:
+            self.coluna, self.decrescente = coluna, False
+        self._mostrar_setas()
+        self.ao_ordenar()
+
+    def _mostrar_setas(self):
+        for col, titulo in self.titulos.items():
+            if col == self.coluna:
+                seta = SETA_DECRESCENTE if self.decrescente else SETA_CRESCENTE
+                titulo = f"{titulo} {seta}"
+            self.tab.heading(col, text=titulo)
+
+    def ordenar(self, itens):
+        """Lista nova, ordenada pela coluna escolhida (o sort do Python é
+        estável: o desempate vale nos dois sentidos)."""
+        itens = sorted(itens, key=self.desempate) if self.desempate else list(itens)
+        return sorted(itens, key=self.chaves[self.coluna],
+                      reverse=self.decrescente)
+
+
 class Seletor(tk.Frame):
     """
     Navegação entre as seções de uma página (como as abas do Windows 11):

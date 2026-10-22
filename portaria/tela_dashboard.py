@@ -7,6 +7,9 @@ da categoria, com as saídas pendentes no apoio) e dois gráficos (pessoas por t
 acesso e entradas nos últimos 7 dias). Os números vêm do banco
 (banco.resumo_painel, calculado no SQL); o desenho fica em graficos.py.
 O administrador exporta os registros de um período para planilha (CSV).
+RN38: com só 1 administrador ativo, a faixa "Só existe 1 administrador
+ativo. Crie um segundo." aparece para o administrador (se ele perder a
+senha e os códigos de recuperação, ninguém mais entra como administrador).
 """
 
 import tkinter as tk
@@ -18,7 +21,7 @@ from .componentes import (Aviso, Botao, Cabecalho, Cartao, Dialogo,
 from .consultas import formatar_duracao
 from .estilo import COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, px
 from .graficos import desenhar_barras_horizontais, desenhar_barras_verticais
-from .usuarios import eh_admin
+from .usuarios import eh_admin, precisa_de_outro_admin
 from .validacao import TIPOS_ACESSO
 
 PLURAL_TIPO = {"Aluno": "Alunos", "Professor": "Professores",
@@ -32,6 +35,7 @@ NUMEROS = [("dentro", "No campus agora"), ("hoje", "Entradas hoje"),
            ("excedido", "Tempo excedido")]
 ALTURA_GRAFICO = 230
 FORMATO_DIA = "%d/%m/%Y"
+SO_UM_ADMIN = "Só existe 1 administrador ativo. Crie um segundo."
 
 
 class AbaDashboard:
@@ -52,6 +56,7 @@ class AbaDashboard:
                                       icone=ICONE["baixar"],
                                       fundo_pai=COR["fundo"])
             self.btn_exportar.pack()
+        self.faixa_admin = Aviso(aba, fundo_pai=COR["fundo"])
         self._montar_numeros()
         self._montar_graficos()
         self.atualizar()
@@ -60,7 +65,7 @@ class AbaDashboard:
     # Montagem
     # --------------------------------------------------------------
     def _montar_numeros(self):
-        linha = tk.Frame(self.aba, bg=COR["fundo"])
+        self.linha_numeros = linha = tk.Frame(self.aba, bg=COR["fundo"])
         linha.pack(fill="x", padx=px(MARGEM - ESPACO_CARTOES // 2))
         linha.columnconfigure(tuple(range(len(NUMEROS))), weight=1,
                               uniform="numeros")
@@ -129,6 +134,7 @@ class AbaDashboard:
             self._mostrar("permanencia", "—", "sem saídas registradas")
         self.com_veiculo = r["com_veiculo"]
         self._mostrar_horarios()
+        self._mostrar_faixa_admin()
 
         self.dados["tipos"] = [
             (PLURAL_TIPO.get(t, t), por_tipo[t][0], f"{por_tipo[t][1]} no campus")
@@ -167,6 +173,23 @@ class AbaDashboard:
                                             "visitas com veículo"))
         self.cards["estacionamento"][1].config(
             fg=COR["erro"] if carros else COR["texto_3"])
+
+    def _mostrar_faixa_admin(self):
+        """RN38: só para o administrador, com 1 administrador ativo."""
+        mostrar = False
+        if eh_admin(self.app.usuario):
+            ok, contas = self.app.tentar(self.app.banco.listar_usuarios)
+            mostrar = ok and precisa_de_outro_admin(contas)
+        if mostrar:
+            self.faixa_admin.mostrar(
+                "alerta", SO_UM_ADMIN, icone=ICONE["escudo"],
+                acao="Ir para Usuários",
+                comando=lambda: self.app.ir_para(self.app.aba_usuarios))
+            self.faixa_admin.pack(fill="x", padx=px(MARGEM),
+                                  pady=(0, px(ESPACO_CARTOES)),
+                                  before=self.linha_numeros)
+        else:
+            self.faixa_admin.pack_forget()
 
     def _mostrar(self, chave, valor, apoio):
         self.cards[chave][0].config(text=str(valor))

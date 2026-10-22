@@ -73,6 +73,7 @@ from .tela_configuracoes import AbaConfiguracoes
 from .tela_dashboard import AbaDashboard
 from .tela_login import TelaLogin
 from .tela_pessoas import AbaPessoas
+from .tela_recuperacao import JanelaNovosCodigos
 from .tela_senha import JanelaSenha
 from .tela_usuarios import AbaUsuarios
 from .usuarios import (MINUTOS_INATIVIDADE, PERFIS, SESSAO_ENCERRADA,
@@ -80,6 +81,7 @@ from .usuarios import (MINUTOS_INATIVIDADE, PERFIS, SESSAO_ENCERRADA,
 from .validacao import formatar_cpf, mascarar_cpf
 
 TECLAS_DA_SESSAO = ("<Return>", "<KP_Enter>", "<F2>")
+ITEM_CODIGOS = "Gerar novos códigos de recuperação"
 EVENTOS_DE_USO = ("<KeyPress>", "<ButtonPress>", "<Motion>", "<MouseWheel>")
 SEGUNDOS_ENTRE_CONFERENCIAS = 30      # de quanto em quanto tempo olha a inatividade
 AVISO_INATIVIDADE = (f"Sua sessão foi encerrada depois de {MINUTOS_INATIVIDADE} "
@@ -330,6 +332,7 @@ class AppPortaria:
         self.lbl_usuario.config(text=usuario["nome"])
         self.lbl_perfil.config(text=PERFIS[usuario["perfil"]])
         self.var_tema.set(usuario.get("tema", TEMA_PADRAO))
+        self._ajustar_menu_usuario()
         self._trocar_corpo()
         self.lateral.pack(side="left", fill="y", before=self.corpo)
         self._montar_principal()
@@ -547,6 +550,7 @@ class AppPortaria:
         self.menu_usuario = tk.Menu(self.janela, tearoff=0, **cores)
         self.menu_usuario.add_command(label="Trocar minha senha",
                                       command=self.trocar_senha)
+        self._com_item_codigos = False      # só o administrador tem
         # o tema fica à vista (sem submenu): um clique troca; a seta de
         # submenu do Windows sairia preta no tema escuro
         self.menu_usuario.add_separator()
@@ -558,6 +562,24 @@ class AppPortaria:
                 command=lambda p=preferencia: self.trocar_tema(p))
         self.menu_usuario.add_separator()
         self.menu_usuario.add_command(label="Sair", command=self.sair)
+
+    def _ajustar_menu_usuario(self):
+        """RN38: "Gerar novos códigos de recuperação" só para o
+        administrador (logo abaixo de "Trocar minha senha")."""
+        admin = eh_admin(self.usuario)
+        if admin and not self._com_item_codigos:
+            self.menu_usuario.insert_command(
+                1, label=ITEM_CODIGOS, command=self.gerar_novos_codigos)
+        elif not admin and self._com_item_codigos:
+            self.menu_usuario.delete(1)
+        self._com_item_codigos = admin
+
+    def gerar_novos_codigos(self):
+        """Menu da conta → "Gerar novos códigos de recuperação" (RN38)."""
+        if not eh_admin(self.usuario):
+            return None
+        self.janela_codigos = JanelaNovosCodigos(self)
+        return self.janela_codigos
 
     def abrir_menu_usuario(self):
         x = self.btn_opcoes.winfo_rootx()

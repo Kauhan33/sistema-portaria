@@ -12,19 +12,26 @@ O formulário da direita muda conforme o momento (o painel fica):
 - Primeiro acesso: cria o administrador;
 - Defina sua senha (RN39): quem entrou com a senha que o administrador
   passou (conta nova ou senha redefinida) escolhe a dele antes de
-  qualquer outra tela.
+  qualquer outra tela;
+- Esqueci a senha (RN38): usuário + código de recuperação + senha nova.
+
+No primeiro acesso, depois de criar o administrador, aparecem os 8
+códigos de recuperação dele (tela_recuperacao.py), uma vez só.
 """
 
 import tkinter as tk
 from datetime import datetime
 
-from .componentes import Aviso, Botao, Campo, data_por_extenso, marca_cancela
-from .dados import ErroDados
+from .componentes import (Aviso, Botao, Campo, data_por_extenso, link,
+                          marca_cancela)
+from .dados import ErroDados, log
+from .tela_recuperacao import mostrar_codigos
 from .estilo import COR, FONTE, px
 from .usuarios import (SENHA_MINIMA, definir_senha_inicial, entrar,
-                       gerar_hash, normalizar_login, precisa_trocar_senha,
+                       gerar_codigos_recuperacao, gerar_hash, normalizar_login,
+                       precisa_trocar_senha, recuperar_senha,
                        validar_novo_usuario)
-from .validacao import MAXIMO_LOGIN, MAXIMO_NOME
+from .validacao import MAXIMO_CODIGO, MAXIMO_LOGIN, MAXIMO_NOME
 
 SEGUNDOS_RELOGIO = 15
 
@@ -77,18 +84,27 @@ class TelaLogin:
         self.formulario = nome
         self._titulo(titulo, subtitulo)
 
-    def _fechar_formulario(self, texto, acao, dica=""):
-        """Faixa de erro (escondida), o botão principal, a dica de baixo e
-        o Enter em qualquer campo (cada campo fica no seu Frame)."""
+    def _fechar_formulario(self, texto, acao, dica="", ligacao=None):
+        """Faixa de erro (escondida), o botão principal, a dica de baixo
+        (com um link opcional: (texto, comando)) e o Enter em qualquer
+        campo (cada campo fica no seu Frame)."""
         self.faixa = Aviso(self.miolo)
         self.lbl_erro = self.faixa.lbl
         self.btn_acao = Botao(self.miolo, texto, acao, "primario", altura=40,
                               dica_tecla="Enter")
         self.btn_acao.pack(fill="x")
-        if dica:
-            tk.Label(self.miolo, text=dica, font=FONTE["dica"],
-                     bg=COR["superficie"], fg=COR["texto_3"], justify="left",
-                     wraplength=px(360)).pack(anchor="w", pady=(px(16), 0))
+        self.link = None
+        if dica or ligacao:
+            rodape = tk.Frame(self.miolo, bg=COR["superficie"])
+            rodape.pack(fill="x", pady=(px(16), 0))
+            if ligacao:
+                self.link = link(rodape, *ligacao)
+                self.link.pack(side="left", padx=(0, px(10)))
+            if dica:
+                tk.Label(rodape, text=dica, font=FONTE["dica"],
+                         bg=COR["superficie"], fg=COR["texto_3"],
+                         justify="left", wraplength=px(260 if ligacao else 360)
+                         ).pack(side="left", anchor="w")
         for caixa_texto in self.campos:
             caixa_texto.bind("<Return>", lambda e: (acao(), "break")[1])
             caixa_texto.bind("<KP_Enter>", lambda e: (acao(), "break")[1])
@@ -114,10 +130,31 @@ class TelaLogin:
         self.campo_login = self._campo("Usuário", maximo=MAXIMO_LOGIN)
         self.campo_senha = self._campo("Senha", senha=True)
         self._fechar_formulario("Entrar", self.entrar,
-                                "Esqueceu a senha? Peça ao administrador "
-                                "para redefinir.")
+                                "ou peça ao administrador para redefinir.",
+                                ("Esqueci a senha", self.mostrar_esqueci))
         if aviso:
             self._mostrar("info", aviso)
+
+    def mostrar_esqueci(self):
+        """RN38: troca a senha com um código de recuperação."""
+        login = self.campo_login.get() if self.formulario == "entrar" else ""
+        self._novo_formulario(
+            "esqueci", "Esqueci a senha",
+            "Use um dos códigos de recuperação que o sistema mostrou ao "
+            "criar o administrador. Cada código vale uma vez.")
+        self.campo_login = self._campo("Usuário", maximo=MAXIMO_LOGIN)
+        self.campo_login.insert(0, login)
+        self.campo_codigo = self._campo("Código de recuperação", "ex.: K7QM-2F9X",
+                                        maximo=MAXIMO_CODIGO)
+        self.campo_nova = self._campo(
+            "Nova senha", f"mínimo {SENHA_MINIMA} caracteres", senha=True)
+        self.campo_confirmacao = self._campo("Confirmar a nova senha",
+                                             senha=True)
+        self._fechar_formulario("Trocar a senha", self.recuperar,
+                                "Sem código? Peça a outro administrador.",
+                                ("Voltar", self.mostrar_entrar))
+        if login:
+            self.campo_codigo.focus_set()
 
     def mostrar_definir_senha(self, usuario):
         """RN39: "Defina sua senha" antes de qualquer tela."""
@@ -231,6 +268,31 @@ class TelaLogin:
             return
         self.ao_entrar(usuario)
 
+    def recuperar(self):
+        """RN38: código certo troca a senha (e é queimado); errado conta
+        como tentativa no bloqueio progressivo do login."""
+        login = self.campo_login.get()
+        try:
+            ok, msg = recuperar_senha(self.banco, login,
+                                      self.campo_codigo.get(),
+                                      self.campo_nova.get(),
+                                      self.campo_confirmacao.get(),
+                                      agora=self.relogio())
+        except ErroDados as e:
+            self.erro(str(e))
+            return
+        if not ok:
+            for caixa in (self.campo_codigo, self.campo_nova,
+                          self.campo_confirmacao):
+                caixa.delete(0, tk.END)
+            self.campo_codigo.focus_set()
+            self.erro(msg)
+            return
+        self.mostrar_entrar()
+        self.campo_login.insert(0, normalizar_login(login))
+        self.campo_senha.focus_set()
+        self._mostrar("sucesso", msg)
+
     def definir_senha(self):
         """RN39: grava a senha escolhida e entra."""
         usuario = self._usuario_pendente
@@ -270,4 +332,17 @@ class TelaLogin:
         if usuario is None:
             self.erro(motivo)
             return
+        self._mostrar_codigos_novos(usuario)
         self.ao_entrar(usuario)
+
+    def _mostrar_codigos_novos(self, usuario):
+        """RN38: os 8 códigos de recuperação do administrador recém-criado,
+        mostrados uma vez (com "Guardei em lugar seguro")."""
+        try:
+            codigos = gerar_codigos_recuperacao(self.banco, usuario)
+        except ErroDados as e:          # sem os códigos ainda dá para entrar
+            log.error("Códigos de recuperação não gerados: %s",
+                      e.detalhe or e)
+            return
+        mostrar_codigos(self.miolo.winfo_toplevel(), codigos,
+                        usuario["login"], self.relogio)

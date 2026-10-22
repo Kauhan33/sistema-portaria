@@ -50,6 +50,7 @@ MAXIMO_HORA = 5              # hh:mm (e os minutos "-1440" das regras)
 MAXIMO_CPF = 11
 MAXIMO_CELULAR = 11
 MAXIMO_PLACA = 7
+MAXIMO_CODIGO = 9             # código de recuperação: K7QM-2F9X (RN38)
 
 
 # ------------------------------------------------------------------

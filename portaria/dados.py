@@ -73,7 +73,7 @@ from . import horarios, senhas
 from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
                        conferir_autorizador, pode_editar)
 from .validacao import (FORMATO, MAXIMO_BUSCA, MAXIMO_CELULAR, MAXIMO_CPF,
-                        MAXIMO_DATA_HORA, MAXIMO_DESCRICAO,
+                        MAXIMO_CODIGO, MAXIMO_DATA_HORA, MAXIMO_DESCRICAO,
                         MAXIMO_JUSTIFICATIVA, MAXIMO_LOGIN, MAXIMO_MOTIVO,
                         MAXIMO_NOME, MAXIMO_PLACA, MAXIMO_SENHA, TIPOS_ACESSO,
                         checar_tamanho, formatar_placa, mascarar_cpf,
@@ -211,6 +211,11 @@ TAMANHOS_DA_VISITA = (("Nome completo", "nome", MAXIMO_NOME),
                       ("Entrada", "entrada", MAXIMO_DATA_HORA),
                       ("Saída", "saida", MAXIMO_DATA_HORA))
 VEICULO_SEM_DONO = "Veículo saiu sem o dono"     # evento e regra (RN32)
+# RN38: códigos de recuperação do administrador (o código nunca vai ao
+# histórico, só quantos restam)
+CODIGOS_GERADOS = "Códigos de recuperação gerados"
+CODIGO_RECUPERACAO_USADO = "Senha redefinida com código de recuperação"
+RECUPERACAO_RECUSADA = "Recuperação de senha recusada"
 TROCA_DE_SENHA_PENDENTE = ("Defina a sua senha antes de continuar: saia e "
                            "entre de novo para trocá-la.")
 AUTORIZACAO_SEM_SENHA = ("A autorização de outro usuário só vale com a senha "
@@ -2183,6 +2188,77 @@ class Banco:
                             (login,))
             self._evento(con, autor, "Senha alterada" if propria
                          else "Senha redefinida", login)
+
+    # --------------------------------------------------------------
+    # Códigos de recuperação do administrador (RN38)
+    # --------------------------------------------------------------
+    def salvar_codigos_recuperacao(self, id_usuario, hashes, autor):
+        """
+        Troca os códigos do administrador `id_usuario` pelos novos (só os
+        hashes chegam aqui): os antigos, usados ou não, deixam de valer. Só
+        o próprio administrador gera os dele (no primeiro acesso, logo
+        depois de criado, ou pelo menu da conta, com a senha atual).
+        """
+        if not hashes or any(not h for h in hashes):
+            raise ErroDados("Códigos de recuperação inválidos.")
+        with self._conexao() as con:
+            quem = self._exigir(con, autor, para="gerar códigos de "
+                                "recuperação")
+            if quem["id"] != id_usuario:
+                raise ErroDados("Cada administrador gera só os próprios "
+                                "códigos de recuperação.")
+            con.execute("DELETE FROM codigos_recuperacao WHERE usuario_id = ?",
+                        (id_usuario,))
+            con.executemany("INSERT INTO codigos_recuperacao (usuario_id, "
+                            "hash) VALUES (?, ?)",
+                            [(id_usuario, h) for h in hashes])
+            self._evento(con, autor, CODIGOS_GERADOS,
+                         f"{len(hashes)} códigos novos; os anteriores "
+                         "deixaram de valer.")
+
+    def codigos_restantes(self, login):
+        """Quantos códigos de recuperação o usuário ainda pode usar."""
+        with self._conexao() as con:
+            return con.execute(
+                "SELECT COUNT(*) FROM codigos_recuperacao c JOIN usuarios u "
+                "ON u.id = c.usuario_id WHERE u.login = ? AND c.usado_em = ''",
+                (login,)).fetchone()[0]
+
+    def usar_codigo_recuperacao(self, login, codigo, senha_hash):
+        """
+        "Esqueci a senha": se `codigo` (já normalizado, sem o hífen) é um
+        dos códigos ainda não usados do usuário ativo, ele é QUEIMADO, a
+        senha vira `senha_hash` (escolhida por ele: sem troca pendente) e o
+        login travado é liberado, tudo numa transação. O histórico registra
+        o uso sem o código. Devolve True; código errado devolve False (quem
+        chama conta a tentativa errada no bloqueio progressivo).
+        """
+        _exigir_tamanho("Código de recuperação", codigo, MAXIMO_CODIGO)
+        with self._conexao() as con:
+            usuario = con.execute("SELECT id FROM usuarios WHERE login = ? "
+                                  "AND ativo = 1", (login,)).fetchone()
+            linhas = [] if usuario is None else con.execute(
+                "SELECT id, hash FROM codigos_recuperacao WHERE usuario_id = ? "
+                "AND usado_em = '' ORDER BY id", (usuario[0],)).fetchall()
+            achado = next((i for i, h in linhas
+                           if senhas.conferir_senha(codigo, h)), None)
+            if achado is None:
+                return False
+            agora = self.relogio().strftime(FORMATO_ISO_SEGUNDOS)
+            cursor = con.execute("UPDATE codigos_recuperacao SET usado_em = ? "
+                                 "WHERE id = ? AND usado_em = ''",
+                                 (agora, achado))
+            if not cursor.rowcount:      # outra estação usou antes
+                return False
+            con.execute("UPDATE usuarios SET senha = ?, trocar_senha = 0 "
+                        "WHERE id = ?", (senha_hash, usuario[0]))
+            con.execute("DELETE FROM tentativas_login WHERE chave = ?",
+                        (login,))
+            restam = len(linhas) - 1
+            self._evento(con, login, CODIGO_RECUPERACAO_USADO,
+                         f"Um código de recuperação foi usado e queimado; "
+                         f"restam {restam}.")
+            return True
 
     def atualizar_hash_senha(self, id_usuario, senha_hash):
         """Troca o hash pelo padrão atual (mesma senha) no login. Interno:

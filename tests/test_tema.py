@@ -290,7 +290,9 @@ class TestTrocaDeTemaSemFechar(BaseTema):
         menu = self.app.menu_usuario
         rotulos = [menu.entrycget(i, "label") for i in range(menu.index("end") + 1)
                    if menu.type(i) != "separator"]
-        self.assertEqual(rotulos, ["Trocar minha senha", "Tema: Claro",
+        self.assertEqual(rotulos, ["Trocar minha senha",
+                                   "Gerar novos códigos de recuperação",
+                                   "Tema: Claro",
                                    "Tema: Escuro", "Tema: Seguir o Windows",
                                    "Sair"])
         escuro = next(i for i in range(menu.index("end") + 1)

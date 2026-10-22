@@ -24,8 +24,9 @@ from datetime import datetime, timedelta
 
 from .senhas import (CHAVE_AUTORIZACAO, ITERACOES_PADRAO, LIMITE_TENTATIVAS,
                      SEGUNDOS_BLOQUEIO, SEGUNDOS_BLOQUEIO_MAXIMO, conferir_senha,
-                     contar_falha, estacao_atual, gerar_hash, hash_falso,
-                     precisa_atualizar_hash, segundos_de_bloqueio)
+                     contar_falha, estacao_atual, gerar_codigos, gerar_hash,
+                     hash_falso, normalizar_codigo, precisa_atualizar_hash,
+                     segundos_de_bloqueio)
 from .validacao import (MAXIMO_LOGIN, MAXIMO_NOME, MAXIMO_SENHA,
                         checar_tamanho, converter_data, nome_valido)
 
@@ -288,6 +289,76 @@ def conferir_autorizador(banco, login, senha, estacao, operador, agora=None):
         banco.registrar_evento(operador, "Autorização recusada",
                                f"Senha errada para {quem} na estação {estacao}")
     return None, motivo
+
+
+# ------------------------------------------------------------------
+# Códigos de recuperação do administrador (RN38)
+# ------------------------------------------------------------------
+CODIGO_INCORRETO = "Usuário ou código de recuperação incorretos."
+
+
+def gerar_codigos_recuperacao(banco, usuario):
+    """Gera os 8 códigos do administrador, grava só o hash de cada um
+    (os anteriores deixam de valer) e devolve os códigos para mostrar UMA
+    vez. Só o próprio administrador."""
+    codigos = gerar_codigos()
+    banco.salvar_codigos_recuperacao(
+        usuario["id"], [gerar_hash(normalizar_codigo(c)) for c in codigos],
+        autor=usuario["login"])
+    return codigos
+
+
+def gerar_novos_codigos(banco, usuario, senha_atual):
+    """Menu da conta → "Gerar novos códigos": pede a senha atual.
+    Devolve (códigos, "") ou (None, motivo)."""
+    u = banco.buscar_usuario(usuario["login"])
+    if u is None or not u["ativo"] or u["perfil"] != "admin":
+        return None, "Só o administrador tem códigos de recuperação."
+    if not conferir_senha(senha_atual or "", u["senha"]):
+        return None, "A senha atual não confere."
+    return gerar_codigos_recuperacao(banco, u), ""
+
+
+def recuperar_senha(banco, login, codigo, nova, confirmacao, agora=None):
+    """
+    Login → "Esqueci a senha" (RN38): login + código de recuperação + nova
+    senha. Devolve (ok, mensagem). O código certo é queimado (não serve de
+    novo) e a senha nova vale na hora. Código errado conta como tentativa
+    errada no MESMO bloqueio progressivo do login daquele usuário; com o
+    login travado, nem o código certo passa. A senha nova é conferida antes
+    (senha fraca não gasta código nem conta tentativa).
+    """
+    agora = agora or datetime.now()
+    login = normalizar_login(login or "")
+    if not login or not (codigo or "").strip():
+        return False, "Informe o usuário e um código de recuperação."
+    u = banco.buscar_usuario(login)
+    chave = u["login"] if u else CHAVE_LOGIN_INEXISTENTE
+    quem = u["login"] if u else LOGIN_INEXISTENTE
+    falhas, bloqueios, bloqueado_ate = banco.ler_tentativas_login(chave)
+    if bloqueado_ate is not None and bloqueado_ate > agora:
+        restante = math.ceil((bloqueado_ate - agora).total_seconds())
+        return False, f"Muitas tentativas erradas. Aguarde {restante} s."
+    ok, msg = validar_senha(nova, confirmacao, login)
+    if not ok:
+        return False, msg
+    normalizado = normalizar_codigo(codigo)
+    if u is None or not normalizado:
+        conferir_senha(normalizado or "-", hash_falso())   # mesmo tempo
+    elif banco.usar_codigo_recuperacao(u["login"], normalizado,
+                                       gerar_hash(nova)):
+        return True, ("Senha redefinida com o código de recuperação, que não "
+                      "vale mais. Entre com a senha nova.")
+    return False, contar_erro_de_login(banco, chave, quem, falhas, bloqueios,
+                                       agora, CODIGO_INCORRETO,
+                                       acao="Recuperação de senha recusada")
+
+
+def precisa_de_outro_admin(usuarios_cadastrados):
+    """RN38: True se só existe 1 administrador ativo (a faixa do Painel
+    pede um segundo: se ele perder a senha e os códigos, ninguém entra)."""
+    return sum(1 for u in usuarios_cadastrados
+               if u["perfil"] == "admin" and u["ativo"]) == 1
 
 
 # ------------------------------------------------------------------

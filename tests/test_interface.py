@@ -14,6 +14,7 @@ from portaria import dados, estilo
 from portaria.componentes import Botao
 from portaria.interface import AppPortaria
 from portaria.tela_autorizacao import JanelaAutorizacao
+from portaria.tela_recuperacao import JanelaCodigos
 from portaria.tela_veiculo import JanelaVeiculo
 from portaria.usuarios import (LIMITE_TENTATIVAS, MINUTOS_INATIVIDADE,
                                autenticar, gerar_hash)
@@ -125,6 +126,28 @@ class BaseInterface(unittest.TestCase):
                 dialogo.escolher(self.responder_veiculo)
 
         patcher = mock.patch.object(JanelaVeiculo, "esperar", esperar_veiculo)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # os códigos de recuperação (RN38): o teste guarda o que apareceu e,
+        # sem outra resposta, marca "Guardei" e continua
+        self.codigos_mostrados = []
+        self.responder_codigos = "guardei"
+
+        def esperar_codigos(janela):
+            self.codigos_mostrados.append(list(janela.codigos))
+            if callable(self.responder_codigos):
+                self.responder_codigos(janela)
+            elif self.responder_codigos == "guardei":
+                janela.alternador.alternar()
+                janela.continuar()
+
+        patcher = mock.patch.object(JanelaCodigos, "esperar", esperar_codigos)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # "Imprimir" não abre o navegador de verdade
+        self.navegador = mock.MagicMock()
+        patcher = mock.patch("portaria.tela_recuperacao.webbrowser",
+                             self.navegador)
         patcher.start()
         self.addCleanup(patcher.stop)
 

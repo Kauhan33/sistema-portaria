@@ -213,6 +213,47 @@ V2, V3, B4, V4, com uma migração só para a v11.
 - **Testes:** cada tipo de exceção aparece no filtro certo; o período respeita
   o fuso local; o porteiro não abre a aba.
 
+### V5. Dois carros da mesma pessoa no estacionamento · M · RN40
+*(achado no teste do aluno da 2.2, em 21/10/2026)*
+- **Problema:** a pessoa sai a pé, deixa o carro A e volta com o carro B. Na
+  saída, a pergunta "Saiu com o veículo B?" é respondida com "Saiu de carro"
+  e o programa para ali: nunca pergunta pelo carro A. O carro A fica como
+  "Dono fora do campus" e só sai com a senha do administrador. Na entrada com
+  B, nada avisava que A ainda estava lá.
+- **Regra (RN40), decidida pelo aluno.** Uma pessoa dirige um carro de cada
+  vez.
+  1. **Entrada:** quem já tem carro no estacionamento e entra com **outro**
+     recebe um aviso antes de gravar: "Carla já tem o BRA2E19 no
+     estacionamento desde 08:20". As opções são:
+     - **Entrar, ficam os dois** (padrão);
+     - **O BRA2E19 já saiu**: corrige o esquecimento da guarita, com a senha
+       do administrador e justificativa. Vai para o relatório de exceções;
+     - **Cancelar**.
+  2. **Limite:** até **2 carros** da mesma pessoa ao mesmo tempo. Um terceiro
+     só entra com a senha do administrador.
+  3. **Saída:** **uma** pergunta, "Com qual carro Carla está saindo?". Há um
+     botão por placa, com o horário de entrada, e "A pé, os carros ficam".
+     Sai **um** carro com a pessoa.
+  4. **O carro que fica** segue RN32, RN35 e RN36. Ele sai quando o dono volta
+     a pé e sai com ele, quando um autorizado o leva, ou com a senha do
+     administrador. O alerta de carro esquecido mostra esse carro antes do
+     fechamento.
+- **Banco confere:**
+  - o limite de 2 carros abertos por CPF, a não ser com autorização do
+    administrador;
+  - uma saída de pessoa fecha no máximo uma estadia dela;
+  - "já saiu" sem a senha é recusado.
+- **Arquivos:** `veiculos.py` (regras puras), `dados.py`, `tela_veiculo.py`
+  (pergunta com as placas), `tela_cadastro.py` (`_perguntar_veiculos` e
+  entrada).
+- **Testes:**
+  - A + B: a saída oferece os dois; escolher A deixa B, e o contrário;
+  - "A pé" deixa os dois;
+  - terceiro carro sem senha é recusado, inclusive direto no `Banco`;
+  - "já saiu" sem senha é recusado;
+  - saída rápida pela placa A continua pedindo "saiu junto?";
+  - Desfazer devolve o carro certo.
+
 ---
 
 ## Versão 2.3 — Compiladores: linha de comando (sem mudança de esquema)
@@ -275,14 +316,14 @@ formulário monta e passa pelas **mesmas** funções: `validacao`, `horarios` e
 
 ## Versão 2.4 — Visitante e operação da guarita (esquema v12)
 
-### A1. Visitante completo: anfitrião, setor, motivo e crachá · M · RN40
+### A1. Visitante completo: anfitrião, setor, motivo e crachá · M · RN41
 - Para Visitante, Prestador e Entregador, aparece uma linha extra no
   formulário:
   - **Vai até:** nome ou setor, com sugestões; até 60 caracteres;
   - **Motivo:** reunião, entrega, manutenção, evento ou outro;
   - **Crachá:** sugere o primeiro número livre, de 1 a 50 (faixa ajustável em
     Configurações).
-- **Regra (RN40):**
+- **Regra (RN41):**
   - um crachá não fica com duas pessoas ao mesmo tempo;
   - na saída, o sistema pergunta "Devolveu o crachá 07?";
   - os crachás não devolvidos aparecem numa faixa.
@@ -365,7 +406,7 @@ formulário monta e passa pelas **mesmas** funções: `validacao`, `horarios` e
 
 ## Versão 2.6 — LGPD e segurança (esquema v13)
 
-### B1. Retenção, anonimização e relatório do titular · M · RN41
+### B1. Retenção, anonimização e relatório do titular · M · RN42
 - **Retenção:** em Configurações › Privacidade, "Guardar visitas identificadas
   por 12 meses". Depois disso, nome, CPF, celular e placa viram "Anonimizado",
   e a contagem do Painel continua igual.

@@ -44,6 +44,8 @@ CONTRATO DO APP — o que as telas podem usar da AppPortaria:
     app.trocar_tema(preferencia) "claro", "escuro" ou "sistema" (seguir o
                                  Windows): grava no usuário e remonta a
                                  janela sem perder a sessão
+    app.travar()                 "Ausentar" (cadeado ou Ctrl+L): cobre a
+                                 janela com o login, guardando o rascunho
 Nenhuma tela mexe em atributo com "_" do app.
 
 Tema (claro/escuro): as cores vêm de estilo.COR, que muda de conteúdo com
@@ -51,6 +53,14 @@ o tema. Trocar o tema = estilo.usar_tema + remontar a barra lateral e as
 páginas (as telas leem as cores na montagem), mantendo a sessão, a página
 aberta e o que estava digitado na Entrada e saída. A tela de login segue
 sempre o tema do Windows: ela é da estação, não de um usuário.
+
+Ausentar (B4): o cadeado no rodapé da barra lateral (ou Ctrl+L) trava a
+guarita pelo MESMO caminho da sessão que expira (fecha as janelas abertas,
+e uma caixa que ficou aberta não grava nada: app.perguntar devolve None),
+mas guarda o rascunho da Entrada e saída e a página aberta. A tela de login
+diz "Guarita travada por Paulo às 14:32"; a mesma senha destrava e devolve
+o rascunho; OUTRO usuário entrando é troca de turno (o rascunho é
+descartado). Tudo vai para o histórico.
 
 Convenção das páginas: class AbaX com __init__(self, aba, app) e atualizar().
 A Entrada e saída é montada no login; as outras páginas na primeira vez que
@@ -80,8 +90,12 @@ from .usuarios import (MINUTOS_INATIVIDADE, PERFIS, SESSAO_ENCERRADA,
                        TEMA_PADRAO, eh_admin, pode_gerenciar_usuarios)
 from .validacao import formatar_cpf, mascarar_cpf
 
-TECLAS_DA_SESSAO = ("<Return>", "<KP_Enter>", "<F2>")
+TECLAS_DA_SESSAO = ("<Return>", "<KP_Enter>", "<F2>", "<Control-l>",
+                    "<Control-L>")
 ITEM_CODIGOS = "Gerar novos códigos de recuperação"
+GUARITA_TRAVADA = "Guarita travada"
+GUARITA_DESTRAVADA = "Guarita destravada"
+TROCA_DE_TURNO = "Troca de turno"
 EVENTOS_DE_USO = ("<KeyPress>", "<ButtonPress>", "<Motion>", "<MouseWheel>")
 SEGUNDOS_ENTRE_CONFERENCIAS = 30      # de quanto em quanto tempo olha a inatividade
 AVISO_INATIVIDADE = (f"Sua sessão foi encerrada depois de {MINUTOS_INATIVIDADE} "
@@ -147,6 +161,7 @@ class AppPortaria:
         self.avisos_admin = []      # migração do banco e backup: só o admin vê
         self.ultimo_uso = self.relogio()
         self._timer_inatividade = None
+        self._travada = None        # B4: quem travou, quando e o rascunho
 
         self.janela = janela or tk.Tk()
         self._montar_janela()
@@ -307,11 +322,12 @@ class AppPortaria:
         self.corpo = tk.Frame(self.janela, bg=COR["fundo"])
         self.corpo.pack(side="left", fill="both", expand=True)
 
-    def mostrar_login(self, aviso=""):
+    def mostrar_login(self, aviso="", travada=None):
         self._usar_tema(TEMA_PADRAO)        # o login segue o Windows
         self._trocar_corpo()
         self.tela_login = TelaLogin(self.corpo, self.banco, self.entrar,
-                                    relogio=lambda: self.relogio(), aviso=aviso)
+                                    relogio=lambda: self.relogio(), aviso=aviso,
+                                    travada=travada)
 
     def entrar(self, usuario):
         self.usuario = usuario
@@ -320,9 +336,49 @@ class AppPortaria:
                     "Entrou no sistema")
         self._usar_tema(usuario.get("tema", TEMA_PADRAO))
         self._mostrar_sessao()
+        self._voltar_da_trava(usuario)
         self.registrar_uso()
         self._vigiar_inatividade()
         self.mostrar_avisos()
+
+    # --------------------------------------------------------------
+    # Ausentar (B4): travar a guarita na hora
+    # --------------------------------------------------------------
+    def travar(self, event=None):
+        """Cadeado ou Ctrl+L: guarda o rascunho e a página e cobre a janela
+        com o login ("Guarita travada por Paulo às 14:32"), pelo mesmo
+        caminho da sessão que expira."""
+        if self.usuario is None:
+            return "break"
+        momento = self.relogio()
+        travada = {"login": self.usuario["login"],
+                   "nome": self.usuario["nome"], "momento": momento,
+                   "formulario": self.tela_cadastro.ler_formulario(),
+                   "pagina": self._pagina_atual()}
+        self.tentar(self.banco.registrar_evento, self.autor, GUARITA_TRAVADA,
+                    f"às {momento:%H:%M}")
+        self._encerrar_sessao()
+        self._travada = travada
+        self.mostrar_login(travada=travada)
+        return "break"
+
+    def _voltar_da_trava(self, usuario):
+        """Quem travou volta com o rascunho e a página; outro usuário é
+        troca de turno (o rascunho é descartado)."""
+        travada, self._travada = self._travada, None
+        if travada is None:
+            return
+        if travada["login"] == usuario["login"]:
+            self.tela_cadastro.restaurar_formulario(travada["formulario"])
+            self.ir_para(getattr(self, travada["pagina"]))
+            self.tentar(self.banco.registrar_evento, usuario["login"],
+                        GUARITA_DESTRAVADA)
+            return
+        self.tentar(self.banco.registrar_evento, usuario["login"],
+                    TROCA_DE_TURNO,
+                    f"A guarita estava travada por {travada['login']} desde "
+                    f"{travada['momento']:%H:%M}; o formulário dele foi "
+                    "descartado.")
 
     def _mostrar_sessao(self):
         """Barra lateral com quem está logado e as páginas (no login e ao
@@ -394,6 +450,14 @@ class AppPortaria:
             self.tentar(self.banco.registrar_evento, self.autor,
                         "Sessão encerrada por inatividade" if inatividade
                         else "Saiu do sistema")
+        self._travada = None
+        self._encerrar_sessao()
+        self.mostrar_login(AVISO_INATIVIDADE if inatividade else "")
+
+    def _encerrar_sessao(self):
+        """Ninguém logado: as janelas abertas fecham, as caixas que ficaram
+        abertas não gravam nada (app.perguntar) e as teclas da sessão e a
+        barra lateral saem (sair e travar)."""
         self.usuario = None
         self._sessao += 1
         if self._timer_inatividade:
@@ -404,7 +468,6 @@ class AppPortaria:
             self.janela.unbind(tecla)
         self.itens_menu = {}
         self.lateral.pack_forget()
-        self.mostrar_login(AVISO_INATIVIDADE if inatividade else "")
 
     def _fechar_janelas_da_sessao(self):
         """Fecha as janelas próprias abertas (Corrigir, Trocar senha, Novo
@@ -530,6 +593,10 @@ class AppPortaria:
         self.btn_sair = BotaoIcone(self.sessao, ICONE["sair"], self.sair, fundo,
                                    descricao="Sair")
         self.btn_sair.pack(side="right")
+        self.btn_travar = BotaoIcone(self.sessao, ICONE["cadeado"], self.travar,
+                                     fundo, descricao="Travar a guarita "
+                                                      "(Ctrl+L)")
+        self.btn_travar.pack(side="right")
         self.btn_opcoes = BotaoIcone(self.sessao, ICONE["mais_opcoes"],
                                      self.abrir_menu_usuario, fundo,
                                      descricao="Opções da conta")
@@ -629,6 +696,8 @@ class AppPortaria:
         self.janela.bind("<Return>", self.tela_cadastro.cadastrar)
         self.janela.bind("<KP_Enter>", self.tela_cadastro.cadastrar)
         self.janela.bind("<F2>", self.ir_para_saida_rapida)
+        self.janela.bind("<Control-l>", self.travar)       # Ausentar (B4)
+        self.janela.bind("<Control-L>", self.travar)
 
         self.tela_cadastro.limpar()
         self.atualizar_tabela()

@@ -13,7 +13,9 @@ O formulário da direita muda conforme o momento (o painel fica):
 - Defina sua senha (RN39): quem entrou com a senha que o administrador
   passou (conta nova ou senha redefinida) escolhe a dele antes de
   qualquer outra tela;
-- Esqueci a senha (RN38): usuário + código de recuperação + senha nova.
+- Esqueci a senha (RN38): usuário + código de recuperação + senha nova;
+- Guarita travada (B4, "Ausentar"): o login de quem travou já vem
+  preenchido; a mesma senha destrava, outro usuário é troca de turno.
 
 No primeiro acesso, depois de criar o administrador, aparecem os 8
 códigos de recuperação dele (tela_recuperacao.py), uma vez só.
@@ -37,12 +39,15 @@ SEGUNDOS_RELOGIO = 15
 
 
 class TelaLogin:
-    def __init__(self, pai, banco, ao_entrar, relogio=None, aviso=""):
+    def __init__(self, pai, banco, ao_entrar, relogio=None, aviso="",
+                 travada=None):
         """
         ao_entrar(usuario) é chamado quando o login dá certo.
         relogio: função que devolve o datetime de agora (testes).
         aviso: faixa informativa ao abrir (ex.: sessão encerrada).
+        travada: {"login", "nome", "momento"} de quem travou a guarita.
         """
+        self.travada = travada
         self.banco = banco
         self.ao_entrar = ao_entrar
         self.relogio = relogio or datetime.now
@@ -70,6 +75,8 @@ class TelaLogin:
 
         if self.primeiro_acesso:
             self.mostrar_primeiro_acesso()
+        elif travada:
+            self.mostrar_travada()
         else:
             self.mostrar_entrar(aviso)
 
@@ -135,9 +142,27 @@ class TelaLogin:
         if aviso:
             self._mostrar("info", aviso)
 
+    def mostrar_travada(self):
+        """B4: "Guarita travada por Paulo às 14:32"."""
+        t = self.travada
+        primeiro = t["nome"].split()[0] if t["nome"].split() else t["login"]
+        self._novo_formulario(
+            "travada", "Guarita travada",
+            f"Guarita travada por {primeiro} às {t['momento']:%H:%M}. A "
+            "mesma senha destrava e o que estava digitado volta. Outro "
+            "usuário entrando é troca de turno.")
+        self.campo_login = self._campo("Usuário", maximo=MAXIMO_LOGIN)
+        self.campo_login.insert(0, t["login"])
+        self.campo_senha = self._campo("Senha", senha=True)
+        self._fechar_formulario("Destravar", self.entrar,
+                                "ou peça ao administrador para redefinir.",
+                                ("Esqueci a senha", self.mostrar_esqueci))
+        self.campo_senha.focus_set()
+
     def mostrar_esqueci(self):
         """RN38: troca a senha com um código de recuperação."""
-        login = self.campo_login.get() if self.formulario == "entrar" else ""
+        login = (self.campo_login.get()
+                 if self.formulario in ("entrar", "travada") else "")
         self._novo_formulario(
             "esqueci", "Esqueci a senha",
             "Use um dos códigos de recuperação que o sistema mostrou ao "

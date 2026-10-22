@@ -303,7 +303,7 @@ formulário monta e passa pelas **mesmas** funções: `validacao`, `horarios` e
 - **Tab** completa o comando, o tipo e o nome (o nome vira o CPF mascarado).
 - Comando desconhecido recebe uma sugestão por semelhança (`difflib`).
 
-### F1. Casos de teste prontos para o Word · P/M
+### F1. Casos de teste prontos para o Word · P/M ✅ (adiantado, 22/10/2026: CT-01 a CT-47; a seção dos testes da linguagem fica para o E1)
 - `python -m tests.relatorio` gera `relatorio_testes.html` e `.csv`, com:
   - colunas CT-nnn, RN ligada, positivo ou negativo, descrição e
     Passou/Falhou;

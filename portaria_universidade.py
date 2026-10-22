@@ -102,11 +102,15 @@ if __name__ == "__main__":
 #    Em validacao.checar_bloqueio(): o registro pode estar perfeito, mas a
 #    entrada não faz sentido se o CPF ou a placa estiverem bloqueados (RN12).
 #    Outro exemplo, em tela_cadastro.AbaCadastro.excluir_selecionado(): a
-#    chamada self.app.gravar(self.app.banco.excluir, ...) é válida, mas só
-#    faz sentido se usuarios.pode_excluir(self.app.usuario) for verdadeiro
-#    (RN02).
+#    chamada self.app.tentar(self.app.banco.excluir, ids, autor=...) é
+#    válida, mas só faz sentido para o administrador; por isso ela vem
+#    depois de
+#        if not pode_excluir(self.app.usuario):  # RN02
+#    (usuarios.pode_excluir = eh_admin), e o banco confere de novo quem
+#    está excluindo (dados.Banco.excluir).
 #    Com as regras de horário, em horarios.excecoes_da_entrada() (chamada
-#    por tela_cadastro.AbaCadastro.cadastrar, "VERIFICAÇÃO SEMÂNTICA 6"):
+#    por horarios.excecoes_do_registro(), que tela_cadastro.AbaCadastro.
+#    cadastrar usa na "VERIFICAÇÃO SEMÂNTICA 6"):
 #    a entrada "Aluno, 25/10/2026 10:00" é sintaticamente válida (a data
 #    existe, está no formato dd/mm/aaaa hh:mm, não está no futuro), mas não
 #    faz sentido para um aluno num domingo, com o campus fechado. O mesmo

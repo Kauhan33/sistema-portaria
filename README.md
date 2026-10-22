@@ -124,7 +124,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-782 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
+784 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
 negócio, login, senhas, permissões, cadastro de pessoas e preenchimento
 automático, saída rápida e desfazer, correção de registros, lista de bloqueio,
 **regras de horário** (cada categoria dentro e fora da janela, ninguém entra
@@ -155,6 +155,20 @@ Um teste a mais confere a migração numa **cópia** de um banco real da versão
 (só roda com `PORTARIA_BANCO_V7=<caminho da cópia>`).
 Os testes de tela usam um **relógio fixo** (uma quarta-feira às 10:00): o
 resultado não depende da hora em que eles rodam.
+
+**Casos de teste documentados** (os da seção "Testes" do documento Word):
+
+```bash
+python -m tests.relatorio [pasta de saída] [--sem-suite]
+```
+
+Roda os testes automáticos ligados a cada caso (CT-01 a CT-47, positivos e
+negativos, cada um com o RF/RN, a entrada, o resultado esperado e o teste
+que o comprova), marca **PASSOU** ou **FALHOU** e grava
+`relatorio_testes.html`, `.csv` e `.json` (com a matriz de rastreabilidade
+requisito × caso e o resultado da suíte completa `python -m unittest`, como
+evidência) numa pasta temporária ou na pasta pedida — nunca dentro do
+repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 ## Galeria
 

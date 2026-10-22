@@ -268,6 +268,27 @@ class TestCadastroComoAdmin(BaseInterface):
         self.msg.showerror.assert_called_once()
         self.assertEqual(self.no_banco(), [])
 
+    def test_nome_e_cpf_vazios_nao_salvam_e_avisam(self):
+        """CT-03 | RN01 | negativo | o exemplo do guia: nome e CPF vazios,
+        clicar em Registrar entrada -> não salva e avisa o obrigatório."""
+        self.preencher(nome="", cpf="")
+        self.app.cadastrar()
+        self.msg.showerror.assert_called_once()
+        titulo, texto = self.msg.showerror.call_args[0][:2]
+        self.assertEqual(titulo, "Dados inválidos")
+        self.assertIn("obrigatório", texto)
+        self.assertEqual(self.no_banco(), [])
+        self.assertNotIn(("ana.admin", "Cadastro de entrada"), self.acoes())
+
+    def test_cpf_invalido_nao_salva(self):
+        """CT-04 | RN06 | negativo | CPF com o dígito verificador errado."""
+        self.preencher(cpf="12345678900")
+        self.app.cadastrar()
+        titulo, texto = self.msg.showerror.call_args[0][:2]
+        self.assertEqual(titulo, "Dados inválidos")
+        self.assertIn("CPF inválido", texto)
+        self.assertEqual(self.no_banco(), [])
+
     def test_registrar_saida_e_excluir(self):
         linha = self.cadastrar_um()
         self.app.tabela.selection_set(linha)

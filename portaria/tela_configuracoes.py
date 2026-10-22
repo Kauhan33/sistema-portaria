@@ -45,11 +45,12 @@ DICA_CATEGORIAS = ("Do funcionamento: De = min antes de abrir; Até = 0 (até "
 LARGURA_HORA_RELOGIO = 104    # hh:mm com o ícone do relógio
 ABERTO = {True: "Aberto", False: "Fechado"}
 NOTA_FUNCIONAMENTO = (
-    "Lançamento mais antigo que esse limite, saída com o campus fechado e "
-    f"visita acima de {horarios.LIMITE_VISITA_HORAS} h pedem autorização. "
-    "Depois do prazo do dia (fechamento + tolerância), só com a senha do "
-    "administrador.")
+    "Retroativo além do limite, saída com o campus fechado e visita acima "
+    f"de {horarios.LIMITE_VISITA_HORAS} h pedem autorização (dia já "
+    "fechado: só com a senha).")
 LARGURA_NUMERO = 72           # minutos ou hh:mm na tabela de categorias
+LARGURA_VAGAS = 76            # 4 dígitos
+TEXTO_BLOQUEAR = "Bloquear quando lotado"
 COLUNAS_FERIADOS = [("data", "Data", 96, "w"), ("dia", "Dia", 56, "w"),
                     ("descricao", "Descrição", 200, "w")]
 COLUNAS_EVENTOS = [("data", "Data", 96, "w"), ("horario", "Horário", 104, "w"),
@@ -143,7 +144,7 @@ class AbaConfiguracoes:
         lado = Cartao(secao, pad=16)
         lado.grid(row=0, column=1, sticky="nsew")
         m = lado.miolo
-        titulo_cartao(m, "Avisos e limites").pack(anchor="w", pady=(0, px(10)))
+        titulo_cartao(m, "Avisos e limites").pack(anchor="w", pady=(0, px(6)))
         grupo, campo = campo_rotulado(m, "Aviso antes de fechar",
                                       "minutos (0 = sem aviso)", numeros=3)
         grupo.pack(fill="x", pady=(0, px(12)))
@@ -152,19 +153,25 @@ class AbaConfiguracoes:
                                       "horas sem autorização", numeros=2)
         grupo.pack(fill="x", pady=(0, px(12)))
         self.horas_retroativo = campo.entrada
-        # RN37: lotação do estacionamento (vagas e o interruptor lado a lado)
+        # RN37: lotação do estacionamento (o campo e o interruptor numa
+        # linha só: cabe no notebook 1366x670)
+        linha, _ = rotulo_campo(m, "Vagas do estacionamento",
+                                "0 = sem controle")
+        linha.pack(fill="x", pady=(0, px(4)))
         linha = tk.Frame(m, bg=COR["superficie"])
         linha.pack(fill="x", pady=(0, px(12)))
-        grupo, campo = campo_rotulado(linha, "Vagas", "0 = sem controle",
-                                      numeros=len(str(MAXIMO_VAGAS)))
-        grupo.pack(side="left", fill="x", expand=True, padx=(0, px(12)))
+        campo = Campo(linha, largura=LARGURA_VAGAS,
+                      numeros=len(str(MAXIMO_VAGAS)))
+        campo.pack(side="left", padx=(0, px(12)))
         self.vagas = campo.entrada
         self.var_bloquear_lotado = tk.BooleanVar(self.aba, value=False)
-        self.alternador_lotado = Alternador(linha, "Bloquear quando lotado",
+        self.alternador_lotado = Alternador(linha, TEXTO_BLOQUEAR,
                                             self.var_bloquear_lotado)
-        self.alternador_lotado.pack(side="left", anchor="s")
-        # a nota de ajuda dá lugar ao resultado de Salvar
+        self.alternador_lotado.pack(side="left")
+        # a nota de ajuda dá lugar ao resultado de Salvar (respiro menor:
+        # com a lotação, o cartão continua cabendo no notebook)
         self.faixa_funcionamento = self._nota(m, NOTA_FUNCIONAMENTO)
+        self.faixa_funcionamento.definir_respiro(6)
 
     def _ao_alternar_dia(self, dia):
         aberto, abre, fecha = self.dias[dia]
@@ -186,7 +193,7 @@ class AbaConfiguracoes:
         _texto(self.horas_retroativo, str(self.config.horas_retroativo))
         _texto(self.vagas, str(self.config.vagas))
         self.var_bloquear_lotado.set(self.config.bloquear_lotado)
-        self.alternador_lotado.definir_texto("Bloquear quando lotado")
+        self.alternador_lotado.definir_texto(TEXTO_BLOQUEAR)
 
     def salvar_funcionamento(self):
         linhas = [(aberto.get(), abre.get(), fecha.get())

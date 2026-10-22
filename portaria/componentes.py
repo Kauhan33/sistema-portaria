@@ -361,10 +361,10 @@ class BotaoIcone(tk.Label):
     """Ícone clicável (ex.: sair, mais opções), com foco de teclado."""
 
     def __init__(self, pai, icone, comando, fundo_pai, tamanho=12,
-                 descricao=""):
+                 descricao="", folga=6):
         super().__init__(pai, text=icone, font=fonte_icone(tamanho),
                          bg=fundo_pai, fg=COR["texto_2"], cursor="hand2",
-                         padx=px(6), pady=px(4), takefocus=1,
+                         padx=px(folga), pady=px(4), takefocus=1,
                          highlightthickness=px(2), highlightcolor=COR["foco"],
                          highlightbackground=fundo_pai)
         self.comando, self.fundo_pai, self.descricao = comando, fundo_pai, descricao
@@ -916,7 +916,7 @@ class Cabecalho(tk.Frame):
     """
     Título da página + linha de apoio embaixo, e as ações da página à
     direita (.acoes). .subtitulo é o rótulo da linha de apoio; .linha
-    recebe rótulos extras ao lado dele.
+    recebe rótulos extras ao lado dele; .topo, ao lado do título.
     """
 
     def __init__(self, pai, titulo, subtitulo=""):
@@ -924,8 +924,10 @@ class Cabecalho(tk.Frame):
         super().__init__(pai, bg=fundo)
         textos = tk.Frame(self, bg=fundo)
         textos.pack(side="left", anchor="s")
-        tk.Label(textos, text=titulo, font=FONTE["titulo_pagina"], bg=fundo,
-                 fg=COR["texto"]).pack(anchor="w")
+        self.topo = tk.Frame(textos, bg=fundo)
+        self.topo.pack(anchor="w")
+        tk.Label(self.topo, text=titulo, font=FONTE["titulo_pagina"], bg=fundo,
+                 fg=COR["texto"]).pack(side="left")
         self.linha = tk.Frame(textos, bg=fundo)
         self.linha.pack(anchor="w")
         self.subtitulo = tk.Label(self.linha, text=subtitulo, font=FONTE["corpo"],

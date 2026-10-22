@@ -576,31 +576,34 @@ class AppPortaria:
 
         # Rodapé: quem está logado, menu do usuário e sair
         self.sessao = tk.Frame(self.lateral, bg=fundo)
-        self.sessao.pack(side="bottom", fill="x", padx=(px(16), px(10)),
+        self.sessao.pack(side="bottom", fill="x", padx=(px(14), px(6)),
                          pady=px(14))
         tk.Frame(self.lateral, bg=COR["borda"], height=1).pack(
             side="bottom", fill="x", padx=px(16))
         self.avatar = Avatar(self.sessao, fundo)
         self.avatar.pack(side="left")
-        quem = tk.Frame(self.sessao, bg=fundo)
-        quem.pack(side="left", padx=(px(10), 0), fill="x", expand=True)
+        quem = tk.Frame(self.sessao, bg=fundo)   # entra depois dos botões:
+        # com nome longo, ele encolhe e os ícones continuam inteiros
         self.lbl_usuario = tk.Label(quem, font=FONTE["corpo_semi"], bg=fundo,
                                     fg=COR["texto"], anchor="w")
         self.lbl_usuario.pack(anchor="w", fill="x")
         self.lbl_perfil = tk.Label(quem, font=FONTE["dica"], bg=fundo,
                                    fg=COR["texto_3"], anchor="w")
         self.lbl_perfil.pack(anchor="w")
+        # três ícones no rodapé (opções, travar e sair): folga menor, para
+        # o nome de quem está logado caber
         self.btn_sair = BotaoIcone(self.sessao, ICONE["sair"], self.sair, fundo,
-                                   descricao="Sair")
+                                   descricao="Sair", folga=2)
         self.btn_sair.pack(side="right")
         self.btn_travar = BotaoIcone(self.sessao, ICONE["cadeado"], self.travar,
                                      fundo, descricao="Travar a guarita "
-                                                      "(Ctrl+L)")
+                                                      "(Ctrl+L)", folga=2)
         self.btn_travar.pack(side="right")
         self.btn_opcoes = BotaoIcone(self.sessao, ICONE["mais_opcoes"],
                                      self.abrir_menu_usuario, fundo,
-                                     descricao="Opções da conta")
+                                     descricao="Opções da conta", folga=2)
         self.btn_opcoes.pack(side="right")
+        quem.pack(side="left", padx=(px(6), 0), fill="x", expand=True)
 
         self._montar_menu_usuario()
         for w in (self.avatar, quem, self.lbl_usuario, self.lbl_perfil):

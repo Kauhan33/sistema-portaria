@@ -29,11 +29,11 @@ COLUNAS = [("login", "Usuário", 140, "w"), ("nome", "Nome", 260, "w"),
            ("perfil", "Perfil", 140, "w"), ("situacao", "Situação", 90, "w")]
 COLUNAS_VISIVEIS = ("login", "nome", "perfil")
 SECOES = ("Contas", "Exceções")
-COLUNAS_EXCECOES = [("quando", "Quando", 124, "w"), ("tipo", "Tipo", 150, "w"),
-                    ("pessoa", "Pessoa", 210, "w"),
-                    ("autorizou", "Quem autorizou", 110, "w"),
-                    ("operava", "Quem operava", 100, "w"),
-                    ("justificativa", "Justificativa", 300, "w")]
+COLUNAS_EXCECOES = [("quando", "Quando", 112, "w"), ("tipo", "Tipo", 160, "w"),
+                    ("pessoa", "Pessoa", 180, "w"),
+                    ("autorizou", "Quem autorizou", 114, "w"),
+                    ("operava", "Quem operava", 104, "w"),
+                    ("justificativa", "Justificativa", 150, "w")]
 FORMATO_DIA = "%d/%m/%Y"
 
 

@@ -32,7 +32,7 @@ from .validacao import (MAXIMO_BUSCA, MAXIMO_NOME, TIPOS_ACESSO,
                         converter_data, cpf_valido,
                         formatar_celular, formatar_placa, normalizar,
                         so_digitos, validar_campos)
-from .veiculos import (DONO_PRECISA_ESTAR, descrever_validade,
+from .veiculos import (DONO_PRECISA_ESTAR,
                        pode_cadastrar_autorizado, validar_autorizado)
 
 COLUNAS = [("nome", "Nome", 160, "w"), ("cpf", "CPF", 112, "w"),
@@ -45,9 +45,9 @@ COLUNAS_VISIVEIS = ("nome", "cpf", "visitas", "ultima")
 LIMITE_BUSCA = 200
 SEM_SELECAO = "Escolha uma pessoa na lista para ver a ficha."
 SECOES_FICHA = ("Cadastro", "Visitas", "Veículo")
-COLUNAS_AUTORIZADOS = [("nome", "Quem pode retirar", 150, "w"),
+COLUNAS_AUTORIZADOS = [("nome", "Nome", 124, "w"),
                        ("cpf", "CPF", 104, "w"),
-                       ("validade", "Validade", 86, "w")]
+                       ("validade", "Válido até", 92, "w")]
 SEM_VEICULO = ("Sem veículo cadastrado. A lista de quem pode retirar vale "
                "para a placa da pessoa.")
 LIMITE_VISITAS = 200
@@ -267,8 +267,8 @@ class AbaPessoas:
                  "campus a pé e sem bloqueio.")
         self.lbl_veiculo_dica.pack(fill="x", pady=(px(2), px(8)))
         self.quadro_autorizados, self.tabela_autorizados = tabela(
-            secao, COLUNAS_AUTORIZADOS, altura=4, rolagem=True, compacta=True)
-        self.quadro_autorizados.pack(fill="both", expand=True)
+            secao, COLUNAS_AUTORIZADOS, altura=3, rolagem=True, compacta=True)
+        self.quadro_autorizados.pack(fill="x")
         self.botoes_veiculo = tk.Frame(secao, bg=fundo)
         self.botoes_veiculo.pack(fill="x", pady=(px(10), 0))
         self.btn_adicionar_autorizado = Botao(
@@ -304,8 +304,7 @@ class AbaPessoas:
             font=FONTE["rotulo"], fg=COR["texto"])
         self.lbl_veiculo_dica.pack(fill="x", pady=(px(2), px(8)),
                                    after=self.lbl_veiculo)
-        self.quadro_autorizados.pack(fill="both", expand=True,
-                                     after=self.lbl_veiculo_dica)
+        self.quadro_autorizados.pack(fill="x", after=self.lbl_veiculo_dica)
         self.botoes_veiculo.pack(fill="x", pady=(px(10), 0),
                                  after=self.quadro_autorizados)
         ok, lista = self.app.tentar(self.app.banco.listar_autorizados, placa)
@@ -314,9 +313,9 @@ class AbaPessoas:
         hoje = self.app.relogio().date()
         for i, a in enumerate(self.autorizados):
             vencida = a["valido_ate"] is not None and a["valido_ate"] < hoje
-            validade = ("venceu" if vencida
-                        else descrever_validade(a["valido_ate"]).replace(
-                            "sem prazo (até remover)", "sem prazo"))
+            validade = ("venceu" if vencida else "sem prazo"
+                        if a["valido_ate"] is None
+                        else f"{a['valido_ate']:%d/%m/%Y}")
             inserir_linha(self.tabela_autorizados, i,
                           (a["nome"], self.app.exibir_cpf(a["cpf"]), validade),
                           iid=str(a["id"]),
@@ -367,9 +366,10 @@ class AbaPessoas:
             self.mostrar_autorizados(self.selecionada)
 
     def mostrar_secao(self, nome):
-        """Cadastro ou Visitas. Nas visitas a placa e os números saem da
-        frente: sobra altura para a lista (tela pequena)."""
-        if nome == SECOES_FICHA[1]:
+        """Cadastro, Visitas ou Veículo. Nas visitas e no veículo a placa e
+        os números saem da frente: sobra altura para a lista (tela
+        pequena)."""
+        if nome != SECOES_FICHA[0]:
             self.linha_placa.pack_forget()
         else:
             self.linha_placa.pack(fill="x", pady=(px(12), 0), after=self.lbl_cpf)

@@ -181,9 +181,11 @@ class AbaCadastro:
         self.lbl_no_campus = tk.Label(cab.linha, font=FONTE["corpo_semi"],
                                       bg=COR["fundo"], fg=COR["sucesso"])
         self.lbl_no_campus.pack(side="left")
-        self.lbl_estacionamento = tk.Label(cab.linha, font=FONTE["corpo_semi"],
+        # RN37: ao lado do título (a linha de baixo já é longa)
+        self.lbl_estacionamento = tk.Label(cab.topo, font=FONTE["corpo_semi"],
                                            bg=COR["fundo"], fg=COR["texto_2"])
-        self.lbl_estacionamento.pack(side="left")
+        self.lbl_estacionamento.pack(side="left", anchor="s",
+                                     padx=(px(16), 0), pady=(0, px(4)))
 
         self.lbl_saida_rapida = tk.Label(cab.acoes, text="Saída rápida (F2)",
                                          font=FONTE["rotulo"], bg=COR["fundo"],
@@ -609,7 +611,7 @@ class AbaCadastro:
         texto = texto_lotacao(len(self.veiculos), vagas)
         lotado = esta_lotado(len(self.veiculos), vagas)
         self.lbl_estacionamento.config(
-            text=f"  ·  {texto}" if texto else "",
+            text=(ICONE["carro"] + "  " + texto) if texto else "",
             fg=COR["alerta"] if lotado else COR["texto_2"])
 
     def _mostrar_status(self):

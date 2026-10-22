@@ -165,8 +165,8 @@ class TelaLogin:
                  if self.formulario in ("entrar", "travada") else "")
         self._novo_formulario(
             "esqueci", "Esqueci a senha",
-            "Use um dos códigos de recuperação que o sistema mostrou ao "
-            "criar o administrador. Cada código vale uma vez.")
+            "Use um dos códigos de recuperação do administrador. Cada "
+            "código vale uma vez.")
         self.campo_login = self._campo("Usuário", maximo=MAXIMO_LOGIN)
         self.campo_login.insert(0, login)
         self.campo_codigo = self._campo("Código de recuperação", "ex.: K7QM-2F9X",

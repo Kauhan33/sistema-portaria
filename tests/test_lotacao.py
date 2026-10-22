@@ -137,8 +137,8 @@ class TestLotacaoNaTela(BaseInterface):
         self.app.cadastrar()
 
     def test_cabecalho_mostra_a_ocupacao(self):
-        self.assertEqual(self.tela.lbl_estacionamento.cget("text"),
-                         "  ·  Estacionamento 2/2")
+        self.assertTrue(self.tela.lbl_estacionamento.cget("text").endswith(
+            "Estacionamento 2/2"))
 
     def test_lotado_avisa_e_pede_confirmacao(self):
         self.msg.askyesno.return_value = False
@@ -150,8 +150,8 @@ class TestLotacaoNaTela(BaseInterface):
         self.msg.askyesno.return_value = True
         self.app.cadastrar()
         self.assertEqual(len(self.no_banco()), 3)
-        self.assertEqual(self.tela.lbl_estacionamento.cget("text"),
-                         "  ·  Estacionamento 3/2")
+        self.assertTrue(self.tela.lbl_estacionamento.cget("text").endswith(
+            "Estacionamento 3/2"))
 
     def test_bloquear_quando_lotado_pede_a_senha(self):
         self.banco.salvar_lotacao(2, True, autor="ana.admin")

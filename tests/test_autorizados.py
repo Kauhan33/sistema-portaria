@@ -428,7 +428,7 @@ class TestFichaComoAdministrador(BaseAutorizadosNaTela):
         autorizado, = self.banco.listar_autorizados("BRA2E19")
         self.assertEqual(autorizado["valido_ate"], date(2026, 12, 31))
         linha = pessoas.tabela_autorizados.item(str(autorizado["id"]))
-        self.assertEqual(linha["values"][2], "até 31/12/2026")
+        self.assertEqual(linha["values"][2], "31/12/2026")
 
 
 if __name__ == "__main__":

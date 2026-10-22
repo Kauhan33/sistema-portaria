@@ -15,7 +15,10 @@ Perguntas sobre o carro (estadia de veículo, dados.py):
 - O VEÍCULO SÓ SAI COM O DONO (RN32): o carro sairia sem o dono (ele está
   fora do campus ou fica no campus) → a mensagem "O veículo só sai com o
   dono" e, se o porteiro chamar um administrador, o diálogo de autorização
-  com a senha (tela_autorizacao.py, veiculo=True).
+  com a senha (tela_autorizacao.py, veiculo=True);
+- QUEM PODE RETIRAR (RN35): quem sai está na lista da placa de um carro no
+  estacionamento → "Vai levar o carro BRA2E19 de Carla?" → [Sim, leva o
+  carro] o carro sai junto, sem senha; [Não] sai sem ele.
 
 Esc ou Cancelar: nada é registrado. Enter escolhe o botão destacado. A
 tela abre a pergunta por app.perguntar: se a sessão acabar com ela
@@ -32,6 +35,7 @@ COM_CARRO, A_PE = "carro", "a_pe"
 JUNTO, SO_CARRO = "junto", "so_carro"
 OUTRO_CARRO = "outro_carro"
 LIBERAR = "liberar"
+LEVA, NAO_LEVA = "leva", "nao_leva"
 
 
 class JanelaVeiculo(Dialogo):
@@ -121,6 +125,23 @@ def responsavel_saiu_junto(app, estadia):
         "dono: sem ele, só com a senha de um administrador.", estadia["placa"],
         [("Saiu junto", JUNTO, "primario"),
          ("Só o carro saiu", SO_CARRO, "secundario")])
+
+
+def vai_levar_o_carro(app, nome, estadia, autorizado):
+    """RN35: LEVA, NAO_LEVA ou None (cancelou). `nome`: quem sai;
+    `autorizado`: a linha da lista (quem cadastrou e quando)."""
+    placa = formatar_placa(estadia["placa"])
+    dono = estadia["nome"].split()[0] if estadia["nome"].split() else "dono"
+    onde = ("continua no campus" if estadia["responsavel_dentro"]
+            else "está fora do campus")
+    return app.perguntar(
+        _perguntar, app, f"Vai levar o carro {placa} de {dono}?",
+        f"{nome} pode retirar este carro (autorizado por "
+        f"{autorizado['criado_por']} em {autorizado['criado_em'][:10]}). "
+        f"O dono, {estadia['nome']}, {onde}. Levando, o carro sai junto, "
+        "sem a senha do administrador.", estadia["placa"],
+        [("Sim, leva o carro", LEVA, "primario"),
+         ("Não", NAO_LEVA, "secundario")])
 
 
 def _onde_esta_o_dono(estadia):

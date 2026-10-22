@@ -18,6 +18,9 @@ pessoa que volta a pé vê a faixa "O carro está no estacionamento" e, na
 próxima saída, pode sair com ele. O VEÍCULO SÓ SAI COM O DONO (RN32): a
 saída rápida pela placa tira o carro junto com o dono no campus; sem o
 dono (fora do campus, ou ele fica), só com a senha de um administrador.
+QUEM PODE RETIRAR (RN35): quem está na lista da placa e sai a pé ouve
+"Vai levar o carro BRA2E19 de Carla?" (na saída pelo CPF, pelo Movimento
+ou pela placa) e leva o carro sem senha; o Desfazer devolve os dois.
 
 Regras de horário (horarios.py): entrada fora do horário da categoria,
 retroativa antiga ou visita acima de 24 h é uma EXCEÇÃO e pede a
@@ -49,9 +52,10 @@ from .estilo import (COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM,
                      fonte_icone, px)
 from .tela_autorizacao import autorizar_excecao
 from .tela_edicao import JanelaEdicao
-from .tela_veiculo import (COM_CARRO, JUNTO, OUTRO_CARRO,
+from .tela_veiculo import (COM_CARRO, JUNTO, LEVA, OUTRO_CARRO,
                            liberar_sem_o_dono, responsavel_saiu_junto,
-                           saiu_com_o_veiculo, vai_entrar_de_carro)
+                           saiu_com_o_veiculo, vai_entrar_de_carro,
+                           vai_levar_o_carro)
 from .usuarios import eh_admin, pode_editar, pode_excluir
 from .validacao import (FORMATO, FORMATO_EXIBICAO, MAXIMO_BUSCA,
                         MAXIMO_CPF_OU_PLACA, MAXIMO_NOME, PLACA_OBRIGATORIA,
@@ -76,6 +80,7 @@ COLUNAS_VEICULOS = [("placa", "Placa", 96, "w"),
                     ("responsavel", "Responsável", 190, "w"),
                     ("tipo", "Tipo de acesso", 130, "w"),
                     ("desde", "Desde", 120, "w"),
+                    ("autorizados", "Pode retirar", 96, "center"),
                     ("onde", "Responsável está", 130, "w")]
 LARGURA_SITUACAO_VEICULO = 190     # cabe "Dono fora do campus" com a bolinha
 LISTAS = ("Pessoas", "Veículos")
@@ -621,6 +626,9 @@ class AbaCadastro:
         ok, veiculos = self.app.tentar(self.app.banco.listar_estacionamento)
         if not ok:
             return
+        ok, autorizados = self.app.tentar(self.app.banco.contar_autorizados,
+                                          agora.date())
+        autorizados = autorizados if ok else {}
         self.veiculos = veiculos
         tab = self.tabela_veiculos
         selecao = tab.selection()
@@ -631,6 +639,7 @@ class AbaCadastro:
             inserir_linha(tab, i, (
                 formatar_placa(e["placa"]), e["nome"], e["tipo"] or "—",
                 self._quando(e["entrada"]),
+                autorizados.get(e["placa"]) or "—",
                 "No campus" if e["responsavel_dentro"] else "Fora do campus"),
                 iid=str(e["id"]), situacao=situacao, cor=cor,
                 tags=(destaque,) if destaque else (), zebra=not destaque)
@@ -1265,7 +1274,35 @@ class AbaCadastro:
             if resposta == JUNTO and visita is not None:
                 return self._dar_saida([visita],
                                        com_veiculo={visita["id"]: estadia["id"]})
+        levou = self._autorizado_leva(estadia)
+        if levou is not None:
+            return levou
         return self._sair_so_o_carro(estadia)
+
+    def _autorizado_leva(self, estadia):
+        """RN35 na saída pela placa: alguém da lista dessa placa está no
+        campus a pé? Pergunta a cada um se vai levar o carro; "Sim" dá a
+        saída dessa pessoa com o carro (sem senha). None = ninguém levou
+        (segue para a RN32); False = cancelou."""
+        ok, autorizados = self.app.tentar(self.app.banco.autorizados_no_campus,
+                                          estadia["placa"],
+                                          self.app.relogio().date())
+        if not ok:
+            return False
+        for autorizado in autorizados:
+            visita = next((r for r in self.app.registros
+                           if r["id"] == autorizado["registro_id"]), None)
+            if visita is None:
+                continue
+            resposta = vai_levar_o_carro(self.app, autorizado["nome"], estadia,
+                                         autorizado)
+            if resposta is None:
+                return False
+            if resposta == LEVA:
+                return self._dar_saida([visita],
+                                       com_veiculo={visita["id"]: estadia["id"]},
+                                       levados={visita["id"]: estadia})
+        return None
 
     def _sair_so_o_carro(self, estadia):
         """O carro sai sem o dono: mensagem + senha do administrador."""
@@ -1295,15 +1332,18 @@ class AbaCadastro:
         """Quem sai e tem carro no estacionamento: saiu com ele? Com dois
         carros (saiu a pé e voltou com outro), pergunta primeiro pelo carro
         desta visita e depois pelos outros, até um "Saiu de carro".
+        RN35: quem saiu a pé (sem carro dele) e está na lista da placa de
+        outro carro no estacionamento ouve "Vai levar o carro X de Y?".
         Devolve ({id da visita: id da estadia que sai},
-        {id da visita: [placas que ficam]}) ou None (cancelou)."""
+        {id da visita: [placas que ficam]}, {id da visita: estadia levada
+        de outro dono}) ou None (cancelou)."""
         ok, estadias = self.app.tentar(self.app.banco.listar_estacionamento)
         if not ok:
             return None
         por_cpf = {}
         for e in sorted(estadias, key=lambda e: (e["entrada"], e["id"])):
             por_cpf.setdefault(e["cpf"], []).append(e)
-        de_carro, a_pe = {}, {}
+        de_carro, a_pe, levados = {}, {}, {}
         for r in registros:
             carros = sorted(por_cpf.get(r["cpf"], []),
                             key=lambda e: e["registro_id"] != r["id"])
@@ -1315,9 +1355,35 @@ class AbaCadastro:
                     de_carro[r["id"]] = estadia["id"]
                     break
                 a_pe.setdefault(r["id"], []).append(estadia["placa"])
-        return de_carro, a_pe
+            if r["id"] not in de_carro and not r["placa"]:
+                estadia = self._perguntar_se_leva(r, set(de_carro.values()))
+                if estadia is False:
+                    return None
+                if estadia is not None:
+                    de_carro[r["id"]] = estadia["id"]
+                    levados[r["id"]] = estadia
+        return de_carro, a_pe, levados
 
-    def _dar_saida(self, registros, com_veiculo=None):
+    def _perguntar_se_leva(self, registro, ja_saindo):
+        """RN35: a estadia que quem sai vai levar, None (nenhuma) ou False
+        (cancelou)."""
+        ok, levaveis = self.app.tentar(self.app.banco.veiculos_que_pode_levar,
+                                       registro["cpf"],
+                                       self.app.relogio().date())
+        if not ok:
+            return None
+        for estadia in levaveis:
+            if estadia["id"] in ja_saindo:
+                continue
+            resposta = vai_levar_o_carro(self.app, registro["nome"], estadia,
+                                         estadia["autorizado"])
+            if resposta is None:
+                return False
+            if resposta == LEVA:
+                return estadia
+        return None
+
+    def _dar_saida(self, registros, com_veiculo=None, levados=None):
         """Registra a saída agora; avisa sem travar a tela e oferece desfazer.
         Quem tem carro no estacionamento responde se saiu com ele (a não ser
         que `com_veiculo` já diga). Visita que passaria de 24 h é exceção:
@@ -1333,12 +1399,12 @@ class AbaCadastro:
         if not prontos:
             mensagens.info("Aviso", "\n".join(recusas))
             return False
-        a_pe = {}
+        a_pe, levados = {}, dict(levados or {})
         if com_veiculo is None:
             respostas = self._perguntar_veiculos(prontos)
             if respostas is None:
                 return False
-            com_veiculo, a_pe = respostas
+            com_veiculo, a_pe, levados = respostas
         regras = [f"{r['nome']}: {regra}" for r in prontos
                   for regra in horarios.excecoes_da_duracao(
                       datetime.strptime(r["entrada"], FORMATO), momento)]
@@ -1366,7 +1432,7 @@ class AbaCadastro:
         if len(primeiros) > 1:
             nomes = ", ".join(primeiros[:-1]) + " e " + nomes
         texto = (f"Saída de {nomes} registrada às {momento:%H:%M}"
-                 + self._com_carro(gravadas, com_veiculo, a_pe)
+                 + self._com_carro(gravadas, com_veiculo, a_pe, levados)
                  + self._com_autorizacao(autorizacao))
         nao_gravadas = len(recusas) + len(prontos) - len(gravadas)
         if nao_gravadas:
@@ -1377,9 +1443,15 @@ class AbaCadastro:
         return True
 
     @staticmethod
-    def _com_carro(gravadas, com_veiculo, a_pe):
-        """' de carro' / ' a pé (o carro ABC-1234 fica)', se for o caso."""
+    def _com_carro(gravadas, com_veiculo, a_pe, levados=None):
+        """' de carro' / ' a pé (o carro ABC-1234 fica)' / ' (levou o carro
+        BRA2E19 de Carla)', se for o caso."""
         ids = {r["id"] for r in gravadas}
+        levou = [e for i, e in (levados or {}).items() if i in ids]
+        if len(ids) == 1 and levou:
+            e = levou[0]
+            return (f" (levou o carro {formatar_placa(e['placa'])} de "
+                    f"{e['nome'].split()[0]}, autorizado)")
         if ids & set(com_veiculo):
             return " (saiu de carro)" if len(ids) == 1 else " (com os carros)"
         ficam = [formatar_placa(p) for i, placas in a_pe.items() if i in ids

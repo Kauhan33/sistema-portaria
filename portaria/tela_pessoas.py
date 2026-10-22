@@ -8,7 +8,11 @@ bloqueio e duas seções:
 - Cadastro: o formulário para corrigir o cadastro ou começar uma entrada;
 - Visitas: o histórico de visitas dela, da mais recente para a mais
   antiga (entrada, saída, duração, tipo, placa e situação), com os dados
-  que foram preenchidos em cada registro.
+  que foram preenchidos em cada registro;
+- Veículo (RN35): "Quem pode retirar" o carro da placa dela sem o dono e
+  sem senha, com Adicionar e Remover. O porteiro só adiciona com o dono no
+  campus (o botão fica apagado, com a dica); o administrador, a qualquer
+  hora. Qualquer um remove.
 """
 
 import tkinter as tk
@@ -17,16 +21,19 @@ from datetime import datetime
 from tkinter import ttk
 
 from . import horarios, mensagens
-from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao,
-                          EsperaDigitacao, OrdenacaoTabela, Placa, Seletor, inserir_linha,
-                          plural, rotulo_campo, tabela, titulo_cartao)
+from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao, Dialogo,
+                          EsperaDigitacao, OrdenacaoTabela, Placa, Seletor,
+                          campo_rotulado, inserir_linha, plural, rotulo_campo,
+                          tabela, titulo_cartao)
 from .estilo import (COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, fonte_icone,
                      px)
 from .usuarios import eh_admin
 from .validacao import (MAXIMO_BUSCA, MAXIMO_NOME, TIPOS_ACESSO,
-                        converter_data,
+                        converter_data, cpf_valido,
                         formatar_celular, formatar_placa, normalizar,
-                        validar_campos)
+                        so_digitos, validar_campos)
+from .veiculos import (DONO_PRECISA_ESTAR, descrever_validade,
+                       pode_cadastrar_autorizado, validar_autorizado)
 
 COLUNAS = [("nome", "Nome", 160, "w"), ("cpf", "CPF", 112, "w"),
            ("celular", "Celular", 115, "w"), ("placa", "Placa", 80, "w"),
@@ -37,7 +44,12 @@ COLUNAS = [("nome", "Nome", 160, "w"), ("cpf", "CPF", 112, "w"),
 COLUNAS_VISIVEIS = ("nome", "cpf", "visitas", "ultima")
 LIMITE_BUSCA = 200
 SEM_SELECAO = "Escolha uma pessoa na lista para ver a ficha."
-SECOES_FICHA = ("Cadastro", "Visitas")
+SECOES_FICHA = ("Cadastro", "Visitas", "Veículo")
+COLUNAS_AUTORIZADOS = [("nome", "Quem pode retirar", 150, "w"),
+                       ("cpf", "CPF", 104, "w"),
+                       ("validade", "Validade", 86, "w")]
+SEM_VEICULO = ("Sem veículo cadastrado. A lista de quem pode retirar vale "
+               "para a placa da pessoa.")
 LIMITE_VISITAS = 200
 SEM_VISITAS = "Nenhuma visita registrada."
 
@@ -172,7 +184,8 @@ class AbaPessoas:
                                      fundo_pai=fundo)
         self.seletor_ficha.pack(fill="x", pady=(px(12), px(12)))
         self.secoes = {"Cadastro": self._montar_cadastro(c),
-                       "Visitas": self._montar_visitas(c)}
+                       "Visitas": self._montar_visitas(c),
+                       "Veículo": self._montar_veiculo(c)}
         self.seletor_ficha.selecionar(SECOES_FICHA[0])
 
     def _montar_cadastro(self, c):
@@ -239,6 +252,119 @@ class AbaPessoas:
         t.bind("<MouseWheel>", lambda e: t.yview_scroll(
             -1 if e.delta > 0 else 1, "units") or "break")
         return secao
+
+    def _montar_veiculo(self, c):
+        """RN35: quem pode retirar o carro da pessoa sem ela e sem senha."""
+        fundo = COR["superficie"]
+        secao = tk.Frame(c, bg=fundo)
+        self.lbl_veiculo = tk.Label(secao, font=FONTE["rotulo"], bg=fundo,
+                                    fg=COR["texto"], anchor="w")
+        self.lbl_veiculo.pack(fill="x")
+        self.lbl_veiculo_dica = tk.Label(
+            secao, font=FONTE["dica"], bg=fundo, fg=COR["texto_3"],
+            justify="left", anchor="w", wraplength=px(320),
+            text="Levam o carro sem o dono e sem senha, se estiverem no "
+                 "campus a pé e sem bloqueio.")
+        self.lbl_veiculo_dica.pack(fill="x", pady=(px(2), px(8)))
+        self.quadro_autorizados, self.tabela_autorizados = tabela(
+            secao, COLUNAS_AUTORIZADOS, altura=4, rolagem=True, compacta=True)
+        self.quadro_autorizados.pack(fill="both", expand=True)
+        self.botoes_veiculo = tk.Frame(secao, bg=fundo)
+        self.botoes_veiculo.pack(fill="x", pady=(px(10), 0))
+        self.btn_adicionar_autorizado = Botao(
+            self.botoes_veiculo, "Adicionar", self.adicionar_autorizado,
+            "secundario", icone=ICONE["mais"])
+        self.btn_adicionar_autorizado.pack(side="left")
+        self.btn_remover_autorizado = Botao(
+            self.botoes_veiculo, "Remover", self.remover_autorizado, "perigo")
+        self.btn_remover_autorizado.pack(side="left", padx=(px(8), 0))
+        self.lbl_dono_fora = tk.Label(secao, font=FONTE["dica"], bg=fundo,
+                                      fg=COR["alerta"], justify="left",
+                                      anchor="w", wraplength=px(320))
+        self.autorizados = []
+        return secao
+
+    def mostrar_autorizados(self, pessoa):
+        """Lista "Quem pode retirar" da placa da pessoa e o estado dos
+        botões (o porteiro só adiciona com o dono no campus)."""
+        placa = pessoa["placa"]
+        self.autorizados = []
+        self.tabela_autorizados.delete(*self.tabela_autorizados.get_children())
+        if not placa:
+            self.lbl_veiculo.config(text=SEM_VEICULO, font=FONTE["corpo"],
+                                    fg=COR["texto_2"], wraplength=px(320),
+                                    justify="left")
+            for w in (self.lbl_veiculo_dica, self.quadro_autorizados,
+                      self.botoes_veiculo, self.lbl_dono_fora):
+                w.pack_forget()
+            self.seletor_ficha.definir_texto("Veículo", "Veículo")
+            return
+        self.lbl_veiculo.config(
+            text=f"Quem pode retirar o carro {formatar_placa(placa)}",
+            font=FONTE["rotulo"], fg=COR["texto"])
+        self.lbl_veiculo_dica.pack(fill="x", pady=(px(2), px(8)),
+                                   after=self.lbl_veiculo)
+        self.quadro_autorizados.pack(fill="both", expand=True,
+                                     after=self.lbl_veiculo_dica)
+        self.botoes_veiculo.pack(fill="x", pady=(px(10), 0),
+                                 after=self.quadro_autorizados)
+        ok, lista = self.app.tentar(self.app.banco.listar_autorizados, placa)
+        if ok:
+            self.autorizados = lista
+        hoje = self.app.relogio().date()
+        for i, a in enumerate(self.autorizados):
+            vencida = a["valido_ate"] is not None and a["valido_ate"] < hoje
+            validade = ("venceu" if vencida
+                        else descrever_validade(a["valido_ate"]).replace(
+                            "sem prazo (até remover)", "sem prazo"))
+            inserir_linha(self.tabela_autorizados, i,
+                          (a["nome"], self.app.exibir_cpf(a["cpf"]), validade),
+                          iid=str(a["id"]),
+                          tags=("apagado",) if vencida else ())
+        n = len(self.autorizados)
+        self.seletor_ficha.definir_texto("Veículo",
+                                         f"Veículo ({n})" if n else "Veículo")
+        ok, _ = pode_cadastrar_autorizado(eh_admin(self.app.usuario),
+                                          bool(pessoa["dentro_desde"]))
+        self.btn_adicionar_autorizado.definir_ativo(ok)
+        if ok:
+            self.lbl_dono_fora.pack_forget()
+        else:
+            self.lbl_dono_fora.config(text="O dono precisa estar no campus "
+                                           "para o porteiro adicionar.")
+            self.lbl_dono_fora.pack(fill="x", pady=(px(6), 0),
+                                    after=self.botoes_veiculo)
+        self.btn_remover_autorizado.definir_ativo(bool(self.autorizados))
+
+    def adicionar_autorizado(self):
+        """Abre o diálogo "Quem pode retirar"; devolve o diálogo."""
+        if not self._exigir_selecao():
+            return None
+        p = self.selecionada
+        ok, motivo = pode_cadastrar_autorizado(eh_admin(self.app.usuario),
+                                               bool(p["dentro_desde"]))
+        if not ok:
+            mensagens.aviso("Quem pode retirar", motivo)
+            return None
+        self.dialogo = DialogoAutorizado(self, p)
+        return self.dialogo
+
+    def remover_autorizado(self):
+        selecao = self.tabela_autorizados.selection()
+        if not selecao:
+            mensagens.aviso("Atenção", "Selecione quem sai da lista.")
+            return
+        a = next(x for x in self.autorizados if str(x["id"]) == selecao[0])
+        placa = formatar_placa(a["placa"])
+        if not self.app.perguntar(
+                mensagens.confirmar, "Remover da lista",
+                f"{a['nome']} não poderá mais retirar o carro {placa} sem o "
+                "dono. A remoção fica no histórico."):
+            return
+        ok, _ = self.app.tentar(self.app.banco.remover_autorizado, a["id"],
+                                autor=self.app.autor)
+        if ok:
+            self.mostrar_autorizados(self.selecionada)
 
     def mostrar_secao(self, nome):
         """Cadastro ou Visitas. Nas visitas a placa e os números saem da
@@ -345,6 +471,7 @@ class AbaPessoas:
             self.faixa.pack_forget()
         self._mostrar_placa()
         self.mostrar_visitas(p)
+        self.mostrar_autorizados(p)
 
     # --------------------------------------------------------------
     # Histórico de visitas da pessoa
@@ -458,3 +585,66 @@ class AbaPessoas:
                            "Entrada e saída.")
             return
         self.app.preencher_pessoa(p)
+
+
+class DialogoAutorizado(Dialogo):
+    """RN35: CPF e nome de quem pode retirar o carro da pessoa e a
+    validade (opcional: vazio = até alguém remover)."""
+
+    def __init__(self, aba, dono):
+        self.aba, self.dono = aba, dono
+        app = aba.app
+        placa = formatar_placa(dono["placa"])
+        super().__init__(app.janela, "Quem pode retirar",
+                         f"Esta pessoa vai poder levar o carro {placa} de "
+                         f"{dono['nome']} sem o dono e sem a senha do "
+                         "administrador, se estiver no campus a pé.",
+                         largura=420, ao_usar=app.registrar_uso)
+        form = self.miolo
+        form.columnconfigure((0, 1), weight=1, uniform="a")
+        grupo, campo = campo_rotulado(form, "CPF", "só números", numeros=11)
+        grupo.grid(row=0, column=0, sticky="ew", padx=(0, px(10)),
+                   pady=(0, px(14)))
+        self.cpf = campo.entrada
+        self.var_cpf = campo.var
+        self.var_cpf.trace_add("write", lambda *a: self._ao_digitar_cpf())
+        grupo, campo = campo_rotulado(form, "Válido até", "opcional",
+                                      seletor="data", relogio=app.relogio)
+        grupo.grid(row=0, column=1, sticky="ew", pady=(0, px(14)))
+        self.validade = campo.entrada
+        grupo, campo = campo_rotulado(form, "Nome completo",
+                                      maximo=MAXIMO_NOME)
+        grupo.grid(row=1, column=0, columnspan=2, sticky="ew")
+        self.nome = campo.entrada
+        self.faixa = Aviso(form)
+        self.lbl_erro = self.faixa.lbl
+        self.adicionar_botao("Adicionar", self.salvar, "primario")
+        self.adicionar_botao("Cancelar", self.fechar)
+        self.abrir(confirmar=self.salvar, foco=self.cpf)
+
+    def _ao_digitar_cpf(self):
+        """CPF de quem já veio preenche o nome (se estiver vazio)."""
+        cpf = so_digitos(self.var_cpf.get())
+        if len(cpf) != 11 or not cpf_valido(cpf) or self.nome.get().strip():
+            return
+        ok, pessoa = self.aba.app.tentar(self.aba.app.banco.buscar_pessoa, cpf)
+        if ok and pessoa:
+            self.nome.insert(0, pessoa["nome"])
+
+    def salvar(self):
+        app = self.aba.app
+        dados, erro = validar_autorizado(self.dono, so_digitos(self.cpf.get()),
+                                         self.nome.get(), self.validade.get(),
+                                         app.relogio().date())
+        if erro:
+            self.faixa.mostrar("erro", erro)
+            self.faixa.grid(row=2, column=0, columnspan=2, sticky="ew",
+                            pady=(px(12), 0))
+            return
+        ok, _ = app.tentar(app.banco.adicionar_autorizado, dados["dono_cpf"],
+                           dados["cpf"], dados["nome"], dados["valido_ate"],
+                           autor=app.autor)
+        if not ok:
+            return
+        self.fechar()
+        self.aba.mostrar_autorizados(self.dono)

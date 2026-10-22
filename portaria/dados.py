@@ -34,6 +34,12 @@ perde a ligação com a visita); as encerradas vão junto (ON DELETE
 CASCADE). Corrigir a placa, o CPF ou a entrada de uma visita aberta
 corrige a estadia aberta por ela.
 
+QUEM PODE RETIRAR O VEÍCULO (RN35, v11): a lista autorizados_veiculo
+diz, por placa, quem leva o carro sem o dono e sem senha (ativo, na
+validade, no campus a pé e sem bloqueio de CPF: veiculos.pode_levar); o
+carro sai junto com a saída dessa pessoa, com o evento "Veículo saiu com
+autorizado". O porteiro só cadastra com o dono no campus (conferido aqui).
+
 O VEÍCULO SÓ SAI COM O DONO (RN32): o dono é o responsável da estadia.
 Uma estadia só é fechada junto com a saída do dono, na mesma transação
 (registrar_saidas com o carro dele). Fechar a estadia sem o dono — só o
@@ -69,7 +75,7 @@ import sqlite3
 from contextlib import closing, contextmanager
 from datetime import date, datetime, timedelta
 
-from . import horarios, senhas
+from . import horarios, senhas, veiculos
 from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
                        conferir_autorizador, pode_editar)
 from .validacao import (FORMATO, MAXIMO_BUSCA, MAXIMO_CELULAR, MAXIMO_CPF,
@@ -211,6 +217,10 @@ TAMANHOS_DA_VISITA = (("Nome completo", "nome", MAXIMO_NOME),
                       ("Entrada", "entrada", MAXIMO_DATA_HORA),
                       ("Saída", "saida", MAXIMO_DATA_HORA))
 VEICULO_SEM_DONO = "Veículo saiu sem o dono"     # evento e regra (RN32)
+# RN35: pessoas autorizadas a retirar o veículo
+VEICULO_COM_AUTORIZADO = "Veículo saiu com autorizado"
+AUTORIZADO_ADICIONADO = "Autorizado a retirar veículo"
+AUTORIZADO_REMOVIDO = "Autorização de retirada removida"
 # RN38: códigos de recuperação do administrador (o código nunca vai ao
 # histórico, só quantos restam)
 CODIGOS_GERADOS = "Códigos de recuperação gerados"
@@ -233,6 +243,24 @@ COLUNAS_ESTADIA = """e.id, e.placa, e.cpf, e.nome, e.entrada, e.saida,
 DE_ESTADIAS = """FROM estadias_veiculo e
     LEFT JOIN registros r ON r.id = e.registro_id
     LEFT JOIN pessoas p ON p.id = e.pessoa_id"""
+
+
+# Linha da lista de quem pode retirar o veículo (RN35)
+COLUNAS_AUTORIZADO = ("id, placa, dono_cpf, cpf, nome, valido_ate, "
+                      "dono_presente, criado_por, criado_em, ativo, "
+                      "removido_em, removido_por")
+COLUNAS_AUTORIZADO_A = ", ".join(f"a.{c.strip()}"
+                                 for c in COLUNAS_AUTORIZADO.split(","))
+
+
+def _autorizado(linha):
+    (i, placa, dono_cpf, cpf, nome, valido_ate, presente, criado_por,
+     criado_em, ativo, removido_em, removido_por) = linha
+    return {"id": i, "placa": placa, "dono_cpf": dono_cpf, "cpf": cpf,
+            "nome": nome, "valido_ate": veiculos.dia_do_banco(valido_ate),
+            "dono_presente": bool(presente), "criado_por": criado_por,
+            "criado_em": de_iso(criado_em), "ativo": bool(ativo),
+            "removido_em": de_iso(removido_em), "removido_por": removido_por}
 
 
 class ErroDados(Exception):
@@ -1706,7 +1734,11 @@ class Banco:
         if estadia is None:
             return
         sem_o_dono = estadia["cpf"] != cpf
-        if sem_o_dono:
+        autorizado = None
+        if sem_o_dono and autorizacao is None:          # RN35
+            autorizado = cls._autorizado_a_levar(con, estadia["placa"], cpf,
+                                                 id_registro, saida)
+        if sem_o_dono and autorizado is None:
             cls._conferir_autorizacao_veiculo(con, autorizacao, estadia["placa"])
         con.execute("UPDATE estadias_veiculo SET saida = ?, autor_saida = ?, "
                     "registro_saida_id = ? WHERE id = ? AND saida = ''",
@@ -1715,12 +1747,41 @@ class Banco:
         cls._evento(con, autor, "Saída de veículo",
                     f"Placa {placa} saiu com {nome} (#{id_registro}).",
                     estadia["registro_id"])
-        if sem_o_dono:
+        if autorizado is not None:
+            cls._evento(con, autorizado["criado_por"], VEICULO_COM_AUTORIZADO,
+                        f"Placa {placa} levada por {nome} (CPF {cpf}, "
+                        f"#{id_registro}), autorizado por "
+                        f"{autorizado['criado_por']} em "
+                        f"{autorizado['criado_em'][:10]}; dono: "
+                        f"{estadia['nome']} (CPF {estadia['cpf']}). Operador: "
+                        f"{autor or AUTOR_SISTEMA}.", id_registro)
+        elif sem_o_dono:
             cls._registrar_veiculo_sem_dono(
                 con, autorizacao, autor,
                 f"Placa {placa} saiu com {nome} (#{id_registro}); o dono é "
                 f"{estadia['nome']} (CPF {estadia['cpf']}).",
                 estadia["registro_id"])
+
+    @classmethod
+    def _autorizado_a_levar(cls, con, placa, cpf, id_registro, saida):
+        """RN35: a linha da lista que deixa `cpf` (a visita `id_registro`,
+        que acabou de receber a saída) levar o carro `placa` sem o dono e
+        sem senha, ou None (aí vale a RN32)."""
+        dia = datetime.strptime(saida, FORMATO_ISO).date()
+        visita_a_pe = con.execute("SELECT placa = '' FROM registros "
+                                  "WHERE id = ?", (id_registro,)).fetchone()[0]
+        bloqueado = con.execute("SELECT 1 FROM bloqueios WHERE tipo = 'cpf' "
+                                "AND valor = ? AND ativo = 1",
+                                (cpf,)).fetchone() is not None
+        for linha in con.execute(f"SELECT {COLUNAS_AUTORIZADO} FROM "
+                                 "autorizados_veiculo WHERE placa = ? AND "
+                                 "cpf = ? AND ativo = 1", (placa, cpf)):
+            autorizado = _autorizado(linha)
+            ok, _ = veiculos.pode_levar(autorizado, dia, bool(visita_a_pe),
+                                        bloqueado)
+            if ok:
+                return autorizado
+        return None
 
     def registrar_saida_veiculo(self, id_estadia, saida, autor=None,
                                 autorizacao=None):
@@ -1822,6 +1883,135 @@ class Banco:
                                 f"estacionamento desde {aberta['entrada']}.")
         con.execute("UPDATE estadias_veiculo SET placa = ?, entrada = ? "
                     "WHERE id = ?", (placa, para_iso(novo["entrada"]), id_estadia))
+
+    # --------------------------------------------------------------
+    # Quem pode retirar o veículo (RN35)
+    # --------------------------------------------------------------
+    def listar_autorizados(self, placa, incluir_removidos=False):
+        """Lista da placa: ativos primeiro, mais recentes primeiro."""
+        filtro = "" if incluir_removidos else " AND ativo = 1"
+        with self._conexao() as con:
+            linhas = con.execute(f"SELECT {COLUNAS_AUTORIZADO} FROM "
+                                 f"autorizados_veiculo WHERE placa = ?{filtro} "
+                                 "ORDER BY ativo DESC, id DESC",
+                                 (placa,)).fetchall()
+        return [_autorizado(linha) for linha in linhas]
+
+    def adicionar_autorizado(self, dono_cpf, cpf, nome, valido_ate, autor):
+        """
+        Põe `cpf`/`nome` na lista de quem pode retirar o carro de `dono_cpf`
+        (a placa cadastrada dele), com validade opcional (date ou None).
+        RN35: o porteiro só cadastra com o dono no campus agora; o
+        administrador, a qualquer hora. O histórico grava quem cadastrou e
+        se o dono estava presente. Devolve o id.
+        """
+        nome = " ".join((nome or "").split())
+        _exigir_tamanho("Nome completo", nome, MAXIMO_NOME)
+        _exigir_tamanho("CPF", cpf, MAXIMO_CPF)
+        with self._conexao() as con:
+            usuario = self._exigir(con, autor, so_admin=False)
+            dono = con.execute("SELECT placa, nome FROM pessoas WHERE cpf = ?",
+                               (dono_cpf,)).fetchone()
+            if dono is None:
+                raise ErroDados("O dono do veículo não está cadastrado.")
+            placa, nome_dono = dono
+            presente = con.execute("SELECT 1 FROM registros WHERE cpf = ? "
+                                   "AND saida = ''",
+                                   (dono_cpf,)).fetchone() is not None
+            ok, msg = veiculos.pode_cadastrar_autorizado(
+                usuario["perfil"] == "admin", presente)
+            if not ok:
+                raise ErroDados(msg)
+            agora = self.relogio()
+            ok, msg = veiculos.conferir_autorizado(placa, dono_cpf, cpf, nome,
+                                                   valido_ate, agora.date())
+            if not ok:
+                raise ErroDados(msg)
+            if con.execute("SELECT 1 FROM autorizados_veiculo WHERE placa = ? "
+                           "AND cpf = ? AND ativo = 1",
+                           (placa, cpf)).fetchone():
+                raise ErroDados(f"{nome} já está na lista de quem pode "
+                                f"retirar o carro {formatar_placa(placa)}.")
+            cursor = con.execute(
+                "INSERT INTO autorizados_veiculo (placa, dono_cpf, cpf, nome, "
+                "valido_ate, dono_presente, criado_por, criado_em) VALUES "
+                "(?, ?, ?, ?, ?, ?, ?, ?)",
+                (placa, dono_cpf, cpf, nome, veiculos.dia_iso(valido_ate),
+                 int(presente), autor, agora.strftime(FORMATO_ISO)))
+            self._evento(con, autor, AUTORIZADO_ADICIONADO,
+                         f"Placa {formatar_placa(placa)} de {nome_dono}: "
+                         f"{nome} (CPF {cpf}) pode retirar, "
+                         f"{veiculos.descrever_validade(valido_ate)}; dono "
+                         + ("presente no campus." if presente
+                            else "fora do campus (cadastro do administrador)."))
+            return cursor.lastrowid
+
+    def remover_autorizado(self, id_autorizado, autor):
+        """Remoção lógica (fica guardado quem removeu e quando). Qualquer
+        usuário remove: remover só diminui a permissão."""
+        with self._conexao() as con:
+            self._exigir(con, autor, so_admin=False)
+            linha = con.execute("SELECT placa, nome, cpf FROM "
+                                "autorizados_veiculo WHERE id = ? AND "
+                                "ativo = 1", (id_autorizado,)).fetchone()
+            if linha is None:
+                raise ErroDados("Esta autorização já tinha sido removida.")
+            con.execute("UPDATE autorizados_veiculo SET ativo = 0, "
+                        "removido_em = ?, removido_por = ? WHERE id = ?",
+                        (self.relogio().strftime(FORMATO_ISO), autor,
+                         id_autorizado))
+            self._evento(con, autor, AUTORIZADO_REMOVIDO,
+                         f"Placa {formatar_placa(linha[0])}: {linha[1]} (CPF "
+                         f"{linha[2]}) não pode mais retirar o carro.")
+
+    def contar_autorizados(self, dia):
+        """{placa: quantos podem retirar o carro no dia} (aba Veículos)."""
+        with self._conexao() as con:
+            return dict(con.execute(
+                "SELECT placa, COUNT(*) FROM autorizados_veiculo WHERE "
+                "ativo = 1 AND (valido_ate = '' OR valido_ate >= ?) "
+                "GROUP BY placa", (dia.isoformat(),)).fetchall())
+
+    def veiculos_que_pode_levar(self, cpf, dia):
+        """Carros no estacionamento que `cpf` pode levar sem o dono (RN35),
+        cada um com o "autorizado" (a linha da lista). Vazio se o CPF está
+        bloqueado. Sem os carros dela mesma."""
+        with self._conexao() as con:
+            if con.execute("SELECT 1 FROM bloqueios WHERE tipo = 'cpf' AND "
+                           "valor = ? AND ativo = 1", (cpf,)).fetchone():
+                return []
+            estadias = [_estadia(linha) for linha in con.execute(
+                f"SELECT {COLUNAS_ESTADIA} {DE_ESTADIAS} WHERE e.saida = '' "
+                "AND e.cpf <> ? ORDER BY e.entrada, e.id", (cpf,))]
+            levaveis = []
+            for estadia in estadias:
+                for linha in con.execute(
+                        f"SELECT {COLUNAS_AUTORIZADO} FROM autorizados_veiculo "
+                        "WHERE placa = ? AND cpf = ? AND ativo = 1",
+                        (estadia["placa"], cpf)):
+                    autorizado = _autorizado(linha)
+                    if veiculos.autorizacao_vale(autorizado, dia):
+                        levaveis.append(dict(estadia, autorizado=autorizado))
+                        break
+        return levaveis
+
+    def autorizados_no_campus(self, placa, dia):
+        """RN35: quem da lista da placa está no campus a pé agora (pode
+        levar o carro), com a visita aberta; sem os CPFs bloqueados."""
+        with self._conexao() as con:
+            linhas = con.execute(
+                f"SELECT {COLUNAS_AUTORIZADO_A}, r.id FROM autorizados_veiculo a "
+                "JOIN registros r ON r.cpf = a.cpf AND r.saida = '' "
+                "AND r.placa = '' WHERE a.placa = ? AND a.ativo = 1 "
+                "AND NOT EXISTS (SELECT 1 FROM bloqueios b WHERE b.tipo = 'cpf' "
+                "AND b.valor = a.cpf AND b.ativo = 1) ORDER BY a.nome",
+                (placa,)).fetchall()
+        no_campus = []
+        for linha in linhas:
+            autorizado = _autorizado(linha[:-1])
+            if veiculos.autorizacao_vale(autorizado, dia):
+                no_campus.append(dict(autorizado, registro_id=linha[-1]))
+        return no_campus
 
     # --------------------------------------------------------------
     # Configuração dos horários de acesso (página Configurações)

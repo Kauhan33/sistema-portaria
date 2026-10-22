@@ -16,6 +16,12 @@ Perguntas sobre o carro (estadia de veículo, dados.py):
   fora do campus ou fica no campus) → a mensagem "O veículo só sai com o
   dono" e, se o porteiro chamar um administrador, o diálogo de autorização
   com a senha (tela_autorizacao.py, veiculo=True);
+- DOIS CARROS DA MESMA PESSOA (RN40): na entrada com outro carro, "Carla
+  já tem o BRA2E19 no estacionamento desde 08:20" → [Entrar — ficam os
+  dois] (padrão) / [O BRA2E19 já saiu] (senha do administrador) /
+  Cancelar; com 2 carros dela lá, o terceiro só com a senha. Na saída de
+  quem tem mais de um carro, UMA pergunta: "Com qual carro Carla está
+  saindo?" → um botão por placa (com o horário) / [A pé — os carros ficam];
 - QUEM PODE RETIRAR (RN35): quem sai está na lista da placa de um carro no
   estacionamento → "Vai levar o carro BRA2E19 de Carla?" → [Sim, leva o
   carro] o carro sai junto, sem senha; [Não] sai sem ele.
@@ -30,12 +36,14 @@ from .dados import VEICULO_SEM_DONO
 from .estilo import px
 from .tela_autorizacao import autorizar_excecao
 from .validacao import formatar_placa
+from .veiculos import aviso_outro_carro, precisa_senha_para_outro_carro
 
 COM_CARRO, A_PE = "carro", "a_pe"
 JUNTO, SO_CARRO = "junto", "so_carro"
 OUTRO_CARRO = "outro_carro"
 LIBERAR = "liberar"
 LEVA, NAO_LEVA = "leva", "nao_leva"
+ENTRAR, ENTRAR_COM_SENHA, JA_SAIU = "entrar", "entrar_com_senha", "ja_saiu"
 
 
 class JanelaVeiculo(Dialogo):
@@ -113,6 +121,51 @@ def saiu_com_o_veiculo(app, nome, estadia):
         f"estacionamento desde {_desde(app, estadia)}.", estadia["placa"],
         [("Saiu de carro", COM_CARRO, "primario"),
          ("Saiu a pé — o carro fica", A_PE, "secundario")])
+
+
+def com_qual_carro(app, nome, estadias):
+    """RN40: a pessoa tem mais de um carro no estacionamento. Devolve o id
+    da estadia com que ela sai, A_PE ou None (cancelou). `estadias` já na
+    ordem (o carro desta visita primeiro: é o do Enter)."""
+    primeiro = nome.split()[0] if nome.split() else "A pessoa"
+    placas = ", ".join(formatar_placa(e["placa"]) for e in estadias)
+    opcoes = [(f"{formatar_placa(e['placa'])} — desde {_desde(app, e)}",
+               e["id"], "primario" if i == 0 else "secundario")
+              for i, e in enumerate(estadias)]
+    opcoes.append(("A pé — os carros ficam", A_PE, "fantasma"))
+    return app.perguntar(
+        _perguntar, app, f"Com qual carro {primeiro} está saindo?",
+        f"{nome} tem {len(estadias)} carros no estacionamento ({placas}). "
+        "Uma pessoa sai com um carro só; o outro fica e sai depois com ela, "
+        "com quem pode retirar ou com a senha do administrador.",
+        estadias[0]["placa"], opcoes, estadias[0]["id"],
+        largura=180 * len(estadias) + 260)
+
+
+def entrar_com_outro_carro(app, nome, placa_nova, estadias):
+    """RN40, na entrada com outro carro: ENTRAR, ENTRAR_COM_SENHA,
+    (JA_SAIU, id da estadia) ou None (cancelou)."""
+    carros = [(formatar_placa(e["placa"]), _desde(app, e)) for e in estadias]
+    senha = precisa_senha_para_outro_carro(len(estadias))
+    if senha:
+        opcoes = [("Entrar com a senha do administrador", ENTRAR_COM_SENHA,
+                   "primario")]
+        texto = (f"{nome} já tem "
+                 + " e ".join(f"o {p} (desde {d})" for p, d in carros)
+                 + f" no estacionamento. Um terceiro carro, o "
+                   f"{formatar_placa(placa_nova)}, só entra com a senha de um "
+                   "administrador. Se um deles já saiu, corrija.")
+    else:
+        opcoes = [("Entrar — ficam os dois", ENTRAR, "primario")]
+        texto = (f"{nome} está entrando com o {formatar_placa(placa_nova)}. "
+                 "Se o carro de antes ainda está lá, os dois ficam no "
+                 "estacionamento; se ele saiu sem registro, corrija agora.")
+    opcoes += [(f"O {p} já saiu", (JA_SAIU, e["id"]), "secundario")
+               for (p, _), e in zip(carros, estadias)]
+    return app.perguntar(
+        _perguntar, app, aviso_outro_carro(nome, carros), texto,
+        estadias[0]["placa"], opcoes, opcoes[0][1],
+        largura=160 * len(opcoes) + 240)
 
 
 def responsavel_saiu_junto(app, estadia):

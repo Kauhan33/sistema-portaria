@@ -21,6 +21,10 @@ dono (fora do campus, ou ele fica), só com a senha de um administrador.
 LOTAÇÃO (RN37): com vagas definidas, o cabeçalho mostra "Estacionamento
 47/50"; a entrada de carro com ele lotado avisa e pede a confirmação (ou,
 com "Bloquear quando lotado", a senha do administrador).
+DOIS CARROS DA MESMA PESSOA (RN40): a entrada com outro carro avisa que o
+primeiro ainda está lá (entrar, "já saiu" com a senha, cancelar; o terceiro
+só com a senha); a saída de quem tem dois carros pergunta uma vez "Com qual
+carro Carla está saindo?" e sai um só.
 QUEM PODE RETIRAR (RN35): quem está na lista da placa e sai a pé ouve
 "Vai levar o carro BRA2E19 de Carla?" (na saída pelo CPF, pelo Movimento
 ou pela placa) e leva o carro sem senha; o Desfazer devolve os dois.
@@ -57,10 +61,11 @@ from .estilo import (COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM,
                      fonte_icone, px)
 from .tela_autorizacao import autorizar_excecao
 from .tela_edicao import JanelaEdicao
-from .tela_veiculo import (COM_CARRO, JUNTO, LEVA, OUTRO_CARRO,
-                           liberar_sem_o_dono, responsavel_saiu_junto,
-                           saiu_com_o_veiculo, vai_entrar_de_carro,
-                           vai_levar_o_carro)
+from .tela_veiculo import (A_PE, COM_CARRO, ENTRAR_COM_SENHA, JA_SAIU,
+                           JUNTO, LEVA, OUTRO_CARRO, com_qual_carro,
+                           entrar_com_outro_carro, liberar_sem_o_dono,
+                           responsavel_saiu_junto, saiu_com_o_veiculo,
+                           vai_entrar_de_carro, vai_levar_o_carro)
 from .usuarios import eh_admin, pode_editar, pode_excluir
 from .validacao import (FORMATO, FORMATO_EXIBICAO, MAXIMO_BUSCA,
                         MAXIMO_CPF_OU_PLACA, MAXIMO_NOME, PLACA_OBRIGATORIA,
@@ -68,7 +73,8 @@ from .validacao import (FORMATO, FORMATO_EXIBICAO, MAXIMO_BUSCA,
                         cpf_valido, formatar_celular, formatar_cpf,
                         formatar_placa, normalizar, placa_valida, so_digitos,
                         validar)
-from .veiculos import esta_lotado, regra_lotado, texto_lotacao
+from .veiculos import (esta_lotado, ordem_dos_carros, regra_lotado,
+                       texto_lotacao)
 
 DICA_CPF = "Digite o CPF primeiro: quem já veio tem os dados preenchidos."
 DICA_PLACA = "obrigatória" if PLACA_OBRIGATORIA else "opcional"
@@ -879,11 +885,14 @@ class AbaCadastro:
                                             f"A entrada de {registro['nome']}")
             if autorizacao is None:
                 return
-        lotacao = self._entrada_com_lotacao(registro)
+        carros = self._entrada_com_outro_carro(registro)
+        if carros is None:
+            return
+        lotacao = self._entrada_com_lotacao(registro, carros)
         if lotacao is None:
             return
         if not self.app.gravar(self.app.banco.inserir, registro,
-                               autorizacao=autorizacao, **lotacao):
+                               autorizacao=autorizacao, **carros, **lotacao):
             return
         self.app.atualizar_tabela()
         self.limpar()
@@ -891,7 +900,45 @@ class AbaCadastro:
         self.avisar(f"Entrada de {registro['nome'].split()[0]} registrada "
                     f"às {hora}" + self._com_autorizacao(autorizacao))
 
-    def _entrada_com_lotacao(self, registro):
+    def _entrada_com_outro_carro(self, registro):
+        """RN40: quem já tem carro no estacionamento e entra com OUTRO.
+        Devolve o que vai ao banco ({} = nada) ou None (cancelou)."""
+        if not registro["placa"] or registro["saida"]:
+            return {}
+        ok, estadias = self.app.tentar(self.app.banco.estadias_abertas_do_cpf,
+                                       registro["cpf"])
+        if not ok:
+            return None
+        estadias = [e for e in estadias if e["placa"] != registro["placa"]]
+        if not estadias:
+            return {}
+        resposta = entrar_com_outro_carro(self.app, registro["nome"],
+                                          registro["placa"], estadias)
+        if resposta is None:
+            return None
+        if resposta == ENTRAR_COM_SENHA:
+            autorizacao = autorizar_excecao(
+                self.app, [f"{registro['nome']} já tem {len(estadias)} carros "
+                           "no estacionamento: outro só entra com a senha de "
+                           "um administrador."],
+                f"A entrada do carro {formatar_placa(registro['placa'])}",
+                so_com_senha=True)
+            return None if autorizacao is None else {
+                "autorizacao_carros": autorizacao}
+        if isinstance(resposta, tuple) and resposta[0] == JA_SAIU:
+            estadia = next(e for e in estadias if e["id"] == resposta[1])
+            placa = formatar_placa(estadia["placa"])
+            autorizacao = autorizar_excecao(
+                self.app, [f"O carro {placa} consta no estacionamento desde "
+                           f"{self._quando(estadia['entrada'])}, mas já saiu "
+                           "sem registro: a saída dele é corrigida agora."],
+                f"A correção da saída do carro {placa}", veiculo=True)
+            return None if autorizacao is None else {
+                "carro_ja_saiu": estadia["id"],
+                "autorizacao_ja_saiu": autorizacao}
+        return {}
+
+    def _entrada_com_lotacao(self, registro, carros=None):
         """RN37: entrada de carro com o estacionamento lotado. Avisa e pede
         a confirmação ou, com "Bloquear quando lotado", a senha do
         administrador (até o administrador logado redigita a sua). Devolve
@@ -902,6 +949,8 @@ class AbaCadastro:
         if not ok:
             return None
         ocupadas, vagas, bloquear = ocupacao
+        if carros and carros.get("carro_ja_saiu"):
+            ocupadas -= 1           # o carro que já tinha saído não conta
         if not esta_lotado(ocupadas, vagas):
             return {}
         regra = regra_lotado(ocupadas, vagas)
@@ -1402,6 +1451,8 @@ class AbaCadastro:
         """Quem sai e tem carro no estacionamento: saiu com ele? Com dois
         carros (saiu a pé e voltou com outro), pergunta primeiro pelo carro
         desta visita e depois pelos outros, até um "Saiu de carro".
+        RN40: com dois carros dela no estacionamento, UMA pergunta ("Com
+        qual carro Carla está saindo?") e sai um só.
         RN35: quem saiu a pé (sem carro dele) e está na lista da placa de
         outro carro no estacionamento ouve "Vai levar o carro X de Y?".
         Devolve ({id da visita: id da estadia que sai},
@@ -1415,16 +1466,19 @@ class AbaCadastro:
             por_cpf.setdefault(e["cpf"], []).append(e)
         de_carro, a_pe, levados = {}, {}, {}
         for r in registros:
-            carros = sorted(por_cpf.get(r["cpf"], []),
-                            key=lambda e: e["registro_id"] != r["id"])
-            for estadia in carros:
-                resposta = saiu_com_o_veiculo(self.app, r["nome"], estadia)
+            carros = ordem_dos_carros(por_cpf.get(r["cpf"], []), r["id"])
+            if len(carros) == 1:
+                resposta = saiu_com_o_veiculo(self.app, r["nome"], carros[0])
+                resposta = carros[0]["id"] if resposta == COM_CARRO else resposta
+            elif carros:
+                resposta = com_qual_carro(self.app, r["nome"], carros)
+            if carros:
                 if resposta is None:
                     return None
-                if resposta == COM_CARRO:
-                    de_carro[r["id"]] = estadia["id"]
-                    break
-                a_pe.setdefault(r["id"], []).append(estadia["placa"])
+                if resposta == A_PE:
+                    a_pe[r["id"]] = [e["placa"] for e in carros]
+                else:
+                    de_carro[r["id"]] = resposta
             if r["id"] not in de_carro and not r["placa"]:
                 estadia = self._perguntar_se_leva(r, set(de_carro.values()))
                 if estadia is False:
@@ -1526,8 +1580,11 @@ class AbaCadastro:
             return " (saiu de carro)" if len(ids) == 1 else " (com os carros)"
         ficam = [formatar_placa(p) for i, placas in a_pe.items() if i in ids
                  for p in placas]
+        if len(ficam) == 1:
+            return f" (a pé; o carro {ficam[0]} fica no estacionamento)"
         if ficam:
-            return f" (a pé; o carro {', '.join(ficam)} fica no estacionamento)"
+            return (f" (a pé; os carros {', '.join(ficam)} ficam no "
+                    "estacionamento)")
         return ""
 
     def desfazer_saida(self):

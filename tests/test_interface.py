@@ -424,6 +424,9 @@ class TestTelaPequena(BaseInterface):
                              self.janela.winfo_rooty() + 536)
 
     def test_tela_grande_volta_ao_layout_normal(self):
+        if self.janela.winfo_screenheight() < 760:
+            # o Windows não deixa a janela passar da altura do monitor
+            self.skipTest("monitor mais baixo que a janela GRANDE (760 px)")
         self.tamanho(self.PEQUENA)
         self.tamanho(self.GRANDE)
         tela = self.app.tela_cadastro
@@ -1880,30 +1883,34 @@ class TestEstadiaDeVeiculo(BaseInterface):
         self.agora = AGORA + timedelta(hours=1)
         self.app.limpar()
         self.preencher(cpf=self.CPF, placa="XYZ9A87", tipo="Professor")
+        self.responder_veiculo = "principal"     # RN40: entrar, ficam os dois
         self.app.cadastrar()
         self.tela.campo_saida_rapida.delete(0, tk.END)
         return max(r["id"] for r in self.no_banco())
 
     def test_dois_carros_pergunta_primeiro_pelo_da_visita(self):
-        """QA1 M3: perguntava pelo ABC-1234 e fechava o carro errado."""
+        """QA1 M3: perguntava pelo ABC-1234 e fechava o carro errado.
+        RN40: uma pergunta só, com o carro desta visita no Enter."""
         volta = self.voltar_com_outro_carro()
-        self.sair_pelo_cpf("carro")
+        self.responder_veiculo = "principal"
+        self.tela.campo_saida_rapida.insert(0, self.CPF)
+        self.tela.saida_rapida()
         self.assertEqual(self.perguntas_veiculo[-1],
-                         "Saiu com o veículo XYZ9A87?")
+                         "Com qual carro Ana está saindo?")
         self.assertTrue(self.banco.buscar(volta)["saida"])
         self.assertIsNone(self.banco.estadia_aberta(placa="XYZ9A87"))
         self.assertIsNotNone(self.estadia())               # ABC-1234 fica
 
-    def test_dois_carros_a_pe_no_da_visita_pergunta_pelo_outro(self):
-        from portaria.tela_veiculo import A_PE, COM_CARRO
+    def test_dois_carros_escolher_o_primeiro_deixa_o_da_visita(self):
+        """RN40: a pergunta oferece os dois carros (antes, com "Saiu de
+        carro" no da visita, o outro nunca era oferecido)."""
         self.voltar_com_outro_carro()
-        respostas = [A_PE, COM_CARRO]
-        self.responder_veiculo = lambda d: d.escolher(respostas.pop(0))
+        antigo = self.estadia()["id"]
+        self.responder_veiculo = antigo
         self.tela.campo_saida_rapida.insert(0, self.CPF)
         self.tela.saida_rapida()
-        self.assertEqual(self.perguntas_veiculo[-2:],
-                         ["Saiu com o veículo XYZ9A87?",
-                          "Saiu com o veículo ABC-1234?"])
+        self.assertEqual(self.perguntas_veiculo[-1],
+                         "Com qual carro Ana está saindo?")
         self.assertIsNone(self.estadia())                  # saiu com o ABC
         self.assertIsNotNone(self.banco.estadia_aberta(placa="XYZ9A87"))
 

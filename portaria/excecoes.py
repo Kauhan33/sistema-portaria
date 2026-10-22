@@ -2,8 +2,8 @@
 Relatório de exceções (V4, Usuários › Exceções): tudo o que passou por
 cima de uma regra num período — horário, retroativo, mais de 24 h, veículo
 sem o dono, veículo com autorizado (RN35), estacionamento lotado liberado
-com a senha (RN37), saídas automáticas e código de recuperação usado
-(RN38).
+com a senha (RN37), carro que já tinha saído e terceiro carro da mesma
+pessoa (RN40), saídas automáticas e código de recuperação usado (RN38).
 
 Funções puras: recebem os eventos do histórico (banco.listar_excecoes) e
 devolvem as linhas do relatório (quando, tipo, pessoa com o CPF mascarado,
@@ -13,8 +13,9 @@ próprio dados.py grava em cada evento.
 
 import re
 
-from .dados import (CODIGO_RECUPERACAO_USADO, EXCECAO_AUTORIZADA,
-                    LOTACAO_LIBERADA, SAIDA_AUTOMATICA_ATUALIZACAO,
+from .dados import (CARRO_JA_SAIU, CODIGO_RECUPERACAO_USADO,
+                    EXCECAO_AUTORIZADA, LOTACAO_LIBERADA, OUTRO_CARRO_LIBERADO,
+                    SAIDA_AUTOMATICA_ATUALIZACAO,
                     SAIDA_AUTOMATICA_ENCERRAMENTO, VEICULO_COM_AUTORIZADO,
                     VEICULO_SEM_DONO)
 from .validacao import mascarar_cpf, mascarar_cpfs_no_texto
@@ -24,13 +25,16 @@ TIPO_DA_ACAO = {
     VEICULO_SEM_DONO: "Veículo sem o dono",
     VEICULO_COM_AUTORIZADO: "Veículo com autorizado",
     LOTACAO_LIBERADA: "Lotação com senha",
+    CARRO_JA_SAIU: "Carro que já tinha saído",
+    OUTRO_CARRO_LIBERADO: "Terceiro carro",
     SAIDA_AUTOMATICA_ENCERRAMENTO: "Saída automática",
     SAIDA_AUTOMATICA_ATUALIZACAO: "Saída automática",
     CODIGO_RECUPERACAO_USADO: "Código de recuperação",
 }
 # opções do filtro "Tipo", na ordem da tela
 TIPOS = (HORARIO, RETROATIVO, MAIS_DE_24H, "Veículo sem o dono",
-         "Veículo com autorizado", "Lotação com senha", "Saída automática",
+         "Veículo com autorizado", "Lotação com senha",
+         "Carro que já tinha saído", "Terceiro carro", "Saída automática",
          "Código de recuperação")
 TODOS = "Todos"
 SEM_VALOR = "—"

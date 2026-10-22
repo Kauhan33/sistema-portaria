@@ -229,6 +229,9 @@ AUTORIZADO_REMOVIDO = "Autorização de retirada removida"
 # RN37: lotação do estacionamento
 LOTACAO_LIBERADA = "Estacionamento lotado liberado"           # com a senha
 LOTACAO_CONFIRMADA = "Entrada com estacionamento lotado"      # só o aviso
+# RN40: dois carros da mesma pessoa
+CARRO_JA_SAIU = "Saída de veículo corrigida (já tinha saído)"
+OUTRO_CARRO_LIBERADO = "Terceiro carro da mesma pessoa liberado"
 # RN38: códigos de recuperação do administrador (o código nunca vai ao
 # histórico, só quantos restam)
 CODIGOS_GERADOS = "Códigos de recuperação gerados"
@@ -237,6 +240,7 @@ RECUPERACAO_RECUSADA = "Recuperação de senha recusada"
 # todas as exceções, na ordem do filtro "Tipo" do relatório
 ACOES_DE_EXCECAO = (EXCECAO_AUTORIZADA, VEICULO_SEM_DONO,
                     VEICULO_COM_AUTORIZADO, LOTACAO_LIBERADA,
+                    CARRO_JA_SAIU, OUTRO_CARRO_LIBERADO,
                     SAIDA_AUTOMATICA_ENCERRAMENTO,
                     SAIDA_AUTOMATICA_ATUALIZACAO, CODIGO_RECUPERACAO_USADO)
 TROCA_DE_SENHA_PENDENTE = ("Defina a sua senha antes de continuar: saia e "
@@ -1257,7 +1261,9 @@ class Banco:
                 "bloqueios": bloqueios, "veiculos": veiculos}
 
     def inserir(self, registro, autor=None, autorizacao=None,
-                lotado_confirmado=False, autorizacao_lotacao=None):
+                lotado_confirmado=False, autorizacao_lotacao=None,
+                carro_ja_saiu=None, autorizacao_ja_saiu=None,
+                autorizacao_carros=None):
         """
         Grava um registro (datas no formato da tela) e devolve o id. Com
         `autorizacao`, a visita é uma exceção de horário autorizada.
@@ -1265,10 +1271,19 @@ class Banco:
         `lotado_confirmado` (o porteiro viu o aviso) ou, com "Bloquear
         quando lotado", com `autorizacao_lotacao` de um administrador dada
         com a senha (conferida aqui).
+        RN40: `carro_ja_saiu` (id da estadia de um carro desta pessoa que
+        ficou como no estacionamento, mas já tinha saído) é fechada na mesma
+        transação, só com `autorizacao_ja_saiu` (senha do administrador).
+        Com MAXIMO_CARROS_POR_PESSOA carros dela abertos, outro só entra com
+        `autorizacao_carros` (senha do administrador).
         """
         autorizacao = self._autorizacao_conferida(autorizacao, autor)
         autorizacao_lotacao = self._autorizacao_conferida(autorizacao_lotacao,
                                                           autor)
+        autorizacao_ja_saiu = self._autorizacao_conferida(autorizacao_ja_saiu,
+                                                          autor)
+        autorizacao_carros = self._autorizacao_conferida(autorizacao_carros,
+                                                         autor)
         with self._conexao() as con:
             self._conferir_autor(con, autor)
             self._conferir_autorizacao(con, autorizacao)
@@ -1279,7 +1294,13 @@ class Banco:
             id_ = self._inserir(con, registro)
             self._evento(con, autor, "Cadastro de entrada",
                          f"#{id_} {registro['nome']} ({registro['tipo']})", id_)
+            if carro_ja_saiu is not None:
+                self._corrigir_carro_que_ja_saiu(con, carro_ja_saiu, registro,
+                                                 id_, autor,
+                                                 autorizacao_ja_saiu)
             if registro.get("placa") and not registro.get("saida"):
+                self._conferir_carros_da_pessoa(con, registro, id_, autor,
+                                                autorizacao_carros)
                 self._conferir_lotacao(con, registro, id_, autor,
                                        lotado_confirmado, autorizacao_lotacao)
             if registro.get("placa"):
@@ -1763,6 +1784,61 @@ class Banco:
                     f"com o {regra[0].lower()}{regra[1:]} (aviso confirmado).",
                     id_registro)
 
+    @classmethod
+    def _corrigir_carro_que_ja_saiu(cls, con, id_estadia, registro, id_,
+                                    autor, autorizacao):
+        """RN40 "O BRA2E19 já saiu": a guarita esqueceu de registrar a
+        saída do carro. Fecha a estadia (do MESMO CPF) com a senha do
+        administrador; vai ao relatório de exceções."""
+        estadia = cls._estadia_aberta(con, "id", id_estadia)
+        if estadia is None:
+            raise ErroDados("Esse carro já não está no estacionamento.\n"
+                            "Atualize a tela e tente de novo.")
+        if estadia["cpf"] != registro["cpf"]:
+            raise ErroDados("Só o carro da própria pessoa pode ser marcado "
+                            "como já saído na entrada dela.")
+        cls._conferir_autorizacao_veiculo(con, autorizacao, estadia["placa"])
+        entrada = con.execute("SELECT entrada FROM estadias_veiculo WHERE "
+                              "id = ?", (id_estadia,)).fetchone()[0]
+        saida = max(para_iso(registro["entrada"]), entrada)
+        con.execute("UPDATE estadias_veiculo SET saida = ?, autor_saida = ? "
+                    "WHERE id = ? AND saida = ''",
+                    (saida, autor or AUTOR_SISTEMA, id_estadia))
+        placa = formatar_placa(estadia["placa"])
+        cls._evento(con, autorizacao["autorizado_por"], CARRO_JA_SAIU,
+                    f"Placa {placa} de {estadia['nome']} (no estacionamento "
+                    f"desde {estadia['entrada']}) já tinha saído sem registro; "
+                    f"saída corrigida na entrada #{id_}. Justificativa: "
+                    f"{autorizacao['justificativa']}. Operador: "
+                    f"{autor or AUTOR_SISTEMA}. Senha do administrador "
+                    "conferida.", estadia["registro_id"])
+
+    @classmethod
+    def _conferir_carros_da_pessoa(cls, con, registro, id_, autor,
+                                   autorizacao):
+        """RN40 conferida no banco: com MAXIMO_CARROS_POR_PESSOA carros da
+        pessoa no estacionamento, mais um só com a senha do
+        administrador."""
+        abertos = [p for (p,) in con.execute(
+            "SELECT placa FROM estadias_veiculo WHERE saida = '' AND cpf = ? "
+            "ORDER BY entrada, id", (registro["cpf"],))]
+        if not veiculos.precisa_senha_para_outro_carro(len(abertos)):
+            return
+        placas = ", ".join(formatar_placa(p) for p in abertos)
+        if autorizacao is None or not autorizacao.get("com_senha"):
+            raise ErroDados(
+                f"{registro['nome']} já tem {len(abertos)} carros no "
+                f"estacionamento ({placas}).\nOutro carro só entra com a "
+                "senha de um administrador.")
+        cls._conferir_autorizacao(con, autorizacao)
+        cls._evento(con, autorizacao["autorizado_por"], OUTRO_CARRO_LIBERADO,
+                    f"#{id_} {registro['nome']}: entrou com o carro "
+                    f"{formatar_placa(registro['placa'])} tendo {placas} no "
+                    f"estacionamento. Justificativa: "
+                    f"{autorizacao['justificativa']}. Operador: "
+                    f"{autor or AUTOR_SISTEMA}. Senha do administrador "
+                    "conferida.", id_)
+
     @staticmethod
     def _ocupadas(con):
         return con.execute("SELECT COUNT(*) FROM estadias_veiculo "
@@ -1931,6 +2007,8 @@ class Banco:
             # só se a placa foi digitada agora (visita antiga, de carona,
             # pode ter placa sem estadia)
             if placa and placa != placa_da_visita and not novo["saida"]:
+                cls._conferir_carros_da_pessoa(con, novo, id_registro, autor,
+                                               None)
                 cls._abrir_estadia(con, novo, id_registro, autor)
             return
         id_estadia, placa_antiga, saida = linha

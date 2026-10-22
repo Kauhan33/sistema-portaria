@@ -14,6 +14,14 @@ o porteiro, só com o dono presente (visita aberta do dono no campus); o
 administrador, a qualquer hora. Remover só diminui a permissão: qualquer
 usuário remove (remoção lógica, com histórico).
 
+RN40 — dois carros da mesma pessoa: uma pessoa dirige um carro de cada
+vez. Quem já tem carro no estacionamento e entra com OUTRO recebe o aviso
+"Carla já tem o BRA2E19 no estacionamento desde 08:20" (entrar, ficam os
+dois; "o BRA2E19 já saiu", com a senha do administrador; cancelar). Até
+MAXIMO_CARROS_POR_PESSOA carros abertos do mesmo CPF; o terceiro só com a
+senha. Na saída, UMA pergunta ("Com qual carro Carla está saindo?") e sai
+no máximo um carro com a pessoa; o que fica segue RN32, RN35 e RN36.
+
 RN37 — lotação do estacionamento: com `vagas` > 0 (0 = sem controle, até
 4 dígitos), o cabeçalho mostra "Estacionamento 47/50". A entrada de carro
 com o estacionamento lotado AVISA e pede a confirmação do porteiro; com
@@ -27,6 +35,7 @@ from .validacao import (MAXIMO_DATA, MAXIMO_NOME, checar_tamanho, cpf_valido,
 
 FORMATO_DIA = "%d/%m/%Y"
 MAXIMO_VAGAS = 9999              # 4 dígitos (RN37)
+MAXIMO_CARROS_POR_PESSOA = 2     # RN40: o terceiro só com a senha
 DONO_PRECISA_ESTAR = ("O dono precisa estar no campus: o porteiro só cadastra "
                       "quem pode retirar o carro com o dono presente.")
 SEM_PRAZO = "sem prazo (até remover)"
@@ -163,3 +172,31 @@ def ler_vagas(texto):
         return None, (f"Vagas do estacionamento: digite um número de 0 a "
                       f"{MAXIMO_VAGAS} (0 = sem controle).")
     return int(texto), ""
+
+
+# ------------------------------------------------------------------
+# Dois carros da mesma pessoa (RN40)
+# ------------------------------------------------------------------
+def precisa_senha_para_outro_carro(carros_no_estacionamento):
+    """RN40: com MAXIMO_CARROS_POR_PESSOA carros dela já no
+    estacionamento, mais um só entra com a senha do administrador."""
+    return carros_no_estacionamento >= MAXIMO_CARROS_POR_PESSOA
+
+
+def aviso_outro_carro(nome, carros):
+    """Título do aviso da entrada com outro carro. `carros`: [(placa
+    formatada, desde)] dos carros da pessoa no estacionamento."""
+    primeiro = nome.split()[0] if nome.split() else "A pessoa"
+    if len(carros) == 1:
+        placa, desde = carros[0]
+        return f"{primeiro} já tem o {placa} no estacionamento desde {desde}"
+    return f"{primeiro} já tem {len(carros)} carros no estacionamento"
+
+
+def ordem_dos_carros(estadias, id_visita):
+    """Na pergunta da saída, o carro desta visita vem primeiro (é o mais
+    provável); depois os outros, do mais antigo ao mais novo."""
+    return sorted(estadias, key=lambda e: (e.get("registro_id") != id_visita,
+                                           e["entrada"][6:10], e["entrada"][3:5],
+                                           e["entrada"][:2], e["entrada"][11:],
+                                           e["id"]))

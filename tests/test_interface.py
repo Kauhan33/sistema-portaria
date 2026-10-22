@@ -254,7 +254,10 @@ class TestCadastroComoAdmin(BaseInterface):
         self.app.cadastrar()
         # sem caixinha para fechar: o aviso aparece no rodapé do Movimento
         self.msg.showinfo.assert_not_called()
-        self.assertIn("Entrada de Ana registrada", self.app.lbl_aviso.cget("text"))
+        aviso = self.app.lbl_aviso.cget("text")
+        self.assertTrue(aviso.startswith("Registro cadastrado com sucesso! "
+                                         "Entrada de Ana às "), aviso)
+        self.assertTrue(aviso.endswith("."), aviso)
         salvos = self.no_banco()
         self.assertEqual(len(salvos), 1)
         self.assertEqual(salvos[0]["placa"], "ABC1D23")

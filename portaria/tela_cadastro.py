@@ -77,6 +77,7 @@ from .veiculos import (esta_lotado, ordem_dos_carros, regra_lotado,
                        texto_lotacao)
 
 DICA_CPF = "Digite o CPF primeiro: quem já veio tem os dados preenchidos."
+SUCESSO_CADASTRO = "Registro cadastrado com sucesso!"   # texto do enunciado
 DICA_PLACA = "obrigatória" if PLACA_OBRIGATORIA else "opcional"
 SEGUNDOS_PARA_DESFAZER = 10
 SAIDA_JA_FEITA = ("Essa visita já tinha saída ou foi excluída em outra "
@@ -897,8 +898,12 @@ class AbaCadastro:
         self.app.atualizar_tabela()
         self.limpar()
         hora = registro["entrada"][-5:]
-        self.avisar(f"Entrada de {registro['nome'].split()[0]} registrada "
-                    f"às {hora}" + self._com_autorizacao(autorizacao))
+        # texto do enunciado do exercício, na faixa (sem caixa para fechar);
+        # é o único caminho da entrada: Pessoas › Registrar entrada, o
+        # retroativo e a entrada com outro carro também passam por aqui
+        self.avisar(f"{SUCESSO_CADASTRO} Entrada de "
+                    f"{registro['nome'].split()[0]} às {hora}"
+                    + self._com_autorizacao(autorizacao))
 
     def _entrada_com_outro_carro(self, registro):
         """RN40: quem já tem carro no estacionamento e entra com OUTRO.

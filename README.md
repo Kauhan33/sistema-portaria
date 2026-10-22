@@ -4,9 +4,9 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
-**Versão atual: 2.2** — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
+**Versão atual: 2.2.1** — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
 
-![Tela Entrada e saída](docs/design/final/cadastro_campus.png)
+![Tela Entrada e saída](docs/design/final/v221_cadastro_admin_claro.png)
 
 ## Como executar
 
@@ -174,6 +174,8 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 | | |
 |---|---|
+| ![Registro cadastrado com sucesso](docs/design/final/v221_cadastro_admin_claro.png) | ![Movimento perto do fechamento](docs/design/final/v221_movimento_admin_claro.png) |
+| **Entrada e saída (2.2.1)** — "Registro cadastrado com sucesso! Entrada de Júlia às 15:20." | **Movimento** — tempo excedido, saída pendente e os avisos do fechamento |
 | ![Login](docs/design/final/login.png) | ![Primeiro acesso](docs/design/final/primeiro_acesso.png) |
 | **Login** — painel da guarita com relógio | **Primeiro acesso** — cria o administrador (sem senha padrão) |
 | ![Pessoa já cadastrada](docs/design/final/cadastro_ok.png) | ![CPF bloqueado](docs/design/final/cadastro_bloqueado.png) |
@@ -605,6 +607,17 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**2.2.1** (22/10/2026) — ajustes para a entrega da disciplina (sem mudança no banco):
+
+- a confirmação da entrada usa o texto do enunciado do exercício, na faixa
+  verde do rodapé (sem caixa para fechar): **"Registro cadastrado com
+  sucesso! Entrada de Ana às 14:30."** (com "(exceção autorizada por …)"
+  quando houve autorização do administrador);
+- **casos de teste documentados** CT-01 a CT-47 (`python -m tests.relatorio`,
+  veja [Testes automatizados](#testes-automatizados)), com dois testes de tela
+  novos (nome e CPF vazios, CPF inválido);
+- prints novos da versão atual (`docs/design/final/v221_*`).
 
 **2.2** (21/10/2026) — veículo e acesso do administrador (banco na versão 11,
 numa migração só, com backup antes):

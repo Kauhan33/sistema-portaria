@@ -58,8 +58,9 @@ CASOS = [
          "31 98765-4321, placa ABC1D23 e tipo Visitante e clica em "
          "Registrar entrada.",
          "A entrada é gravada com a data e a hora atuais, aparece na tabela "
-         "Movimento, o formulário é limpo e a faixa verde mostra \"Entrada "
-         "de Ana registrada às hh:mm\".",
+         "Movimento, o formulário é limpo e a faixa verde mostra o texto do "
+         "enunciado: \"Registro cadastrado com sucesso! Entrada de Ana às "
+         "hh:mm.\"",
          ["test_interface.TestCadastroComoAdmin."
           "test_cadastrar_salva_no_banco_e_limpa_o_formulario",
           "test_validacao.TestValidar.test_cadastro_completo_e_aceito"]),

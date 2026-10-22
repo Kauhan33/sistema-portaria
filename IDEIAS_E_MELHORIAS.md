@@ -263,6 +263,16 @@ versão 11, numa migração só (atômica, com backup antes).
   N09); filtro "só dono fora" na lista de veículos a partir da faixa do
   carro esquecido.
 
+### Versão 2.2.1 — entrega da disciplina (22/10/2026) ✅
+- ✅ Confirmação da entrada com o texto do enunciado, na faixa verde (sem
+  caixa extra): "Registro cadastrado com sucesso! Entrada de Ana às 14:30."
+  O item 9 do desafio ("Mostrar 'Registro cadastrado com sucesso!'") passa
+  a ser atendido ao pé da letra. Os tipos de acesso continuam os do campus
+  (sem "Morador"), por decisão do aluno; o Word explica a adaptação.
+- ✅ Casos de teste documentados (`python -m tests.relatorio`, CT-01 a CT-47)
+  e prints novos da versão atual (`docs/design/final/v221_*`).
+- 784 testes automatizados.
+
 ## 4. Rascunho de requisitos para o Word
 
 **RF**: RF01 cadastrar entrada · RF02 registrar saída (botão, duplo clique,

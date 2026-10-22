@@ -143,8 +143,10 @@ class TestAutorizacaoComoPorteiro(BaseHorarios):
         self.assertIn("Operador: paulo", evento["detalhe"])
         self.assertIn("Exceção autorizada", [
             e["acao"] for e in self.banco.eventos_do_registro(salvos[0]["id"])])
-        self.assertIn("exceção autorizada por ana.admin",
-                      self.app.lbl_aviso.cget("text"))
+        aviso = self.app.lbl_aviso.cget("text")
+        self.assertTrue(aviso.startswith("Registro cadastrado com sucesso!"),
+                        aviso)
+        self.assertIn("exceção autorizada por ana.admin", aviso)
 
     def test_sessao_expirada_durante_a_autorizacao_nao_grava(self):
         def expira_e_responde(dialogo):

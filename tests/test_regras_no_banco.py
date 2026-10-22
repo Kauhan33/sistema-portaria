@@ -8,7 +8,8 @@ import unittest
 import unittest.mock
 from datetime import date, datetime
 
-from portaria import dados, horarios
+from portaria import dados, horarios, senhas, usuarios
+from portaria.senhas import gerar_hash
 from portaria.horarios import Evento, Horario, RegraCategoria, hora
 
 from .test_dados import (objetos_do_banco, rebaixar_para_v6,
@@ -17,15 +18,28 @@ from .test_dados import (objetos_do_banco, rebaixar_para_v6,
 SEGUNDA = date(2026, 10, 19)
 
 
-def autorizacao(por="ana", justificativa="Evento da reitoria autorizado"):
-    return {"autorizado_por": por, "justificativa": justificativa,
-            "regras": ["Campus fechado em 25/10/2026 (domingo)."]}
+# senha de cada usuário dos testes (o banco confere a senha de quem
+# autoriza: V0)
+SENHAS = {"ana": "senha-da-ana", "bia": "senha-da-bia",
+          "paulo": "senha-do-paulo"}
+
+
+def autorizacao(por="ana", justificativa="Evento da reitoria autorizado",
+                com_senha=True):
+    """Exceção de horário autorizada por `por`, que digitou a senha dele
+    (com_senha=False: sem a senha, como o administrador logado)."""
+    pedido = {"autorizado_por": por, "justificativa": justificativa,
+              "regras": ["Campus fechado em 25/10/2026 (domingo)."]}
+    if com_senha:
+        pedido["senha"] = SENHAS.get(por, "chute-errado")
+    return pedido
 
 
 def senha_do_admin(por="ana", justificativa="Dono ligou e autorizou o guincho"):
-    """Autorização de veículo sem o dono (RN32): com a senha conferida."""
+    """Autorização de veículo sem o dono (RN32): com a senha de `por`."""
     return {"autorizado_por": por, "justificativa": justificativa,
-            "regras": ["Veículo saiu sem o dono"], "com_senha": True}
+            "regras": ["Veículo saiu sem o dono"],
+            "senha": SENHAS.get(por, "chute-errado")}
 
 
 class BaseRegras(unittest.TestCase):
@@ -35,10 +49,12 @@ class BaseRegras(unittest.TestCase):
         self.pasta = tempfile.TemporaryDirectory()
         self.caminho = os.path.join(self.pasta.name, "portaria.db")
         self.banco = dados.Banco(self.caminho, relogio=lambda: self.AGORA)
-        self.banco.criar_usuario("Ana Admin", "ana", "admin", "h")
-        self.banco.criar_usuario("Bia Admin", "bia", "admin", "h", autor="ana")
-        self.banco.criar_usuario("Paulo Porteiro", "paulo", "porteiro", "h",
-                                 autor="ana")
+        self.banco.criar_usuario("Ana Admin", "ana", "admin",
+                                 gerar_hash(SENHAS["ana"]))
+        self.banco.criar_usuario("Bia Admin", "bia", "admin",
+                                 gerar_hash(SENHAS["bia"]), autor="ana")
+        self.banco.criar_usuario("Paulo Porteiro", "paulo", "porteiro",
+                                 gerar_hash(SENHAS["paulo"]), autor="ana")
 
     def tearDown(self):
         self.pasta.cleanup()
@@ -404,9 +420,8 @@ class TestEstadiasDeVeiculo(BaseRegras):
         self.assertEqual(self.banco.buscar(outro)["saida"], "")
 
 
-class TestVeiculoSoSaiComODono(BaseRegras):
-    """RN32: a estadia só fecha junto com a saída do dono; sem ele, só com a
-    autorização de um administrador ativo dada com a senha."""
+class BaseVeiculo(BaseRegras):
+    """O carro ABC1D23 de João Ávila no estacionamento (visita das 08:00)."""
 
     ANA, BETO = "52998224725", "11144477735"
 
@@ -432,6 +447,11 @@ class TestVeiculoSoSaiComODono(BaseRegras):
             self.carro, "19/10/2026 09:30", autor="paulo",
             autorizacao=autorizacao)
 
+
+class TestVeiculoSoSaiComODono(BaseVeiculo):
+    """RN32: a estadia só fecha junto com a saída do dono; sem ele, só com a
+    autorização de um administrador ativo dada com a senha."""
+
     def test_banco_recusa_tirar_o_carro_sem_o_dono_e_sem_autorizacao(self):
         self.dono_sai_a_pe()
         with self.assertRaises(dados.ErroDados) as erro:
@@ -448,7 +468,9 @@ class TestVeiculoSoSaiComODono(BaseRegras):
     def test_so_administrador_ativo_com_senha_e_justificativa(self):
         self.dono_sai_a_pe()
         self.banco.definir_ativo(2, False, autor="ana")           # bia desativada
-        casos = [dict(senha_do_admin(), com_senha=False),         # sem a senha
+        sem_senha = dict(senha_do_admin(), com_senha=True)
+        del sem_senha["senha"]                       # só a marca, sem a senha
+        casos = [sem_senha,
                  senha_do_admin(por="paulo"), senha_do_admin(por="bia"),
                  senha_do_admin(por="ninguem"),
                  senha_do_admin(justificativa="curta"),
@@ -513,7 +535,7 @@ class TestVeiculoSoSaiComODono(BaseRegras):
     def test_autorizacao_de_horario_nao_serve_para_o_carro(self):
         self.dono_sai_a_pe()
         with self.assertRaises(dados.ErroDados):
-            self.sair_so_o_carro(autorizacao())        # sem "com_senha"
+            self.sair_so_o_carro(autorizacao(com_senha=False))
         self.assertTrue(self.no_estacionamento())
 
     def test_desfazer_nao_tira_o_carro(self):
@@ -601,6 +623,90 @@ class TestVeiculoSoSaiComODono(BaseRegras):
         self.banco.encerrar_pendentes(self.AGORA, autor="ana")
         self.assertTrue(self.banco.buscar(self.visita)["saida"])
         self.assertTrue(self.no_estacionamento())
+
+
+class TestSenhaConferidaNoBanco(BaseVeiculo):
+    """V0: o Banco recalcula a senha de quem autoriza; não confia na marca
+    "com_senha" nem no diálogo."""
+
+    def contador_da_estacao(self):
+        return self.banco.ler_tentativas_login(
+            senhas.CHAVE_AUTORIZACAO.format(self.banco.estacao))
+
+    def test_marca_com_senha_e_senha_errada_e_recusada(self):
+        self.dono_sai_a_pe()
+        forjada = dict(senha_do_admin(), com_senha=True, senha="chute-errado")
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.sair_so_o_carro(forjada)
+        self.assertIn("incorretos", str(erro.exception))
+        self.assertTrue(self.no_estacionamento())
+        self.assertEqual(self.contador_da_estacao()[0], 1)   # contou (RN31)
+        self.assertIn(("paulo", "Autorização recusada"),
+                      [(e["usuario"], e["acao"])
+                       for e in self.banco.listar_eventos()])
+
+    def test_marca_com_senha_sem_a_senha_nao_libera_o_carro(self):
+        self.dono_sai_a_pe()
+        forjada = dict(senha_do_admin(), com_senha=True)
+        del forjada["senha"]
+        with self.assertRaises(dados.ErroDados):
+            self.sair_so_o_carro(forjada)
+        self.assertTrue(self.no_estacionamento())
+
+    def test_senha_certa_e_aceita_e_zera_o_contador(self):
+        self.dono_sai_a_pe()
+        with self.assertRaises(dados.ErroDados):
+            self.sair_so_o_carro(dict(senha_do_admin(), senha="errada-1"))
+        self.assertTrue(self.sair_so_o_carro(senha_do_admin()))
+        self.assertEqual(self.contador_da_estacao(), (0, 0, None))
+
+    def test_cinco_senhas_erradas_travam_a_estacao(self):
+        self.dono_sai_a_pe()
+        for i in range(senhas.LIMITE_TENTATIVAS):
+            with self.assertRaises(dados.ErroDados):
+                self.sair_so_o_carro(dict(senha_do_admin(), senha=f"errada{i}"))
+        with self.assertRaises(dados.ErroDados) as erro:      # até a certa
+            self.sair_so_o_carro(senha_do_admin())
+        self.assertIn("travada", str(erro.exception))
+        self.assertTrue(self.no_estacionamento())
+        self.assertIn("Autorização travada",
+                      [e["acao"] for e in self.banco.listar_eventos()])
+        # o login do administrador não é afetado (N04)
+        usuario, _ = usuarios.entrar(self.banco, "ana", SENHAS["ana"],
+                                     agora=self.AGORA)
+        self.assertEqual(usuario["login"], "ana")
+
+    def test_autorizacao_de_outro_usuario_sem_senha_e_recusada(self):
+        """O porteiro não escreve "ana autorizou" direto no banco."""
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.inserir(registro(cpf=self.BETO, nome="Beto Rocha",
+                                        entrada="16/10/2026 08:00",
+                                        saida="17/10/2026 09:00"),
+                               autor="paulo",
+                               autorizacao=autorizacao(com_senha=False))
+        self.assertIn("senha", str(erro.exception))
+        # o administrador logado autoriza sem redigitar (é ele quem opera)
+        self.banco.inserir(registro(cpf=self.BETO, nome="Beto Rocha",
+                                    entrada="16/10/2026 08:00",
+                                    saida="17/10/2026 09:00"),
+                           autor="ana", autorizacao=autorizacao(com_senha=False))
+
+    def test_a_senha_nao_vai_para_o_historico_nem_para_o_log(self):
+        self.dono_sai_a_pe()
+        with self.assertLogs("portaria", level="DEBUG") as log:
+            dados.log.debug("início")
+            with self.assertRaises(dados.ErroDados):
+                self.sair_so_o_carro(dict(senha_do_admin(),
+                                          senha="senha-secreta-errada"))
+            self.sair_so_o_carro(senha_do_admin())
+        con = sqlite3.connect(self.caminho)
+        tudo = " ".join(str(c) for linha in con.execute(
+            "SELECT * FROM auditoria") for c in linha)
+        con.close()
+        for senha in ("senha-secreta-errada", SENHAS["ana"]):
+            self.assertNotIn(senha, tudo)
+            self.assertNotIn(senha, " ".join(log.output))
+        self.assertIn("Senha do administrador conferida", tudo)
 
 
 class TestCorridaEntreEstacoes(BaseRegras):

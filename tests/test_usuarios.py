@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from portaria import dados, usuarios
+from portaria import dados, senhas, usuarios
 from portaria.usuarios import (LIMITE_TENTATIVAS, SEGUNDOS_BLOQUEIO,
                                ControleTentativas, autenticar, conferir_senha,
                                entrar, gerar_hash, pode_desativar, pode_editar,
@@ -60,10 +60,10 @@ class TestSenha(unittest.TestCase):
         self.assertGreaterEqual(usuarios.ITERACOES_PADRAO, 600_000)
 
     def test_gerar_hash_le_as_iteracoes_na_hora(self):
-        with mock.patch.object(usuarios, "ITERACOES", 1234):
+        with mock.patch.object(senhas, "ITERACOES", 1234):
             self.assertEqual(gerar_hash("segredo1").split("$")[1], "1234")
         self.assertEqual(gerar_hash("segredo1").split("$")[1],
-                         str(usuarios.ITERACOES))
+                         str(senhas.ITERACOES))
 
     def test_sessao_expira_por_inatividade(self):  # S05 (a tela liga)
         self.assertGreater(usuarios.MINUTOS_INATIVIDADE, 0)
@@ -128,16 +128,16 @@ class TestAutenticar(unittest.TestCase):
     def test_hash_antigo_continua_entrando_e_e_atualizado(self):  # S15
         # o padrão antigo tinha menos iterações (200 mil); nos testes o
         # "atual" é ITERACOES (baixado), então o antigo aqui é menor ainda
-        antigo = gerar_hash("segredo1", iteracoes=usuarios.ITERACOES // 5)
+        antigo = gerar_hash("segredo1", iteracoes=senhas.ITERACOES // 5)
         self.banco.definir_senha(self.id, antigo, autor="ana")
         self.assertIsNotNone(autenticar(self.banco, "ana", "segredo1"))
         novo = self.banco.buscar_usuario("ana")["senha"]
         self.assertNotEqual(novo, antigo)
-        self.assertEqual(novo.split("$")[1], str(usuarios.ITERACOES))
+        self.assertEqual(novo.split("$")[1], str(senhas.ITERACOES))
         self.assertIsNotNone(autenticar(self.banco, "ana", "segredo1"))
 
     def test_senha_errada_nao_atualiza_o_hash(self):
-        antigo = gerar_hash("segredo1", iteracoes=usuarios.ITERACOES // 5)
+        antigo = gerar_hash("segredo1", iteracoes=senhas.ITERACOES // 5)
         self.banco.definir_senha(self.id, antigo, autor="ana")
         self.assertIsNone(autenticar(self.banco, "ana", "errada"))
         self.assertEqual(self.banco.buscar_usuario("ana")["senha"], antigo)

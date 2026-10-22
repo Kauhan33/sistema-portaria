@@ -20,7 +20,8 @@ Justificativa: de MINIMO_JUSTIFICATIVA a MAXIMO_JUSTIFICATIVA caracteres
 (horarios.ler_justificativa), com o contador "123/200" ao lado do rótulo.
 
 O diálogo só devolve a autorização; quem grava é a tela, passando-a ao
-banco, que confere de novo e grava o evento "Exceção autorizada". A tela
+banco, que confere de novo (inclusive a SENHA, recalculando o hash: V0) e
+grava o evento "Exceção autorizada". A tela
 abre o diálogo por app.perguntar (autorizar_excecao): se a sessão acabar
 com ele aberto, a resposta é None e nada é gravado.
 """
@@ -44,8 +45,8 @@ class JanelaAutorizacao(Dialogo):
         """
         regras: textos das regras violadas; acao: o que precisa da
         autorização ("A entrada de Ana Silva"). `resultado` fica com a
-        autorização ({"autorizado_por", "regras", "justificativa",
-        "com_senha"}) quando o administrador confirma; continua None se
+        autorização ({"autorizado_por", "regras", "justificativa" e, se o
+        diálogo pediu, "senha"}) quando o administrador confirma; continua None se
         cancelar. so_com_senha: até o administrador logado digita a senha.
         veiculo: o carro sairia sem o dono (sempre com a senha).
         """
@@ -125,13 +126,15 @@ class JanelaAutorizacao(Dialogo):
             self._erro(erro)
             self.justificativa.focus_set()
             return
+        senha = self.senha.get() if self.pede_senha else None
         autorizado_por = self._conferir_admin()
         if autorizado_por is None:
             return
         self.resultado = {"autorizado_por": autorizado_por,
                           "regras": self.regras,
-                          "justificativa": justificativa,
-                          "com_senha": self.pede_senha}
+                          "justificativa": justificativa}
+        if senha is not None:      # V0: o banco confere a senha de novo
+            self.resultado["senha"] = senha
         self.fechar()
 
     def _conferir_admin(self):

@@ -42,6 +42,14 @@ apaga/troca a placa ou o dono de um carro que ficou — exige
 `autorizacao_veiculo` de um administrador ativo, dada COM a senha, e grava
 o evento "Veículo saiu sem o dono" na mesma transação.
 
+A SENHA DO ADMINISTRADOR É CONFERIDA AQUI (V0): a autorização que exige
+senha leva {"autorizado_por": login, "senha": ...}; o Banco recalcula o
+PBKDF2 (usuarios.conferir_autorizador, com o contador de senhas erradas da
+estação, RN31) antes de gravar. A marca "com_senha" vinda de fora é
+ignorada: só o Banco a põe, depois de conferir. A autorização de OUTRO
+usuário (não o operador) também só vale com a senha dele. A senha nunca vai
+para o histórico nem para o log.
+
 Tamanho dos textos: os métodos que gravam recusam (ErroDados) texto acima
 dos máximos de validacao.py (MAXIMO_*), sem mudar o esquema.
 
@@ -61,13 +69,13 @@ import sqlite3
 from contextlib import closing, contextmanager
 from datetime import date, datetime, timedelta
 
-from . import horarios
+from . import horarios, senhas
 from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
-                       pode_editar)
+                       conferir_autorizador, pode_editar)
 from .validacao import (FORMATO, MAXIMO_BUSCA, MAXIMO_CELULAR, MAXIMO_CPF,
                         MAXIMO_DATA_HORA, MAXIMO_DESCRICAO,
                         MAXIMO_JUSTIFICATIVA, MAXIMO_LOGIN, MAXIMO_MOTIVO,
-                        MAXIMO_NOME, MAXIMO_PLACA, TIPOS_ACESSO,
+                        MAXIMO_NOME, MAXIMO_PLACA, MAXIMO_SENHA, TIPOS_ACESSO,
                         checar_tamanho, formatar_placa, mascarar_cpf,
                         mascarar_cpfs_no_texto, normalizar, so_digitos,
                         validar)
@@ -199,6 +207,8 @@ TAMANHOS_DA_VISITA = (("Nome completo", "nome", MAXIMO_NOME),
                       ("Entrada", "entrada", MAXIMO_DATA_HORA),
                       ("Saída", "saida", MAXIMO_DATA_HORA))
 VEICULO_SEM_DONO = "Veículo saiu sem o dono"     # evento e regra (RN32)
+AUTORIZACAO_SEM_SENHA = ("A autorização de outro usuário só vale com a senha "
+                         "dele.\nNada foi gravado.")
 # Busca (visitas e pessoas): texto no nome, tipo e placa; dígitos no CPF
 # e no celular
 COLUNAS_BUSCA = {"texto": ("nome", "tipo", "placa"),
@@ -758,16 +768,19 @@ def _versao_gravada(con):
 
 
 class Banco:
-    def __init__(self, caminho, wal=True, relogio=None):
+    def __init__(self, caminho, wal=True, relogio=None, estacao=None):
         """
         Abre (e atualiza, se preciso) o banco. `wal=False` para banco em
         pasta de rede, onde o modo WAL do SQLite não funciona.
         `avisos` guarda mensagens da atualização para mostrar ao administrador.
         `relogio`: função que devolve o agora (a tela passa o dela, para as
         regras de horário e a RN11 usarem o mesmo relógio nos testes).
+        `estacao`: nome deste computador no contador de senhas erradas da
+        autorização (o mesmo do diálogo: senhas.estacao_atual).
         """
         self.caminho = caminho
         self.relogio = relogio or datetime.now
+        self.estacao = estacao or senhas.estacao_atual()
         self.avisos = []
         self._migrar(wal)
 
@@ -906,6 +919,37 @@ class Banco:
             raise ErroDados(f"Somente o administrador pode {para}.")
         return {"id": linha[0], "login": autor, "perfil": linha[1]}
 
+    def _autorizacao_conferida(self, autorizacao, autor):
+        """
+        V0: a autorização como o Banco a aceita. Devolve uma CÓPIA sem a
+        senha, com "com_senha" = True só se a senha foi recalculada AQUI
+        (a marca que veio de fora é descartada). Senha errada conta no
+        contador da estação (RN31) e recusa; com a estação travada, nem a
+        senha certa passa. Sem senha, só vale a autorização dada pelo
+        próprio operador (o administrador logado): a de outro usuário
+        precisa da senha dele. Roda ANTES da transação da operação, para o
+        contador ficar gravado mesmo quando ela é recusada.
+        """
+        if autorizacao is None:
+            return None
+        copia = {k: v for k, v in autorizacao.items()
+                 if k not in ("senha", "com_senha")}
+        login = copia.get("autorizado_por") or ""
+        senha = autorizacao.get("senha")
+        if senha is None:
+            if autor is not None and login and login != autor:
+                raise ErroDados(AUTORIZACAO_SEM_SENHA)
+            return copia
+        _exigir_tamanho("Senha", senha, MAXIMO_SENHA)
+        usuario, motivo = conferir_autorizador(
+            self, login, senha, self.estacao, autor or AUTOR_SISTEMA,
+            self.relogio())
+        if usuario is None:
+            raise ErroDados(f"{motivo}\nNada foi gravado.")
+        copia["autorizado_por"] = usuario["login"]
+        copia["com_senha"] = True
+        return copia
+
     @classmethod
     def _conferir_autorizacao(cls, con, autorizacao):
         """
@@ -928,7 +972,7 @@ class Banco:
     def _conferir_autorizacao_veiculo(cls, con, autorizacao, placa):
         """RN32: o carro sai sem o dono só com a autorização de um
         administrador ativo dada com a SENHA dele (até o administrador
-        logado redigita a senha)."""
+        logado redigita a senha), conferida em _autorizacao_conferida."""
         if autorizacao is None:
             raise ErroDados(
                 f"O veículo {formatar_placa(placa)} só sai com o dono.\n"
@@ -1103,6 +1147,7 @@ class Banco:
         Grava um registro (datas no formato da tela) e devolve o id. Com
         `autorizacao`, a visita é uma exceção de horário autorizada.
         """
+        autorizacao = self._autorizacao_conferida(autorizacao, autor)
         with self._conexao() as con:
             self._conferir_autor(con, autor)
             self._conferir_autorizacao(con, autorizacao)
@@ -1189,6 +1234,9 @@ class Banco:
         visita ainda estiver aberta, então a segunda não sobrescreve a
         primeira (nem duplica o evento no histórico).
         """
+        autorizacao = self._autorizacao_conferida(autorizacao, autor)
+        autorizacao_veiculo = self._autorizacao_conferida(autorizacao_veiculo,
+                                                          autor)
         escolhas = (com_veiculo if isinstance(com_veiculo, dict)
                     else dict.fromkeys(com_veiculo))
         gravados = []
@@ -1317,6 +1365,9 @@ class Banco:
         grava com `autorizacao_veiculo` (administrador, com a senha).
         """
         _exigir_tamanhos_da_visita(novo)
+        autorizacao = self._autorizacao_conferida(autorizacao, autor)
+        autorizacao_veiculo = self._autorizacao_conferida(autorizacao_veiculo,
+                                                          autor)
         with self._conexao() as con:
             usuario = self._exigir(con, autor, so_admin=False)
             self._conferir_autorizacao(con, autorizacao)
@@ -1608,6 +1659,7 @@ class Banco:
         False se o carro já tinha saído (nada a autorizar).
         """
         saida_iso = para_iso(saida)
+        autorizacao = self._autorizacao_conferida(autorizacao, autor)
         with self._conexao() as con:
             self._conferir_autor(con, autor)
             estadia = self._estadia_aberta(con, "id", id_estadia)

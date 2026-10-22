@@ -1,6 +1,8 @@
 """
-Usuários do sistema: senha com hash, perfis, permissões e bloqueio por
-tentativas erradas. Como validacao.py, não depende do Tkinter.
+Usuários do sistema: perfis, permissões, login e bloqueio por tentativas
+erradas. O hash da senha e o contador de tentativas ficam em senhas.py
+(o mesmo código que o banco usa para conferir a senha do administrador).
+Como validacao.py, não depende do Tkinter.
 
 Login para a tela usar: `entrar(banco, login, senha)`. Ele confere a senha,
 guarda as tentativas erradas no banco (continuam valendo se o programa for
@@ -15,15 +17,15 @@ administrador (antes, 5 chutes no diálogo travavam o administrador em
 todas as estações, inclusive no login normal).
 """
 
-import hashlib
-import hmac
 import math
-import os
-import platform
 import re
 import time
 from datetime import datetime, timedelta
 
+from .senhas import (CHAVE_AUTORIZACAO, ITERACOES_PADRAO, LIMITE_TENTATIVAS,
+                     SEGUNDOS_BLOQUEIO, SEGUNDOS_BLOQUEIO_MAXIMO, conferir_senha,
+                     contar_falha, estacao_atual, gerar_hash, hash_falso,
+                     precisa_atualizar_hash, segundos_de_bloqueio)
 from .validacao import (MAXIMO_LOGIN, MAXIMO_NOME, MAXIMO_SENHA,
                         checar_tamanho, converter_data, nome_valido)
 
@@ -35,13 +37,6 @@ TEMA_PADRAO = "sistema"
 SENHA_MINIMA = 8
 SENHA_MAXIMA = MAXIMO_SENHA
 REGEX_LOGIN = re.compile(r"^[a-z0-9._]{3,%d}$" % MAXIMO_LOGIN)
-# Recomendação atual da OWASP para PBKDF2-SHA256. Os testes baixam
-# ITERACOES (tests/__init__.py), por isso gerar_hash lê o valor na hora.
-ITERACOES_PADRAO = 600_000
-ITERACOES = ITERACOES_PADRAO
-LIMITE_TENTATIVAS = 5
-SEGUNDOS_BLOQUEIO = 30           # primeiro bloqueio; dobra a cada novo
-SEGUNDOS_BLOQUEIO_MAXIMO = 15 * 60
 HORAS_PARA_CORRIGIR = 24
 # Sessão encerrada depois deste tempo sem teclado/mouse (a tela liga)
 MINUTOS_INATIVIDADE = 10
@@ -63,56 +58,6 @@ SENHAS_COMUNS = {
 # histórico não guarda o texto digitado (pode ser a senha no campo errado).
 CHAVE_LOGIN_INEXISTENTE = "*"
 LOGIN_INEXISTENTE = "(login inexistente)"
-# Contador do diálogo de autorização, um por estação (computador), na mesma
-# tabela das tentativas de login: o "@" não cabe num login, então as chaves
-# nunca se misturam com as dos usuários.
-CHAVE_AUTORIZACAO = "autorizacao@{}"
-
-
-# ------------------------------------------------------------------
-# Senha (RNF02: nunca é guardada nem mostrada em texto aberto)
-# ------------------------------------------------------------------
-def gerar_hash(senha, sal=None, iteracoes=None):
-    """
-    PBKDF2-SHA256 com sal aleatório. Devolve um texto único com tudo o que
-    é preciso para conferir depois: 'pbkdf2_sha256$iterações$sal$hash'.
-    Sem `iteracoes`, usa o ITERACOES do módulo no momento da chamada.
-    """
-    iteracoes = ITERACOES if iteracoes is None else iteracoes
-    sal = sal or os.urandom(16)
-    h = hashlib.pbkdf2_hmac("sha256", senha.encode("utf-8"), sal, iteracoes)
-    return f"pbkdf2_sha256${iteracoes}${sal.hex()}${h.hex()}"
-
-
-def conferir_senha(senha, guardado):
-    try:
-        algoritmo, iteracoes, sal, _ = guardado.split("$")
-        if algoritmo != "pbkdf2_sha256":
-            return False
-        calculado = gerar_hash(senha, bytes.fromhex(sal), int(iteracoes))
-    except (ValueError, AttributeError):
-        return False
-    return hmac.compare_digest(calculado, guardado)
-
-
-def precisa_atualizar_hash(guardado):
-    """True se o hash foi gerado com menos iterações que as atuais."""
-    try:
-        return int(guardado.split("$")[1]) < ITERACOES
-    except (ValueError, AttributeError, IndexError):
-        return False
-
-
-# Usado quando o login não existe, para a resposta demorar o mesmo tempo
-# e não revelar quais usuários existem. Gerado na primeira vez que precisa,
-# com as iterações em vigor.
-_hashes_falsos = {}
-
-
-def _hash_falso():
-    if ITERACOES not in _hashes_falsos:
-        _hashes_falsos[ITERACOES] = gerar_hash("senha-que-ninguem-usa")
-    return _hashes_falsos[ITERACOES]
 
 
 # ------------------------------------------------------------------
@@ -197,7 +142,7 @@ def _conferir(banco, u, senha):
     no primeiro login de cada usuário.
     """
     if u is None:
-        conferir_senha(senha, _hash_falso())
+        conferir_senha(senha, hash_falso())
         return False
     if not conferir_senha(senha, u["senha"]):
         return False
@@ -212,12 +157,6 @@ def autenticar(banco, login, senha):
     if not _conferir(banco, u, senha):
         return None
     return {k: u[k] for k in ("id", "login", "nome", "perfil")}
-
-
-def segundos_de_bloqueio(bloqueios_anteriores):
-    """Espera crescente: 30 s, 1 min, 2 min, 4 min... até 15 min."""
-    return min(SEGUNDOS_BLOQUEIO * 2 ** min(bloqueios_anteriores, 10),
-               SEGUNDOS_BLOQUEIO_MAXIMO)
 
 
 def entrar(banco, login, senha, agora=None):
@@ -251,26 +190,25 @@ def entrar(banco, login, senha, agora=None):
             banco.gravar_tentativas_login(chave, 0, 0, None)
         return {k: u[k] for k in ("id", "login", "nome", "perfil", "tema")}, ""
 
-    falhas += 1
-    motivo = "Usuário ou senha incorretos."
-    if falhas >= LIMITE_TENTATIVAS:
-        segundos = segundos_de_bloqueio(bloqueios)
-        banco.gravar_tentativas_login(chave, 0, bloqueios + 1,
-                                      agora + timedelta(seconds=segundos))
-        banco.registrar_evento(quem, "Login recusado",
+    return None, contar_erro_de_login(banco, chave, quem, falhas, bloqueios,
+                                      agora, "Usuário ou senha incorretos.")
+
+
+def contar_erro_de_login(banco, chave, quem, falhas, bloqueios, agora, motivo,
+                         acao="Login recusado"):
+    """Mais um erro no login de `chave` (senha errada ou código de
+    recuperação errado: os dois contam no mesmo bloqueio progressivo).
+    Grava o contador e o evento; devolve o motivo para a tela."""
+    falhas, bloqueios, ate, segundos = contar_falha(falhas, bloqueios, agora)
+    banco.gravar_tentativas_login(chave, falhas, bloqueios, ate)
+    if segundos:
+        banco.registrar_evento(quem, acao,
                                f"{LIMITE_TENTATIVAS} tentativas erradas seguidas; "
                                f"bloqueado por {segundos} s")
         motivo += f"\nMuitas tentativas erradas. Aguarde {segundos} s."
     else:
-        banco.gravar_tentativas_login(chave, falhas, bloqueios, None)
-        banco.registrar_evento(quem, "Login recusado")
-    return None, motivo
-
-
-def estacao_atual():
-    """Nome deste computador (identifica a estação no contador e no
-    histórico da autorização)."""
-    return platform.node() or "esta estação"
+        banco.registrar_evento(quem, acao)
+    return motivo
 
 
 def conferir_autorizador(banco, login, senha, estacao, operador, agora=None):
@@ -286,6 +224,10 @@ def conferir_autorizador(banco, login, senha, estacao, operador, agora=None):
     Cada senha errada vira "Autorização recusada" no histórico, e a trava,
     "Autorização travada", com quem estava operando como autor (o texto
     digitado só aparece se for um login que existe).
+
+    V0: o banco chama esta MESMA função ao receber uma autorização com a
+    senha (dados.Banco._autorizacao_conferida): a senha é recalculada lá
+    também e o contador da estação vale para os dois caminhos.
     """
     agora = agora or datetime.now()
     login = normalizar_login(login or "")
@@ -303,13 +245,11 @@ def conferir_autorizador(banco, login, senha, estacao, operador, agora=None):
         if falhas or bloqueios:
             banco.gravar_tentativas_login(chave, 0, 0, None)
         return {k: u[k] for k in ("id", "login", "nome", "perfil")}, ""
-    falhas += 1
     quem = u["login"] if u else LOGIN_INEXISTENTE
     motivo = "Usuário ou senha incorretos."
-    if falhas >= LIMITE_TENTATIVAS:
-        segundos = segundos_de_bloqueio(bloqueios)
-        banco.gravar_tentativas_login(chave, 0, bloqueios + 1,
-                                      agora + timedelta(seconds=segundos))
+    falhas, bloqueios, ate, segundos = contar_falha(falhas, bloqueios, agora)
+    banco.gravar_tentativas_login(chave, falhas, bloqueios, ate)
+    if segundos:
         banco.registrar_evento(operador, "Autorização travada",
                                f"{LIMITE_TENTATIVAS} senhas erradas seguidas "
                                f"(última para {quem}) na estação {estacao}; "
@@ -317,7 +257,6 @@ def conferir_autorizador(banco, login, senha, estacao, operador, agora=None):
         motivo += ("\nMuitas senhas erradas: a autorização fica travada "
                    f"nesta estação por {segundos} s.")
     else:
-        banco.gravar_tentativas_login(chave, falhas, bloqueios, None)
         banco.registrar_evento(operador, "Autorização recusada",
                                f"Senha errada para {quem} na estação {estacao}")
     return None, motivo

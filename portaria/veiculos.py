@@ -13,6 +13,11 @@ Nos demais casos continua valendo a RN32 (só com a senha). Quem cadastra:
 o porteiro, só com o dono presente (visita aberta do dono no campus); o
 administrador, a qualquer hora. Remover só diminui a permissão: qualquer
 usuário remove (remoção lógica, com histórico).
+
+RN37 — lotação do estacionamento: com `vagas` > 0 (0 = sem controle, até
+4 dígitos), o cabeçalho mostra "Estacionamento 47/50". A entrada de carro
+com o estacionamento lotado AVISA e pede a confirmação do porteiro; com
+"Bloquear quando lotado" ligado, só com a senha do administrador.
 """
 
 from datetime import date, datetime
@@ -21,6 +26,7 @@ from .validacao import (MAXIMO_DATA, MAXIMO_NOME, checar_tamanho, cpf_valido,
                         nome_valido, placa_valida)
 
 FORMATO_DIA = "%d/%m/%Y"
+MAXIMO_VAGAS = 9999              # 4 dígitos (RN37)
 DONO_PRECISA_ESTAR = ("O dono precisa estar no campus: o porteiro só cadastra "
                       "quem pode retirar o carro com o dono presente.")
 SEM_PRAZO = "sem prazo (até remover)"
@@ -129,3 +135,31 @@ def dia_iso(valor):
 def dia_do_banco(texto):
     """'AAAA-MM-DD' ou '' -> date ou None."""
     return date.fromisoformat(texto) if texto else None
+
+
+# ------------------------------------------------------------------
+# Lotação do estacionamento (RN37)
+# ------------------------------------------------------------------
+def esta_lotado(ocupadas, vagas):
+    """Com controle (vagas > 0), lotado quando os carros no estacionamento
+    chegam ao número de vagas (50/50 já é lotado)."""
+    return vagas > 0 and ocupadas >= vagas
+
+
+def texto_lotacao(ocupadas, vagas):
+    """'Estacionamento 47/50' para o cabeçalho; '' sem controle."""
+    return f"Estacionamento {ocupadas}/{vagas}" if vagas > 0 else ""
+
+
+def regra_lotado(ocupadas, vagas):
+    """'Estacionamento lotado (50/50)'."""
+    return f"Estacionamento lotado ({ocupadas}/{vagas})"
+
+
+def ler_vagas(texto):
+    """Campo "Vagas" de Configurações: (número, "") ou (None, erro)."""
+    texto = (texto or "").strip()
+    if not texto.isdigit() or len(texto) > len(str(MAXIMO_VAGAS)):
+        return None, (f"Vagas do estacionamento: digite um número de 0 a "
+                      f"{MAXIMO_VAGAS} (0 = sem controle).")
+    return int(texto), ""

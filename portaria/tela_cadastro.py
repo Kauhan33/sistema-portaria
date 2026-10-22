@@ -18,6 +18,9 @@ pessoa que volta a pé vê a faixa "O carro está no estacionamento" e, na
 próxima saída, pode sair com ele. O VEÍCULO SÓ SAI COM O DONO (RN32): a
 saída rápida pela placa tira o carro junto com o dono no campus; sem o
 dono (fora do campus, ou ele fica), só com a senha de um administrador.
+LOTAÇÃO (RN37): com vagas definidas, o cabeçalho mostra "Estacionamento
+47/50"; a entrada de carro com ele lotado avisa e pede a confirmação (ou,
+com "Bloquear quando lotado", a senha do administrador).
 QUEM PODE RETIRAR (RN35): quem está na lista da placa e sai a pé ouve
 "Vai levar o carro BRA2E19 de Carla?" (na saída pelo CPF, pelo Movimento
 ou pela placa) e leva o carro sem senha; o Desfazer devolve os dois.
@@ -65,6 +68,7 @@ from .validacao import (FORMATO, FORMATO_EXIBICAO, MAXIMO_BUSCA,
                         cpf_valido, formatar_celular, formatar_cpf,
                         formatar_placa, normalizar, placa_valida, so_digitos,
                         validar)
+from .veiculos import esta_lotado, regra_lotado, texto_lotacao
 
 DICA_CPF = "Digite o CPF primeiro: quem já veio tem os dados preenchidos."
 DICA_PLACA = "obrigatória" if PLACA_OBRIGATORIA else "opcional"
@@ -177,6 +181,9 @@ class AbaCadastro:
         self.lbl_no_campus = tk.Label(cab.linha, font=FONTE["corpo_semi"],
                                       bg=COR["fundo"], fg=COR["sucesso"])
         self.lbl_no_campus.pack(side="left")
+        self.lbl_estacionamento = tk.Label(cab.linha, font=FONTE["corpo_semi"],
+                                           bg=COR["fundo"], fg=COR["texto_2"])
+        self.lbl_estacionamento.pack(side="left")
 
         self.lbl_saida_rapida = tk.Label(cab.acoes, text="Saída rápida (F2)",
                                          font=FONTE["rotulo"], bg=COR["fundo"],
@@ -592,7 +599,18 @@ class AbaCadastro:
         self.lbl_no_campus.config(
             text="Ninguém no campus agora" if not dentro else
             plural(dentro, "pessoa", "pessoas") + " no campus agora")
+        self._mostrar_lotacao()
         self.atualizar_alertas()
+
+    def _mostrar_lotacao(self):
+        """RN37: "· Estacionamento 47/50" no cabeçalho (âmbar se lotado);
+        sem controle de vagas, nada."""
+        vagas = self.config.vagas if self.config else 0
+        texto = texto_lotacao(len(self.veiculos), vagas)
+        lotado = esta_lotado(len(self.veiculos), vagas)
+        self.lbl_estacionamento.config(
+            text=f"  ·  {texto}" if texto else "",
+            fg=COR["alerta"] if lotado else COR["texto_2"])
 
     def _mostrar_status(self):
         """Linha de rodapé do Movimento, conforme a lista mostrada."""
@@ -859,14 +877,46 @@ class AbaCadastro:
                                             f"A entrada de {registro['nome']}")
             if autorizacao is None:
                 return
+        lotacao = self._entrada_com_lotacao(registro)
+        if lotacao is None:
+            return
         if not self.app.gravar(self.app.banco.inserir, registro,
-                               autorizacao=autorizacao):
+                               autorizacao=autorizacao, **lotacao):
             return
         self.app.atualizar_tabela()
         self.limpar()
         hora = registro["entrada"][-5:]
         self.avisar(f"Entrada de {registro['nome'].split()[0]} registrada "
                     f"às {hora}" + self._com_autorizacao(autorizacao))
+
+    def _entrada_com_lotacao(self, registro):
+        """RN37: entrada de carro com o estacionamento lotado. Avisa e pede
+        a confirmação ou, com "Bloquear quando lotado", a senha do
+        administrador (até o administrador logado redigita a sua). Devolve
+        o que vai para o banco ({} = nada a conferir) ou None (desistiu)."""
+        if not registro["placa"] or registro["saida"]:
+            return {}
+        ok, ocupacao = self.app.tentar(self.app.banco.ocupacao_estacionamento)
+        if not ok:
+            return None
+        ocupadas, vagas, bloquear = ocupacao
+        if not esta_lotado(ocupadas, vagas):
+            return {}
+        regra = regra_lotado(ocupadas, vagas)
+        placa = formatar_placa(registro["placa"])
+        if bloquear:
+            autorizacao = autorizar_excecao(
+                self.app, [f"{regra}: a entrada de carro só passa com a senha "
+                           "de um administrador."],
+                f"A entrada do carro {placa}", so_com_senha=True)
+            return None if autorizacao is None else {
+                "autorizacao_lotacao": autorizacao}
+        if not self.app.perguntar(
+                mensagens.confirmar, "Estacionamento lotado",
+                f"{regra}.\nRegistrar a entrada do carro {placa} mesmo assim? "
+                "A entrada fica no histórico."):
+            return None
+        return {"lotado_confirmado": True}
 
     def _como_vai_entrar(self, registro):
         """RN34: quem tem placa cadastrada (o CPF a preencheu e ninguém mexeu

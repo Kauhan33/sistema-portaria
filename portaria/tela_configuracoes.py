@@ -4,7 +4,8 @@ Página Configurações (só administrador): os horários de acesso do campus
 
 Três seções, escolhidas no seletor do topo:
 - Funcionamento: horário de cada dia da semana, minutos do aviso antes de
-  fechar e o limite do lançamento retroativo (3 h);
+  fechar, o limite do lançamento retroativo (3 h) e o estacionamento
+  (RN37: vagas, 0 = sem controle, e "Bloquear quando lotado");
 - Categorias: janela de entrada, permanência máxima e tolerância depois do
   fechamento de cada tipo de acesso;
 - Feriados e eventos: datas com o campus fechado e datas com horário
@@ -31,6 +32,7 @@ from .componentes import (Alternador, Aviso, Botao, Cabecalho, Campo, Cartao,
 from .estilo import COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM, px
 from .horarios import DIAS_SEMANA, FORMATO_DATA
 from .validacao import MAXIMO_DESCRICAO, MAXIMO_HORA, TIPOS_ACESSO
+from .veiculos import MAXIMO_VAGAS, ler_vagas
 
 SECOES = ("Funcionamento", "Categorias", "Feriados e eventos")
 JANELAS = {"Do funcionamento": True, "Horário fixo": False}
@@ -150,6 +152,17 @@ class AbaConfiguracoes:
                                       "horas sem autorização", numeros=2)
         grupo.pack(fill="x", pady=(0, px(12)))
         self.horas_retroativo = campo.entrada
+        # RN37: lotação do estacionamento (vagas e o interruptor lado a lado)
+        linha = tk.Frame(m, bg=COR["superficie"])
+        linha.pack(fill="x", pady=(0, px(12)))
+        grupo, campo = campo_rotulado(linha, "Vagas", "0 = sem controle",
+                                      numeros=len(str(MAXIMO_VAGAS)))
+        grupo.pack(side="left", fill="x", expand=True, padx=(0, px(12)))
+        self.vagas = campo.entrada
+        self.var_bloquear_lotado = tk.BooleanVar(self.aba, value=False)
+        self.alternador_lotado = Alternador(linha, "Bloquear quando lotado",
+                                            self.var_bloquear_lotado)
+        self.alternador_lotado.pack(side="left", anchor="s")
         # a nota de ajuda dá lugar ao resultado de Salvar
         self.faixa_funcionamento = self._nota(m, NOTA_FUNCIONAMENTO)
 
@@ -171,6 +184,9 @@ class AbaConfiguracoes:
             self._ao_alternar_dia(dia)
         _texto(self.minutos_aviso, str(self.config.minutos_aviso))
         _texto(self.horas_retroativo, str(self.config.horas_retroativo))
+        _texto(self.vagas, str(self.config.vagas))
+        self.var_bloquear_lotado.set(self.config.bloquear_lotado)
+        self.alternador_lotado.definir_texto("Bloquear quando lotado")
 
     def salvar_funcionamento(self):
         linhas = [(aberto.get(), abre.get(), fecha.get())
@@ -179,6 +195,8 @@ class AbaConfiguracoes:
         if not erro:
             parametros, erro = horarios.ler_parametros(
                 self.minutos_aviso.get(), self.horas_retroativo.get())
+        if not erro:
+            vagas, erro = ler_vagas(self.vagas.get())
         if erro:
             self._resultado(self.faixa_funcionamento, "erro", erro)
             return
@@ -190,7 +208,12 @@ class AbaConfiguracoes:
                                      *parametros, autor=self.app.autor)
         if not ok:
             return
-        self._salvo(self.faixa_funcionamento, dias + outros)
+        ok, lotacao = self.app.tentar(self.app.banco.salvar_lotacao, vagas,
+                                      self.var_bloquear_lotado.get(),
+                                      autor=self.app.autor)
+        if not ok:
+            return
+        self._salvo(self.faixa_funcionamento, dias + outros + lotacao)
 
     # --------------------------------------------------------------
     # Regras por categoria

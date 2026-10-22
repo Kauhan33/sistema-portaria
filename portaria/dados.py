@@ -221,6 +221,9 @@ VEICULO_SEM_DONO = "Veículo saiu sem o dono"     # evento e regra (RN32)
 VEICULO_COM_AUTORIZADO = "Veículo saiu com autorizado"
 AUTORIZADO_ADICIONADO = "Autorizado a retirar veículo"
 AUTORIZADO_REMOVIDO = "Autorização de retirada removida"
+# RN37: lotação do estacionamento
+LOTACAO_LIBERADA = "Estacionamento lotado liberado"           # com a senha
+LOTACAO_CONFIRMADA = "Entrada com estacionamento lotado"      # só o aviso
 # RN38: códigos de recuperação do administrador (o código nunca vai ao
 # histórico, só quantos restam)
 CODIGOS_GERADOS = "Códigos de recuperação gerados"
@@ -1243,12 +1246,19 @@ class Banco:
         return {"pessoas": pessoas, "no_campus": no_campus,
                 "bloqueios": bloqueios, "veiculos": veiculos}
 
-    def inserir(self, registro, autor=None, autorizacao=None):
+    def inserir(self, registro, autor=None, autorizacao=None,
+                lotado_confirmado=False, autorizacao_lotacao=None):
         """
         Grava um registro (datas no formato da tela) e devolve o id. Com
         `autorizacao`, a visita é uma exceção de horário autorizada.
+        RN37: a entrada de carro com o estacionamento lotado só passa com
+        `lotado_confirmado` (o porteiro viu o aviso) ou, com "Bloquear
+        quando lotado", com `autorizacao_lotacao` de um administrador dada
+        com a senha (conferida aqui).
         """
         autorizacao = self._autorizacao_conferida(autorizacao, autor)
+        autorizacao_lotacao = self._autorizacao_conferida(autorizacao_lotacao,
+                                                          autor)
         with self._conexao() as con:
             self._conferir_autor(con, autor)
             self._conferir_autorizacao(con, autorizacao)
@@ -1259,6 +1269,9 @@ class Banco:
             id_ = self._inserir(con, registro)
             self._evento(con, autor, "Cadastro de entrada",
                          f"#{id_} {registro['nome']} ({registro['tipo']})", id_)
+            if registro.get("placa") and not registro.get("saida"):
+                self._conferir_lotacao(con, registro, id_, autor,
+                                       lotado_confirmado, autorizacao_lotacao)
             if registro.get("placa"):
                 self._abrir_estadia(con, registro, id_, autor)
             if autorizacao:
@@ -1708,6 +1721,49 @@ class Banco:
             (r["placa"], r["cpf"], r["nome"], autor or AUTOR_SISTEMA,
              (autor or AUTOR_SISTEMA) if saida else "", id_registro))
 
+    @classmethod
+    def _conferir_lotacao(cls, con, registro, id_registro, autor, confirmado,
+                          autorizacao):
+        """RN37 conferida no banco: com o estacionamento lotado, a entrada
+        de carro precisa da confirmação do aviso ou, com "Bloquear quando
+        lotado", da senha de um administrador. Grava o evento."""
+        config = cls._ler_configuracao(con)
+        ocupadas = cls._ocupadas(con)
+        if not veiculos.esta_lotado(ocupadas, config.vagas):
+            return
+        regra = veiculos.regra_lotado(ocupadas, config.vagas)
+        placa = formatar_placa(registro["placa"])
+        if config.bloquear_lotado:
+            if autorizacao is None or not autorizacao.get("com_senha"):
+                raise ErroDados(f"{regra}.\nA entrada do carro {placa} só "
+                                "passa com a senha de um administrador.")
+            cls._conferir_autorizacao(con, autorizacao)
+            cls._evento(con, autorizacao["autorizado_por"], LOTACAO_LIBERADA,
+                        f"#{id_registro} {registro['nome']}: entrada do carro "
+                        f"{placa} com o {regra[0].lower()}{regra[1:]}. "
+                        f"Justificativa: {autorizacao['justificativa']}. "
+                        f"Operador: {autor or AUTOR_SISTEMA}. Senha do "
+                        "administrador conferida.", id_registro)
+            return
+        if not confirmado:
+            raise ErroDados(f"{regra}.\nConfirme a entrada do carro {placa} "
+                            "mesmo assim.")
+        cls._evento(con, autor, LOTACAO_CONFIRMADA,
+                    f"#{id_registro} {registro['nome']}: carro {placa} entrou "
+                    f"com o {regra[0].lower()}{regra[1:]} (aviso confirmado).",
+                    id_registro)
+
+    @staticmethod
+    def _ocupadas(con):
+        return con.execute("SELECT COUNT(*) FROM estadias_veiculo "
+                           "WHERE saida = ''").fetchone()[0]
+
+    def ocupacao_estacionamento(self):
+        """RN37: (carros no estacionamento, vagas, bloquear_lotado)."""
+        with self._conexao() as con:
+            config = self._ler_configuracao(con)
+            return self._ocupadas(con), config.vagas, config.bloquear_lotado
+
     @staticmethod
     def _carro_do_dono(con, id_registro, cpf):
         """O carro de quem sai: o que entrou com esta visita ou, sem ele, o
@@ -2107,6 +2163,34 @@ class Banco:
                 mudancas.append(f"{rotulo}: {antes[chave]} → {valor} {unidade}")
             self._evento_de_configuracao(con, autor, "Avisos e limites",
                                          mudancas)
+            return len(mudancas)
+
+    def salvar_lotacao(self, vagas, bloquear, autor):
+        """RN37: vagas do estacionamento (0 = sem controle, até 4 dígitos)
+        e se a entrada com ele lotado pede a senha do administrador."""
+        if (not isinstance(vagas, int) or isinstance(vagas, bool)
+                or not 0 <= vagas <= veiculos.MAXIMO_VAGAS):
+            raise ErroDados(f"Vagas do estacionamento: de 0 a "
+                            f"{veiculos.MAXIMO_VAGAS}.")
+        novos = {"vagas": vagas, "bloquear_lotado": int(bool(bloquear))}
+        sim_nao = {0: "não", 1: "sim"}
+        with self._conexao() as con:
+            self._exigir(con, autor, para="alterar as configurações")
+            config = self._ler_configuracao(con)
+            antes = {"vagas": config.vagas,
+                     "bloquear_lotado": int(config.bloquear_lotado)}
+            mudancas = []
+            for chave, valor in novos.items():
+                if valor == antes[chave]:
+                    continue
+                con.execute("INSERT OR REPLACE INTO parametros (chave, valor) "
+                            "VALUES (?, ?)", (chave, valor))
+                if chave == "vagas":
+                    mudancas.append(f"Vagas: {antes[chave]} → {valor}")
+                else:
+                    mudancas.append(f"Bloquear quando lotado: "
+                                    f"{sim_nao[antes[chave]]} → {sim_nao[valor]}")
+            self._evento_de_configuracao(con, autor, "Estacionamento", mudancas)
             return len(mudancas)
 
     def adicionar_feriado(self, dia, descricao, autor):

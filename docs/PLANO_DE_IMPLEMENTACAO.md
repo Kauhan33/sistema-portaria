@@ -39,7 +39,7 @@ não se repete abaixo):
 
 | Versão | Tema | Itens | Esquema | Esforço |
 |---|---|---|---|---|
-| **2.2** | Veículo e acesso do administrador | V0, V1, V2, V3, B3, S07, B4, V4 | v11 | ~5 dias |
+| **2.2** ✅ | Veículo e acesso do administrador | V0, V1, V2, V3, B3, S07, B4, V4 | v11 | ~5 dias |
 | **2.3** | Compiladores: linha de comando | E1, E2, E4, F1 | v11 (sem mudança) | ~6 dias |
 | **2.4** | Visitante e operação da guarita | A1, A4, A3, A2, A6, A5 (opcional) | v12 | ~6 dias |
 | **2.5** | Dados, relatórios e apresentação | F2, D3, C1, C2, C3 | v12 (sem mudança) | ~5 dias |
@@ -58,9 +58,12 @@ não se repete abaixo):
 
 ---
 
-## Versão 2.2 — Veículo e acesso do administrador (esquema v11)
+## Versão 2.2 — Veículo e acesso do administrador (esquema v11) ✅
 
-### V0. O banco confere a senha do administrador sozinho · P
+Entregue em 21/10/2026 (branch `versao-2.2`). Ordem feita: V0, S07, B3, V1,
+V2, V3, B4, V4, com uma migração só para a v11.
+
+### V0. O banco confere a senha do administrador sozinho · P ✅
 - **Hoje:** o diálogo confere a senha e manda ao banco a marca
   `com_senha: True`. O banco confia nessa marca. Esta é uma limitação
   registrada na rodada 5.
@@ -79,7 +82,7 @@ não se repete abaixo):
 - **Pronto quando:** nenhum caminho do `Banco` aceita exceção de senha sem
   recalcular o hash.
 
-### V1. Pessoas autorizadas a retirar o veículo · M · RN35
+### V1. Pessoas autorizadas a retirar o veículo · M · RN35 ✅
 - **Problema:** o caso mais comum de "carro sem o dono" é previsível, como o
   cônjuge ou um motorista. Hoje esse caso sempre precisa do administrador.
 - **Regra (RN35):** o carro sai sem o dono e **sem senha** quando todas as
@@ -122,7 +125,7 @@ não se repete abaixo):
   - administrador cadastra com o dono fora;
   - porteiro remove e o histórico registra a remoção.
 
-### V2. Alerta de "carro esquecido" antes do fechamento · P · RN36
+### V2. Alerta de "carro esquecido" antes do fechamento · P · RN36 ✅
 - **Problema:** o carro só aparece como pendente **depois** do fechamento,
   quando o dono já foi embora.
 - **Regra (RN36):** a partir do aviso de fechamento que já existe (X minutos
@@ -133,7 +136,7 @@ não se repete abaixo):
 - **Testes:** com relógio fixo, o alerta só aparece dentro da janela de aviso e
   some quando o carro sai ou o dono volta.
 
-### V3. Lotação do estacionamento · P/M · RN37
+### V3. Lotação do estacionamento · P/M · RN37 ✅
 - **Regra (RN37):**
   - Em Configurações, o campo "Vagas" (0 = sem controle; limite de 4 dígitos).
   - Com vagas definidas, o cabeçalho mostra "Estacionamento 47/50".
@@ -146,7 +149,7 @@ não se repete abaixo):
 - **Testes:** contagem com estadias abertas; aviso no limite exato (50/50);
   o valor 0 desliga o controle.
 
-### B3. Códigos de recuperação do administrador · P/M · RN38
+### B3. Códigos de recuperação do administrador · P/M · RN38 ✅
 - **Regra (RN38):**
   - **Geração:** no primeiro acesso, depois de criar o administrador, o sistema
     gera 8 códigos de uso único (formato `K7QM-2F9X`). Eles aparecem uma única
@@ -166,7 +169,7 @@ não se repete abaixo):
   - gerar novos códigos invalida os antigos;
   - o código não aparece em log nem no histórico.
 
-### S07. Troca de senha obrigatória e senha diferente do login · P · RN39
+### S07. Troca de senha obrigatória e senha diferente do login · P · RN39 ✅
 - **Regra (RN39):**
   - Depois de o administrador criar um usuário ou redefinir a senha dele, o
     primeiro login abre "Defina sua senha" antes de qualquer tela.
@@ -178,7 +181,7 @@ não se repete abaixo):
   - usuário criado entra direto na troca de senha;
   - senha igual ao login é recusada também na redefinição.
 
-### B4. "Ausentar": travar a guarita na hora · P
+### B4. "Ausentar": travar a guarita na hora · P ✅
 - **Tela:** botão de cadeado no rodapé da barra lateral, com atalho Ctrl+L.
   - Cobre a janela com o painel de login: "Guarita travada por Paulo às 14:32".
   - O que estava no formulário é mantido.
@@ -191,7 +194,7 @@ não se repete abaixo):
   - outro usuário descarta o rascunho;
   - nenhum diálogo fica acessível por cima da trava.
 
-### V4. Relatório de exceções · M
+### V4. Relatório de exceções · M ✅
 - **Problema:** é preciso saber, de um período, tudo o que passou por cima da
   regra: horário, retroativo, mais de 24 h, veículo sem o dono, saídas
   automáticas do Encerrar o dia e autorizados (V1).

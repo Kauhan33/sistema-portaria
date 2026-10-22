@@ -4,7 +4,7 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
-**Versão atual: 2.1** — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
+**Versão atual: 2.2** — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
 
 ![Tela Entrada e saída](docs/design/final/cadastro_campus.png)
 
@@ -78,7 +78,28 @@ versão 1 na mesma pasta, ele é importado na primeira execução e renomeado pa
 ### Primeiro acesso e login
 
 Na primeira vez o sistema pede para **criar o administrador** (não existe senha
-padrão). Depois disso abre sempre na tela de login.
+padrão) e mostra, uma única vez, os **8 códigos de recuperação** dele (RN38):
+"Imprimir" abre uma página no navegador e só dá para continuar marcando
+"Guardei os códigos em lugar seguro". Depois disso abre sempre na tela de
+login.
+
+- **Defina sua senha** (RN39): quem o administrador cria, ou cuja senha ele
+  redefine, entra com uma senha provisória e escolhe a dele antes de
+  qualquer outra tela (diferente da provisória e do login). O banco recusa
+  qualquer operação de quem ainda não trocou.
+- **Esqueci a senha** (RN38): no login, usuário + um código de recuperação +
+  a senha nova. O código é queimado (não vale de novo) e o uso vai para o
+  histórico, sem o código; código errado conta no mesmo bloqueio progressivo
+  do login. "Gerar novos códigos de recuperação" (menu da conta do
+  administrador, com a senha atual) invalida os antigos. Com só 1
+  administrador ativo, o Painel mostra "Só existe 1 administrador ativo.
+  Crie um segundo."
+- **Ausentar** (B4): o cadeado no rodapé da barra lateral, ou **Ctrl+L**,
+  cobre a janela com o login ("Guarita travada por Paulo às 14:32"),
+  guardando o que estava digitado na Entrada e saída e a página aberta. A
+  mesma senha destrava e devolve tudo; outro usuário entrando é troca de
+  turno (o rascunho é descartado). As janelas abertas fecham, como na sessão
+  que expira.
 
 | Perfil | Pode |
 |---|---|
@@ -89,7 +110,8 @@ Depois de 5 senhas erradas seguidas o login fica bloqueado por 30 s (o tempo
 dobra a cada novo bloqueio, até 15 min). As tentativas ficam no banco: fechar e
 abrir o programa não zera o bloqueio (o administrador libera o login ao
 redefinir a senha). Senhas erradas no diálogo **Autorização do administrador**
-contam à parte, por computador: depois de 5, só o diálogo fica travado naquela
+(conferidas também pelo banco, que recalcula o hash: V0) contam à parte, por
+computador: depois de 5, só o diálogo fica travado naquela
 estação (mesma espera crescente); o login do administrador não é afetado. Sem teclado ou mouse por 10 minutos, a sessão se encerra
 sozinha e o sistema volta ao login; uma confirmação que ficou aberta nesse
 meio-tempo (ex.: "Excluir registro?") não faz mais nada: aparece "A sessão foi
@@ -102,7 +124,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-649 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
+760 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
 negócio, login, senhas, permissões, cadastro de pessoas e preenchimento
 automático, saída rápida e desfazer, correção de registros, lista de bloqueio,
 **regras de horário** (cada categoria dentro e fora da janela, ninguém entra
@@ -115,7 +137,11 @@ pendente, dois carros, exclusão que mantém o carro), **o veículo só sai com 
 dono** (senha do administrador, inclusive logado; senha errada; outra pessoa
 com o carro; desfazer, correção, exclusão e importação que não burlam), a
 pergunta **"de carro ou a pé?"** na entrada, o **tamanho máximo de todos os
-campos** (digitação, colagem, validação e banco), duas estações ao mesmo
+campos** (digitação, colagem, validação e banco), a **versão 2.2** (senha do
+administrador conferida pelo banco, troca de senha obrigatória, códigos de
+recuperação, quem pode retirar o veículo, carro esquecido, lotação,
+"Ausentar" e o relatório de exceções, inclusive ataques direto ao banco sem
+passar pela tela e a migração de um banco v10 com dados), duas estações ao mesmo
 tempo (correção com a linha desatualizada, saídas e Encerrar o dia em
 paralelo), histórico de visitas e ordenação na página Pessoas, o
 **calendário e o relógio** dos campos de data, o **modo noturno** (contraste
@@ -164,6 +190,14 @@ resultado não depende da hora em que eles rodam.
 | **Modo noturno** — Entrada e saída no tema escuro | **Modo noturno** — Painel, com a barra de título escura |
 | ![Login no tema escuro](docs/design/final/escuro_login.png) | ![Menu da conta](docs/design/final/escuro_menu_tema.png) |
 | **Modo noturno** — o login segue o tema do Windows | **Menu da conta** — Claro, Escuro ou Seguir o Windows |
+| ![Vai levar o carro?](docs/design/final/v22_vai_levar_o_carro_claro.png) | ![Quem pode retirar](docs/design/final/v22_pessoas_quem_pode_retirar_claro.png) |
+| **Vai levar o carro?** — quem está na lista leva o carro sem senha (RN35) | **Pessoas › Veículo** — quem pode retirar o carro |
+| ![Carro esquecido](docs/design/final/v22_carro_esquecido_claro.png) | ![Exceções](docs/design/final/v22_excecoes_claro.png) |
+| **Carro esquecido** e **Estacionamento 3/50** antes do fechamento (RN36, RN37) | **Usuários › Exceções** — tudo o que passou por cima da regra |
+| ![Códigos de recuperação](docs/design/final/v22_codigos_de_recuperacao_claro.png) | ![Esqueci a senha](docs/design/final/v22_login_esqueci_a_senha_claro.png) |
+| **Códigos de recuperação** — aparecem uma vez (RN38) | **Esqueci a senha** — com um código de uso único |
+| ![Guarita travada](docs/design/final/v22_guarita_travada_escuro.png) | ![Vagas](docs/design/final/v22_config_vagas_claro_1366x670.png) |
+| **Ausentar** — guarita travada, o rascunho fica guardado | **Configurações** — vagas e "Bloquear quando lotado" (notebook 1366×670) |
 | ![O veículo só sai com o dono](docs/design/final/r5_veiculo_so_sai_com_o_dono_claro.png) | ![Senha do administrador](docs/design/final/r5_senha_do_administrador_claro.png) |
 | **O veículo só sai com o dono** — o dono está fora do campus | **Senha do administrador** — libera o carro, com justificativa (contador 68/200) |
 | ![Dono fora do campus](docs/design/final/r5_veiculos_dono_fora_escuro_1366x670.png) | ![De carro ou a pé?](docs/design/final/r5_entrada_de_carro_ou_a_pe_claro.png) |
@@ -208,8 +242,9 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
 - **Barra lateral**: Entrada e saída, Pessoas, Bloqueios, Painel, Usuários e
   Configurações (as duas últimas só para o administrador), com o número de
   pessoas cadastradas e de bloqueios ativos. No
-  rodapé, quem está logado, o menu da conta (**Trocar minha senha**, o
-  **tema** e Sair) e o botão sair.
+  rodapé, quem está logado, o menu da conta (**Trocar minha senha**, **Gerar
+  novos códigos de recuperação** para o administrador, o **tema** e Sair),
+  o **cadeado** ("Ausentar", Ctrl+L) e o botão sair.
 - **Entrada e saída** (tecla **Enter** registra a entrada):
   - ao completar o CPF, a faixa de situação diz se a pessoa é nova, já
     cadastrada (nome, celular, placa e tipo se preenchem sozinhos, só nos campos
@@ -258,6 +293,16 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     como **"Veículo saiu sem o dono"**. O banco confere de novo: nenhum
     caminho (saída, placa, correção, exclusão, desfazer, importação,
     Encerrar o dia) tira um carro sem o dono sem essa autorização;
+  - **quem pode retirar o veículo** (RN35): quem está na lista da placa de
+    um carro no estacionamento, no campus a pé e sem bloqueio, ouve na saída
+    (pelo CPF, pelo Movimento ou pela placa do carro) **"Vai levar o carro
+    BRA2E19 de Carla?"** — *Sim, leva o carro* (sai sem senha, "Veículo saiu
+    com autorizado" no histórico) ou *Não*. O Desfazer devolve a pessoa e o
+    carro. A lista Veículos tem a coluna **Pode retirar**;
+  - **lotação** (RN37): com vagas definidas em Configurações, o cabeçalho
+    mostra **"Estacionamento 47/50"**; a entrada de carro com ele lotado
+    avisa e pede confirmação ou, com "Bloquear quando lotado", a senha do
+    administrador;
   - **de carro ou a pé?** (RN34): na entrada de quem tem placa cadastrada (o
     CPF preenche a placa e ninguém mexe nela), a pergunta **"Fulano vai
     entrar de carro?"** com a placa desenhada — *De carro — ABC-1234* (abre a
@@ -275,7 +320,8 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     pendentes** depois do fechamento (o administrador tem o atalho **Encerrar
     o dia**) e, nos últimos 30 minutos antes de fechar, **"Campus fecha às
     23:00 (em 20 min) · 5 no campus"** (sem caixa de diálogo, não atrapalha o
-    uso);
+    uso) e, na mesma janela, **"2 carros com o dono fora do campus —
+    fechamento às 23:00"** com o link "Ver veículos" (RN36);
   - "Corrigir" abre a janela **Corrigir registro** (mesmas validações do
     cadastro; o histórico guarda o que mudou e quem mudou). Se outra estação
     mudou a visita enquanto a janela estava aberta (ex.: deu a saída), a
@@ -287,10 +333,12 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
   decrescente, com ▲ ou ▼; datas e números na ordem certa; abre ordenada pela
   situação e depois pelo nome) e a **ficha** da pessoa escolhida: placa,
   visitas, faixa de bloqueio e duas seções — **Cadastro** (correção dos dados
-  e "Registrar entrada", que abre a Entrada e saída já preenchida) e
+  e "Registrar entrada", que abre a Entrada e saída já preenchida),
   **Visitas** (o histórico dela, da mais recente para a mais antiga: entrada,
   saída, duração, tipo, placa e situação, com o nome e o celular da época
-  quando eram outros).
+  quando eram outros) e **Veículo** ("Quem pode retirar" o carro da placa
+  dela, com validade opcional; Adicionar — o porteiro só com o dono no
+  campus — e Remover).
 - **Bloqueios**: CPFs e placas com acesso negado e o motivo. Todos veem; só o
   administrador cria ("Novo bloqueio") ou remove — remover não apaga, guarda
   quem removeu e quando ("Mostrar removidos").
@@ -300,11 +348,17 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
   abaixo); gráficos de pessoas por tipo e das entradas dos últimos 7 dias
   (hoje em destaque). O administrador **exporta para CSV** (Excel) os registros de um
   período.
-- **Usuários** (administrador): contas (criar em diálogo, ativar/desativar,
-  redefinir senha) e a atividade do sistema com filtro.
+- **Usuários** (administrador): **Contas** (criar em diálogo,
+  ativar/desativar, redefinir senha) com a atividade do sistema e filtro, e
+  **Exceções** (V4): tudo o que passou por cima de uma regra no período —
+  horário, retroativo, mais de 24 h, veículo sem o dono, veículo com
+  autorizado, lotação com senha, saídas automáticas e código de recuperação
+  usado — com os filtros período, tipo e quem autorizou, a pessoa com o CPF
+  mascarado e **Exportar CSV** (registrado no histórico).
 - **Configurações** (administrador): os horários de acesso, em três seções —
   **Funcionamento** (abre e fecha de cada dia da semana, minutos do aviso
-  antes de fechar e o limite do lançamento retroativo, 3 h), **Categorias**
+  antes de fechar, o limite do lançamento retroativo, 3 h, e as **vagas do
+  estacionamento** com "Bloquear quando lotado"), **Categorias**
   (janela de entrada, permanência máxima e **tolerância** depois do
   fechamento de cada tipo de acesso) e **Feriados e eventos**
   (adicionar e remover). Tudo é validado (hh:mm válido, fechamento depois da
@@ -398,13 +452,16 @@ Regras e segurança:
 - O `registros_portaria.json` da versão 1 é importado com as mesmas regras do
   cadastro: o que não passa é ignorado, com os motivos no aviso, e a
   importação fica no histórico.
-- A versão do banco fica também na tabela `meta` (banco v10): se um programa
+- A versão do banco fica também na tabela `meta` (banco v11): se um programa
   antigo abrir o banco e rebaixar a versão, o programa novo atualiza de novo
   (com backup) e avisa o administrador; um banco de versão mais nova é
   recusado. O programa antigo já distribuído (versões 5 e 6) não confere a
   versão e não há como protegê-lo: não use versões antigas no mesmo banco.
 - Senha guardada só como hash PBKDF2-SHA256 com sal (RNF02); histórico de ações
-  com CPFs mascarados.
+  com CPFs mascarados. Os códigos de recuperação também ficam só como hash.
+- O banco confere sozinho a senha do administrador nas exceções (V0): recalcula
+  o hash, conta as senhas erradas da estação e ignora uma marca "com senha"
+  vinda de fora; a autorização de outro usuário sem a senha dele é recusada.
 - Ao abrir, o programa faz o **backup do dia** (pasta `backups`, guarda os 30
   mais recentes). Avisos da atualização do banco ou de backup que falhou
   aparecem ao administrador. Erros técnicos vão para `portaria.log`; o usuário
@@ -486,22 +543,26 @@ danificado):
 | `portaria/horarios.py` | Regras de horário de acesso (funções puras): funcionamento, feriados, eventos, categorias, exceções, situação da visita |
 | `portaria/dados.py` | Banco SQLite (pessoas, visitas, usuários, histórico, bloqueios) e migrações |
 | `portaria/consultas.py` | Busca e números do Painel (versão em Python, usada nos testes) |
-| `portaria/usuarios.py` | Senhas (hash), perfis, permissões, login e troca de senha |
+| `portaria/usuarios.py` | Perfis, permissões, login, troca de senha e códigos de recuperação |
+| `portaria/senhas.py` | Hash das senhas (PBKDF2), bloqueio progressivo e códigos de recuperação (sem importar o banco) |
+| `portaria/veiculos.py` | Quem pode retirar o veículo (RN35) e lotação do estacionamento (RN37) — funções puras |
+| `portaria/excecoes.py` | Relatório de exceções: tipo, pessoa, quem autorizou e quem operava (funções puras) |
 | `portaria/backup.py` | Backup do banco e exportação para CSV |
 | `portaria/estilo.py` | Tokens do design: cores dos temas claro e escuro, fontes, ícones, medidas, escala (DPI), estilos ttk e contraste |
 | `portaria/componentes.py` | Peças de tela: cartão, botões, campo, faixa de aviso, placa, tabela, diálogo |
 | `portaria/mensagens.py` | Caixas de mensagem e "Salvar como" |
 | `portaria/interface.py` | Janela principal, barra lateral, sessão e o contrato que as telas usam |
-| `portaria/tela_login.py` | Login e primeiro acesso |
+| `portaria/tela_login.py` | Login, primeiro acesso, "Defina sua senha", "Esqueci a senha" e a guarita travada |
+| `portaria/tela_recuperacao.py` | Códigos de recuperação (mostrar uma vez, imprimir, gerar novos) |
 | `portaria/tela_cadastro.py` | Entrada e saída (formulário, saída rápida, Movimento) |
 | `portaria/tela_pessoas.py` | Pessoas (lista e ficha) |
 | `portaria/tela_bloqueios.py` | Bloqueios |
 | `portaria/tela_dashboard.py` | Painel e exportação; `graficos.py` desenha as barras |
-| `portaria/tela_usuarios.py` | Usuários e atividade (só administrador) |
+| `portaria/tela_usuarios.py` | Usuários, atividade e o relatório de exceções (só administrador) |
 | `portaria/tela_edicao.py` | Janela "Corrigir registro" com o histórico do registro |
 | `portaria/tela_autorizacao.py` | Diálogo "Autorização do administrador" (exceções de horário) |
 | `portaria/tela_configuracoes.py` | Configurações dos horários de acesso (só administrador) |
-| `portaria/tela_veiculo.py` | Perguntas "Saiu com o veículo?" e "Saiu junto?" |
+| `portaria/tela_veiculo.py` | Perguntas "Saiu com o veículo?", "Saiu junto?" e "Vai levar o carro?" |
 | `portaria/seletor_data.py` | Calendário e relógio dos campos de data e hora (Canvas) |
 | `portaria/tela_senha.py` | Janela "Trocar minha senha" |
 | `docs/design/` | Proposta de design, protótipo e prints (antes, protótipo e final) |
@@ -520,6 +581,22 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**2.2** (21/10/2026) — veículo e acesso do administrador (banco na versão 11,
+numa migração só, com backup antes):
+
+- **V0**: o banco confere a senha do administrador sozinho (hash em
+  `portaria/senhas.py`, contador da estação);
+- **S07 / RN39**: troca de senha obrigatória no primeiro login e senha nunca
+  igual ao login, também na redefinição pelo administrador;
+- **B3 / RN38**: códigos de recuperação do administrador, "Esqueci a senha",
+  "Gerar novos códigos" e o aviso de um administrador só;
+- **V1 / RN35**: quem pode retirar o veículo sem o dono e sem senha;
+- **V2 / RN36**: alerta de carro esquecido antes do fechamento;
+- **V3 / RN37**: lotação do estacionamento (vagas, aviso ou bloqueio);
+- **B4**: "Ausentar" (cadeado ou Ctrl+L), com troca de turno;
+- **V4**: relatório de exceções com filtros e CSV;
+- 760 testes automatizados.
 
 **2.1** (21/10/2026) — regras de horário de acesso, veículos, modo noturno e instalador:
 

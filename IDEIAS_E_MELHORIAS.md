@@ -230,6 +230,32 @@ Dois testes de QA (fluxos e casos difíceis) sobre a rodada 2; relatórios em
   "Tempo excedido" entre 23:00 e 23:30); inatividade medida com o relógio
   monotônico; levar a janela e o retroativo também para dentro do banco.
 
+### Versão 2.2 — veículo e acesso do administrador (21/10/2026) ✅
+Plano em `docs/PLANO_DE_IMPLEMENTACAO.md` (seção "Versão 2.2"). Banco na
+versão 11, numa migração só (atômica, com backup antes).
+- ✅ **V0** — o banco confere a senha do administrador sozinho: o hash saiu
+  para `portaria/senhas.py` (sem importar `dados`); a autorização leva login
+  e senha e o `Banco` recalcula o PBKDF2 com o contador da estação (RN31).
+  A marca "com_senha" vinda de fora é ignorada e a autorização de outro
+  usuário sem a senha dele é recusada.
+- ✅ **S07 / RN39** — troca de senha obrigatória no primeiro login e
+  redefinição pelo administrador recusando senha igual ao login.
+- ✅ **B3 / RN38** — 8 códigos de recuperação do administrador, "Esqueci a
+  senha" no login, "Gerar novos códigos" no menu da conta e a faixa "Só
+  existe 1 administrador ativo" no Painel.
+- ✅ **V1 / RN35** — pessoas autorizadas a retirar o veículo (ficha da
+  pessoa › Veículo, coluna "Pode retirar" na lista de veículos).
+- ✅ **V2 / RN36** — alerta de carro esquecido na janela de aviso de
+  fechamento.
+- ✅ **V3 / RN37** — lotação do estacionamento (vagas, aviso ou bloqueio).
+- ✅ **B4** — "Ausentar": cadeado no rodapé da barra lateral ou Ctrl+L.
+- ✅ **V4** — Relatório de exceções em Usuários (filtros, CSV).
+- 760 testes automatizados.
+- Ideias para depois: "Imprimir" o relatório de exceções (C2, versão 2.5);
+  limite de tentativas na senha atual de "Gerar novos códigos" (junto com a
+  N09); filtro "só dono fora" na lista de veículos a partir da faixa do
+  carro esquecido.
+
 ## 4. Rascunho de requisitos para o Word
 
 **RF**: RF01 cadastrar entrada · RF02 registrar saída (botão, duplo clique,
@@ -244,7 +270,10 @@ exceção de horário (admin) · RF17 encerrar o dia (admin) · RF18 alertar tem
 excedido, saída pendente e fechamento próximo · RF19 registrar a entrada e a
 saída do veículo separadas da pessoa (estacionamento) · RF20 ver o histórico
 de visitas de cada pessoa · RF21 escolher datas e horas num calendário e
-relógio.
+relógio · RF22 recuperar a senha do administrador com um código de uso único
+(2.2) · RF23 cadastrar quem pode retirar o veículo de uma pessoa (2.2) · RF24
+travar a guarita ("Ausentar") (2.2) · RF25 relatório de exceções do período,
+com exportação (2.2).
 
 **RNF**: RNF01 interface simples com botões identificados · RNF02 senha oculta e
 armazenada com hash · RNF03 tela principal e busca respondem na hora mesmo com
@@ -326,14 +355,42 @@ Placa); não pergunta se a placa foi digitada ou apagada à mão, se o carro já
 estacionamento ou se não há placa cadastrada; o Enter escolhe "De carro" se a última
 visita foi de carro, senão "A pé".
 
+Novas na 2.2 (veículo e acesso do administrador):
+RN35 QUEM PODE RETIRAR O VEÍCULO: cada placa tem a lista de pessoas autorizadas a
+levar o carro sem o dono; o carro sai SEM SENHA quando quem leva está na lista
+daquela placa, com a autorização ativa e na validade (opcional: sem data vale até
+alguém remover; com data, até o fim daquele dia), está no campus (entrou a pé) e não
+tem bloqueio de CPF; o carro sai junto com a saída dessa pessoa ("Vai levar o carro
+BRA2E19 de Carla?" — Sim, leva o carro / Não), registrado como "Veículo saiu com
+autorizado" (quem cadastrou e quando); nos outros casos vale a RN32. O porteiro só
+cadastra com o dono no campus naquele momento; o administrador, a qualquer hora;
+qualquer usuário remove (remoção lógica, com histórico). Tudo conferido também no
+banco · RN36 dentro da janela de aviso antes de fechar, a faixa "N carros com o dono
+fora do campus — fechamento às HH:MM", com o link para a lista de veículos; some
+quando o carro sai ou o dono volta · RN37 lotação: com vagas definidas em
+Configurações (0 = sem controle, até 4 dígitos), o cabeçalho mostra "Estacionamento
+47/50"; a entrada de carro com o estacionamento lotado avisa ("Estacionamento lotado
+(50/50)") e pede confirmação; com "Bloquear quando lotado", só com a senha de um
+administrador; o banco confere e registra · RN38 o administrador do primeiro acesso
+recebe 8 códigos de recuperação de uso único (K7QM-2F9X, sem caracteres ambíguos),
+mostrados uma vez ("Guardei em lugar seguro" para continuar; "Imprimir"); no banco,
+só o hash; no login, "Esqueci a senha" troca a senha com um código, que é queimado,
+vai ao histórico (sem o código) e, errado, conta no bloqueio progressivo; "Gerar
+novos códigos" (com a senha atual) invalida os antigos; com só 1 administrador
+ativo, o Painel pede um segundo · RN39 quem o administrador cria, ou cuja senha ele
+redefine, define a própria senha no primeiro login, antes de qualquer tela (o banco
+recusa qualquer operação dele até isso); nenhuma senha pode ser igual ao login,
+inclusive na redefinição pelo administrador. O administrador do primeiro acesso
+escolheu a dele e não troca.
+
 ## 5. Pendências registradas na revisão final (para a versão 2.1+)
 
 Detalhes em `docs/revisao/REVISAO_FINAL_CODIGO.md` e `REVISAO_FINAL_SEGURANCA.md`.
 - Histórico de ações com trava contra alteração (triggers/hash) — S10.
 - Prazo de retenção e "anonimizar pessoa" (LGPD) — S08.
 - Banco e backups sem criptografia: depende de permissões do Windows/BitLocker — S02.
-- Troca de senha obrigatória no primeiro acesso; redefinição pelo admin recusar
-  senha igual ao login — S07.
+- ✅ Troca de senha obrigatória no primeiro acesso; redefinição pelo admin
+  recusar senha igual ao login — S07 (versão 2.2, RN39).
 - ✅ Admin travado de propósito pelo diálogo de autorização — N04 (rodada 4:
   contador próprio da estação). Continua: o login normal do admin ainda pode
   ser travado por quem chuta a senha na tela de login (é o bloqueio por

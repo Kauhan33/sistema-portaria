@@ -28,7 +28,9 @@ autorização do administrador (tela_autorizacao.py). A situação de cada
 visita aberta é calculada com o relógio do app: "Tempo excedido" (âmbar)
 e "Saída pendente" (vermelho, depois do fechamento do dia da entrada).
 Faixas no topo da página avisam as saídas pendentes (o administrador
-encerra o dia) e quando o campus está perto de fechar.
+encerra o dia), quando o campus está perto de fechar e, nessa mesma janela
+de aviso, os carros com o dono fora do campus (RN36: "2 carros com o dono
+fora do campus — fechamento às 23:00", com o link para a lista Veículos).
 
 O tempo passa sozinho (ao_passar_o_tempo, a cada 30 s pelo app): o campo
 Entrada acompanha o relógio enquanto ninguém mexe nele (e o registro usa
@@ -200,9 +202,9 @@ class AbaCadastro:
         saídas pendentes e o campus perto de fechar."""
         self.alertas = tk.Frame(self.aba, bg=COR["fundo"])
         self.alertas.pack(fill="x", padx=px(MARGEM))
-        self.alertas.columnconfigure((0, 1), weight=1, uniform="faixas")
         self.faixa_pendentes = Aviso(self.alertas, fundo_pai=COR["fundo"])
         self.faixa_fechamento = Aviso(self.alertas, fundo_pai=COR["fundo"])
+        self.faixa_esquecidos = Aviso(self.alertas, fundo_pai=COR["fundo"])
 
     def _montar_formulario(self):
         """Cartão "Nova entrada". As peças são criadas aqui e posicionadas
@@ -308,7 +310,7 @@ class AbaCadastro:
         for tab in (self.tabela, self.tabela_veiculos):
             tab.configure(style="Compacta.Tabela.Treeview" if compacta
                           else "Tabela.Treeview")
-        for faixa in (self.faixa_pendentes, self.faixa_fechamento):
+        for faixa in self._faixas():
             faixa.definir_respiro(5 if compacta else 9)
 
     def _posicionar_formulario(self, compacta):
@@ -675,9 +677,17 @@ class AbaCadastro:
             texto = (f"Campus fecha às {fecha:%H:%M} (em {minutos} min)  ·  "
                      + (f"{dentro} no campus" if dentro else "ninguém no campus"))
             self.faixa_fechamento.mostrar("info", texto, icone=ICONE["relogio"])
+        esquecidos = horarios.aviso_carros_esquecidos(self.config,
+                                                      self.veiculos, agora)
+        if esquecidos:
+            self.faixa_esquecidos.mostrar(
+                "alerta", esquecidos, icone=ICONE["carro"],
+                acao="Ver veículos",
+                comando=lambda: self.seletor_lista.selecionar(LISTAS[1]))
         self._posicionar_faixas([f for f, visivel in (
             (self.faixa_pendentes, pendentes > 0 or bool(carros)),
-            (self.faixa_fechamento, minutos is not None)) if visivel])
+            (self.faixa_fechamento, minutos is not None),
+            (self.faixa_esquecidos, bool(esquecidos))) if visivel])
         if self.aba.winfo_height() > 1:          # faixas mudam a altura livre
             self.alertas.update_idletasks()
             self._escolher_densidade(self.aba.winfo_height())
@@ -713,16 +723,24 @@ class AbaCadastro:
         self.faixa_pendentes.mostrar("erro", texto, icone=ICONE["alerta"],
                                      acao=acao, comando=comando)
 
+    def _faixas(self):
+        return (self.faixa_pendentes, self.faixa_fechamento,
+                self.faixa_esquecidos)
+
     def _posicionar_faixas(self, faixas):
-        """Uma faixa ocupa a largura toda; duas ficam lado a lado (sobra
-        altura para o Movimento na tela pequena)."""
-        for faixa in (self.faixa_pendentes, self.faixa_fechamento):
+        """As faixas visíveis ficam lado a lado, dividindo a largura (uma
+        sozinha ocupa tudo): sobra altura para o Movimento na tela
+        pequena."""
+        for faixa in self._faixas():
             faixa.grid_forget()
+        for coluna in range(len(self._faixas())):
+            usada = coluna < len(faixas)
+            self.alertas.columnconfigure(coluna, weight=1 if usada else 0,
+                                         uniform="faixas" if usada else "")
         for coluna, faixa in enumerate(faixas):
-            sozinha = len(faixas) == 1
-            faixa.grid(row=0, column=coluna, columnspan=2 if sozinha else 1,
-                       sticky="nsew", pady=(0, px(8)),
-                       padx=0 if sozinha or coluna else (0, px(8)))
+            ultima = coluna == len(faixas) - 1
+            faixa.grid(row=0, column=coluna, sticky="nsew", pady=(0, px(8)),
+                       padx=0 if ultima else (0, px(8)))
 
     def encerrar_dia(self):
         """Só administrador: saída automática de todas as saídas pendentes,

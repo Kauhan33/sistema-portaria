@@ -540,6 +540,31 @@ def minutos_para_fechar(config, agora):
     return faltam if faltam <= config.minutos_aviso else None
 
 
+def carros_esquecidos(config, estadias, agora):
+    """
+    RN36 — "carro esquecido": DENTRO da janela de aviso antes de fechar
+    (minutos_para_fechar), os carros no estacionamento cujo dono está fora
+    do campus (situação "Dono fora do campus"). Fora da janela, nenhum: o
+    alerta só aparece quando ainda dá tempo de achar o dono.
+    """
+    if minutos_para_fechar(config, agora) is None:
+        return []
+    return [e for e in estadias
+            if situacao_veiculo(config, e, agora) == DONO_FORA]
+
+
+def aviso_carros_esquecidos(config, estadias, agora):
+    """'2 carros com o dono fora do campus — fechamento às 23:00', ou ''
+    (RN36)."""
+    carros = carros_esquecidos(config, estadias, agora)
+    if not carros:
+        return ""
+    fecha = janela_atual(config, agora).fecha
+    quantos = ("1 carro" if len(carros) == 1 else f"{len(carros)} carros")
+    return (f"{quantos} com o dono fora do campus — fechamento às "
+            f"{fecha:%H:%M}")
+
+
 # ------------------------------------------------------------------
 # Validação do que o administrador digita na página Configurações.
 # Cada função devolve (valor, "") ou (None, mensagem de erro).

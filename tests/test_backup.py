@@ -24,7 +24,7 @@ class BaseBackup(unittest.TestCase):
         self.banco = dados.Banco(self.caminho_db)
         self.banco.criar_usuario("Ana Admin", "ana", "admin", "h")
         self.banco.criar_usuario("Paulo Porteiro", "paulo", "porteiro", "h",
-                                 autor="ana")
+                                 autor="ana", trocar_senha=False)
 
     def tearDown(self):
         self.pasta.cleanup()

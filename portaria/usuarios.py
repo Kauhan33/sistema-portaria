@@ -131,6 +131,33 @@ def trocar_senha(banco, usuario, senha_atual, nova, confirmacao):
     return True, "Senha alterada com sucesso."
 
 
+def precisa_trocar_senha(usuario):
+    """RN39: o usuário entrou com uma senha que o administrador definiu
+    (criou a conta ou redefiniu a senha) e precisa escolher a dele antes
+    de qualquer tela."""
+    return bool(usuario and usuario.get("trocar_senha"))
+
+
+def definir_senha_inicial(banco, login, nova, confirmacao):
+    """
+    RN39 — "Defina sua senha" no primeiro login: a nova senha não pode ser
+    a provisória (a que o administrador passou), nem igual ao login, nem
+    fácil. Retorna (ok, mensagem); se ok, a pendência acabou e o histórico
+    registra "Senha alterada".
+    """
+    u = banco.buscar_usuario(normalizar_login(login or ""))
+    if u is None or not u["ativo"]:
+        return False, "Usuário não encontrado ou desativado."
+    if conferir_senha(nova, u["senha"]):
+        return False, ("A senha nova deve ser diferente da que o "
+                       "administrador passou.")
+    ok, msg = validar_senha(nova, confirmacao, u["login"])
+    if not ok:
+        return False, msg
+    banco.definir_senha(u["id"], gerar_hash(nova), autor=u["login"])
+    return True, "Senha definida."
+
+
 # ------------------------------------------------------------------
 # Login
 # ------------------------------------------------------------------
@@ -188,7 +215,8 @@ def entrar(banco, login, senha, agora=None):
     if _conferir(banco, u, senha):
         if falhas or bloqueios:
             banco.gravar_tentativas_login(chave, 0, 0, None)
-        return {k: u[k] for k in ("id", "login", "nome", "perfil", "tema")}, ""
+        return {k: u[k] for k in ("id", "login", "nome", "perfil", "tema",
+                                  "trocar_senha")}, ""
 
     return None, contar_erro_de_login(banco, chave, quem, falhas, bloqueios,
                                       agora, "Usuário ou senha incorretos.")

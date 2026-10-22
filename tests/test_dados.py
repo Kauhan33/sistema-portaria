@@ -40,7 +40,7 @@ class BaseTemp(unittest.TestCase):
         for nome, login, perfil in [("Bia Admin", "bia", "admin"),
                                     ("Paulo Porteiro", "paulo", "porteiro")]:
             self.banco.criar_usuario(nome, login, perfil, "hash-falso",
-                                     autor="ana")
+                                     autor="ana", trocar_senha=False)
 
     def escrever_json(self, conteudo):
         with open(self.caminho_json, "w", encoding="utf-8") as f:
@@ -326,7 +326,7 @@ class TestAuditoria(BaseTemp):
     def test_criar_usuario_registra_quem_criou(self):
         self.banco.criar_usuario("Ana Admin", "ana", "admin", "h")
         self.banco.criar_usuario("Paulo Porteiro", "paulo", "porteiro", "h",
-                                 autor="ana")
+                                 autor="ana", trocar_senha=False)
         evento = self.banco.listar_eventos()[0]
         self.assertEqual((evento["usuario"], evento["acao"], evento["detalhe"]),
                          ("ana", "Usuário criado", "paulo (porteiro)"))
@@ -576,8 +576,24 @@ def agora_menos(**delta):
     return (datetime.now() - timedelta(**delta)).strftime(FORMATO)
 
 
+def rebaixar_para_v10(caminho):
+    """Deixa um banco como a versão 10 deixava (2.1): sem o que a 2.2
+    criou (troca de senha, códigos de recuperação, autorizados a retirar o
+    veículo e a lotação)."""
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        DROP TABLE IF EXISTS codigos_recuperacao;
+        DROP TABLE IF EXISTS autorizados_veiculo;
+        ALTER TABLE usuarios DROP COLUMN trocar_senha;
+        DELETE FROM parametros WHERE chave IN ('vagas', 'bloquear_lotado');
+        UPDATE meta SET valor = 10 WHERE chave = 'versao_esquema';
+        PRAGMA user_version = 10;""")
+    con.close()
+
+
 def rebaixar_para_v9(caminho):
     """Deixa um banco como a versão 9 deixava: sem a tabela meta."""
+    rebaixar_para_v10(caminho)
     con = sqlite3.connect(caminho)
     con.executescript("""
         DROP TABLE IF EXISTS meta;
@@ -728,7 +744,7 @@ class TestIntegridade(BaseTemp):
         user_version, mas a tabela meta guarda a versão de verdade."""
         con = sqlite3.connect(self.caminho_db)
         con.execute("PRAGMA journal_mode = DELETE")
-        con.execute("UPDATE meta SET valor = 11 WHERE chave = 'versao_esquema'")
+        con.execute("UPDATE meta SET valor = 12 WHERE chave = 'versao_esquema'")
         con.execute("PRAGMA user_version = 5")       # o programa antigo
         con.commit()
         con.close()
@@ -749,7 +765,7 @@ class TestIntegridade(BaseTemp):
                          dados.VERSAO_ESQUEMA)
         self.assertEqual(len(banco.listar_estacionamento()), 1)
         self.assertIn("versão ANTIGA do programa", banco.avisos[0])
-        self.assertIn("v10 → v5", banco.avisos[0])
+        self.assertIn("v11 → v5", banco.avisos[0])
         # a tolerância que o administrador mudou não volta ao padrão
         self.criar_equipe()
         regras = banco.ler_configuracao().regras

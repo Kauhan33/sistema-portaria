@@ -130,6 +130,8 @@ class Configuracao:
     eventos: dict = field(default_factory=dict)    # date -> Evento
     minutos_aviso: int = MINUTOS_AVISO_PADRAO
     horas_retroativo: int = HORAS_RETROATIVO_PADRAO
+    vagas: int = 0                 # RN37: 0 = sem controle de lotação
+    bloquear_lotado: bool = False  # RN37: lotado pede a senha (senão avisa)
 
 
 @dataclass(frozen=True)

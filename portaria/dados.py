@@ -96,7 +96,11 @@ FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
 # 9: tema (claro, escuro ou seguir o Windows) escolhido por cada usuário
 # 10: tabela meta com a versão do esquema, que um programa antigo não
 #     conhece: se ele rebaixar o user_version, o programa novo percebe
-VERSAO_ESQUEMA = 10
+# 11 (versão 2.2): troca de senha obrigatória (usuarios.trocar_senha),
+#     códigos de recuperação do administrador, pessoas autorizadas a
+#     retirar o veículo e a lotação do estacionamento (parametros vagas e
+#     bloquear_lotado)
+VERSAO_ESQUEMA = 11
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
 REGISTRO_MUDOU = ("Este registro foi alterado em outra estação enquanto a "
@@ -207,6 +211,8 @@ TAMANHOS_DA_VISITA = (("Nome completo", "nome", MAXIMO_NOME),
                       ("Entrada", "entrada", MAXIMO_DATA_HORA),
                       ("Saída", "saida", MAXIMO_DATA_HORA))
 VEICULO_SEM_DONO = "Veículo saiu sem o dono"     # evento e regra (RN32)
+TROCA_DE_SENHA_PENDENTE = ("Defina a sua senha antes de continuar: saia e "
+                           "entre de novo para trocá-la.")
 AUTORIZACAO_SEM_SENHA = ("A autorização de outro usuário só vale com a senha "
                          "dele.\nNada foi gravado.")
 # Busca (visitas e pessoas): texto no nome, tipo e placa; dígitos no CPF
@@ -741,10 +747,65 @@ def _passo_v10(banco, con, versao):
     )""")
 
 
+ESQUEMA_V11 = [
+    # RN38: só o hash de cada código; usado_em = quando foi queimado
+    """CREATE TABLE IF NOT EXISTS codigos_recuperacao (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id INTEGER NOT NULL REFERENCES usuarios (id),
+        hash       TEXT NOT NULL CHECK (hash <> ''),
+        usado_em   TEXT NOT NULL DEFAULT ''
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_codigos_usuario
+        ON codigos_recuperacao (usuario_id)""",
+    # RN35: quem pode retirar o carro de uma placa sem o dono (remoção
+    # lógica, como nos bloqueios); valido_ate 'AAAA-MM-DD' ou '' (até
+    # alguém remover); dono_presente: o dono estava no campus no cadastro
+    f"""CREATE TABLE IF NOT EXISTS autorizados_veiculo (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        placa         TEXT NOT NULL CHECK (length(placa) = {MAXIMO_PLACA}),
+        dono_cpf      TEXT NOT NULL CHECK (length(dono_cpf) = 11),
+        cpf           TEXT NOT NULL CHECK (length(cpf) = 11 AND cpf <> dono_cpf),
+        nome          TEXT NOT NULL CHECK (nome <> '' AND length(nome) <= {MAXIMO_NOME}),
+        valido_ate    TEXT NOT NULL DEFAULT '',
+        dono_presente INTEGER NOT NULL DEFAULT 0 CHECK (dono_presente IN (0, 1)),
+        criado_por    TEXT NOT NULL,
+        criado_em     TEXT NOT NULL,
+        ativo         INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
+        removido_em   TEXT NOT NULL DEFAULT '',
+        removido_por  TEXT NOT NULL DEFAULT ''
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_autorizados_placa
+        ON autorizados_veiculo (placa)""",
+    # a mesma pessoa não fica duas vezes ativa na lista da mesma placa
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_autorizado_ativo
+        ON autorizados_veiculo (placa, cpf) WHERE ativo = 1""",
+]
+# RN37: 0 vagas = sem controle de lotação; bloquear_lotado 0 = só avisa
+PARAMETROS_V11 = {"vagas": 0, "bloquear_lotado": 0}
+
+
+def _passo_v11(banco, con, versao):
+    """
+    Versão 2.2 (uma migração só):
+    - usuarios.trocar_senha (RN39): quem já existia não precisa trocar;
+    - codigos_recuperacao (RN38) e autorizados_veiculo (RN35);
+    - parâmetros da lotação do estacionamento (RN37), sem controle.
+    """
+    colunas = {c[1] for c in con.execute("PRAGMA table_info(usuarios)")}
+    if "trocar_senha" not in colunas:
+        con.execute("ALTER TABLE usuarios ADD COLUMN trocar_senha INTEGER "
+                    "NOT NULL DEFAULT 0 CHECK (trocar_senha IN (0, 1))")
+    for sql in ESQUEMA_V11:
+        con.execute(sql)
+    for chave, valor in PARAMETROS_V11.items():
+        con.execute("INSERT INTO parametros (chave, valor) VALUES (?, ?) "
+                    "ON CONFLICT (chave) DO NOTHING", (chave, valor))
+
+
 # (versão alcançada, função) em ordem; uma migração nova entra no fim.
 # Cada passo pode rodar de novo sem estragar nada (banco rebaixado).
 MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7), (8, _passo_v8),
-             (9, _passo_v9), (10, _passo_v10)]
+             (9, _passo_v9), (10, _passo_v10), (11, _passo_v11)]
 
 VERSAO_MAIS_NOVA = ("Este banco de dados foi criado por uma versão mais nova "
                     "do programa.\nAtualize o programa para abrir este banco "
@@ -903,18 +964,25 @@ class Banco:
     # Permissões (conferidas no banco)
     # --------------------------------------------------------------
     @staticmethod
-    def _exigir(con, autor, so_admin=True, para="fazer esta operação"):
+    def _exigir(con, autor, so_admin=True, para="fazer esta operação",
+                troca=False):
         """
         Operação sensível: `autor` é obrigatório e precisa existir, estar
         ativo e (com so_admin) ser administrador. Devolve o usuário (dict).
+        RN39: quem ainda precisa definir a própria senha (criado ou com a
+        senha redefinida pelo administrador) não faz nada além disso
+        (troca=True é só a troca da própria senha).
         """
         if autor is None:
             raise ErroDados(SESSAO_ENCERRADA)
-        linha = con.execute("SELECT id, perfil, ativo FROM usuarios "
-                            "WHERE login = ?", (autor,)).fetchone()
+        linha = con.execute("SELECT id, perfil, ativo, trocar_senha "
+                            "FROM usuarios WHERE login = ?",
+                            (autor,)).fetchone()
         if linha is None or not linha[2]:
             raise ErroDados("Usuário não autorizado ou desativado.\n"
                             "Saia e entre de novo no sistema.")
+        if linha[3] and not troca:
+            raise ErroDados(TROCA_DE_SENHA_PENDENTE)
         if so_admin and linha[1] != "admin":
             raise ErroDados(f"Somente o administrador pode {para}.")
         return {"id": linha[0], "login": autor, "perfil": linha[1]}
@@ -1786,7 +1854,9 @@ class Banco:
         parametros.update(con.execute("SELECT chave, valor FROM parametros"))
         return horarios.Configuracao(
             funcionamento, regras, feriados, eventos,
-            parametros["minutos_aviso"], parametros["horas_retroativo"])
+            parametros["minutos_aviso"], parametros["horas_retroativo"],
+            parametros.get("vagas", 0),
+            bool(parametros.get("bloquear_lotado", 0)))
 
     def salvar_funcionamento(self, funcionamento, autor):
         """{dia: Horario ou None}; grava e registra só os dias que mudaram.
@@ -2030,13 +2100,14 @@ class Banco:
         """Usuário com o hash da senha (só para conferir o login), ou None."""
         with self._conexao() as con:
             linha = con.execute("SELECT id, login, nome, perfil, senha, ativo, "
-                                "tema FROM usuarios WHERE login = ?",
-                                (login,)).fetchone()
+                                "tema, trocar_senha FROM usuarios "
+                                "WHERE login = ?", (login,)).fetchone()
         if linha is None:
             return None
-        i, login, nome, perfil, senha, ativo, tema = linha
+        i, login, nome, perfil, senha, ativo, tema, trocar = linha
         return {"id": i, "login": login, "nome": nome, "perfil": perfil,
-                "senha": senha, "ativo": bool(ativo), "tema": tema}
+                "senha": senha, "ativo": bool(ativo), "tema": tema,
+                "trocar_senha": bool(trocar)}
 
     def definir_tema(self, tema, autor):
         """Cada usuário escolhe o PRÓPRIO tema (vale nos próximos logins).
@@ -2049,20 +2120,27 @@ class Banco:
             con.execute("UPDATE usuarios SET tema = ? WHERE login = ?",
                         (tema, autor))
 
-    def criar_usuario(self, nome, login, perfil, senha_hash, autor=None):
+    def criar_usuario(self, nome, login, perfil, senha_hash, autor=None,
+                      trocar_senha=None):
         """
         Com autor: só administrador. Sem autor = primeiro acesso, aceito só
         com a tabela de usuários vazia. A condição fica no próprio INSERT:
         duas estações no "Primeiro acesso" não criam dois usuários.
+        RN39: quem o administrador cria define a própria senha no primeiro
+        login (trocar_senha; o padrão é "criado por alguém"); o
+        administrador do primeiro acesso escolheu a dele e não troca.
         """
+        if trocar_senha is None:
+            trocar_senha = autor is not None
         _exigir_tamanho("Nome completo", nome, MAXIMO_NOME)
         _exigir_tamanho("Usuário", login, MAXIMO_LOGIN)
         with self._conexao() as con:
             if autor is None:
                 cursor = con.execute(
-                    "INSERT INTO usuarios (login, nome, perfil, senha) "
-                    "SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM usuarios)",
-                    (login, nome, perfil, senha_hash))
+                    "INSERT INTO usuarios (login, nome, perfil, senha, "
+                    "trocar_senha) SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS "
+                    "(SELECT 1 FROM usuarios)",
+                    (login, nome, perfil, senha_hash, int(trocar_senha)))
                 if not cursor.rowcount:
                     raise ErroDados("O primeiro usuário já foi criado (talvez "
                                     "em outro computador).\nEntre com um "
@@ -2070,8 +2148,9 @@ class Banco:
             else:
                 self._exigir(con, autor, para="criar usuários")
                 cursor = con.execute(
-                    "INSERT INTO usuarios (login, nome, perfil, senha) "
-                    "VALUES (?, ?, ?, ?)", (login, nome, perfil, senha_hash))
+                    "INSERT INTO usuarios (login, nome, perfil, senha, "
+                    "trocar_senha) VALUES (?, ?, ?, ?, ?)",
+                    (login, nome, perfil, senha_hash, int(trocar_senha)))
             self._evento(con, autor or login, "Usuário criado", f"{login} ({perfil})")
             return cursor.lastrowid
 
@@ -2086,15 +2165,18 @@ class Banco:
     def definir_senha(self, id_usuario, senha_hash, autor):
         """Administrador redefine a senha de qualquer um, e isso libera o
         login travado por tentativas erradas; os demais só trocam a própria
-        (usuarios.trocar_senha)."""
+        (usuarios.trocar_senha). RN39: a senha redefinida pelo
+        administrador é provisória (o usuário define a dele no próximo
+        login); trocar a própria tira a pendência."""
         with self._conexao() as con:
-            quem = self._exigir(con, autor, so_admin=False)
+            quem = self._exigir(con, autor, so_admin=False, troca=True)
             propria = quem["id"] == id_usuario
-            if not propria and quem["perfil"] != "admin":
-                raise ErroDados("Somente o administrador pode redefinir a "
-                                "senha de outro usuário.")
-            con.execute("UPDATE usuarios SET senha = ? WHERE id = ?",
-                        (senha_hash, id_usuario))
+            if not propria:       # com a troca pendente, só a própria senha
+                quem = self._exigir(con, autor, para="redefinir a senha de "
+                                    "outro usuário")
+            con.execute("UPDATE usuarios SET senha = ?, trocar_senha = ? "
+                        "WHERE id = ?",
+                        (senha_hash, 0 if propria else 1, id_usuario))
             login = self._login_de(con, id_usuario)
             if not propria:
                 con.execute("DELETE FROM tentativas_login WHERE chave = ?",

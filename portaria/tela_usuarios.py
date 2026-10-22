@@ -173,14 +173,16 @@ class AbaUsuarios:
 
 class DialogoRedefinirSenha(Dialogo):
     """Nova senha (2x) para outro usuário: o administrador a passa para
-    ele, que troca no primeiro acesso. Libera o login travado."""
+    ele, que é obrigado a trocá-la no próximo login (RN39). Libera o login
+    travado. A senha não pode ser igual ao login dele."""
 
     def __init__(self, aba, alvo):
         self.aba, self.alvo = aba, alvo
         app = aba.app
         super().__init__(app.janela, "Redefinir senha",
-                         f"Nova senha para {alvo['login']}, com pelo menos "
-                         f"{SENHA_MINIMA} caracteres.", largura=360,
+                         f"Senha provisória para {alvo['login']}, com pelo "
+                         f"menos {SENHA_MINIMA} caracteres. No próximo login "
+                         "ele escolhe uma senha só dele.", largura=360,
                          ao_usar=app.registrar_uso)
         self.senha = self._campo("Nova senha")
         self.confirmacao = self._campo("Confirmar a nova senha")
@@ -197,7 +199,8 @@ class DialogoRedefinirSenha(Dialogo):
     def salvar(self):
         app = self.aba.app
         senha = self.senha.get()
-        ok, msg = validar_senha(senha, self.confirmacao.get())
+        ok, msg = validar_senha(senha, self.confirmacao.get(),
+                                self.alvo["login"])
         if not ok:
             self.faixa.mostrar("erro", msg)
             self.faixa.pack(fill="x", pady=(px(2), 0))
@@ -209,7 +212,8 @@ class DialogoRedefinirSenha(Dialogo):
         self.fechar()
         self.aba.atualizar()
         mensagens.info("Usuários",
-                       f"Senha de {self.alvo['login']} redefinida. Se o login "
+                       f"Senha de {self.alvo['login']} redefinida. No "
+                       "próximo login ele define uma senha nova. Se o login "
                        "estava travado por tentativas erradas, já foi "
                        "liberado.")
 
@@ -221,8 +225,8 @@ class DialogoUsuario(Dialogo):
         self.aba = aba
         app = aba.app
         super().__init__(app.janela, "Novo usuário",
-                         "O usuário entra com o login e a senha daqui. Peça "
-                         "para ele trocar a senha no primeiro acesso.",
+                         "A senha daqui é provisória: no primeiro login o "
+                         "usuário escolhe uma senha só dele.",
                          largura=440, ao_usar=app.registrar_uso)
         form = self.miolo
         form.columnconfigure((0, 1), weight=1, uniform="u")
@@ -266,5 +270,6 @@ class DialogoUsuario(Dialogo):
             return
         self.fechar()
         self.aba.atualizar()
-        mensagens.info("Usuários", f"Usuário {login} criado. "
-                                   "Ele já pode entrar no sistema.")
+        mensagens.info("Usuários", f"Usuário {login} criado. Ele já pode "
+                                   "entrar e vai definir a senha dele no "
+                                   "primeiro login.")

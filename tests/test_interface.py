@@ -46,9 +46,12 @@ def agora_texto():
     return AGORA.strftime(FORMATO)
 
 
-def criar_usuario(banco, nome, login, perfil, senha, autor=None):
-    """Sem autor só cria o primeiro usuário (primeiro acesso)."""
-    id_ = banco.criar_usuario(nome, login, perfil, gerar_hash(senha), autor)
+def criar_usuario(banco, nome, login, perfil, senha, autor=None,
+                  trocar_senha=False):
+    """Sem autor só cria o primeiro usuário (primeiro acesso). O usuário
+    criado já definiu a senha dele (trocar_senha=True: ainda não, RN39)."""
+    id_ = banco.criar_usuario(nome, login, perfil, gerar_hash(senha), autor,
+                              trocar_senha=trocar_senha)
     return {"id": id_, "login": login, "nome": nome, "perfil": perfil}
 
 

@@ -13,7 +13,8 @@ from portaria.senhas import gerar_hash
 from portaria.horarios import Evento, Horario, RegraCategoria, hora
 
 from .test_dados import (objetos_do_banco, rebaixar_para_v6,
-                         rebaixar_para_v7, registro, versao_do_arquivo)
+                         rebaixar_para_v7, rebaixar_para_v10, registro,
+                         versao_do_arquivo)
 
 SEGUNDA = date(2026, 10, 19)
 
@@ -52,9 +53,11 @@ class BaseRegras(unittest.TestCase):
         self.banco.criar_usuario("Ana Admin", "ana", "admin",
                                  gerar_hash(SENHAS["ana"]))
         self.banco.criar_usuario("Bia Admin", "bia", "admin",
-                                 gerar_hash(SENHAS["bia"]), autor="ana")
+                                 gerar_hash(SENHAS["bia"]), autor="ana",
+                                 trocar_senha=False)
         self.banco.criar_usuario("Paulo Porteiro", "paulo", "porteiro",
-                                 gerar_hash(SENHAS["paulo"]), autor="ana")
+                                 gerar_hash(SENHAS["paulo"]), autor="ana",
+                                 trocar_senha=False)
 
     def tearDown(self):
         self.pasta.cleanup()
@@ -852,3 +855,68 @@ class TestMigracaoV7ParaV8(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMigracaoV10ParaV11(BaseRegras):
+    """Versão 2.2: a migração para a v11 (uma só, atômica e com backup
+    antes) não perde nada de um banco da 2.1 em uso."""
+
+    def preparar_banco_da_2_1(self):
+        self.ana = self.banco.inserir(registro(entrada="19/10/2026 08:00"),
+                                      autor="paulo")            # de carro
+        self.beto = self.banco.inserir(
+            registro(cpf="11144477735", nome="Beto Rocha", placa="",
+                     entrada="19/10/2026 08:30"), autor="paulo")  # a pé
+        self.antiga = self.banco.inserir(
+            registro(cpf="39053344705", nome="Carla Nogueira", placa="QWE1234",
+                     entrada="18/10/2026 08:00", saida="18/10/2026 12:00"),
+            autor="paulo")
+        self.banco.bloquear("cpf", "86288366757", "Motivo de teste", "ana")
+        self.antes = {
+            "registros": self.banco.listar(),
+            "pessoas": self.banco.listar_pessoas(),
+            "estacionamento": self.banco.listar_estacionamento(),
+            "usuarios": self.banco.listar_usuarios(),
+            "bloqueios": self.banco.listar_bloqueios(),
+            "eventos": len(self.banco.listar_eventos(limite=10_000)),
+        }
+        rebaixar_para_v10(self.caminho)
+
+    def test_v10_com_dados_vira_v11_sem_perder_nada(self):
+        self.preparar_banco_da_2_1()
+        self.assertEqual(versao_do_arquivo(self.caminho), 10)
+        self.assertNotIn("autorizados_veiculo", objetos_do_banco(self.caminho))
+        banco = dados.Banco(self.caminho, relogio=lambda: self.AGORA)
+        self.assertEqual(versao_do_arquivo(self.caminho), 11)
+        self.assertEqual(banco.listar(), self.antes["registros"])
+        self.assertEqual(banco.listar_pessoas(), self.antes["pessoas"])
+        self.assertEqual(banco.listar_estacionamento(),
+                         self.antes["estacionamento"])
+        self.assertEqual(banco.listar_usuarios(), self.antes["usuarios"])
+        self.assertEqual(banco.listar_bloqueios(), self.antes["bloqueios"])
+        self.assertEqual(len(banco.listar_eventos(limite=10_000)),
+                         self.antes["eventos"])
+        # quem já existia não precisa trocar a senha e continua operando
+        self.assertFalse(banco.buscar_usuario("paulo")["trocar_senha"])
+        banco.registrar_saidas([self.beto], "19/10/2026 10:00", autor="paulo")
+        # lotação começa sem controle; tabelas novas vazias
+        config = banco.ler_configuracao()
+        self.assertEqual((config.vagas, config.bloquear_lotado), (0, False))
+        for tabela in ("codigos_recuperacao", "autorizados_veiculo"):
+            self.assertIn(tabela, objetos_do_banco(self.caminho))
+        backups = os.listdir(os.path.join(self.pasta.name, "backups"))
+        self.assertTrue(any("antes-v11-de-v10" in b for b in backups))
+
+    def test_migracao_que_falha_nao_muda_nada(self):
+        self.preparar_banco_da_2_1()
+
+        def passo_que_recusa(banco, con, versao):
+            dados._passo_v11(banco, con, versao)
+            raise sqlite3.IntegrityError("falha simulada")
+        migracoes = [(alvo, passo_que_recusa if alvo == 11 else passo)
+                     for alvo, passo in dados.MIGRACOES]
+        with unittest.mock.patch.object(dados, "MIGRACOES", migracoes):
+            with self.assertRaises(dados.ErroDados):
+                dados.Banco(self.caminho)
+        self.assertEqual(versao_do_arquivo(self.caminho), 10)
+        self.assertNotIn("autorizados_veiculo", objetos_do_banco(self.caminho))

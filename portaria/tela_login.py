@@ -6,6 +6,13 @@ guarita; à direita o formulário. No primeiro uso (banco sem usuários) vira
 
 O login passa por usuarios.entrar(): as tentativas erradas ficam no banco
 e o bloqueio continua valendo mesmo fechando e abrindo o programa.
+
+O formulário da direita muda conforme o momento (o painel fica):
+- Entrar (o normal);
+- Primeiro acesso: cria o administrador;
+- Defina sua senha (RN39): quem entrou com a senha que o administrador
+  passou (conta nova ou senha redefinida) escolhe a dele antes de
+  qualquer outra tela.
 """
 
 import tkinter as tk
@@ -14,7 +21,8 @@ from datetime import datetime
 from .componentes import Aviso, Botao, Campo, data_por_extenso, marca_cancela
 from .dados import ErroDados
 from .estilo import COR, FONTE, px
-from .usuarios import (SENHA_MINIMA, entrar, gerar_hash, normalizar_login,
+from .usuarios import (SENHA_MINIMA, definir_senha_inicial, entrar,
+                       gerar_hash, normalizar_login, precisa_trocar_senha,
                        validar_novo_usuario)
 from .validacao import MAXIMO_LOGIN, MAXIMO_NOME
 
@@ -33,6 +41,8 @@ class TelaLogin:
         self.relogio = relogio or datetime.now
         self.campos = []                 # caixas de texto, na ordem da tela
         self.primeiro_acesso = False
+        self.formulario = None           # "entrar", "primeiro_acesso"...
+        self._usuario_pendente = None    # RN39: entrou, falta a senha dele
         self._timer = None
 
         self._montar_painel(pai)
@@ -52,42 +62,78 @@ class TelaLogin:
             return
 
         if self.primeiro_acesso:
-            self._titulo("Primeiro acesso",
-                         "Crie o usuário administrador do sistema. "
-                         "Ele cadastra os porteiros depois.")
-            self.campo_nome = self._campo("Nome completo", maximo=MAXIMO_NOME)
-            self.campo_login = self._campo("Usuário", "ex.: maria.souza",
-                                           maximo=MAXIMO_LOGIN)
-            self.campo_senha = self._campo(
-                "Senha", f"mínimo {SENHA_MINIMA} caracteres", senha=True)
-            self.campo_confirmacao = self._campo("Confirmar senha", senha=True)
-            acao, texto = self.criar_administrador, "Criar administrador e entrar"
+            self.mostrar_primeiro_acesso()
         else:
-            self._titulo("Entrar", "Use o usuário e a senha que o administrador "
-                                   "cadastrou para você.")
-            self.campo_login = self._campo("Usuário", maximo=MAXIMO_LOGIN)
-            self.campo_senha = self._campo("Senha", senha=True)
-            acao, texto = self.entrar, "Entrar"
+            self.mostrar_entrar(aviso)
 
-        # faixa de erro: só aparece quando há o que dizer
+    # --------------------------------------------------------------
+    # Formulários (o painel da esquerda continua)
+    # --------------------------------------------------------------
+    def _novo_formulario(self, nome, titulo, subtitulo):
+        """Apaga o formulário anterior e começa outro."""
+        for w in self.miolo.winfo_children():
+            w.destroy()
+        self.campos = []
+        self.formulario = nome
+        self._titulo(titulo, subtitulo)
+
+    def _fechar_formulario(self, texto, acao, dica=""):
+        """Faixa de erro (escondida), o botão principal, a dica de baixo e
+        o Enter em qualquer campo (cada campo fica no seu Frame)."""
         self.faixa = Aviso(self.miolo)
         self.lbl_erro = self.faixa.lbl
         self.btn_acao = Botao(self.miolo, texto, acao, "primario", altura=40,
                               dica_tecla="Enter")
         self.btn_acao.pack(fill="x")
-        if not self.primeiro_acesso:
-            tk.Label(self.miolo, text="Esqueceu a senha? Peça ao administrador "
-                                      "para redefinir.", font=FONTE["dica"],
-                     bg=COR["superficie"], fg=COR["texto_3"]
-                     ).pack(anchor="w", pady=(px(16), 0))
-        if aviso:
-            self._mostrar("info", aviso)
-
-        # Enter em qualquer campo confirma (cada campo fica no seu Frame)
+        if dica:
+            tk.Label(self.miolo, text=dica, font=FONTE["dica"],
+                     bg=COR["superficie"], fg=COR["texto_3"], justify="left",
+                     wraplength=px(360)).pack(anchor="w", pady=(px(16), 0))
         for caixa_texto in self.campos:
             caixa_texto.bind("<Return>", lambda e: (acao(), "break")[1])
             caixa_texto.bind("<KP_Enter>", lambda e: (acao(), "break")[1])
         self.campos[0].focus_set()
+
+    def mostrar_primeiro_acesso(self):
+        self._novo_formulario("primeiro_acesso", "Primeiro acesso",
+                              "Crie o usuário administrador do sistema. "
+                              "Ele cadastra os porteiros depois.")
+        self.campo_nome = self._campo("Nome completo", maximo=MAXIMO_NOME)
+        self.campo_login = self._campo("Usuário", "ex.: maria.souza",
+                                       maximo=MAXIMO_LOGIN)
+        self.campo_senha = self._campo(
+            "Senha", f"mínimo {SENHA_MINIMA} caracteres", senha=True)
+        self.campo_confirmacao = self._campo("Confirmar senha", senha=True)
+        self._fechar_formulario("Criar administrador e entrar",
+                                self.criar_administrador)
+
+    def mostrar_entrar(self, aviso=""):
+        self._novo_formulario("entrar", "Entrar",
+                              "Use o usuário e a senha que o administrador "
+                              "cadastrou para você.")
+        self.campo_login = self._campo("Usuário", maximo=MAXIMO_LOGIN)
+        self.campo_senha = self._campo("Senha", senha=True)
+        self._fechar_formulario("Entrar", self.entrar,
+                                "Esqueceu a senha? Peça ao administrador "
+                                "para redefinir.")
+        if aviso:
+            self._mostrar("info", aviso)
+
+    def mostrar_definir_senha(self, usuario):
+        """RN39: "Defina sua senha" antes de qualquer tela."""
+        self._usuario_pendente = usuario
+        primeiro = usuario["nome"].split()[0] if usuario["nome"] else ""
+        self._novo_formulario(
+            "definir_senha", "Defina sua senha",
+            f"Olá, {primeiro}. Você entrou com a senha que o administrador "
+            "passou. Escolha uma senha só sua para continuar.")
+        self.campo_nova = self._campo(
+            "Nova senha", f"mínimo {SENHA_MINIMA} caracteres", senha=True)
+        self.campo_confirmacao = self._campo("Confirmar a nova senha",
+                                             senha=True)
+        self._fechar_formulario("Salvar senha e entrar", self.definir_senha,
+                                "Não use o login nem sequências. A senha "
+                                "provisória deixa de valer.")
 
     # --------------------------------------------------------------
     # Montagem
@@ -180,7 +226,29 @@ class TelaLogin:
                 self.campo_senha.delete(0, tk.END)
             self.erro(motivo)
             return
+        if precisa_trocar_senha(usuario):
+            self.mostrar_definir_senha(usuario)
+            return
         self.ao_entrar(usuario)
+
+    def definir_senha(self):
+        """RN39: grava a senha escolhida e entra."""
+        usuario = self._usuario_pendente
+        try:
+            ok, msg = definir_senha_inicial(self.banco, usuario["login"],
+                                            self.campo_nova.get(),
+                                            self.campo_confirmacao.get())
+        except ErroDados as e:
+            self.erro(str(e))
+            return
+        if not ok:
+            for caixa in (self.campo_nova, self.campo_confirmacao):
+                caixa.delete(0, tk.END)
+            self.campo_nova.focus_set()
+            self.erro(msg)
+            return
+        self._usuario_pendente = None
+        self.ao_entrar(dict(usuario, trocar_senha=False))
 
     def criar_administrador(self):
         nome = " ".join(self.campo_nome.get().split())

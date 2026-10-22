@@ -124,7 +124,8 @@ class TestTemaNoBanco(unittest.TestCase):
         self.banco = dados.Banco(self.caminho)
         self.banco.criar_usuario("Ana Admin", "ana", "admin", gerar_hash("senha123"))
         self.banco.criar_usuario("Paulo", "paulo", "porteiro",
-                                 gerar_hash("senha456"), autor="ana")
+                                 gerar_hash("senha456"), autor="ana",
+                                 trocar_senha=False)
 
     def tearDown(self):
         self.pasta.cleanup()
@@ -163,7 +164,7 @@ class TestTemaNoBanco(unittest.TestCase):
         self.assertIn(f"antes-v{dados.VERSAO_ESQUEMA}-de-v8", backups[0])
         # quem for criado depois da migração começa seguindo o Windows
         banco.criar_usuario("Carla", "carla", "porteiro", gerar_hash("senha789"),
-                            autor="ana")
+                            autor="ana", trocar_senha=False)
         self.assertEqual(banco.buscar_usuario("carla")["tema"], "sistema")
 
     def test_migracao_que_falha_nao_deixa_a_coluna_pela_metade(self):

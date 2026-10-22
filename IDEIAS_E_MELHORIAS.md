@@ -250,7 +250,9 @@ versão 11, numa migração só (atômica, com backup antes).
 - ✅ **V3 / RN37** — lotação do estacionamento (vagas, aviso ou bloqueio).
 - ✅ **B4** — "Ausentar": cadeado no rodapé da barra lateral ou Ctrl+L.
 - ✅ **V4** — Relatório de exceções em Usuários (filtros, CSV).
-- 760 testes automatizados.
+- ✅ **V5 / RN40** — dois carros da mesma pessoa (achado no teste do aluno):
+  aviso na entrada com outro carro, limite de 2 e uma pergunta só na saída.
+- 782 testes automatizados.
 - Ideias para depois: "Imprimir" o relatório de exceções (C2, versão 2.5);
   limite de tentativas na senha atual de "Gerar novos códigos" (junto com a
   N09); filtro "só dono fora" na lista de veículos a partir da faixa do
@@ -272,7 +274,8 @@ saída do veículo separadas da pessoa (estacionamento) · RF20 ver o histórico
 de visitas de cada pessoa · RF21 escolher datas e horas num calendário e
 relógio · RF22 recuperar a senha do administrador com um código de uso único
 (2.2) · RF23 cadastrar quem pode retirar o veículo de uma pessoa (2.2) · RF24
-travar a guarita ("Ausentar") (2.2) · RF25 relatório de exceções do período,
+travar a guarita ("Ausentar") (2.2) · RF26 escolher com qual carro a pessoa sai
+(2.2) · RF25 relatório de exceções do período,
 com exportação (2.2).
 
 **RNF**: RNF01 interface simples com botões identificados · RNF02 senha oculta e
@@ -381,7 +384,18 @@ ativo, o Painel pede um segundo · RN39 quem o administrador cria, ou cuja senha
 redefine, define a própria senha no primeiro login, antes de qualquer tela (o banco
 recusa qualquer operação dele até isso); nenhuma senha pode ser igual ao login,
 inclusive na redefinição pelo administrador. O administrador do primeiro acesso
-escolheu a dele e não troca.
+escolheu a dele e não troca · RN40 DOIS CARROS DA MESMA PESSOA (uma pessoa
+dirige um carro de cada vez): quem já tem carro no estacionamento e entra com OUTRO
+recebe, antes de gravar, o aviso "Carla já tem o BRA2E19 no estacionamento desde
+08:20" — Entrar, ficam os dois (padrão); "O BRA2E19 já saiu" (corrige o esquecimento
+da guarita, só com a senha de um administrador e justificativa; vai ao relatório de
+exceções como "Carro que já tinha saído"); ou Cancelar. Até 2 carros abertos do
+mesmo CPF; um terceiro só com a senha do administrador ("Terceiro carro" no
+relatório). Na saída de quem tem mais de um carro, UMA pergunta, "Com qual carro
+Carla está saindo?", com um botão por placa (e o horário de entrada) e "A pé — os
+carros ficam"; sai no máximo um carro com a pessoa. O carro que fica segue RN32,
+RN35 e RN36. O banco confere o limite, que uma saída fecha no máximo um carro dela e
+que "já saiu" sem a senha é recusado.
 
 ## 5. Pendências registradas na revisão final (para a versão 2.1+)
 

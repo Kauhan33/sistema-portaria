@@ -124,7 +124,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-760 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
+782 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
 negócio, login, senhas, permissões, cadastro de pessoas e preenchimento
 automático, saída rápida e desfazer, correção de registros, lista de bloqueio,
 **regras de horário** (cada categoria dentro e fora da janela, ninguém entra
@@ -140,7 +140,7 @@ pergunta **"de carro ou a pé?"** na entrada, o **tamanho máximo de todos os
 campos** (digitação, colagem, validação e banco), a **versão 2.2** (senha do
 administrador conferida pelo banco, troca de senha obrigatória, códigos de
 recuperação, quem pode retirar o veículo, carro esquecido, lotação,
-"Ausentar" e o relatório de exceções, inclusive ataques direto ao banco sem
+"Ausentar", o relatório de exceções e os dois carros da mesma pessoa, inclusive ataques direto ao banco sem
 passar pela tela e a migração de um banco v10 com dados), duas estações ao mesmo
 tempo (correção com a linha desatualizada, saídas e Encerrar o dia em
 paralelo), histórico de visitas e ordenação na página Pessoas, o
@@ -196,6 +196,8 @@ resultado não depende da hora em que eles rodam.
 | **Carro esquecido** e **Estacionamento 3/50** antes do fechamento (RN36, RN37) | **Usuários › Exceções** — tudo o que passou por cima da regra |
 | ![Códigos de recuperação](docs/design/final/v22_codigos_de_recuperacao_claro.png) | ![Esqueci a senha](docs/design/final/v22_login_esqueci_a_senha_claro.png) |
 | **Códigos de recuperação** — aparecem uma vez (RN38) | **Esqueci a senha** — com um código de uso único |
+| ![Dois carros: entrada](docs/design/final/v22_dois_carros_entrada_claro.png) | ![Dois carros: saída](docs/design/final/v22_dois_carros_saida_claro.png) |
+| **Dois carros** — o aviso na entrada com outro carro (RN40) | **Com qual carro está saindo?** — uma pergunta só |
 | ![Guarita travada](docs/design/final/v22_guarita_travada_escuro.png) | ![Vagas](docs/design/final/v22_config_vagas_claro_1366x670.png) |
 | **Ausentar** — guarita travada, o rascunho fica guardado | **Configurações** — vagas e "Bloquear quando lotado" (notebook 1366×670) |
 | ![O veículo só sai com o dono](docs/design/final/r5_veiculo_so_sai_com_o_dono_claro.png) | ![Senha do administrador](docs/design/final/r5_senha_do_administrador_claro.png) |
@@ -282,8 +284,15 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     ABC-1234?"** — *Saiu de carro* ou *Saiu a pé — o carro fica*. Quem volta
     vê a faixa **"O carro ABC-1234 está no estacionamento desde 08:00"**
     (ele é o dono e pode sair com o carro) e entra a pé; na próxima saída, a
-    pergunta de novo. Quem tem dois carros no estacionamento (saiu a pé e
-    voltou com outro) é perguntado primeiro pelo carro desta visita;
+    pergunta de novo;
+  - **dois carros da mesma pessoa** (RN40): quem já tem carro no
+    estacionamento e entra com outro vê **"Carla já tem o BRA2E19 no
+    estacionamento desde 08:20"** — *Entrar — ficam os dois*, *O BRA2E19 já
+    saiu* (corrige o esquecimento da guarita com a senha do administrador)
+    ou Cancelar; até 2 carros por pessoa, o terceiro só com a senha. Na
+    saída, uma pergunta só: **"Com qual carro Carla está saindo?"**, com um
+    botão por placa (e o horário de entrada) e *A pé — os carros ficam*; sai
+    um carro com a pessoa e o outro segue as regras do carro que fica;
   - **o veículo só sai com o dono** (RN32): sem o dono — ele está fora do
     campus, fica no campus ("Só o carro saiu") ou é outra pessoa que sai com
     o carro — aparece **"O veículo só sai com o dono"** (com o nome e o CPF
@@ -352,7 +361,8 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
   ativar/desativar, redefinir senha) com a atividade do sistema e filtro, e
   **Exceções** (V4): tudo o que passou por cima de uma regra no período —
   horário, retroativo, mais de 24 h, veículo sem o dono, veículo com
-  autorizado, lotação com senha, saídas automáticas e código de recuperação
+  autorizado, lotação com senha, carro que já tinha saído, terceiro carro,
+  saídas automáticas e código de recuperação
   usado — com os filtros período, tipo e quem autorizou, a pessoa com o CPF
   mascarado e **Exportar CSV** (registrado no histórico).
 - **Configurações** (administrador): os horários de acesso, em três seções —
@@ -596,7 +606,9 @@ numa migração só, com backup antes):
 - **V3 / RN37**: lotação do estacionamento (vagas, aviso ou bloqueio);
 - **B4**: "Ausentar" (cadeado ou Ctrl+L), com troca de turno;
 - **V4**: relatório de exceções com filtros e CSV;
-- 760 testes automatizados.
+- **V5 / RN40**: dois carros da mesma pessoa (aviso na entrada, limite de 2,
+  "Com qual carro está saindo?");
+- 782 testes automatizados.
 
 **2.1** (21/10/2026) — regras de horário de acesso, veículos, modo noturno e instalador:
 

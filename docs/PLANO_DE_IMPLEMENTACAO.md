@@ -39,7 +39,7 @@ não se repete abaixo):
 
 | Versão | Tema | Itens | Esquema | Esforço |
 |---|---|---|---|---|
-| **2.2** ✅ | Veículo e acesso do administrador | V0, V1, V2, V3, B3, S07, B4, V4 | v11 | ~5 dias |
+| **2.2** ✅ | Veículo e acesso do administrador | V0, V1, V2, V3, B3, S07, B4, V4, V5 | v11 | ~5 dias |
 | **2.3** | Compiladores: linha de comando | E1, E2, E4, F1 | v11 (sem mudança) | ~6 dias |
 | **2.4** | Visitante e operação da guarita | A1, A4, A3, A2, A6, A5 (opcional) | v12 | ~6 dias |
 | **2.5** | Dados, relatórios e apresentação | F2, D3, C1, C2, C3 | v12 (sem mudança) | ~5 dias |
@@ -213,7 +213,7 @@ V2, V3, B4, V4, com uma migração só para a v11.
 - **Testes:** cada tipo de exceção aparece no filtro certo; o período respeita
   o fuso local; o porteiro não abre a aba.
 
-### V5. Dois carros da mesma pessoa no estacionamento · M · RN40
+### V5. Dois carros da mesma pessoa no estacionamento · M · RN40 ✅
 *(achado no teste do aluno da 2.2, em 21/10/2026)*
 - **Problema:** a pessoa sai a pé, deixa o carro A e volta com o carro B. Na
   saída, a pergunta "Saiu com o veículo B?" é respondida com "Saiu de carro"

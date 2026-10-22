@@ -216,6 +216,11 @@ TAMANHOS_DA_VISITA = (("Nome completo", "nome", MAXIMO_NOME),
                       ("Placa", "placa", MAXIMO_PLACA),
                       ("Entrada", "entrada", MAXIMO_DATA_HORA),
                       ("Saída", "saida", MAXIMO_DATA_HORA))
+# Ações do histórico (auditoria) que passaram por cima de uma regra: o
+# Relatório de exceções (Usuários › Exceções) filtra por elas
+EXCECAO_AUTORIZADA = "Exceção autorizada"        # horário, retroativo, 24 h
+SAIDA_AUTOMATICA_ENCERRAMENTO = "Saída automática (encerramento)"
+SAIDA_AUTOMATICA_ATUALIZACAO = "Saída automática (atualização)"
 VEICULO_SEM_DONO = "Veículo saiu sem o dono"     # evento e regra (RN32)
 # RN35: pessoas autorizadas a retirar o veículo
 VEICULO_COM_AUTORIZADO = "Veículo saiu com autorizado"
@@ -229,6 +234,11 @@ LOTACAO_CONFIRMADA = "Entrada com estacionamento lotado"      # só o aviso
 CODIGOS_GERADOS = "Códigos de recuperação gerados"
 CODIGO_RECUPERACAO_USADO = "Senha redefinida com código de recuperação"
 RECUPERACAO_RECUSADA = "Recuperação de senha recusada"
+# todas as exceções, na ordem do filtro "Tipo" do relatório
+ACOES_DE_EXCECAO = (EXCECAO_AUTORIZADA, VEICULO_SEM_DONO,
+                    VEICULO_COM_AUTORIZADO, LOTACAO_LIBERADA,
+                    SAIDA_AUTOMATICA_ENCERRAMENTO,
+                    SAIDA_AUTOMATICA_ATUALIZACAO, CODIGO_RECUPERACAO_USADO)
 TROCA_DE_SENHA_PENDENTE = ("Defina a sua senha antes de continuar: saia e "
                            "entre de novo para trocá-la.")
 AUTORIZACAO_SEM_SENHA = ("A autorização de outro usuário só vale com a senha "
@@ -514,7 +524,7 @@ def _passo_v6(banco, con, versao):
         for (id_, nome, _), (_, _, seguinte) in zip(abertas, abertas[1:]):
             con.execute("UPDATE registros SET saida = ? WHERE id = ?",
                         (seguinte, id_))
-            Banco._evento(con, AUTOR_SISTEMA, "Saída automática (atualização)",
+            Banco._evento(con, AUTOR_SISTEMA, SAIDA_AUTOMATICA_ATUALIZACAO,
                           f"#{id_} {nome}: havia outra entrada sem saída do "
                           f"mesmo CPF; saída marcada em {de_iso(seguinte)}, "
                           "horário da entrada seguinte. Confira e corrija "
@@ -1112,7 +1122,7 @@ class Banco:
         regras = " ".join(autorizacao.get("regras", []))
         senha = (" Senha do administrador conferida."
                  if autorizacao.get("com_senha") else "")
-        cls._evento(con, autorizacao["autorizado_por"], "Exceção autorizada",
+        cls._evento(con, autorizacao["autorizado_por"], EXCECAO_AUTORIZADA,
                     f"#{id_} {nome} — {regras} Justificativa: "
                     f"{autorizacao['justificativa'].strip()}. "
                     f"Operador: {autor or AUTOR_SISTEMA}.{senha}", id_)
@@ -1654,7 +1664,7 @@ class Banco:
                                      "id = ? AND saida = ''", (saida, r["id"]))
                 if not cursor.rowcount:   # a saída real veio de outra estação
                     continue
-                self._evento(con, autor, "Saída automática (encerramento)",
+                self._evento(con, autor, SAIDA_AUTOMATICA_ENCERRAMENTO,
                              f"#{r['id']} {r['nome']}: saída marcada em "
                              f"{de_iso(saida)}, prazo de saída do dia da "
                              "entrada.", r["id"])
@@ -2602,6 +2612,31 @@ class Banco:
                         "registro_id) VALUES (?, ?, ?, ?, ?)",
                         (datetime.now().strftime(FORMATO_ISO_SEGUNDOS), autor,
                          acao, mascarar_cpfs_no_texto(detalhe), registro_id))
+
+    def listar_excecoes(self, desde, ate, autor):
+        """
+        V4: os eventos de exceção (ACOES_DE_EXCECAO) com o momento entre os
+        dias `desde` e `ate` (date, inclusive; hora local, como o
+        histórico grava), do mais recente para o mais antigo, com o nome e
+        o CPF da visita ligada (se ela ainda existe). Só administrador.
+        """
+        marcas = ", ".join("?" for _ in ACOES_DE_EXCECAO)
+        with self._conexao() as con:
+            self._exigir(con, autor, para="ver o relatório de exceções")
+            linhas = con.execute(
+                "SELECT a.momento, a.usuario, a.acao, a.detalhe, "
+                "COALESCE(r.nome, ''), COALESCE(r.cpf, '') FROM auditoria a "
+                "LEFT JOIN registros r ON r.id = a.registro_id "
+                f"WHERE a.acao IN ({marcas}) AND a.momento >= ? "
+                "AND a.momento < ? ORDER BY a.momento DESC, a.id DESC",
+                (*ACOES_DE_EXCECAO, f"{desde:%Y-%m-%d} 00:00:00",
+                 f"{ate + timedelta(days=1):%Y-%m-%d} 00:00:00")).fetchall()
+        eventos = []
+        for momento, usuario, acao, detalhe, nome, cpf in linhas:
+            evento = self._formatar_evento((momento, usuario, acao, detalhe))
+            evento.update(nome=nome, cpf=cpf)
+            eventos.append(evento)
+        return eventos
 
     def listar_eventos(self, limite=200):
         """Últimos eventos, do mais recente para o mais antigo."""

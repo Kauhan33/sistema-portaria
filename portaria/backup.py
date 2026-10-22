@@ -4,7 +4,8 @@ Backup do banco e exportação de registros para planilha (CSV).
 - fazer_backup: cópia consistente agora (pode ser com o programa em uso).
 - backup_diario: no máximo uma cópia por dia, guardando as N mais recentes;
   pensado para rodar ao abrir o programa.
-- exportar_csv: registros de um período para abrir no Excel.
+- exportar_csv: registros de um período para abrir no Excel;
+- exportar_excecoes_csv: o Relatório de exceções (V4), com o CPF mascarado.
 
 Antes de copiar, o banco passa por PRAGMA quick_check: um banco com defeito
 não vira "backup" (não substituiria uma cópia boa na rotação).
@@ -19,12 +20,15 @@ import sqlite3
 from contextlib import closing
 from datetime import date, datetime
 
+from . import excecoes
 from .dados import SEGUNDOS_ESPERA, ErroDados, copiar_banco, log, mensagem_amigavel
 from .validacao import formatar_celular, formatar_cpf, formatar_placa
 
 PREFIXO = "portaria"
 MANTER_BACKUPS = 30
 CABECALHO_CSV = ["Nome", "CPF", "Celular", "Placa", "Tipo", "Entrada", "Saída"]
+CABECALHO_EXCECOES = ["Quando", "Tipo", "Pessoa", "Quem autorizou",
+                      "Quem operava", "Justificativa"]
 
 
 def pasta_padrao(caminho_banco):
@@ -116,16 +120,49 @@ def exportar_csv(banco, caminho_csv, desde, ate, autor):
     if ate < desde:
         raise ErroDados("A data final não pode ser anterior à inicial.")
     registros = banco.registros_do_periodo(desde, ate, autor=autor)
+    _gravar_csv(caminho_csv, CABECALHO_CSV, [(
+        r["nome"], formatar_cpf(r["cpf"]), formatar_celular(r["celular"]),
+        formatar_placa(r["placa"]), r["tipo"], r["entrada"], r["saida"])
+        for r in registros])
+    banco.registrar_evento(autor, "Exportação de registros",
+                           f"{len(registros)} registro(s) de {desde:%d/%m/%Y} "
+                           f"a {ate:%d/%m/%Y}")
+    return len(registros)
+
+
+def exportar_excecoes_csv(banco, caminho_csv, desde, ate, autor,
+                          tipo=excecoes.TODOS, autorizou=excecoes.TODOS):
+    """
+    V4: o Relatório de exceções do período (com os mesmos filtros da tela)
+    num CSV no padrão do Painel (';' e UTF-8 com BOM). A pessoa vai com o
+    CPF mascarado. Só administrador; a exportação fica no histórico.
+    Devolve quantas linhas.
+    """
+    if ate < desde:
+        raise ErroDados("A data final não pode ser anterior à inicial.")
+    linhas = excecoes.filtrar(
+        [excecoes.ler_excecao(e) for e in banco.listar_excecoes(
+            desde, ate, autor=autor)], tipo, autorizou)
+    _gravar_csv(caminho_csv, CABECALHO_EXCECOES, [(
+        l["quando"], ", ".join(l["tipos"]), l["pessoa"], l["autorizou"],
+        l["operava"], l["justificativa"]) for l in linhas])
+    banco.registrar_evento(autor, "Exportação de exceções",
+                           f"{len(linhas)} exceção(ões) de {desde:%d/%m/%Y} "
+                           f"a {ate:%d/%m/%Y} (tipo: {tipo}; quem autorizou: "
+                           f"{autorizou})")
+    return len(linhas)
+
+
+def _gravar_csv(caminho_csv, cabecalho, linhas):
+    """Grava num arquivo temporário e só então renomeia (nunca fica um CSV
+    pela metade com o nome final)."""
     temporario = caminho_csv + ".tmp"
     try:
         with open(temporario, "w", newline="", encoding="utf-8-sig") as f:
             escritor = csv.writer(f, delimiter=";")
-            escritor.writerow(CABECALHO_CSV)
-            for r in registros:
-                escritor.writerow([_celula(v) for v in (
-                    r["nome"], formatar_cpf(r["cpf"]),
-                    formatar_celular(r["celular"]), formatar_placa(r["placa"]),
-                    r["tipo"], r["entrada"], r["saida"])])
+            escritor.writerow(cabecalho)
+            for linha in linhas:
+                escritor.writerow([_celula(v) for v in linha])
         os.replace(temporario, caminho_csv)
     except OSError as e:
         log.error("Erro ao gravar o CSV: %s", e)
@@ -134,7 +171,3 @@ def exportar_csv(banco, caminho_csv, desde, ate, autor):
         raise ErroDados("Não foi possível gravar o arquivo.\n"
                         "Confira se ele não está aberto no Excel e se há "
                         "permissão na pasta.", detalhe=str(e)) from e
-    banco.registrar_evento(autor, "Exportação de registros",
-                           f"{len(registros)} registro(s) de {desde:%d/%m/%Y} "
-                           f"a {ate:%d/%m/%Y}")
-    return len(registros)

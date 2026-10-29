@@ -33,7 +33,7 @@ casos de teste (inclusive negativos, com "passou/falhou").
 ## 3. Roteiro sugerido
 
 Ordem pensada para cada etapa já deixar algo entregável. O plano das próximas
-versões (2.2 a 2.6, com regras RN35 em diante, banco, telas e testes de cada
+versões (2.2 a 2.7, com regras RN35 em diante, banco, telas e testes de cada
 ideia) está em `docs/PLANO_DE_IMPLEMENTACAO.md`.
 
 ### Etapa 1 — Base sólida (pré-requisito do resto)
@@ -72,6 +72,7 @@ ideia) está em `docs/PLANO_DE_IMPLEMENTACAO.md`.
   histórico "antes → depois" ligado a cada registro (esquema v4); CPF errado
   migra a visita para a pessoa certa. 177 testes.
 - ✅ **Lista de bloqueio** (17/10/2026): CPF ou placa com motivo (esquema v5);
+  na 2.3 virou a **desativação** de pessoa e de veículo, dentro de Pessoas;
   alerta ao digitar; entrada recusada e registrada no histórico (RN12); só admin
   cria/remove, porteiro vê; remoção guardada; marcação na aba Pessoas. 199 testes.
   Ideia futura: "liberar uma vez" pelo admin sem remover o bloqueio.
@@ -258,7 +259,7 @@ versão 11, numa migração só (atômica, com backup antes).
 - ✅ **V5 / RN40** — dois carros da mesma pessoa (achado no teste do aluno):
   aviso na entrada com outro carro, limite de 2 e uma pergunta só na saída.
 - 782 testes automatizados.
-- Ideias para depois: "Imprimir" o relatório de exceções (C2, versão 2.5);
+- Ideias para depois: "Imprimir" o relatório de exceções (C2, versão 2.6);
   limite de tentativas na senha atual de "Gerar novos códigos" (junto com a
   N09); filtro "só dono fora" na lista de veículos a partir da faixa do
   carro esquecido.
@@ -273,13 +274,35 @@ versão 11, numa migração só (atômica, com backup antes).
   e prints novos da versão atual (`docs/design/final/v221_*`).
 - 784 testes automatizados.
 
+### Versão 2.3 — pessoas, desativação e CRUD (29/10/2026) ✅
+Pedidos do aluno depois do teste da 2.2.1 e o da professora (CRUD em todas
+as abas). Plano em `docs/PLANO_DE_IMPLEMENTACAO.md` (seção "Versão 2.3"; o
+de Compiladores passou a ser a 2.4). Sem mudança de esquema (banco v11).
+- ✅ **P1** — Entrada e saída: o Movimento sobe; título numa linha própria
+  (com o status ao lado), subabas Pessoas | Veículos logo embaixo, busca e
+  botões à direita. Na tela 1366×670 a tabela continua com 4 linhas.
+- ✅ **P2** — Placa sem o recorte branco no tema escuro (o fundo segue o
+  cartão e a troca de tema) e o desenho da **placa antiga** (cinza, moldura
+  escura, NEY-4829) no formulário, nos diálogos e na ficha.
+- ✅ **P3 / RN12** — a página Bloqueios virou a **desativação** dentro de
+  Pessoas (subabas Ativas | Desativadas | Veículos desativados). Fica na
+  mesma tabela `bloqueios` (desativar = bloqueio ativo), sem migração.
+- ✅ **P4 / RN41** — **Nova pessoa** (cadastro sem entrada) e **Editar** na
+  ficha.
+- ✅ **P5 / RN42** — **Excluir pessoa** só pelo administrador e só sem visita.
+- ✅ **P6 / RN43–RN45** — CRUD em todas as abas (`docs/CRUD.md`): editar
+  usuário, editar feriado e evento e editar a validade de quem pode retirar
+  o carro. Painel e Exceções são só leitura (justificado na matriz).
+- 834 testes automatizados; casos de teste CT-01 a CT-53.
+
 ## 4. Rascunho de requisitos para o Word
 
 **RF**: RF01 cadastrar entrada · RF02 registrar saída (botão, duplo clique,
 saída rápida por CPF/placa) · RF03 consultar/buscar histórico · RF04 excluir
 registro (admin) · RF05 exibir Painel · RF06 login e primeiro acesso · RF07
 exportar CSV (admin) · RF08 cadastro de pessoas com preenchimento automático ·
-RF09 corrigir registro com histórico · RF10 lista de bloqueio · RF11 gerenciar
+RF09 corrigir registro com histórico · RF10 desativar e reativar pessoa e
+veículo (até a 2.2: lista de bloqueio) · RF11 gerenciar
 usuários (admin) · RF12 trocar a própria senha · RF13 backup diário automático ·
 RF14 comando digitado (Etapa 4, futuro) · RF15 configurar os horários de
 acesso: funcionamento, categorias, feriados e eventos (admin) · RF16 autorizar
@@ -291,7 +314,10 @@ relógio · RF22 recuperar a senha do administrador com um código de uso único
 (2.2) · RF23 cadastrar quem pode retirar o veículo de uma pessoa (2.2) · RF24
 travar a guarita ("Ausentar") (2.2) · RF26 escolher com qual carro a pessoa sai
 (2.2) · RF25 relatório de exceções do período,
-com exportação (2.2).
+com exportação (2.2) · RF27 cadastrar pessoa sem registrar entrada ("Nova
+pessoa") (2.3) · RF28 editar e excluir o cadastro de uma pessoa (2.3) · RF29
+editar o nome e o perfil de um usuário (2.3) · RF30 editar feriado e evento
+(2.3) · RF31 editar a validade de quem pode retirar o veículo (2.3).
 
 **RNF**: RNF01 interface simples com botões identificados · RNF02 senha oculta e
 armazenada com hash · RNF03 tela principal e busca respondem na hora mesmo com
@@ -305,7 +331,11 @@ abertas · RN06 CPF/celular/placa válidos · RN07 entrada não pode ser no futu
 RN08 sempre existe ao menos um administrador ativo · RN09 usuário desativado não
 entra · RN10 5 senhas erradas bloqueiam o login por 30 s · RN11 porteiro corrige só registros com
 entrada nas últimas 24 h; administrador corrige qualquer um, sempre com histórico ·
-RN12 CPF ou placa na lista de bloqueio não entra; só o administrador bloqueia e desbloqueia ·
+RN12 (reescrita na 2.3) pessoa desativada (CPF) ou veículo desativado (placa) não entra:
+a entrada é recusada com o motivo, quando e quem desativou; só o administrador desativa
+(motivo de 5 a 200 caracteres) e só ele reativa; a desativação não se apaga (reativar
+guarda quem e quando) e tudo vai ao histórico; o banco confere de novo na entrada e na
+correção (que não pode pôr um desativado no campus) ·
 RN13 sem uso por 10 minutos a sessão se encerra · RN14 o porteiro vê o CPF mascarado
 nas listas e no histórico · RN15 senha com pelo menos 8 caracteres e diferente do login.
 (RN10 na 2.0: a espera começa em 30 s, dobra a cada bloqueio até 15 min e não zera ao
@@ -378,7 +408,7 @@ RN35 QUEM PODE RETIRAR O VEÍCULO: cada placa tem a lista de pessoas autorizadas
 levar o carro sem o dono; o carro sai SEM SENHA quando quem leva está na lista
 daquela placa, com a autorização ativa e na validade (opcional: sem data vale até
 alguém remover; com data, até o fim daquele dia), está no campus (entrou a pé) e não
-tem bloqueio de CPF; o carro sai junto com a saída dessa pessoa ("Vai levar o carro
+está desativada (RN12); o carro sai junto com a saída dessa pessoa ("Vai levar o carro
 BRA2E19 de Carla?" — Sim, leva o carro / Não), registrado como "Veículo saiu com
 autorizado" (quem cadastrou e quando); nos outros casos vale a RN32. O porteiro só
 cadastra com o dono no campus naquele momento; o administrador, a qualquer hora;
@@ -411,6 +441,24 @@ Carla está saindo?", com um botão por placa (e o horário de entrada) e "A pé
 carros ficam"; sai no máximo um carro com a pessoa. O carro que fica segue RN32,
 RN35 e RN36. O banco confere o limite, que uma saída fecha no máximo um carro dela e
 que "já saiu" sem a senha é recusado.
+
+Novas na 2.3 (pessoas, desativação e CRUD):
+RN41 NOVA PESSOA: o cadastro de pessoa sem registrar entrada usa a mesma validação e os
+mesmos limites da entrada (RN01, RN06, RN33); CPF já cadastrado é recusado e a ficha que
+já existe é aberta; CPF desativado avisa (pode cadastrar, e a pessoa continua sem
+entrar); qualquer usuário cadastra e edita (o CPF não muda na edição); o banco confere de
+novo · RN42 EXCLUIR PESSOA: só o administrador, e só o cadastro de quem nunca teve
+visita (cadastro feito por engano); com visitas, a exclusão é recusada e a saída é
+desativar (RN12); o banco conta as visitas de novo; vai ao histórico com o CPF
+mascarado; a desativação do CPF, se houver, continua valendo · RN43 EDITAR USUÁRIO: o
+administrador muda o nome e o perfil; o login não muda (identifica as ações no
+histórico); ninguém muda o próprio perfil e o último administrador ativo não vira
+porteiro (RN08); "excluir" usuário é desativar (RN09) · RN44 EDITAR FERIADO E EVENTO:
+só o administrador, com a mesma validação do cadastro; a data nova não pode repetir a de
+outro feriado (ou evento); a mudança vai ao histórico com o antes e o depois · RN45
+VALIDADE DE QUEM PODE RETIRAR: muda com a mesma permissão de quem cadastra (RN35: o
+porteiro só com o dono no campus); vazio = sem prazo; nunca antes de hoje; vai ao
+histórico.
 
 ## 5. Pendências registradas na revisão final (para a versão 2.1+)
 

@@ -198,13 +198,16 @@ CASOS = [
     caso("CT-18", ["RN11", "RN12"], NEGATIVO,
          "Correção fora do permitido",
          "Porteiro tenta corrigir um registro com entrada há mais de 24 h; "
-         "ou corrigir o CPF de uma visita para um CPF bloqueado.",
-         "Recusa (\"Acesso negado\" / \"Acesso negado ... bloqueado\") e nada "
-         "muda.",
+         "ou corrigir o CPF de uma visita para o CPF de uma pessoa "
+         "desativada.",
+         "Recusa (\"Acesso negado\" / \"Acesso negado ... Pessoa "
+         "desativada\") e nada muda; o banco também recusa.",
          ["test_interface.TestCorrigirComoPorteiro."
           "test_porteiro_nao_corrige_registro_antigo",
           "test_interface.TestCorrigirComoPorteiro."
-          "test_nao_burla_o_bloqueio_pela_correcao"]),
+          "test_nao_burla_a_desativacao_pela_correcao",
+          "test_dados.TestDesativacaoNoBanco."
+          "test_banco_recusa_entrada_e_correcao_de_desativado"]),
 
     # --- Login e usuários -------------------------------------------
     caso("CT-19", ["RF06", "RNF02"], POSITIVO, "Login com senha oculta",
@@ -279,26 +282,32 @@ CASOS = [
           "test_recuperacao.TestCodigosNoBanco."
           "test_codigo_errado_conta_como_tentativa"]),
 
-    # --- Lista de bloqueio ------------------------------------------
-    caso("CT-27", ["RF10", "RN12"], NEGATIVO, "CPF ou placa bloqueados",
-         "Registrar a entrada de um CPF que está na lista de bloqueio; ou "
-         "entrar de carro com uma placa bloqueada.",
-         "\"Acesso negado\" com o motivo e quem bloqueou; nada é gravado e a "
-         "recusa fica no histórico.",
-         ["test_interface.TestBloqueioNoCadastro."
-          "test_cadastro_de_cpf_bloqueado_e_recusado_e_registrado",
-          "test_validacao.TestBloqueio.test_entrada_com_placa_bloqueada_e_recusada",
+    # --- Desativação de pessoa e de veículo (até a 2.2: bloqueio) ----
+    caso("CT-27", ["RF10", "RN12"], NEGATIVO,
+         "Pessoa ou veículo desativado",
+         "Registrar a entrada de uma pessoa desativada (CPF); ou entrar de "
+         "carro com um veículo desativado (placa); ou gravar a entrada "
+         "direto no banco, sem a tela.",
+         "\"Acesso negado\" com \"Pessoa desativada\" (ou \"Veículo "
+         "desativado\"), o motivo, quando e quem desativou; nada é gravado, "
+         "a recusa fica no histórico e o banco também recusa.",
+         ["test_interface.TestDesativacaoNoCadastro."
+          "test_cadastro_de_pessoa_desativada_e_recusado_e_registrado",
+          "test_validacao.TestDesativacao."
+          "test_entrada_com_veiculo_desativado_e_recusada",
           "test_interface_entrada_de_carro.TestEntradaDeCarroOuAPe."
-          "test_de_carro_com_placa_bloqueada_e_recusado"]),
-    caso("CT-28", ["RN12"], NEGATIVO, "Porteiro não gerencia bloqueios",
-         "Logado como porteiro: abrir Bloqueios; tentar criar ou remover um "
-         "bloqueio direto no banco.",
-         "Vê a lista, mas sem \"Novo bloqueio\" nem \"Remover\"; o banco "
-         "recusa.",
-         ["test_interface.TestBloqueioNoCadastro."
-          "test_porteiro_ve_a_lista_mas_nao_gerencia",
+          "test_de_carro_com_veiculo_desativado_e_recusado",
+          "test_interface.TestAbaDesativadas."
+          "test_banco_recusa_a_entrada_de_desativado_mesmo_sem_a_tela"]),
+    caso("CT-28", ["RN12"], NEGATIVO, "Porteiro não desativa",
+         "Logado como porteiro: abrir Pessoas › Desativadas e Veículos "
+         "desativados; tentar desativar uma pessoa direto no banco.",
+         "Vê as listas (CPF mascarado), sem \"Desativar\" nem "
+         "\"Reativar\"; o banco recusa.",
+         ["test_interface.TestDesativacaoNoCadastro."
+          "test_porteiro_ve_as_listas_mas_nao_desativa_nem_reativa",
           "test_dados.TestPermissoesNoBanco."
-          "test_porteiro_nao_mexe_na_lista_de_bloqueio"]),
+          "test_porteiro_nao_desativa_nem_reativa"]),
 
     # --- Horários e autorização do administrador ---------------------
     caso("CT-29", ["RF15", "RN17", "RN20"], NEGATIVO, "Aluno com o campus fechado",
@@ -476,6 +485,77 @@ CASOS = [
           "test_migracao_que_falha_nao_muda_nada",
           "test_dados.TestIntegridade."
           "test_banco_de_versao_mais_nova_e_recusado_sem_alterar_nada"]),
+
+    # --- Versão 2.3: pessoas, desativação e CRUD ----------------------
+    caso("CT-48", ["RF27", "RN41"], POSITIVO, "Nova pessoa sem entrada",
+         "Em Pessoas, \"Nova pessoa\": CPF 529.982.247-25, \"Fernanda "
+         "Souza\", celular 31 98765-4321, placa NEY4829 e tipo Visitante; "
+         "clicar em Cadastrar.",
+         "A pessoa é cadastrada e a ficha dela abre (placa antiga NEY-4829) "
+         "com \"Pessoa cadastrada. A entrada não foi registrada.\"; nenhuma "
+         "visita é gravada; o histórico registra \"Pessoa cadastrada\".",
+         ["test_interface.TestNovaPessoa."
+          "test_cadastra_sem_registrar_entrada_e_abre_a_ficha",
+          "test_dados.TestPessoas.test_cadastrar_pessoa_sem_entrada"]),
+    caso("CT-49", ["RF27", "RN41"], NEGATIVO, "Nova pessoa com CPF repetido",
+         "\"Nova pessoa\" com o CPF de alguém já cadastrado; ou com nome "
+         "sem sobrenome, CPF ou celular inválido; ou o mesmo CPF direto no "
+         "banco.",
+         "CPF repetido: já na digitação avisa \"Já cadastrado\"; ao salvar, "
+         "nada é cadastrado e a ficha que já existe abre. Campos inválidos: "
+         "a mesma mensagem da entrada. O banco também recusa.",
+         ["test_interface.TestNovaPessoa."
+          "test_cpf_ja_cadastrado_e_recusado_e_abre_a_ficha",
+          "test_interface.TestNovaPessoa.test_mesma_validacao_da_entrada",
+          "test_dados.TestPessoas."
+          "test_cadastrar_pessoa_recusa_repetida_invalida_e_longa"]),
+    caso("CT-50", ["RF28", "RN42"], NEGATIVO, "Excluir pessoa com visita",
+         "Administrador abre a ficha de uma pessoa que já teve visita e "
+         "clica em Excluir; ou exclui direto no banco.",
+         "Nada é excluído: \"Esta pessoa tem 1 visita no histórico e não "
+         "pode ser excluída ... use Desativar.\" O banco também recusa "
+         "(e recusa o porteiro).",
+         ["test_interface.TestExcluirPessoa."
+          "test_com_visita_o_botao_explica_que_e_preciso_desativar",
+          "test_interface.TestExcluirPessoa."
+          "test_banco_recusa_porteiro_e_pessoa_com_visita",
+          "test_dados.TestPessoas."
+          "test_excluir_pessoa_com_visita_ou_por_porteiro_e_recusado"]),
+    caso("CT-51", ["RN12"], NEGATIVO, "Porteiro tenta reativar",
+         "Logado como porteiro: em Pessoas › Desativadas, escolher a pessoa "
+         "e tentar Reativar (pela lista ou pela ficha); ou reativar direto "
+         "no banco.",
+         "\"Somente o administrador desativa ou reativa\"; a pessoa continua "
+         "desativada; o banco recusa.",
+         ["test_interface.TestDesativacaoNoCadastro."
+          "test_porteiro_pela_ficha_tambem_nao_reativa",
+          "test_interface.TestDesativacaoNoCadastro."
+          "test_porteiro_ve_as_listas_mas_nao_desativa_nem_reativa",
+          "test_dados.TestPermissoesNoBanco."
+          "test_porteiro_nao_desativa_nem_reativa"]),
+    caso("CT-52", ["RNF01"], POSITIVO, "Placa antiga desenhada",
+         "Digitar a placa NEY4829 (modelo antigo) na Entrada e saída; abrir "
+         "a ficha de quem tem essa placa; trocar para o tema escuro.",
+         "A placa aparece cinza, com moldura escura e o hífen (NEY-4829), "
+         "sem a faixa azul \"BRASIL\"; a Mercosul continua igual; no tema "
+         "escuro os cantos não têm recorte branco.",
+         ["test_interface.TestPlacaNoFormulario."
+          "test_placa_antiga_e_mercosul_desenhadas_no_formulario",
+          "test_componentes.TestComponentes."
+          "test_placa_antiga_cinza_com_hifen_e_sem_brasil",
+          "test_componentes.TestComponentes."
+          "test_placa_sem_recorte_branco_nos_cantos_no_escuro"]),
+    caso("CT-53", ["RF29", "RN43"], POSITIVO, "Editar usuário",
+         "Administrador, em Usuários › Contas, escolhe o porteiro Paulo, "
+         "clica em Editar, troca o nome para \"Paulo Souza\" e o perfil "
+         "para Administrador e salva; depois tenta mudar o próprio perfil.",
+         "O nome e o perfil mudam e o histórico registra \"Usuário "
+         "alterado\" com o antes e o depois; mudar o próprio perfil é "
+         "recusado (\"Você não pode mudar o seu próprio perfil\").",
+         ["test_interface.TestEditarUsuario.test_admin_edita_nome_e_perfil",
+          "test_interface.TestEditarUsuario."
+          "test_nao_muda_o_proprio_perfil_mas_muda_o_nome",
+          "test_dados.TestCrudNoBanco.test_editar_nome_e_perfil_de_usuario"]),
 ]
 
 

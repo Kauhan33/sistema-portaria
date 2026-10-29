@@ -16,7 +16,8 @@ As ideias estão agrupadas em versões. Cada versão é entregável sozinha.
 - **Esforço:** P = até meio dia · M = 1 a 2 dias · G = 3 dias ou mais, contando os testes.
 - **Esquema:** a versão do banco depois da entrega. Hoje o banco está na v10.
   Toda migração é atômica (`PRAGMA user_version`) e faz um backup antes.
-- **RN nova:** a numeração continua a partir da RN35.
+- **RN nova:** a numeração continua a partir da RN35 (na 2.3 foram da RN41
+  à RN45; a próxima livre é a RN46).
 
 **O que todo item precisa ter para ser considerado pronto** (vale para todos e
 não se repete abaixo):
@@ -40,10 +41,11 @@ não se repete abaixo):
 | Versão | Tema | Itens | Esquema | Esforço |
 |---|---|---|---|---|
 | **2.2** ✅ | Veículo e acesso do administrador | V0, V1, V2, V3, B3, S07, B4, V4, V5 | v11 | ~5 dias |
-| **2.3** | Compiladores: linha de comando | E1, E2, E4, F1 | v11 (sem mudança) | ~6 dias |
-| **2.4** | Visitante e operação da guarita | A1, A4, A3, A2, A6, A5 (opcional) | v12 | ~6 dias |
-| **2.5** | Dados, relatórios e apresentação | F2, D3, C1, C2, C3 | v12 (sem mudança) | ~5 dias |
-| **2.6** | LGPD e segurança | B1, B2, B8, N09, S02 | v13 | ~4 dias |
+| **2.3** ✅ | Pessoas, desativação e CRUD | P1, P2, P3, P4, P5, P6 | v11 (sem mudança) | ~2 dias |
+| **2.4** | Compiladores: linha de comando | E1, E2, E4, F1 | v11 (sem mudança) | ~6 dias |
+| **2.5** | Visitante e operação da guarita | A1, A4, A3, A2, A6, A5 (opcional) | v12 | ~6 dias |
+| **2.6** | Dados, relatórios e apresentação | F2, D3, C1, C2, C3 | v12 (sem mudança) | ~5 dias |
+| **2.7** | LGPD e segurança | B1, B2, B8, N09, S02 | v13 | ~4 dias |
 | Extras | Se sobrar tempo | E3, E6, D1, D2, E5 | — | — |
 | Contínuo | Qualidade e entrega | F3, limpeza de código, Word da entrega | — | — |
 
@@ -51,10 +53,13 @@ não se repete abaixo):
 - **2.2** fecha o assunto "veículo" enquanto as regras da rodada 5 estão
   frescas. Também resolve o risco mais sério de operação: o único
   administrador esquecer a senha.
-- **2.3** é o diferencial da disciplina. Tem que estar pronta bem antes da
+- **2.3** (feita em 29/10/2026) atende ao pedido da professora de CRUD em
+  todas as abas e aos ajustes do aluno: a página Bloqueios virou a
+  desativação dentro de Pessoas, com "Nova pessoa", Editar e Excluir.
+- **2.4** é o diferencial da disciplina. Tem que estar pronta bem antes da
   data de entrega, por isso vem logo em seguida.
-- **2.4 a 2.6** podem ser feitas na ordem que a professora valorizar mais.
-  Para a apresentação, a 2.5 (modo treinamento e Painel) dá o maior efeito.
+- **2.5 a 2.7** podem ser feitas na ordem que a professora valorizar mais.
+  Para a apresentação, a 2.6 (modo treinamento e Painel) dá o maior efeito.
 
 ---
 
@@ -204,7 +209,7 @@ V2, V3, B4, V4, com uma migração só para a v11.
   - **Colunas:** quando, tipo, pessoa (CPF mascarado), quem autorizou, quem
     operava e justificativa.
   - **Saídas:** "Exportar CSV" (mesmo padrão do Painel) e "Imprimir", que fica
-    pronto na 2.5 com o C2.
+    pronto na 2.6 com o C2.
 - **Base:** eventos da tabela `auditoria`. As ações já gravadas são
   "Exceção autorizada", "Veículo saiu sem o dono", "Saída automática
   (encerramento)" e "Saída automática (atualização)". Para facilitar o filtro,
@@ -256,7 +261,53 @@ V2, V3, B4, V4, com uma migração só para a v11.
 
 ---
 
-## Versão 2.3 — Compiladores: linha de comando (sem mudança de esquema)
+## Versão 2.3 — Pessoas, desativação e CRUD (sem mudança de esquema) ✅
+
+Pedidos do aluno depois do teste da 2.2.1 e o pedido da professora de CRUD
+em todas as abas. Feita em 29/10/2026, sem migração: a desativação usa a
+tabela `bloqueios` que já existia (desativar = bloqueio ativo do CPF ou da
+placa), então nenhum bloqueio antigo se perdeu.
+
+### P1. Entrada e saída: o Movimento sobe · P ✅
+- Menos espaço entre "Nova entrada" e o Movimento; o título "Movimento" numa
+  linha própria (com o status ao lado), as subabas **Pessoas | Veículos (n)**
+  logo embaixo, à esquerda, e a busca e os botões à direita.
+- Na tela 1366×670 a tabela continua com 4 linhas.
+
+### P2. Placa: tema escuro e modelo antigo · P ✅
+- O recorte branco nos cantos da faixa azul sumiu (os cantos se misturam
+  com a moldura) e o fundo do desenho é o do cartão, lido a cada desenho
+  (acompanha a troca de tema).
+- Placa antiga (LLL-NNNN): cinza claro, moldura escura, faixa superior cinza
+  e o hífen (NEY-4829), em todos os lugares que usam `Placa`.
+
+### P3. Bloqueios vira desativação dentro de Pessoas · M · RN12 (reescrita) ✅
+- Subabas **Ativas | Desativadas | Veículos desativados**; a página
+  Bloqueios saiu da barra lateral.
+- Pessoa desativada (CPF) e veículo desativado (placa) não entram; o banco
+  confere na entrada e na correção. Só o administrador desativa (motivo de 5
+  a 200 caracteres) e reativa. CPF sem cadastro aparece como
+  "(sem cadastro)".
+
+### P4. Nova pessoa e Editar · M · RN41 ✅
+- "Nova pessoa" cadastra sem registrar entrada, com a validação e os
+  limites da entrada; CPF repetido é recusado e abre a ficha; CPF desativado
+  avisa. A ficha ganha **Editar** (o mesmo diálogo, com o CPF fixo).
+
+### P5. Excluir pessoa · P · RN42 ✅
+- Só o administrador, e só quem nunca teve visita (cadastro por engano); o
+  banco conta as visitas de novo. Com histórico, o botão explica que é
+  preciso desativar.
+
+### P6. CRUD em todas as abas · M · RN43, RN44, RN45 ✅
+- Matriz em `docs/CRUD.md`. Lacunas fechadas: editar usuário (nome e
+  perfil, RN43), editar feriado e evento (RN44) e editar a validade de quem
+  pode retirar o carro (RN45). Painel e Exceções ficam só leitura (o
+  porquê está na matriz e no Word).
+
+---
+
+## Versão 2.4 — Compiladores: linha de comando (sem mudança de esquema)
 
 A gramática, os tokens, os erros por fase e o mockup estão em
 `docs/IDEIAS_NOVAS.md`, seção 2.
@@ -314,16 +365,16 @@ formulário monta e passa pelas **mesmas** funções: `validacao`, `horarios` e
 
 ---
 
-## Versão 2.4 — Visitante e operação da guarita (esquema v12)
+## Versão 2.5 — Visitante e operação da guarita (esquema v12)
 
-### A1. Visitante completo: anfitrião, setor, motivo e crachá · M · RN41
+### A1. Visitante completo: anfitrião, setor, motivo e crachá · M · RN46
 - Para Visitante, Prestador e Entregador, aparece uma linha extra no
   formulário:
   - **Vai até:** nome ou setor, com sugestões; até 60 caracteres;
   - **Motivo:** reunião, entrega, manutenção, evento ou outro;
   - **Crachá:** sugere o primeiro número livre, de 1 a 50 (faixa ajustável em
     Configurações).
-- **Regra (RN41):**
+- **Regra (RN46):**
   - um crachá não fica com duas pessoas ao mesmo tempo;
   - na saída, o sistema pergunta "Devolveu o crachá 07?";
   - os crachás não devolvidos aparecem numa faixa.
@@ -366,7 +417,7 @@ formulário monta e passa pelas **mesmas** funções: `validacao`, `horarios` e
 
 ---
 
-## Versão 2.5 — Dados, relatórios e apresentação (sem mudança de esquema)
+## Versão 2.6 — Dados, relatórios e apresentação (sem mudança de esquema)
 
 ### F2. Gerador de dados fictícios · P/M
 - `python -m portaria.demo --meses 3 --banco demo.db`. Usa semente fixa e
@@ -404,15 +455,15 @@ formulário monta e passa pelas **mesmas** funções: `validacao`, `horarios` e
 
 ---
 
-## Versão 2.6 — LGPD e segurança (esquema v13)
+## Versão 2.7 — LGPD e segurança (esquema v13)
 
-### B1. Retenção, anonimização e relatório do titular · M · RN42
+### B1. Retenção, anonimização e relatório do titular · M · RN47
 - **Retenção:** em Configurações › Privacidade, "Guardar visitas identificadas
   por 12 meses". Depois disso, nome, CPF, celular e placa viram "Anonimizado",
   e a contagem do Painel continua igual.
 - **Relatório do titular:** usa o C2.
-- **Anonimizar a pedido:** exige justificativa. Não é permitido com bloqueio
-  ativo ou visita aberta.
+- **Anonimizar a pedido:** exige justificativa. Não é permitido com a pessoa
+  desativada ou visita aberta.
 - **Backups:** o Word deve dizer que a anonimização chega aos backups em até
   30 dias.
 
@@ -439,7 +490,7 @@ formulário monta e passa pelas **mesmas** funções: `validacao`, `horarios` e
 |---|---|---|---|
 | E3 | Lote de comandos ("caderno" de quando o sistema caiu) | M | Depois do E1. Mostra todos os erros com linha e coluna. Pede a senha do administrador uma vez e grava tudo numa transação. |
 | E6 | Busca com linguagem de consulta → SQL parametrizado | M | Cobre a fase de geração de código. O modo didático mostra o SQL. |
-| D1 | Retorno sonoro (`winsound`) | P | Sons de "registrado", "atenção" e "bloqueado". Liga e desliga no menu da conta. |
+| D1 | Retorno sonoro (`winsound`) | P | Sons de "registrado", "atenção" e "desativado". Liga e desliga no menu da conta. |
 | D2 | Máscara enquanto digita, F1 com os atalhos, A−/A+ no tamanho do texto | M | Cuidado com o cursor do Tk na máscara. |
 | E5 | Comando por voz | M | Opcional e exige pip e internet. CPF não pode ser ditado (LGPD). |
 
@@ -470,4 +521,4 @@ formulário monta e passa pelas **mesmas** funções: `validacao`, `horarios` e
 | A1 | Faixa dos crachás | **1 a 50**, ajustável em Configurações. |
 | A1 | Motivos da visita | Reunião, entrega, manutenção, evento, outro. Não foi perguntado: ficou o padrão. |
 | B1 | Retenção das visitas identificadas | **12 meses.** |
-| Ordem | O que vem depois da 2.2 | **2.3 Compiladores**, depois a 2.4, a 2.5 e a 2.6. |
+| Ordem | O que vem depois da 2.2 | **2.3 Pessoas, desativação e CRUD** (pedido do aluno e da professora, 29/10/2026), depois **2.4 Compiladores**, a 2.5, a 2.6 e a 2.7. |

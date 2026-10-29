@@ -311,7 +311,7 @@ def pares_de_contraste():
     pares += [
         ("placa: caracteres / placa", c["placa_texto"], c["placa_fundo"],
          TEXTO_AA),
-        ("placa bloqueada / placa", c["placa_erro"], c["placa_fundo"], TEXTO_AA),
+        ("placa desativada / placa", c["placa_erro"], c["placa_fundo"], TEXTO_AA),
         ("placa: BRASIL / faixa azul", c["placa_fundo"], c["placa_azul"],
          TEXTO_AA),
         ("placa antiga: caracteres / placa cinza", c["placa_preto"],

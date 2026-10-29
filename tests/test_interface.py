@@ -338,6 +338,24 @@ class TestCadastroComoAdmin(BaseInterface):
         self.msg.showinfo.assert_not_called()
 
 
+class TestPlacaNoFormulario(BaseInterface):
+    """2.3: o desenho acompanha o modelo da placa digitada."""
+
+    def test_placa_antiga_e_mercosul_desenhadas_no_formulario(self):
+        desenho = self.app.tela_cadastro.desenho_placa
+        self.app.var_placa.set("ney4829")
+        self.assertTrue(desenho.antiga)
+        textos = [desenho.itemcget(i, "text") for i in desenho.find_all()
+                  if desenho.type(i) == "text"]
+        self.assertIn("NEY-4829", textos)
+        self.assertNotIn("BRASIL", textos)
+        self.app.var_placa.set("BRA2E19")
+        self.assertFalse(desenho.antiga)
+        textos = [desenho.itemcget(i, "text") for i in desenho.find_all()
+                  if desenho.type(i) == "text"]
+        self.assertIn("BRASIL", textos)
+
+
 class TestLinhaDesatualizada(BaseInterface):
     """B3: outra estação já deu a saída (ou excluiu) e esta tela não sabe."""
 
@@ -2342,7 +2360,7 @@ class CasosCorrigir:
         edicao.salvar()
         self.assertIn("anterior à entrada", self.msg.showerror.call_args[0][1])
 
-    def test_nao_burla_o_bloqueio_pela_correcao(self):  # S01 da revisão
+    def test_nao_burla_a_desativacao_pela_correcao(self):  # S01 da revisão
         self.banco.desativar("cpf", "39053344705", "Ameaçou um aluno", "ana.admin")
         edicao = self.abrir(self.hoje)
         edicao.liberar_cpf()

@@ -4,9 +4,9 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
-**Versão atual: 2.2.1** — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
+**Versão atual: 2.3** — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
 
-![Tela Entrada e saída](docs/design/final/v221_cadastro_admin_claro.png)
+![Tela Entrada e saída](docs/design/final/v23_entrada_admin_claro.png)
 
 ## Como executar
 
@@ -103,8 +103,8 @@ login.
 
 | Perfil | Pode |
 |---|---|
-| Porteiro | Registrar entradas e saídas, corrigir registros com entrada nas últimas 24 horas, buscar no histórico, ver e corrigir o cadastro de pessoas, ver a lista de bloqueio e o Painel, trocar a própria senha. Nas tabelas, na ficha da pessoa e na janela Corrigir, vê o CPF mascarado (`***.982.247-**`); ver a exceção em [Segurança e LGPD](#segurança-e-lgpd) |
-| Administrador | Tudo do porteiro, com o CPF completo + corrigir registros de qualquer data + **excluir registros** + criar e remover **bloqueios** + **exportar CSV** + página **Usuários** (criar, ativar/desativar, redefinir senha, ver a atividade do sistema) + **autorizar exceções de horário** + **Encerrar o dia** + página **Configurações** (horários de acesso) |
+| Porteiro | Registrar entradas e saídas, corrigir registros com entrada nas últimas 24 horas, buscar no histórico, cadastrar pessoas sem entrada ("Nova pessoa") e editar o cadastro delas, ver as pessoas e os veículos desativados e o Painel, trocar a própria senha. Nas tabelas, na ficha da pessoa e na janela Corrigir, vê o CPF mascarado (`***.982.247-**`); ver a exceção em [Segurança e LGPD](#segurança-e-lgpd) |
+| Administrador | Tudo do porteiro, com o CPF completo + corrigir registros de qualquer data + **excluir registros** + **desativar e reativar** pessoas e veículos + **excluir pessoa** sem visitas + **exportar CSV** + página **Usuários** (criar, editar nome e perfil, ativar/desativar, redefinir senha, ver a atividade do sistema) + **autorizar exceções de horário** + **Encerrar o dia** + página **Configurações** (horários de acesso) |
 
 Depois de 5 senhas erradas seguidas o login fica bloqueado por 30 s (o tempo
 dobra a cada novo bloqueio, até 15 min). As tentativas ficam no banco: fechar e
@@ -124,9 +124,12 @@ logado e ativo.
 python -m unittest -v
 ```
 
-784 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
+834 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
 negócio, login, senhas, permissões, cadastro de pessoas e preenchimento
-automático, saída rápida e desfazer, correção de registros, lista de bloqueio,
+automático, saída rápida e desfazer, correção de registros, **desativação de
+pessoa e de veículo**, **Nova pessoa, Editar e Excluir pessoa**, editar
+usuário, feriado, evento e a validade de quem pode retirar o carro, o
+desenho da **placa antiga** e o layout do Movimento,
 **regras de horário** (cada categoria dentro e fora da janela, ninguém entra
 depois de fechar, feriados, eventos, 24 h, lançamento retroativo nos três
 casos, tolerância, tempo excedido, saída pendente, autorização do
@@ -162,7 +165,7 @@ resultado não depende da hora em que eles rodam.
 python -m tests.relatorio [pasta de saída] [--sem-suite]
 ```
 
-Roda os testes automáticos ligados a cada caso (CT-01 a CT-47, positivos e
+Roda os testes automáticos ligados a cada caso (CT-01 a CT-53, positivos e
 negativos, cada um com o RF/RN, a entrada, o resultado esperado e o teste
 que o comprova), marca **PASSOU** ou **FALHOU** e grava
 `relatorio_testes.html`, `.csv` e `.json` (com a matriz de rastreabilidade
@@ -174,16 +177,22 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 | | |
 |---|---|
+| ![Entrada e saída 2.3](docs/design/final/v23_entrada_admin_claro.png) | ![Placa antiga no tema escuro](docs/design/final/v23_entrada_porteiro_escuro.png) |
+| **Entrada e saída (2.3)** — o Movimento sobe, com as subabas embaixo do título | **Placa antiga** (NEY-4829) no tema escuro, visão do porteiro |
+| ![Pessoas: ativas](docs/design/final/v23_pessoas_ativas_claro.png) | ![Pessoas: desativadas](docs/design/final/v23_pessoas_desativadas_claro.png) |
+| **Pessoas › Ativas** — ficha com Editar, Desativar e Excluir | **Pessoas › Desativadas** — motivo, quando e quem; "(sem cadastro)" |
+| ![Veículos desativados](docs/design/final/v23_pessoas_veiculos_desativados_claro.png) | ![Nova pessoa](docs/design/final/v23_nova_pessoa_claro.png) |
+| **Pessoas › Veículos desativados** — placas que não entram | **Nova pessoa** — cadastro sem entrada |
+| ![Editar usuário](docs/design/final/v23_usuarios_editar_claro.png) | ![Editar feriado](docs/design/final/v23_config_feriados_claro_1366x670.png) |
+| **Usuários › Editar** — nome e perfil (RN43) | **Configurações** — editar feriado e evento (RN44) |
 | ![Registro cadastrado com sucesso](docs/design/final/v221_cadastro_admin_claro.png) | ![Movimento perto do fechamento](docs/design/final/v221_movimento_admin_claro.png) |
 | **Entrada e saída (2.2.1)** — "Registro cadastrado com sucesso! Entrada de Júlia às 15:20." | **Movimento** — tempo excedido, saída pendente e os avisos do fechamento |
 | ![Login](docs/design/final/login.png) | ![Primeiro acesso](docs/design/final/primeiro_acesso.png) |
 | **Login** — painel da guarita com relógio | **Primeiro acesso** — cria o administrador (sem senha padrão) |
-| ![Pessoa já cadastrada](docs/design/final/cadastro_ok.png) | ![CPF bloqueado](docs/design/final/cadastro_bloqueado.png) |
-| **Entrada e saída** — quem já veio tem os dados preenchidos | **CPF bloqueado** — a entrada é recusada |
+| ![Pessoa já cadastrada](docs/design/final/cadastro_ok.png) | ![Pessoa desativada](docs/design/final/v23_entrada_desativada_claro.png) |
+| **Entrada e saída** — quem já veio tem os dados preenchidos | **Pessoa desativada** — a entrada é recusada |
 | ![Visão do porteiro](docs/design/final/cadastro_porteiro.png) | ![Layout compacto](docs/design/final/cadastro_compacto.png) |
 | **Visão do porteiro** — CPF mascarado, sem Excluir | **Notebook 1366×768** — layout compacto |
-| ![Pessoas](docs/design/final/pessoas.png) | ![Bloqueios](docs/design/final/bloqueios_admin.png) |
-| **Pessoas** — lista e ficha com a placa | **Bloqueios** — CPFs e placas com acesso negado |
 | ![Painel](docs/design/final/painel.png) | ![Exportar CSV](docs/design/final/exportar_csv.png) |
 | **Painel** — números do dia e gráficos | **Exportar CSV** — só administrador |
 | ![Usuários](docs/design/final/usuarios.png) | ![Corrigir registro](docs/design/final/corrigir.png) |
@@ -233,7 +242,7 @@ Todos os prints usam dados fictícios. Mais telas em `docs/design/final/`.
 
 O visual segue o sistema de design **Guarita** (`docs/design/PROPOSTA_DESIGN.md`):
 tela calma em tons neutros, um só botão escuro por tela, e cor só quando
-importa — verde pode entrar, âmbar atenção, vermelho bloqueado. O vermelho da
+importa — verde pode entrar, âmbar atenção, vermelho desativado. O vermelho da
 UNA aparece como identidade (símbolo, item ativo do menu, painel do login).
 Tudo em Tkinter puro: cantos arredondados, botões, placa e gráficos são
 desenhados no `Canvas`, os ícones são da fonte Segoe Fluent Icons e o texto
@@ -254,12 +263,14 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
   escolha fica gravada no usuário e vale nos próximos logins dele; a tela de
   login segue sempre o tema do Windows. O tema escuro ("Guarita à noite") tem
   paleta própria, com contraste WCAG AA conferido por teste, placa Mercosul
-  branca e barra de título escura no Windows 10/11
+  branca (e a antiga, cinza) sem recorte claro nos cantos e barra de título
+  escura no Windows 10/11
   (`docs/design/PROPOSTA_DESIGN.md`, seção 10). As caixas de mensagem
   nativas do Windows seguem o tema do próprio Windows.
-- **Barra lateral**: Entrada e saída, Pessoas, Bloqueios, Painel, Usuários e
+- **Barra lateral**: Entrada e saída, Pessoas, Painel, Usuários e
   Configurações (as duas últimas só para o administrador), com o número de
-  pessoas cadastradas e de bloqueios ativos. No
+  pessoas cadastradas. (Até a 2.2 havia a página Bloqueios: na 2.3 ela virou
+  a desativação, dentro de Pessoas.) No
   rodapé, quem está logado, o menu da conta (**Trocar minha senha**, **Gerar
   novos códigos de recuperação** para o administrador, o **tema** e Sair),
   o **cadeado** ("Ausentar", Ctrl+L) e o botão sair.
@@ -267,10 +278,12 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
   - ao completar o CPF, a faixa de situação diz se a pessoa é nova, já
     cadastrada (nome, celular, placa e tipo se preenchem sozinhos, só nos campos
     vazios), está no campus (com o atalho "Registrar saída") ou está
-    **bloqueada** (a entrada será recusada; atalho "Ver bloqueio");
-  - à direita, a **placa Mercosul desenhada** acompanha a digitação (fica
-    vermelha se a placa estiver bloqueada) e o histórico da pessoa (visitas,
-    última vinda, tipo);
+    **desativada** (a entrada será recusada; atalho "Ver desativação", que
+    abre Pessoas › Desativadas);
+  - à direita, a **placa desenhada** acompanha a digitação — Mercosul
+    (branca, faixa azul "BRASIL") ou **antiga** (cinza, moldura escura,
+    NEY-4829) — e fica vermelha se o veículo estiver desativado; embaixo, o
+    histórico da pessoa (visitas, última vinda, tipo);
   - o campo **Entrada** acompanha o relógio enquanto ninguém mexe nele, e o
     registro usa o "agora" exato do clique; editado, vale o que foi digitado;
   - clicar num campo de data (ou no ícone dele) abre o **calendário** e depois
@@ -282,7 +295,10 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     Pela placa sai o carro: se o dono (o responsável) está no campus, a
     pergunta se ele saiu junto (sai os dois, sem senha); placa de carro que
     não está no estacionamento é recusada, nunca dá a saída da pessoa;
-  - tabela **Movimento** com o seletor **Pessoas | Veículos**. Em Pessoas: as
+  - cartão **Movimento**, logo abaixo do formulário: o título numa linha
+    própria (com o status ao lado: "6 entradas hoje · 5 no campus"), as
+    subabas **Pessoas | Veículos** embaixo, à esquerda, e a busca e os
+    botões à direita. Em Pessoas: as
     entradas e saídas de hoje e todo mundo que ainda está no campus; com texto
     na busca, procura no **histórico inteiro** (nome, CPF, celular, placa ou
     tipo; o porteiro acha um CPF só pelos 11 dígitos, porque ele vê o CPF
@@ -290,8 +306,8 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     de cada visita: no campus, saiu, **Tempo excedido**
     (âmbar) ou **Saída pendente** (vermelho, em destaque), recalculada a cada
     30 s junto com as faixas. Duplo clique ou "Registrar saída" dão a saída
-    (aceita várias linhas); o aviso com **Desfazer** fica 10 segundos no
-    rodapé. Em Veículos: placa, responsável, desde quando, situação (**No
+    (aceita várias linhas); o aviso com **Desfazer** fica 10 segundos ao
+    lado do título. Em Veículos: placa, responsável, desde quando, situação (**No
     estacionamento**, **Dono fora do campus** ou **Veículo pendente**) e se
     o responsável está no campus ou fora;
   - **veículo com estadia própria**: quem entra com placa abre a estadia do
@@ -319,7 +335,7 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     caminho (saída, placa, correção, exclusão, desfazer, importação,
     Encerrar o dia) tira um carro sem o dono sem essa autorização;
   - **quem pode retirar o veículo** (RN35): quem está na lista da placa de
-    um carro no estacionamento, no campus a pé e sem bloqueio, ouve na saída
+    um carro no estacionamento, no campus a pé e não desativado, ouve na saída
     (pelo CPF, pelo Movimento ou pela placa do carro) **"Vai levar o carro
     BRA2E19 de Carla?"** — *Sim, leva o carro* (sai sem senha, "Veículo saiu
     com autorizado" no histórico) ou *Não*. O Desfazer devolve a pessoa e o
@@ -353,41 +369,59 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     correção é recusada sem gravar nada. "Excluir" só aparece para o
     administrador (RN02); o carro que a visita trouxe e que ainda está no
     estacionamento **continua lá** (a confirmação avisa; ele sai pela placa).
-- **Pessoas**: lista com busca e situação (no campus, fora, bloqueado),
-  **ordenada pela coluna clicada** no cabeçalho (1º clique crescente, 2º
-  decrescente, com ▲ ou ▼; datas e números na ordem certa; abre ordenada pela
-  situação e depois pelo nome) e a **ficha** da pessoa escolhida: placa,
-  visitas, faixa de bloqueio e duas seções — **Cadastro** (correção dos dados
-  e "Registrar entrada", que abre a Entrada e saída já preenchida),
-  **Visitas** (o histórico dela, da mais recente para a mais antiga: entrada,
-  saída, duração, tipo, placa e situação, com o nome e o celular da época
-  quando eram outros) e **Veículo** ("Quem pode retirar" o carro da placa
-  dela, com validade opcional; Adicionar — o porteiro só com o dono no
-  campus — e Remover).
-- **Bloqueios**: CPFs e placas com acesso negado e o motivo. Todos veem; só o
-  administrador cria ("Novo bloqueio") ou remove — remover não apaga, guarda
-  quem removeu e quando ("Mostrar removidos").
+- **Pessoas**, com três subabas:
+  - **Ativas**: lista com busca e situação (no campus, fora), **ordenada
+    pela coluna clicada** no cabeçalho (1º clique crescente, 2º decrescente,
+    com ▲ ou ▼; datas e números na ordem certa; abre ordenada pela situação
+    e depois pelo nome);
+  - **Desativadas**: as pessoas (CPFs) que não entram, com o motivo, quando
+    e quem desativou — também o CPF desativado que nunca foi cadastrado,
+    como "(sem cadastro)"; **Mostrar reativadas** traz as que já voltaram;
+  - **Veículos desativados**: as placas que não entram, com o dono, o
+    motivo, quando e quem desativou.
+  Só o **administrador** desativa (com motivo de 5 a 200 caracteres: pela
+  lista, "Desativar CPF" / "Desativar placa", ou pela ficha) e **reativa**;
+  o porteiro vê as listas (CPF mascarado). Reativar não apaga: guarda quem
+  reativou e quando. **Nova pessoa** (no cabeçalho) cadastra CPF, nome,
+  celular, placa (opcional) e tipo **sem registrar entrada**, com a mesma
+  validação da entrada; CPF já cadastrado é recusado e abre a ficha; CPF
+  desativado avisa. A **ficha** da pessoa escolhida mostra nome, CPF,
+  celular e tipo, a placa, as visitas e a situação; no pé, **Registrar
+  entrada** (abre a Entrada e saída já preenchida), **Editar** (o mesmo
+  diálogo da Nova pessoa, com o CPF fixo) e, para o administrador,
+  **Desativar** / Reativar e **Excluir** (só quem nunca teve visita; com
+  histórico, o botão explica que é preciso desativar); e duas seções —
+  **Visitas** (o histórico dela, da mais recente para a mais antiga:
+  entrada, saída, duração, tipo, placa e situação, com o nome e o celular da
+  época quando eram outros) e **Veículo** ("Quem pode retirar" o carro da
+  placa dela, com validade opcional; Adicionar e Validade — o porteiro só
+  com o dono no campus — e Remover; e, para o administrador, "Desativar
+  placa").
 - **Painel**: no campus agora, entradas de hoje, permanência média,
   **veículos no estacionamento** (com os pendentes, ou o total de visitas com
   veículo, logo abaixo) e **tempo excedido** (com as saídas pendentes logo
   abaixo); gráficos de pessoas por tipo e das entradas dos últimos 7 dias
   (hoje em destaque). O administrador **exporta para CSV** (Excel) os registros de um
   período.
-- **Usuários** (administrador): **Contas** (criar em diálogo,
-  ativar/desativar, redefinir senha) com a atividade do sistema e filtro, e
+- **Usuários** (administrador): **Contas** (criar em diálogo, **editar** o
+  nome e o perfil, ativar/desativar, redefinir senha) com a atividade do sistema e filtro, e
   **Exceções** (V4): tudo o que passou por cima de uma regra no período —
   horário, retroativo, mais de 24 h, veículo sem o dono, veículo com
   autorizado, lotação com senha, carro que já tinha saído, terceiro carro,
   saídas automáticas e código de recuperação
   usado — com os filtros período, tipo e quem autorizou, a pessoa com o CPF
   mascarado e **Exportar CSV** (registrado no histórico).
+- **CRUD em todas as abas**: a matriz de cada página × Criar, Ler,
+  Atualizar e Excluir (como, quem pode e o botão) está em `docs/CRUD.md`. O
+  Painel é só leitura (é um relatório) e as Exceções são leitura e
+  exportação (auditoria não se edita).
 - **Configurações** (administrador): os horários de acesso, em três seções —
   **Funcionamento** (abre e fecha de cada dia da semana, minutos do aviso
   antes de fechar, o limite do lançamento retroativo, 3 h, e as **vagas do
   estacionamento** com "Bloquear quando lotado"), **Categorias**
   (janela de entrada, permanência máxima e **tolerância** depois do
   fechamento de cada tipo de acesso) e **Feriados e eventos**
-  (adicionar e remover). Tudo é validado (hh:mm válido, fechamento depois da
+  (adicionar, **editar** e remover). Tudo é validado (hh:mm válido, fechamento depois da
   abertura, números nos limites) e cada mudança fica no histórico. O erro ou o
   "Salvo" aparece junto do botão, no lugar da nota de ajuda (visível também
   no notebook 1366×670).
@@ -502,7 +536,7 @@ portátil ou rodando pelo código:
 
 | Arquivo | O que tem |
 |---|---|
-| `portaria.db` (e, com o programa aberto, `portaria.db-wal` e `portaria.db-shm`) | O banco: pessoas, visitas, usuários (senha só como hash), histórico de ações, bloqueios e tentativas de login |
+| `portaria.db` (e, com o programa aberto, `portaria.db-wal` e `portaria.db-shm`) | O banco: pessoas, visitas, usuários (senha só como hash), histórico de ações, desativações (tabela `bloqueios`) e tentativas de login |
 | `backups/portaria-AAAA-MM-DD.db` | Cópia do banco feita ao abrir o programa, uma por dia; ficam as 30 mais recentes |
 | `backups/portaria-antes-vX-de-vN-....db` | Cópia feita antes de atualizar o banco para uma versão nova. **Não é apagada sozinha**: apague à mão quando a atualização estiver conferida |
 | `portaria.log` (e `.1` a `.3`) | Só erros técnicos (até 3 × 1 MB). Não guarda CPF, celular nem senha |
@@ -567,7 +601,7 @@ danificado):
 | `portaria_universidade.py` | Ponto de entrada (é o arquivo que se executa) e a relação com Compiladores |
 | `portaria/validacao.py` | Regras de CPF, celular, placa, nome, datas e verificações semânticas |
 | `portaria/horarios.py` | Regras de horário de acesso (funções puras): funcionamento, feriados, eventos, categorias, exceções, situação da visita |
-| `portaria/dados.py` | Banco SQLite (pessoas, visitas, usuários, histórico, bloqueios) e migrações |
+| `portaria/dados.py` | Banco SQLite (pessoas, visitas, usuários, histórico, desativações) e migrações |
 | `portaria/consultas.py` | Busca e números do Painel (versão em Python, usada nos testes) |
 | `portaria/usuarios.py` | Perfis, permissões, login, troca de senha e códigos de recuperação |
 | `portaria/senhas.py` | Hash das senhas (PBKDF2), bloqueio progressivo e códigos de recuperação (sem importar o banco) |
@@ -581,8 +615,7 @@ danificado):
 | `portaria/tela_login.py` | Login, primeiro acesso, "Defina sua senha", "Esqueci a senha" e a guarita travada |
 | `portaria/tela_recuperacao.py` | Códigos de recuperação (mostrar uma vez, imprimir, gerar novos) |
 | `portaria/tela_cadastro.py` | Entrada e saída (formulário, saída rápida, Movimento) |
-| `portaria/tela_pessoas.py` | Pessoas (lista e ficha) |
-| `portaria/tela_bloqueios.py` | Bloqueios |
+| `portaria/tela_pessoas.py` | Pessoas: Ativas, Desativadas e Veículos desativados, ficha, Nova pessoa e Editar |
 | `portaria/tela_dashboard.py` | Painel e exportação; `graficos.py` desenha as barras |
 | `portaria/tela_usuarios.py` | Usuários, atividade e o relatório de exceções (só administrador) |
 | `portaria/tela_edicao.py` | Janela "Corrigir registro" com o histórico do registro |
@@ -592,6 +625,7 @@ danificado):
 | `portaria/seletor_data.py` | Calendário e relógio dos campos de data e hora (Canvas) |
 | `portaria/tela_senha.py` | Janela "Trocar minha senha" |
 | `docs/design/` | Proposta de design, protótipo e prints (antes, protótipo e final) |
+| `docs/CRUD.md` | Matriz CRUD: cada página e aba × Criar, Ler, Atualizar e Excluir |
 | `docs/revisao/` | Relatórios das revisões de segurança, código e backend (antes e depois da reforma) |
 | `docs/qa/` | Relatórios dos dois testes de QA, a situação de cada achado (`CORRECOES.md`) e prints antes/depois |
 | `build_exe.py` | Gera o `dist/Portaria.exe` com o PyInstaller |
@@ -607,6 +641,25 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**2.3** (29/10/2026) — pessoas, desativação e CRUD (sem mudança no banco: a
+desativação usa a tabela de bloqueios que já existia, e nada se perde):
+
+- **Entrada e saída**: o Movimento sobe; o título fica numa linha própria
+  (com o status ao lado) e as subabas **Pessoas | Veículos** logo embaixo,
+  com a busca e os botões à direita (4 linhas visíveis no notebook);
+- **placa**: sem o recorte branco nos cantos no tema escuro (o fundo segue o
+  cartão e a troca de tema) e o desenho da **placa antiga** (cinza, NEY-4829);
+- **desativação** (RN12): a página Bloqueios virou as subabas
+  **Desativadas** e **Veículos desativados** de Pessoas; pessoa ou veículo
+  desativado não entra (o banco confere de novo); só o administrador
+  desativa e reativa;
+- **Nova pessoa** (RN41), **Editar** e **Excluir pessoa** (RN42: só o
+  administrador, só sem visitas);
+- **CRUD em todas as abas** (`docs/CRUD.md`): editar usuário (RN43),
+  feriado e evento (RN44) e a validade de quem pode retirar o carro (RN45);
+- casos de teste CT-01 a CT-53 e 834 testes automatizados; prints
+  `docs/design/final/v23_*`.
 
 **2.2.1** (22/10/2026) — ajustes para a entrega da disciplina (sem mudança no banco):
 

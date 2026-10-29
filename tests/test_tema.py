@@ -244,7 +244,7 @@ class TestTrocaDeTemaSemFechar(BaseTema):
     def test_todas_as_paginas_montam_no_escuro_sem_fundo_claro(self):
         self.app.trocar_tema("escuro")
         self.cadastrar_um()
-        for pagina in ("aba_cad", "aba_pessoas", "aba_bloqueios", "aba_dash",
+        for pagina in ("aba_cad", "aba_pessoas", "aba_dash",
                        "aba_usuarios", "aba_configuracoes"):
             with self.subTest(pagina=pagina):
                 self.app.ir_para(getattr(self.app, pagina))

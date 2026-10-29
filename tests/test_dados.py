@@ -239,40 +239,40 @@ class TestEdicao(BaseTemp):
             self.banco.editar(999, registro(), ["x"], autor="ana")
 
 
-class TestBloqueiosNoBanco(BaseTemp):
+class TestDesativacaoNoBanco(BaseTemp):
     def setUp(self):
         super().setUp()
         self.criar_equipe()
 
-    def test_bloquear_listar_e_remover(self):
+    def test_desativar_listar_e_reativar(self):
         self.banco.inserir(registro())                      # pessoa conhecida
-        id_ = self.banco.bloquear("cpf", "52998224725", " Furto ", "ana")
-        b = self.banco.listar_bloqueios()[0]
+        id_ = self.banco.desativar("cpf", "52998224725", " Furto ", "ana")
+        b = self.banco.listar_desativacoes()[0]
         self.assertEqual((b["id"], b["tipo"], b["valor"], b["motivo"], b["nome"],
                           b["criado_por"], b["ativo"]),
                          (id_, "cpf", "52998224725", "Furto", "João Ávila",
                           "ana", True))
-        self.banco.desbloquear(id_, "bia")
-        self.assertEqual(self.banco.listar_bloqueios(), [])
-        removido = self.banco.listar_bloqueios(incluir_removidos=True)[0]
-        self.assertEqual((removido["ativo"], removido["removido_por"]),
+        self.banco.reativar(id_, "bia")
+        self.assertEqual(self.banco.listar_desativacoes(), [])
+        removido = self.banco.listar_desativacoes(incluir_reativadas=True)[0]
+        self.assertEqual((removido["ativo"], removido["reativado_por"]),
                          (False, "bia"))
         self.assertEqual([e["acao"] for e in self.banco.listar_eventos()][:2],
-                         ["Bloqueio removido", "Bloqueio criado"])
+                         ["Pessoa reativada", "Pessoa desativada"])
 
-    def test_nao_bloqueia_duas_vezes_mas_pode_bloquear_de_novo(self):
-        id_ = self.banco.bloquear("placa", "ABC1D23", "Motivo um", "ana")
+    def test_nao_desativa_duas_vezes_mas_pode_desativar_de_novo(self):
+        id_ = self.banco.desativar("placa", "ABC1D23", "Motivo um", "ana")
         with self.assertRaises(dados.ErroDados):
-            self.banco.bloquear("placa", "ABC1D23", "Motivo dois", "ana")
-        self.banco.desbloquear(id_, "ana")
-        self.banco.bloquear("placa", "ABC1D23", "Motivo três", "ana")
-        self.assertEqual(len(self.banco.listar_bloqueios(True)), 2)
+            self.banco.desativar("placa", "ABC1D23", "Motivo dois", "ana")
+        self.banco.reativar(id_, "ana")
+        self.banco.desativar("placa", "ABC1D23", "Motivo três", "ana")
+        self.assertEqual(len(self.banco.listar_desativacoes(True)), 2)
 
-    def test_remover_bloqueio_ja_removido(self):
-        id_ = self.banco.bloquear("cpf", "52998224725", "Motivo um", "ana")
-        self.banco.desbloquear(id_, "ana")
+    def test_reativar_o_que_ja_foi_reativado(self):
+        id_ = self.banco.desativar("cpf", "52998224725", "Motivo um", "ana")
+        self.banco.reativar(id_, "ana")
         with self.assertRaises(dados.ErroDados):
-            self.banco.desbloquear(id_, "ana")
+            self.banco.reativar(id_, "ana")
 
 
 class TestUsuariosNoBanco(BaseTemp):
@@ -1058,12 +1058,12 @@ class TestConsultasNoBanco(BaseTemp):
 
     def test_contadores_da_barra_lateral(self):
         self.criar_equipe()
-        self.banco.bloquear("placa", "ABC1234", "Motivo válido", "ana")
-        id_ = self.banco.bloquear("cpf", "11144477735", "Motivo válido", "ana")
-        self.banco.desbloquear(id_, "ana")                     # removido não conta
+        self.banco.desativar("placa", "ABC1234", "Motivo válido", "ana")
+        id_ = self.banco.desativar("cpf", "11144477735", "Motivo válido", "ana")
+        self.banco.reativar(id_, "ana")                     # removido não conta
         self.assertEqual(self.banco.contadores(),
-                         {"pessoas": 6, "no_campus": 2, "bloqueios": 1,
-                          "veiculos": 0})
+                         {"pessoas": 6, "no_campus": 2, "desativadas": 0,
+                          "veiculos_desativados": 1, "veiculos": 0})
 
 
 class TestPermissoesNoBanco(BaseTemp):
@@ -1083,13 +1083,13 @@ class TestPermissoesNoBanco(BaseTemp):
         self.banco.excluir([id_], autor="ana")
         self.assertEqual(self.banco.listar(), [])
 
-    def test_porteiro_nao_mexe_na_lista_de_bloqueio(self):  # RN12
+    def test_porteiro_nao_desativa_nem_reativa(self):  # RN12
         with self.assertRaises(dados.ErroDados):
-            self.banco.bloquear("cpf", "52998224725", "Motivo qualquer", "paulo")
-        id_ = self.banco.bloquear("cpf", "52998224725", "Motivo qualquer", "ana")
+            self.banco.desativar("cpf", "52998224725", "Motivo qualquer", "paulo")
+        id_ = self.banco.desativar("cpf", "52998224725", "Motivo qualquer", "ana")
         with self.assertRaises(dados.ErroDados):
-            self.banco.desbloquear(id_, "paulo")
-        self.assertEqual(len(self.banco.listar_bloqueios()), 1)
+            self.banco.reativar(id_, "paulo")
+        self.assertEqual(len(self.banco.listar_desativacoes()), 1)
 
     def test_porteiro_nao_gerencia_usuarios(self):
         with self.assertRaises(dados.ErroDados):
@@ -1138,7 +1138,8 @@ class TestPermissoesNoBanco(BaseTemp):
     def test_operacao_sensivel_sem_autor_e_recusada(self):  # N01
         # a sessão que expirou com a caixa aberta chega aqui com autor=None
         id_ = self.banco.inserir(registro())
-        bloqueio = self.banco.bloquear("placa", "ABC1234", "Motivo válido", "ana")
+        desativacao = self.banco.desativar("placa", "ABC1234", "Motivo válido",
+                                           "ana")
         antes = len(self.banco.listar_eventos())
         operacoes = [
             ("excluir", lambda: self.banco.excluir([id_], None)),
@@ -1146,9 +1147,9 @@ class TestPermissoesNoBanco(BaseTemp):
                 id_, dict(self.banco.buscar(id_), nome="Outro Nome"), ["x"], None)),
             ("exportar", lambda: self.banco.registros_do_periodo(
                 date(2026, 10, 1), date(2026, 10, 31), None)),
-            ("bloquear", lambda: self.banco.bloquear(
+            ("desativar pessoa", lambda: self.banco.desativar(
                 "cpf", "11144477735", "Motivo válido", None)),
-            ("desbloquear", lambda: self.banco.desbloquear(bloqueio, None)),
+            ("reativar", lambda: self.banco.reativar(desativacao, None)),
             ("desativar", lambda: self.banco.definir_ativo(
                 self.ids["paulo"], False, None)),
             ("senha", lambda: self.banco.definir_senha(
@@ -1160,7 +1161,7 @@ class TestPermissoesNoBanco(BaseTemp):
             with self.subTest(nome), self.assertRaises(dados.ErroDados):
                 operacao()
         self.assertEqual(self.banco.buscar(id_)["nome"], "João Ávila")
-        self.assertEqual(len(self.banco.listar_bloqueios()), 1)
+        self.assertEqual(len(self.banco.listar_desativacoes()), 1)
         self.assertIsNone(self.banco.buscar_usuario("novo"))
         paulo = self.banco.buscar_usuario("paulo")
         self.assertEqual((paulo["ativo"], paulo["senha"]), (True, "hash-falso"))
@@ -1240,10 +1241,10 @@ class TestPrivacidadeNoHistorico(BaseTemp):
         self.assertNotIn("529.982.247-25", detalhe)
 
     def test_cpf_em_qualquer_detalhe_e_mascarado(self):
-        # como a tela registra a "Entrada recusada (bloqueio)" e a correção
-        self.banco.registrar_evento("paulo", "Entrada recusada (bloqueio)",
+        # como a tela registra a "Entrada recusada (desativação)" e a correção
+        self.banco.registrar_evento("paulo", "Entrada recusada (desativação)",
                                     "Ana Silva, CPF 529.982.247-25, placa ABC1D23")
-        self.banco.bloquear("cpf", "11144477735", "Ameaçou alguém", "ana")
+        self.banco.desativar("cpf", "11144477735", "Ameaçou alguém", "ana")
         id_ = self.banco.inserir(registro(), autor="paulo")
         novo = dict(self.banco.buscar(id_), cpf="39053344705")
         self.banco.editar(id_, novo, ["CPF: 529.982.247-25 → 390.533.447-05"],

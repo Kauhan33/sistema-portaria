@@ -2,7 +2,9 @@
 Janela principal (Tkinter): moldura com a barra lateral, sessão do usuário
 (login, saída, troca de senha e saída automática por inatividade) e as
 páginas. Cada página mora no seu módulo: tela_cadastro.py ("Entrada e
-saída"), tela_pessoas.py, tela_bloqueios.py, tela_dashboard.py ("Painel"),
+saída"), tela_pessoas.py (com as subabas Ativas, Desativadas e Veículos
+desativados: na 2.3 a página Bloqueios virou a desativação dentro de
+Pessoas), tela_dashboard.py ("Painel"),
 tela_usuarios.py e tela_configuracoes.py (as duas só para administrador);
 o login fica em tela_login.py, a janela "Corrigir registro" em
 tela_edicao.py, "Trocar minha senha" em tela_senha.py e a "Autorização do
@@ -37,7 +39,10 @@ CONTRATO DO APP — o que as telas podem usar da AppPortaria:
                                  saída, o Painel e os contadores do menu
     app.avisar(texto, desfazer=None)  aviso que some sozinho no Movimento
     app.preencher_pessoa(pessoa) abre a Entrada e saída com a pessoa preenchida
-    app.ir_para(pagina)          mostra uma página (ex.: app.aba_bloqueios)
+    app.ir_para(pagina)          mostra uma página (ex.: app.aba_pessoas)
+    app.mostrar_desativacao(tipo, valor)  abre Pessoas › Desativadas
+                                 (tipo "cpf") ou › Veículos desativados
+                                 ("placa") com a desativação escolhida
     app.exibir_cpf(cpf)          CPF como a tabela mostra: completo para o
                                  administrador, mascarado para o porteiro
     app.registrar_uso()          conta como uso (sessão por inatividade)
@@ -77,7 +82,6 @@ from . import backup, dados, estilo, mensagens
 from .componentes import Avatar, BotaoIcone, ItemMenu, marca_cancela
 from .estilo import (COR, FONTE, ICONE, LARGURA_LATERAL, PREFERENCIAS_TEMA,
                      aplicar_tema, carregar_fontes, pintar_barra_de_titulo, px)
-from .tela_bloqueios import AbaBloqueios
 from .tela_cadastro import AbaCadastro
 from .tela_configuracoes import AbaConfiguracoes
 from .tela_dashboard import AbaDashboard
@@ -119,7 +123,6 @@ NOMES_DO_CADASTRO = {
 # nome do atributo -> (página onde ela mora, classe)
 PAGINAS_SOB_DEMANDA = {
     "tela_pessoas": ("aba_pessoas", AbaPessoas),
-    "tela_bloqueios": ("aba_bloqueios", AbaBloqueios),
     "tela_dashboard": ("aba_dash", AbaDashboard),
     "tela_usuarios": ("aba_usuarios", AbaUsuarios),
     "tela_configuracoes": ("aba_configuracoes", AbaConfiguracoes),
@@ -292,14 +295,21 @@ class AppPortaria:
         self.atualizar_contadores()
 
     def atualizar_contadores(self):
-        """Números ao lado de Pessoas e Bloqueios na barra lateral."""
+        """Número ao lado de Pessoas na barra lateral (e as contagens das
+        subabas de Pessoas, se a página já foi montada)."""
         ok, n = self.tentar(self.banco.contadores)
         if not ok or not self.itens_menu:
             return
         self.itens_menu[str(self.aba_pessoas)].definir_contador(
             str(n["pessoas"]) if n["pessoas"] else "")
-        self.itens_menu[str(self.aba_bloqueios)].definir_contador(
-            str(n["bloqueios"]) if n["bloqueios"] else "")
+        if "tela_pessoas" in self.__dict__:
+            self.tela_pessoas.mostrar_contadores(n)
+
+    def mostrar_desativacao(self, tipo, valor):
+        """Link "Ver desativação": Pessoas › Desativadas (CPF) ou ›
+        Veículos desativados (placa), com a linha escolhida."""
+        self.ir_para(self.aba_pessoas)
+        self.tela_pessoas.mostrar_desativacao(tipo, valor)
 
     def avisar(self, texto, desfazer=None):
         self.tela_cadastro.avisar(texto, desfazer)
@@ -678,7 +688,6 @@ class AppPortaria:
         self.abas.pack(fill="both", expand=True)
         self.aba_cad = self._nova_pagina("Entrada e saída", "entrada")
         self.aba_pessoas = self._nova_pagina("Pessoas", "pessoas")
-        self.aba_bloqueios = self._nova_pagina("Bloqueios", "bloqueio")
         self.aba_dash = self._nova_pagina("Painel", "painel")
         self.aba_usuarios = self.aba_configuracoes = None
         if pode_gerenciar_usuarios(self.usuario):

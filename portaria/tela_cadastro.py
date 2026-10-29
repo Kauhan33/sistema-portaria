@@ -1,7 +1,7 @@
 """
 Página "Entrada e saída" (antiga aba Cadastro): registrar a entrada de uma
 pessoa (com preenchimento automático pelo CPF, faixa de situação e alerta
-de bloqueio), dar saída (saída rápida F2 por CPF ou placa, botão ou duplo
+de desativação), dar saída (saída rápida F2 por CPF ou placa, botão ou duplo
 clique), desfazer a saída, corrigir e excluir registros.
 
 A tabela "Movimento" mostra o dia: as entradas e saídas de hoje e todo
@@ -57,6 +57,7 @@ from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao,
                           EsperaDigitacao, Placa, Seletor, bolinha, data_por_extenso, inserir_linha,
                           link, plural, rotulo_campo, tabela, titulo_cartao)
 from .consultas import encontrar_dentro
+from .dados import ENTRADA_RECUSADA
 from .estilo import (COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM,
                      fonte_icone, px)
 from .tela_autorizacao import autorizar_excecao
@@ -69,7 +70,7 @@ from .tela_veiculo import (A_PE, COM_CARRO, ENTRAR_COM_SENHA, JA_SAIU,
 from .usuarios import eh_admin, pode_editar, pode_excluir
 from .validacao import (FORMATO, FORMATO_EXIBICAO, MAXIMO_BUSCA,
                         MAXIMO_CPF_OU_PLACA, MAXIMO_NOME, PLACA_OBRIGATORIA,
-                        TIPOS_ACESSO, checar_bloqueio, checar_saida,
+                        TIPOS_ACESSO, checar_desativacao, checar_saida,
                         cpf_valido, formatar_celular, formatar_cpf,
                         formatar_placa, normalizar, placa_valida, so_digitos,
                         validar)
@@ -259,7 +260,7 @@ class AbaCadastro:
                                 "vazio = no campus")
 
         # Faixa de situação da pessoa (neutra, nova, já veio, no campus,
-        # bloqueada), o botão principal e o "Limpar": filhos do cartão para
+        # desativada), o botão principal e o "Limpar": filhos do cartão para
         # poderem ir para a grade do formulário ou para a linha do título
         self.aviso_pessoa = Aviso(m)
         self.lbl_pessoa = self.aviso_pessoa.lbl
@@ -852,11 +853,12 @@ class AbaCadastro:
                               self.celular.get(), self.var_placa.get(),
                               self.tipo.get(), self.entrada.get(),
                               self.saida.get())
-        # RN12: bloqueio primeiro, para não preencher a ficha à toa
-        ok, ativos = self.app.tentar(self.app.banco.listar_bloqueios)
+        # RN12: pessoa ou veículo desativado primeiro, para não preencher
+        # a ficha à toa (o banco confere de novo)
+        ok, ativas = self.app.tentar(self.app.banco.listar_desativacoes)
         if not ok:
             return
-        ok, msg = checar_bloqueio(registro, ativos)
+        ok, msg = checar_desativacao(registro, ativas)
         if not ok:
             self._registrar_recusa(registro)
             mensagens.erro("Acesso negado", msg)
@@ -1037,7 +1039,7 @@ class AbaCadastro:
         if registro["placa"]:
             detalhe += f", placa {registro['placa']}"
         self.app.tentar(self.app.banco.registrar_evento, self.app.autor,
-                        "Entrada recusada (bloqueio)", detalhe)
+                        ENTRADA_RECUSADA, detalhe)
 
     def limpar(self):
         self._auto = None
@@ -1085,7 +1087,7 @@ class AbaCadastro:
         self.tipo.focus()
 
     # --------------------------------------------------------------
-    # Preenchimento automático pelo CPF, faixa de situação e bloqueios
+    # Preenchimento automático pelo CPF, faixa de situação e desativação
     # --------------------------------------------------------------
     def _campos_pessoa(self):
         return {"nome": self.nome, "celular": self.celular,
@@ -1128,7 +1130,7 @@ class AbaCadastro:
 
     def _mostrar_situacao(self, cpf, pessoa):
         """Faixa e ficha conforme a pessoa: nova, já veio, no campus ou
-        bloqueada (o bloqueio tem a palavra final)."""
+        desativada (a desativação tem a palavra final)."""
         self._mostrar_ficha(pessoa)
         if pessoa is None:
             self._situacao("info", "Pessoa nova: preencha os dados abaixo.")
@@ -1150,12 +1152,13 @@ class AbaCadastro:
                             f"a pé. Na saída, {pessoa['nome'].split()[0]} "
                             "pode sair com o carro (\"Saiu de carro\").",
                     icone=ICONE["carro"])
-        bloqueio = self._bloqueio_ativo("cpf", cpf)
-        if bloqueio:
-            self._situacao("erro", f"CPF bloqueado: {bloqueio['motivo']}. "
+        desativada = self._desativacao("cpf", cpf)
+        if desativada:
+            self._situacao("erro", "Pessoa desativada: "
+                                   f"{desativada['motivo']}. "
                                    "A entrada será recusada.",
-                           "Ver bloqueio",
-                           lambda: self.app.ir_para(self.app.aba_bloqueios))
+                           "Ver desativação",
+                           lambda: self.app.mostrar_desativacao("cpf", cpf))
 
     def _quando(self, momento):
         """'18:14' se foi hoje; senão a data e a hora."""
@@ -1186,23 +1189,26 @@ class AbaCadastro:
             if ok:
                 self._mostrar_situacao(cpf, pessoa)
 
-    def _bloqueio_ativo(self, tipo, valor):
-        ok, ativos = self.app.tentar(self.app.banco.listar_bloqueios)
-        return next((b for b in (ativos or [])
-                     if b["tipo"] == tipo and b["valor"] == valor), None)
+    def _desativacao(self, tipo, valor):
+        """A desativação em vigor do CPF ou da placa, ou None."""
+        ok, ativas = self.app.tentar(self.app.banco.listar_desativacoes,
+                                     tipo=tipo)
+        return next((d for d in (ativas or []) if d["valor"] == valor), None)
 
     def _ao_digitar_placa(self, *args):
-        """Placa desenhada acompanha a digitação; bloqueada fica vermelha."""
+        """Placa desenhada acompanha a digitação (Mercosul ou antiga);
+        veículo desativado fica vermelho."""
         placa = self.var_placa.get().strip().upper()
-        bloqueio = (self._bloqueio_ativo("placa", placa)
-                    if placa_valida(placa) else None)
-        parado = None if bloqueio else self._carro_no_estacionamento(placa)
-        self.desenho_placa.mostrar(placa, bloqueada=bloqueio is not None)
-        if bloqueio:
-            self.lbl_dica_placa.config(text="bloqueada", fg=COR["erro"],
+        desativado = (self._desativacao("placa", placa)
+                      if placa_valida(placa) else None)
+        parado = None if desativado else self._carro_no_estacionamento(placa)
+        self.desenho_placa.mostrar(placa, bloqueada=desativado is not None)
+        if desativado:
+            self.lbl_dica_placa.config(text="desativado", fg=COR["erro"],
                                        font=FONTE["rotulo"])
             self.lbl_placa_status.config(
-                text=f"Placa bloqueada: {bloqueio['motivo']}", fg=COR["erro"])
+                text=f"Veículo desativado: {desativado['motivo']}",
+                fg=COR["erro"])
             self.lbl_placa_status.pack_configure(pady=(px(6), 0))
         elif parado:
             self.lbl_dica_placa.config(text="já no estacionamento",

@@ -871,13 +871,13 @@ class TestMigracaoV10ParaV11(BaseRegras):
             registro(cpf="39053344705", nome="Carla Nogueira", placa="QWE1234",
                      entrada="18/10/2026 08:00", saida="18/10/2026 12:00"),
             autor="paulo")
-        self.banco.bloquear("cpf", "86288366757", "Motivo de teste", "ana")
+        self.banco.desativar("cpf", "86288366757", "Motivo de teste", "ana")
         self.antes = {
             "registros": self.banco.listar(),
             "pessoas": self.banco.listar_pessoas(),
             "estacionamento": self.banco.listar_estacionamento(),
             "usuarios": self.banco.listar_usuarios(),
-            "bloqueios": self.banco.listar_bloqueios(),
+            "desativacoes": self.banco.listar_desativacoes(),
             "eventos": len(self.banco.listar_eventos(limite=10_000)),
         }
         rebaixar_para_v10(self.caminho)
@@ -893,7 +893,8 @@ class TestMigracaoV10ParaV11(BaseRegras):
         self.assertEqual(banco.listar_estacionamento(),
                          self.antes["estacionamento"])
         self.assertEqual(banco.listar_usuarios(), self.antes["usuarios"])
-        self.assertEqual(banco.listar_bloqueios(), self.antes["bloqueios"])
+        self.assertEqual(banco.listar_desativacoes(),
+                         self.antes["desativacoes"])
         self.assertEqual(len(banco.listar_eventos(limite=10_000)),
                          self.antes["eventos"])
         # quem já existia não precisa trocar a senha e continua operando

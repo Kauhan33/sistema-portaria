@@ -328,8 +328,8 @@ class TestCadastroComoAdmin(BaseInterface):
 
     def test_enter_fora_da_aba_cadastro_nao_cadastra(self):
         self.preencher()
-        for aba in (self.app.aba_pessoas, self.app.aba_bloqueios,
-                    self.app.aba_dash, self.app.aba_usuarios):
+        for aba in (self.app.aba_pessoas, self.app.aba_dash,
+                    self.app.aba_usuarios):
             with self.subTest(aba=str(aba)):
                 self.app.abas.select(aba)
                 self.app.cadastrar(event=mock.Mock())
@@ -941,36 +941,38 @@ class TestSessao(BaseInterface):
 
     def test_menu_lateral_tem_as_paginas_do_perfil(self):
         textos = [i.cget("text") for i in self.app.itens_menu.values()]
-        self.assertEqual(textos, ["Entrada e saída", "Pessoas", "Bloqueios",
+        self.assertEqual(textos, ["Entrada e saída", "Pessoas",
                                   "Painel"])               # porteiro: sem Usuários
         self.assertTrue(self.app.itens_menu[str(self.app.aba_cad)].ativo)
 
     def test_ir_para_acende_o_item_do_menu(self):
-        self.app.ir_para(self.app.aba_bloqueios)
-        self.assertEqual(self.app.abas.select(), str(self.app.aba_bloqueios))
+        self.app.ir_para(self.app.aba_dash)
+        self.assertEqual(self.app.abas.select(), str(self.app.aba_dash))
         ativos = [i.cget("text") for i in self.app.itens_menu.values() if i.ativo]
-        self.assertEqual(ativos, ["Bloqueios"])
+        self.assertEqual(ativos, ["Painel"])
 
     def test_contadores_da_barra_lateral(self):
         self.banco.inserir(dict(VISITA_ANTIGA))
-        self.banco.bloquear("placa", "ABC1234", "Motivo válido", "ana.admin")
+        self.banco.desativar("placa", "ABC1234", "Motivo válido", "ana.admin")
         self.app.atualizar_tabela()
         self.assertEqual(self.app.itens_menu[str(self.app.aba_pessoas)].contador, "1")
-        self.assertEqual(self.app.itens_menu[str(self.app.aba_bloqueios)].contador,
-                         "1")
+        self.assertFalse(hasattr(self.app, "aba_bloqueios"))   # 2.3: não há
+        self.app.ir_para(self.app.aba_pessoas)
+        self.assertEqual(self.app.tela_pessoas.seletor.itens[
+            "Veículos desativados"][0].cget("text"), "Veículos desativados (1)")
 
     def test_paginas_montadas_na_primeira_visita(self):
         def montadas():
-            return {n for n in ("tela_pessoas", "tela_bloqueios", "tela_dashboard")
+            return {n for n in ("tela_pessoas", "tela_dashboard")
                     if n in vars(self.app)}
 
         self.assertEqual(montadas(), set())         # só a Entrada e saída
         self.app.ir_para(self.app.aba_pessoas)
         self.assertEqual(montadas(), {"tela_pessoas"})
-        self.assertEqual(len(self.app.aba_pessoas.winfo_children()), 2)
+        self.assertEqual(len(self.app.aba_pessoas.winfo_children()), 3)
         self.app.ir_para(self.app.aba_cad)
         self.app.ir_para(self.app.aba_pessoas)      # não monta de novo
-        self.assertEqual(len(self.app.aba_pessoas.winfo_children()), 2)
+        self.assertEqual(len(self.app.aba_pessoas.winfo_children()), 3)
         self.app.sair()
         self.app.entrar(self.porteiro)              # nova sessão: começa do zero
         self.assertEqual(montadas(), set())
@@ -1080,23 +1082,26 @@ class TestSessaoExpiraComCaixaAberta(BaseInterface):
         self.assertIsNone(self.app.usuario)
         self.assertIsNotNone(autenticar(self.banco, "paulo", "senha456"))
 
-    def test_bloquear_e_remover_bloqueio(self):
-        aba = self.app.tela_bloqueios
-        aba.tipo.set("Placa")
-        aba.valor.insert(0, "ABC1234")
-        aba.motivo.insert(0, "Motivo válido")
+    def test_reativar_com_a_sessao_expirada(self):
+        self.banco.desativar("placa", "ABC1234", "Motivo válido", "ana.admin")
+        aba = self.app.tela_pessoas
+        aba.seletor.selecionar("Veículos desativados")
+        lista = aba.veiculos_desativados
+        lista.tabela.selection_set(lista.tabela.get_children()[0])
         self.msg.askyesno.side_effect = self.expirar_e_responder(True)
-        aba.bloquear()
-        self.assertEqual(self.banco.listar_bloqueios(), [])
+        lista.reativar()
+        self.assertEqual(len(self.banco.listar_desativacoes()), 1)
         self.assert_sessao_encerrada_avisada()
 
-        self.app.entrar(self.admin)
-        self.banco.bloquear("placa", "ABC1234", "Motivo válido", "ana.admin")
-        aba = self.app.tela_bloqueios
-        aba.atualizar()
-        aba.tabela.selection_set(aba.tabela.get_children()[0])
-        aba.remover()
-        self.assertEqual(len(self.banco.listar_bloqueios()), 1)
+    def test_desativar_com_a_sessao_expirada(self):
+        aba = self.app.tela_pessoas
+        aba.seletor.selecionar("Veículos desativados")
+        dialogo = aba.veiculos_desativados.desativar()
+        dialogo.valor.insert(0, "ABC1234")
+        dialogo.motivo.insert(0, "Motivo válido")
+        self.app.sair(inatividade=True)          # a sessão acabou
+        self.assertFalse(dialogo.janela.winfo_exists())   # fechou junto
+        self.assertEqual(self.banco.listar_desativacoes(), [])
 
     def test_exportar_csv(self):
         self.banco.inserir(dict(VISITA_ANTIGA))
@@ -1534,9 +1539,10 @@ class TestHistoricoEOrdemNaPaginaPessoas(BaseInterface):
         return self.aba.tabela.heading(coluna)["text"]
 
     def test_abre_ordenada_pela_situacao_e_depois_pelo_nome(self):
-        self.banco.bloquear("cpf", "39053344705", "Motivo válido", "ana.admin")
-        self.aba.atualizar()
-        self.assertEqual(self.ordem(), ["Beto", "Zeca", "Ana", "Érico"])
+        self.assertEqual(self.ordem(), ["Beto", "Ana", "Érico", "Zeca"])
+        self.banco.desativar("cpf", "39053344705", "Motivo válido", "ana.admin")
+        self.aba.atualizar()                        # desativada sai de Ativas
+        self.assertEqual(self.ordem(), ["Beto", "Ana", "Érico"])
         self.assertEqual(self.titulo("#0"), "Situação " + chr(0x25B2))
         self.assertEqual(self.titulo("nome"), "Nome")
 
@@ -2107,7 +2113,7 @@ class CasosCorrigir:
         self.assertIn("anterior à entrada", self.msg.showerror.call_args[0][1])
 
     def test_nao_burla_o_bloqueio_pela_correcao(self):  # S01 da revisão
-        self.banco.bloquear("cpf", "39053344705", "Ameaçou um aluno", "ana.admin")
+        self.banco.desativar("cpf", "39053344705", "Ameaçou um aluno", "ana.admin")
         edicao = self.abrir(self.hoje)
         edicao.liberar_cpf()
         self.trocar(edicao.cpf, "39053344705")
@@ -2168,26 +2174,39 @@ class TestCorrigirComoAdmin(CasosCorrigir, BaseInterface):
         self.assertIsNone(self.banco.buscar_pessoa("52998224725"))
 
 
-class TestBloqueioNoCadastro(BaseInterface):
+class TestDesativacaoNoCadastro(BaseInterface):
     entrar_como = "porteiro"
 
     def setUp(self):
         super().setUp()
         self.banco.inserir(dict(VISITA_ANTIGA))
-        self.banco.bloquear("cpf", "11144477735", "Ameaçou um aluno", "ana.admin")
-        self.banco.bloquear("placa", "XYZ9A87", "Veículo furtado", "ana.admin")
+        self.banco.desativar("cpf", "11144477735", "Ameaçou um aluno",
+                             "ana.admin")
+        self.banco.desativar("placa", "XYZ9A87", "Veículo furtado", "ana.admin")
 
-    def test_alerta_ao_digitar_cpf_bloqueado(self):
+    def test_alerta_ao_digitar_cpf_desativado(self):
         self.app.cpf.insert(0, "11144477735")
         dica = self.app.lbl_pessoa.cget("text")
-        self.assertIn("CPF bloqueado: Ameaçou um aluno", dica)
+        self.assertIn("Pessoa desativada: Ameaçou um aluno", dica)
         self.assertEqual(self.app.tela_cadastro.aviso_pessoa.tipo, "erro")
         self.assertEqual(self.app.nome.get(), "Beto Rocha")   # ainda preenche
+        aviso = self.app.tela_cadastro.aviso_pessoa
+        self.assertEqual(aviso.acao.cget("text"), "Ver desativação")
 
-    def test_alerta_ao_digitar_placa_bloqueada(self):
+    def test_link_ver_desativacao_abre_pessoas_desativadas(self):
+        self.app.cpf.insert(0, "11144477735")
+        self.app.tela_cadastro.aviso_pessoa.comando()     # clique no link
+        pessoas = self.app.tela_pessoas
+        self.assertEqual(self.app.abas.select(), str(self.app.aba_pessoas))
+        self.assertEqual(pessoas.seletor.ativa, "Desativadas")
+        selecao = pessoas.desativadas.tabela.selection()
+        self.assertEqual(len(selecao), 1)
+        self.assertEqual(pessoas.selecionada["cpf"], "11144477735")
+
+    def test_alerta_ao_digitar_placa_desativada(self):
         self.app.var_placa.set("xyz9a87")
-        self.assertEqual(self.app.lbl_dica_placa.cget("text"), "bloqueada")
-        self.assertIn("Placa bloqueada: Veículo furtado",
+        self.assertEqual(self.app.lbl_dica_placa.cget("text"), "desativado")
+        self.assertIn("Veículo desativado: Veículo furtado",
                       self.app.lbl_placa_status.cget("text"))
         self.assertTrue(self.app.tela_cadastro.desenho_placa.bloqueada)
         self.app.var_placa.set("XYZ9A8")                       # apagou um
@@ -2195,129 +2214,226 @@ class TestBloqueioNoCadastro(BaseInterface):
         self.assertEqual(self.app.lbl_placa_status.cget("text"), "")
         self.assertFalse(self.app.tela_cadastro.desenho_placa.bloqueada)
 
-    def test_cadastro_de_cpf_bloqueado_e_recusado_e_registrado(self):  # RN12
+    def test_cadastro_de_pessoa_desativada_e_recusado_e_registrado(self):  # RN12
         self.app.cpf.insert(0, "11144477735")
         self.app.cadastrar()
         titulo, msg = self.msg.showerror.call_args[0]
         self.assertEqual(titulo, "Acesso negado")
         self.assertIn("Ameaçou um aluno", msg)
+        self.assertIn("Pessoa desativada", msg)
         self.assertEqual(len(self.no_banco()), 1)             # só a visita antiga
-        self.assertIn(("paulo", "Entrada recusada (bloqueio)"), self.acoes())
+        self.assertIn(("paulo", "Entrada recusada (desativação)"), self.acoes())
 
-    def test_bloqueio_vem_antes_das_outras_validacoes(self):
+    def test_desativacao_vem_antes_das_outras_validacoes(self):
         self.app.var_placa.set("XYZ9A87")                      # só a placa
         self.app.cadastrar()
         self.assertEqual(self.msg.showerror.call_args[0][0], "Acesso negado")
 
-    def test_pessoa_bloqueada_aparece_na_aba_pessoas(self):
-        self.app.tela_pessoas.atualizar()
+    def test_pessoa_desativada_sai_de_ativas_e_aparece_em_desativadas(self):
+        pessoas = self.app.tela_pessoas
+        pessoas.atualizar()
         id_ = str(self.banco.buscar_pessoa("11144477735")["id"])
-        linha = self.app.tela_pessoas.tabela.item(id_)
-        self.assertEqual((linha["values"][-1], linha["text"]),
-                         ("Bloqueado", "Bloqueado"))
-        self.assertEqual(linha["values"][1], "***.444.777-**")    # porteiro
+        self.assertFalse(pessoas.tabela.exists(id_))
+        pessoas.seletor.selecionar("Desativadas")
+        lista = pessoas.desativadas
+        linha = lista.tabela.item(lista.tabela.get_children()[0])
+        self.assertEqual(linha["text"], "Desativada")
+        self.assertEqual(linha["values"][:3],
+                         ["Beto Rocha", "***.444.777-**", "Ameaçou um aluno"])
+        self.assertEqual(pessoas.seletor.itens["Desativadas"][0].cget("text"),
+                         "Desativadas (1)")
 
-    def test_porteiro_ve_a_lista_mas_nao_gerencia(self):
-        aba = self.app.tela_bloqueios
-        self.app.abas.select(self.app.aba_bloqueios)
-        self.app.ao_trocar_aba()                 # abrir a aba recarrega
-        self.assertIsNone(aba.form)
-        self.assertIsNone(aba.btn_remover)
-        self.assertEqual(len(aba.tabela.get_children()), 2)
-        valores = {aba.tabela.item(i)["values"][1] for i in aba.tabela.get_children()}
-        self.assertEqual(valores, {"***.444.777-**", "XYZ9A87"})   # CPF mascarado
-        aba.bloquear()
-        self.assertIn("Somente o administrador", self.msg.showerror.call_args[0][1])
+    def test_porteiro_ve_as_listas_mas_nao_desativa_nem_reativa(self):
+        pessoas = self.app.tela_pessoas
+        for lista, aba in ((pessoas.desativadas, "Desativadas"),
+                           (pessoas.veiculos_desativados,
+                            "Veículos desativados")):
+            with self.subTest(aba=aba):
+                pessoas.seletor.selecionar(aba)
+                self.assertIsNone(lista.btn_desativar)
+                self.assertIsNone(lista.btn_reativar)
+                self.assertEqual(len(lista.tabela.get_children()), 1)
+        valores = [pessoas.desativadas.tabela.item(i)["values"][1]
+                   for i in pessoas.desativadas.tabela.get_children()]
+        self.assertEqual(valores, ["***.444.777-**"])        # CPF mascarado
+        self.assertIsNone(pessoas.desativadas.desativar())
+        self.assertIn("Somente o administrador",
+                      self.msg.showerror.call_args[0][1])
+        pessoas.desativadas.tabela.selection_set(
+            pessoas.desativadas.tabela.get_children()[0])
+        self.assertFalse(pessoas.desativadas.reativar())    # reativar: negado
+        self.assertEqual(len(self.banco.listar_desativacoes()), 2)
+        self.assertIsNone(pessoas.btn_desativar)            # ficha: sem botão
+
+    def test_porteiro_pela_ficha_tambem_nao_reativa(self):
+        pessoas = self.app.tela_pessoas
+        pessoas.seletor.selecionar("Desativadas")
+        desativacao = self.banco.listar_desativacoes(tipo="cpf")[0]
+        self.assertFalse(pessoas.reativar(desativacao))
+        self.assertIn("Somente o administrador",
+                      self.msg.showerror.call_args[0][1])
+        self.assertTrue(self.banco.listar_desativacoes(tipo="cpf")[0]["ativo"])
 
 
-class TestAbaBloqueios(BaseInterface):
+class TestAbaDesativadas(BaseInterface):
     def setUp(self):
         super().setUp()
-        self.aba = self.app.tela_bloqueios
+        self.aba = self.app.tela_pessoas
+
+    def lista(self, tipo):
+        return (self.aba.desativadas if tipo == "cpf"
+                else self.aba.veiculos_desativados)
 
     def preencher(self, tipo, valor, motivo):
-        self.aba.tipo.set(tipo)
-        self.aba.valor.delete(0, tk.END)
-        self.aba.valor.insert(0, valor)
-        self.aba.motivo.delete(0, tk.END)
-        self.aba.motivo.insert(0, motivo)
-        self.aba.bloquear()
+        """Desativar CPF / Desativar placa, pela lista."""
+        self.aba.seletor.selecionar("Desativadas" if tipo == "cpf"
+                                    else "Veículos desativados")
+        dialogo = self.lista(tipo).desativar()
+        dialogo.valor.insert(0, valor)
+        dialogo.motivo.insert(0, motivo)
+        ok = dialogo.salvar()
+        if not ok:
+            texto = dialogo.faixa.lbl.cget("text")
+            dialogo.fechar()
+            return texto
+        return ""
 
-    def test_admin_bloqueia_cpf(self):
-        self.preencher("CPF", "111.444.777-35", "Ameaçou um aluno")
-        self.assertIn("Bloquear o CPF 111.444.777-35",
-                      self.msg.askyesno.call_args[0][1])
-        b = self.banco.listar_bloqueios()[0]
-        self.assertEqual((b["valor"], b["criado_por"]), ("11144477735", "ana.admin"))
-        self.assertEqual(len(self.aba.tabela.get_children()), 1)
-        self.assertEqual(self.aba.valor.get(), "")
+    def test_admin_desativa_cpf_sem_cadastro(self):
+        self.assertEqual(self.preencher("cpf", "11144477735",
+                                        "Ameaçou um aluno"), "")
+        d = self.banco.listar_desativacoes()[0]
+        self.assertEqual((d["valor"], d["criado_por"]), ("11144477735",
+                                                         "ana.admin"))
+        lista = self.aba.desativadas
+        linha = lista.tabela.item(lista.tabela.get_children()[0])
+        self.assertEqual(linha["values"][:2], ["(sem cadastro)",
+                                               "111.444.777-35"])  # admin: completo
+        # a ficha mostra o CPF sem cadastro, com a desativação e o Reativar
+        self.assertTrue(self.aba.sem_cadastro.winfo_manager())
+        self.assertIn("ana.admin", self.aba.faixa_sem_cadastro.lbl.cget("text"))
+        self.assertIn(("ana.admin", "Pessoa desativada"), self.acoes())
 
-    def test_formulario_abre_e_fecha_pelo_botao(self):
-        self.assertEqual(self.aba.form.winfo_manager(), "")
-        self.aba.alternar_formulario()
-        self.assertEqual(self.aba.form.winfo_manager(), "pack")
-        self.preencher("Placa", "ABC1234", "Motivo válido")
-        self.assertEqual(self.aba.form.winfo_manager(), "")     # fechou ao bloquear
-
-    def test_remover_so_com_bloqueio_ativo_selecionado(self):
-        self.preencher("Placa", "ABC1234", "Motivo válido")
-        self.assertEqual(self.aba.btn_remover.cget("state"), "disabled")
-        self.aba.tabela.selection_set(self.aba.tabela.get_children()[0])
-        self.aba._ao_selecionar()
-        self.assertEqual(self.aba.btn_remover.cget("state"), "normal")
-
-    def test_admin_ve_o_cpf_bloqueado_completo(self):
-        self.preencher("CPF", "111.444.777-35", "Ameaçou um aluno")
-        linha = self.aba.tabela.get_children()[0]
-        self.assertEqual(self.aba.tabela.item(linha)["values"][1], "111.444.777-35")
-
-    def test_cancelar_a_confirmacao_nao_bloqueia(self):
-        self.msg.askyesno.return_value = False
-        self.preencher("Placa", "abc-1234", "Estacionou em local proibido")
-        self.assertEqual(self.banco.listar_bloqueios(), [])
+    def test_cpf_sem_cadastro_reativa_pela_ficha(self):
+        self.preencher("cpf", "11144477735", "Ameaçou um aluno")
+        self.aba._reativar_da_ficha()
+        self.assertEqual(self.banco.listar_desativacoes(), [])
+        self.assertIn(("ana.admin", "Pessoa reativada"), self.acoes())
 
     def test_dados_invalidos(self):
-        self.preencher("CPF", "111.444.777-35", "ab")
-        self.assertIn("motivo", self.msg.showerror.call_args[0][1])
-        self.preencher("Placa", "AB1", "Motivo válido")
-        self.assertIn("Placa inválida", self.msg.showerror.call_args[0][1])
+        self.assertIn("motivo", self.preencher("cpf", "11144477735", "ab"))
+        self.assertIn("Placa inválida",
+                      self.preencher("placa", "AB1", "Motivo válido"))
+        self.assertEqual(self.banco.listar_desativacoes(), [])
 
-    def test_bloqueio_repetido(self):
-        self.preencher("Placa", "ABC1234", "Motivo válido")
-        self.preencher("Placa", "abc-1234", "Outro motivo")
-        self.assertIn("Esta placa já está bloqueada", self.msg.showerror.call_args[0][1])
+    def test_desativacao_repetida(self):
+        self.preencher("placa", "ABC1234", "Motivo válido")
+        self.assertIn("Este veículo já está desativado",
+                      self.preencher("placa", "abc1234", "Outro motivo"))
 
-    def test_avisa_se_a_pessoa_bloqueada_esta_no_campus(self):
+    def test_avisa_se_a_pessoa_desativada_esta_no_campus(self):
         self.banco.inserir(dict(VISITA_ANTIGA, entrada=ha_uma_hora(), saida=""))
-        self.app.registros = self.banco.listar()
-        self.preencher("CPF", "11144477735", "Ameaçou um aluno")
+        self.preencher("cpf", "11144477735", "Ameaçou um aluno")
         self.assertIn("No campus agora: Beto Rocha",
                       self.msg.showinfo.call_args[0][1])
 
-    def test_remover_bloqueio_e_ver_removidos(self):
-        self.preencher("CPF", "11144477735", "Ameaçou um aluno")
-        id_ = self.aba.tabela.get_children()[0]
-        self.aba.tabela.selection_set(id_)
-        self.aba.remover()
-        self.assertEqual(self.aba.tabela.get_children(), ())
-        self.aba.ver_removidos.set(True)
+    def test_desativar_pela_ficha_e_reativar(self):
+        self.banco.inserir(dict(VISITA_ANTIGA))
         self.aba.atualizar()
-        linha = self.aba.tabela.item(id_)
-        self.assertEqual(linha["text"], "Removido")
-        self.assertIn("por ana.admin", linha["values"][-1])
-        self.assertIn("situacao", self.aba.tabela["displaycolumns"])
-        self.assertIn(("ana.admin", "Bloqueio removido"), self.acoes())
+        id_ = str(self.banco.buscar_pessoa("11144477735")["id"])
+        self.aba.tabela.selection_set(id_)
+        self.aba.ao_selecionar()
+        self.assertEqual(self.aba.btn_desativar.cget("text"), "Desativar")
+        dialogo = self.aba.desativar_selecionada()
+        self.assertIn("Beto Rocha", dialogo.lbl_subtitulo.cget("text"))
+        self.assertIsNone(dialogo.valor)           # o CPF vem da ficha
+        dialogo.motivo.insert(0, "Ameaçou um aluno")
+        self.assertTrue(dialogo.salvar())
+        # foi para Desativadas, com a ficha dela e o Reativar
+        self.assertEqual(self.aba.seletor.ativa, "Desativadas")
+        self.assertEqual(self.aba.selecionada["cpf"], "11144477735")
+        self.assertEqual(self.aba.faixa.tipo, "erro")
+        self.assertEqual(self.aba.btn_desativar.cget("text"), "Reativar")
+        self.assertEqual(self.aba.btn_entrada.cget("state"), "disabled")
+        self.aba.desativar_selecionada()                    # = Reativar
+        self.assertIn("Reativar Beto Rocha", self.msg.askyesno.call_args[0][1])
+        self.assertEqual(self.banco.listar_desativacoes(), [])
+        self.aba.seletor.selecionar("Ativas")
+        self.assertTrue(self.aba.tabela.exists(id_))
 
-    def test_depois_de_remover_a_entrada_volta_a_ser_aceita(self):
-        self.preencher("CPF", "52998224725", "Motivo válido")
-        self.aba.tabela.selection_set(self.aba.tabela.get_children()[0])
-        self.aba.remover()
+    def test_reativar_pela_lista_e_mostrar_reativadas(self):
+        self.preencher("cpf", "11144477735", "Ameaçou um aluno")
+        lista = self.aba.desativadas
+        id_ = lista.tabela.get_children()[0]
+        lista.tabela.selection_set(id_)
+        lista._ao_selecionar()
+        self.assertEqual(lista.btn_reativar.cget("state"), "normal")
+        lista.reativar()
+        self.assertEqual(lista.tabela.get_children(), ())
+        lista.ver_reativadas.set(True)
+        lista.atualizar()
+        linha = lista.tabela.item(id_)
+        self.assertEqual(linha["text"], "Reativada")
+        self.assertIn("por ana.admin", linha["values"][-1])
+        self.assertIn(("ana.admin", "Pessoa reativada"), self.acoes())
+
+    def test_reativar_so_com_desativacao_em_vigor_selecionada(self):
+        self.preencher("placa", "ABC1234", "Motivo válido")
+        lista = self.aba.veiculos_desativados
+        lista.tabela.selection_set(())
+        lista._ao_selecionar()
+        self.assertEqual(lista.btn_reativar.cget("state"), "disabled")
+        lista.tabela.selection_set(lista.tabela.get_children()[0])
+        lista._ao_selecionar()
+        self.assertEqual(lista.btn_reativar.cget("state"), "normal")
+
+    def test_veiculo_desativado_mostra_o_dono(self):
+        self.banco.inserir(dict(VISITA_ANTIGA))               # placa QWE1234
+        self.preencher("placa", "QWE1234", "Veículo furtado")
+        lista = self.aba.veiculos_desativados
+        linha = lista.tabela.item(lista.tabela.get_children()[0])
+        self.assertEqual(linha["values"][:3], ["QWE-1234", "Beto Rocha",
+                                               "Veículo furtado"])
+        self.assertIn(("ana.admin", "Veículo desativado"), self.acoes())
+
+    def test_desativar_veiculo_pela_ficha(self):
+        self.banco.inserir(dict(VISITA_ANTIGA))               # placa QWE1234
+        self.aba.atualizar()
+        self.aba.tabela.selection_set(
+            str(self.banco.buscar_pessoa("11144477735")["id"]))
+        self.aba.ao_selecionar()
+        self.aba.seletor_ficha.selecionar("Veículo")
+        dialogo = self.aba.desativar_veiculo()
+        dialogo.motivo.insert(0, "Veículo furtado")
+        dialogo.salvar()
+        self.assertEqual(self.aba.seletor.ativa, "Ativas")    # fica na ficha
+        self.assertTrue(self.aba.desenho_placa.bloqueada)
+        self.assertIn("Veículo desativado: Veículo furtado",
+                      self.aba.lbl_veiculo_desativado.cget("text"))
+        self.assertEqual(self.aba.btn_desativar_veiculo.cget("text"),
+                         "Reativar veículo")
+        self.aba.desativar_veiculo()                          # = Reativar
+        self.assertEqual(self.banco.listar_desativacoes(), [])
+
+    def test_depois_de_reativar_a_entrada_volta_a_ser_aceita(self):
+        self.preencher("cpf", "52998224725", "Motivo válido")
+        lista = self.aba.desativadas
+        lista.tabela.selection_set(lista.tabela.get_children()[0])
+        lista.reativar()
         self.app.cpf.insert(0, "52998224725")
         self.app.nome.insert(0, "Ana Silva")
         self.app.celular.insert(0, "31987654321")
         self.app.tipo.set("Visitante")
         self.app.cadastrar()
         self.assertEqual(len(self.no_banco()), 1)
+
+    def test_banco_recusa_a_entrada_de_desativado_mesmo_sem_a_tela(self):
+        self.preencher("cpf", "52998224725", "Motivo válido")
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.inserir({"nome": "Ana Silva", "cpf": "52998224725",
+                                "celular": "31987654321", "placa": "",
+                                "tipo": "Visitante", "entrada": ha_uma_hora(),
+                                "saida": ""}, autor="ana.admin")
+        self.assertIn("Pessoa desativada", str(erro.exception))
 
 
 class TestContratoDoApp(BaseInterface):

@@ -9,7 +9,7 @@ from portaria import dados, senhas, usuarios
 from portaria.usuarios import (LIMITE_TENTATIVAS, SEGUNDOS_BLOQUEIO,
                                ControleTentativas, autenticar, conferir_senha,
                                entrar, gerar_hash, pode_desativar, pode_editar,
-                               pode_excluir, pode_gerenciar_bloqueios,
+                               pode_excluir, pode_gerenciar_desativacoes,
                                trocar_senha, validar_novo_usuario,
                                validar_senha, validar_troca_senha)
 
@@ -281,9 +281,9 @@ class TestPermissoes(unittest.TestCase):
         self.assertFalse(pode_excluir(PORTEIRO))
         self.assertFalse(pode_excluir(None))
 
-    def test_so_admin_gerencia_bloqueios(self):
-        self.assertTrue(pode_gerenciar_bloqueios(ADMIN))
-        self.assertFalse(pode_gerenciar_bloqueios(PORTEIRO))
+    def test_so_admin_desativa_e_reativa(self):
+        self.assertTrue(pode_gerenciar_desativacoes(ADMIN))
+        self.assertFalse(pode_gerenciar_desativacoes(PORTEIRO))
 
     def test_quem_pode_corrigir_registro(self):  # RN11
         agora = datetime(2026, 10, 17, 0, 10)

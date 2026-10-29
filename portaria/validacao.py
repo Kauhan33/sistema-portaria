@@ -43,10 +43,10 @@ MAXIMO_NOME = 80             # nome completo (pessoa e usuário)
 MAXIMO_LOGIN = 20            # usuario.REGEX_LOGIN já pedia de 3 a 20
 MAXIMO_SENHA = 64
 MAXIMO_JUSTIFICATIVA = 200   # autorização do administrador
-MAXIMO_MOTIVO = 200          # motivo do bloqueio
+MAXIMO_MOTIVO = 200          # motivo da desativação
 MAXIMO_DESCRICAO = 80        # feriado e evento
 MAXIMO_BUSCA = 60            # buscas e filtros das listas
-MAXIMO_CPF_OU_PLACA = 14     # saída rápida e bloqueio: 529.982.247-25
+MAXIMO_CPF_OU_PLACA = 14     # saída rápida e desativação: 529.982.247-25
 MAXIMO_DATA_HORA = 16        # dd/mm/aaaa hh:mm
 MAXIMO_DATA = 10             # dd/mm/aaaa
 MAXIMO_HORA = 5              # hh:mm (e os minutos "-1440" das regras)
@@ -233,82 +233,89 @@ def validar_campos(registro):
 
 
 # ------------------------------------------------------------------
-# Lista de bloqueio (RN12: CPF ou placa bloqueados não entram)
+# Desativação (RN12: pessoa ou veículo desativado não entra)
 # ------------------------------------------------------------------
-TIPOS_BLOQUEIO = {"cpf": "CPF", "placa": "Placa"}
+# Desativar uma pessoa é desativar o CPF dela; desativar um veículo é
+# desativar a placa. No banco continua sendo a tabela "bloqueios" (uma
+# desativação = um bloqueio ativo; reativar = encerrar o bloqueio): o
+# esquema não mudou e as desativações antigas continuam valendo.
+TIPOS_DESATIVACAO = {"cpf": "CPF", "placa": "Placa"}
+O_QUE = {"cpf": "Pessoa", "placa": "Veículo"}
 MOTIVO_MINIMO = 5
-# concordância nas mensagens: "o CPF ... bloqueado" / "a placa ... bloqueada"
-COM_ARTIGO = {"cpf": "o CPF", "placa": "a placa"}
-COM_DE = {"cpf": "do CPF", "placa": "da placa"}
-BLOQUEADO = {"cpf": "bloqueado", "placa": "bloqueada"}
+# concordância: "a pessoa ... desativada" / "o veículo ... desativado"
+COM_ARTIGO = {"cpf": "a pessoa", "placa": "o veículo"}
+DESATIVADO = {"cpf": "desativada", "placa": "desativado"}
+REATIVAR_SO_ADMIN = "Só um administrador pode reativar."
 
 
-def normalizar_bloqueio(tipo, valor):
+def normalizar_desativacao(tipo, valor):
     """CPF só com números; placa maiúscula, sem hífen nem espaços."""
     if tipo == "cpf":
         return so_digitos(valor)
     return re.sub(r"[\s\-]", "", valor).upper()
 
 
-def formatar_bloqueio(tipo, valor):
+def formatar_desativacao(tipo, valor):
     return formatar_cpf(valor) if tipo == "cpf" else formatar_placa(valor)
 
 
-def validar_bloqueio(tipo, valor, motivo, ativos):
-    """Retorna (ok, mensagem) para criar um bloqueio. `valor` já normalizado."""
-    if tipo not in TIPOS_BLOQUEIO:
-        return False, "Escolha se o bloqueio é de CPF ou de placa."
+def validar_desativacao(tipo, valor, motivo, ativas):
+    """Retorna (ok, mensagem) para desativar. `valor` já normalizado;
+    `ativas`: as desativações em vigor (banco.listar_desativacoes)."""
+    if tipo not in TIPOS_DESATIVACAO:
+        return False, "Escolha se é uma pessoa (CPF) ou um veículo (placa)."
     if tipo == "cpf" and not cpf_valido(valor):
         return False, "CPF inválido.\nDigite os 11 números."
     if tipo == "placa" and not placa_valida(valor):
         return False, "Placa inválida.\nUse ABC1234 ou ABC1D23."
     if len(motivo.strip()) < MOTIVO_MINIMO:
-        return False, ("Informe o motivo do bloqueio "
+        return False, ("Informe o motivo da desativação "
                        f"(pelo menos {MOTIVO_MINIMO} caracteres).")
     ok, msg = checar_tamanho("Motivo", motivo.strip(), MAXIMO_MOTIVO)
     if not ok:
         return False, msg
-    if any(b["tipo"] == tipo and b["valor"] == valor for b in ativos):
-        esse = "Este CPF" if tipo == "cpf" else "Esta placa"
-        return False, f"{esse} já está {BLOQUEADO[tipo]}."
+    if any(d["tipo"] == tipo and d["valor"] == valor for d in ativas):
+        esse = "Esta pessoa" if tipo == "cpf" else "Este veículo"
+        return False, f"{esse} já está {DESATIVADO[tipo]}."
     return True, ""
 
 
-def bloqueios_do_registro(registro, ativos):
-    """Bloqueios ativos que pegam o CPF ou a placa deste registro."""
-    return [b for b in ativos
-            if (b["tipo"] == "cpf" and b["valor"] == registro.get("cpf"))
-            or (b["tipo"] == "placa" and registro.get("placa")
-                and b["valor"] == registro["placa"])]
+def desativacoes_do_registro(registro, ativas):
+    """Desativações em vigor que pegam o CPF ou a placa deste registro."""
+    return [d for d in ativas
+            if (d["tipo"] == "cpf" and d["valor"] == registro.get("cpf"))
+            or (d["tipo"] == "placa" and registro.get("placa")
+                and d["valor"] == registro["placa"])]
 
 
-def checar_bloqueio(registro, ativos):  # VERIFICAÇÃO SEMÂNTICA 5
-    """Retorna (ok, mensagem): a entrada é recusada se houver bloqueio."""
-    achados = bloqueios_do_registro(registro, ativos)
-    if not achados:
+def checar_desativacao(registro, ativas):  # VERIFICAÇÃO SEMÂNTICA 5
+    """Retorna (ok, mensagem): a entrada é recusada se a pessoa (CPF) ou o
+    veículo (placa) estiver desativado."""
+    achadas = desativacoes_do_registro(registro, ativas)
+    if not achadas:
         return True, ""
-    linhas = [f"{TIPOS_BLOQUEIO[b['tipo']]} "
-              f"{formatar_bloqueio(b['tipo'], b['valor'])} "
-              f"{BLOQUEADO[b['tipo']]} em "
-              f"{b['criado_em']} por {b['criado_por']}.\nMotivo: {b['motivo']}"
-              for b in achados]
+    linhas = [f"{O_QUE[d['tipo']]} {DESATIVADO[d['tipo']]}: "
+              f"{TIPOS_DESATIVACAO[d['tipo']]} "
+              f"{formatar_desativacao(d['tipo'], d['valor'])}, em "
+              f"{d['criado_em']} por {d['criado_por']}.\nMotivo: {d['motivo']}"
+              for d in achadas]
     return False, ("Acesso negado.\n\n" + "\n\n".join(linhas) +
-                   "\n\nSó um administrador pode remover o bloqueio.")
+                   "\n\n" + REATIVAR_SO_ADMIN)
 
 
-def checar_bloqueio_correcao(original, novo, ativos):
+def checar_desativacao_correcao(original, novo, ativas):
     """
-    Correção de registro (RN12): recusa se a mudança coloca um CPF ou placa
-    bloqueados no campus — trocar para um CPF/placa bloqueado ou reabrir a
-    visita (apagar a saída). Corrigir o nome de uma visita encerrada de
-    alguém bloqueado depois continua permitido.
+    Correção de registro (RN12): recusa se a mudança coloca no campus uma
+    pessoa ou um veículo desativado — trocar para um CPF/placa desativado
+    ou reabrir a visita (apagar a saída). Corrigir o nome de uma visita
+    encerrada de quem foi desativado depois continua permitido.
     """
     trocou = (novo["cpf"] != original["cpf"]
               or novo.get("placa", "") != original.get("placa", ""))
     reabriu = not novo["saida"] and bool(original["saida"])
     if not (trocou or reabriu):
         return True, ""
-    return checar_bloqueio(novo, ativos)
+    return checar_desativacao(novo, ativas)
 
 
 def checar_saida(registro, agora=None):

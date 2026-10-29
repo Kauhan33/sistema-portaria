@@ -55,10 +55,10 @@ class TestValidacao(unittest.TestCase):
         self.assertTrue(validacao.validar(registro(nome=longo[:80]), [], AGORA)[0])
         self.assertFalse(validacao.validar_campos(registro(nome=longo))[0])
 
-    def test_motivo_do_bloqueio(self):
-        ok, msg = validacao.validar_bloqueio("cpf", "52998224725", "m" * 201, [])
+    def test_motivo_da_desativacao(self):
+        ok, msg = validacao.validar_desativacao("cpf", "52998224725", "m" * 201, [])
         self.assertEqual(msg, "Motivo: no máximo 200 caracteres.")
-        self.assertTrue(validacao.validar_bloqueio("cpf", "52998224725",
+        self.assertTrue(validacao.validar_desativacao("cpf", "52998224725",
                                                    "m" * 200, [])[0])
 
 
@@ -130,9 +130,9 @@ class TestTamanhoMaximoNoBanco(BaseRegras):
         self.recusa(self.banco.atualizar_pessoa, pessoa["id"], "Ana Silva",
                     "31987654321", "ABC1D234", "Aluno", autor="ana")
 
-    def test_bloqueio_feriado_evento_e_usuario(self):
-        self.recusa(self.banco.bloquear, "cpf", "52998224725", "m" * 201, "ana")
-        self.recusa(self.banco.bloquear, "placa", "ABC1D234", "Motivo ok",
+    def test_desativacao_feriado_evento_e_usuario(self):
+        self.recusa(self.banco.desativar, "cpf", "52998224725", "m" * 201, "ana")
+        self.recusa(self.banco.desativar, "placa", "ABC1D234", "Motivo ok",
                     "ana")
         self.recusa(self.banco.adicionar_feriado, SEGUNDA, "d" * 81, "ana")
         self.recusa(self.banco.adicionar_evento,
@@ -142,7 +142,7 @@ class TestTamanhoMaximoNoBanco(BaseRegras):
                     "h", autor="ana")
         self.recusa(self.banco.criar_usuario, "Maria Souza", "m" * 21,
                     "porteiro", "h", autor="ana")
-        self.banco.bloquear("cpf", "52998224725", "m" * 200, "ana")   # 200: passa
+        self.banco.desativar("cpf", "52998224725", "m" * 200, "ana")   # 200: passa
 
     def test_justificativa_da_excecao(self):
         longa = autorizacao(justificativa="j" * 201)

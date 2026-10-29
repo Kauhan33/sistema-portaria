@@ -18,7 +18,7 @@ from .estilo import COR, FONTE, ICONE, px
 from .tela_autorizacao import autorizar_excecao
 from .usuarios import eh_admin, pode_editar
 from .validacao import (FORMATO_EXIBICAO, MAXIMO_NOME, TIPOS_ACESSO,
-                        checar_bloqueio_correcao, mascarar_cpf, normalizar,
+                        checar_desativacao_correcao, mascarar_cpf, normalizar,
                         validar)
 
 SEM_HISTORICO = {"momento": "—", "usuario": "—", "acao": "Sem histórico",
@@ -153,10 +153,10 @@ class JanelaEdicao(Dialogo):
         if not ok:
             mensagens.erro("Dados inválidos", msg, parent=self.janela)
             return
-        ok, ativos = self.app.tentar(self.app.banco.listar_bloqueios)
+        ok, ativas = self.app.tentar(self.app.banco.listar_desativacoes)
         if not ok:
             return
-        ok, msg = checar_bloqueio_correcao(self.original, novo, ativos)
+        ok, msg = checar_desativacao_correcao(self.original, novo, ativas)
         if not ok:
             mensagens.erro("Acesso negado", msg, parent=self.janela)
             return

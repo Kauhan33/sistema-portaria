@@ -36,10 +36,9 @@ class TestTamanhoDosCampos(BaseInterface):
 
     def abrir_tudo(self):
         """Abre todas as páginas e diálogos que têm caixa de texto."""
-        for pagina in ("tela_pessoas", "tela_bloqueios", "tela_dashboard",
+        for pagina in ("tela_pessoas", "tela_dashboard",
                        "tela_usuarios", "tela_configuracoes"):
             getattr(self.app, pagina)
-        self.app.tela_bloqueios.alternar_formulario()
         dialogos = [self.app.tela_usuarios.novo_usuario(),
                     self.app.trocar_senha(),
                     self.app.tela_dashboard.abrir_exportacao()]
@@ -77,7 +76,9 @@ class TestTamanhoDosCampos(BaseInterface):
         dialogos = self.abrir_tudo()
         novo, senha, exportar, redefinir, autorizacao, edicao = dialogos
         pessoas, usuarios = self.app.tela_pessoas, self.app.tela_usuarios
-        bloqueios, config = self.app.tela_bloqueios, self.app.tela_configuracoes
+        config = self.app.tela_configuracoes
+        desativar = self.app.tela_pessoas.desativadas.desativar()
+        dialogos.append(desativar)
         casos = [
             (self.app.nome, 80), (self.app.cpf, 11), (self.app.celular, 11),
             (self.app.tela_cadastro.pecas["placa"][1].entrada, 7),
@@ -92,7 +93,7 @@ class TestTamanhoDosCampos(BaseInterface):
             (redefinir.senha, 64), (redefinir.confirmacao, 64),
             (autorizacao.login, 20), (autorizacao.senha, 64),
             (autorizacao.justificativa, 200),
-            (bloqueios.valor, 14), (bloqueios.motivo, 200),
+            (desativar.valor, 11), (desativar.motivo, 200),
             (config.data_feriado, 10), (config.nome_feriado, 80),
             (config.data_evento, 10), (config.abre_evento, 5),
             (config.fecha_evento, 5), (config.nome_evento, 80),
@@ -120,11 +121,12 @@ class TestTamanhoDosCampos(BaseInterface):
         dialogo.justificativa.insert(0, "Evento da reitoria")
         self.assertEqual(contador.cget("text"), "18/200")
         dialogo.fechar()
-        bloqueios = self.app.tela_bloqueios
-        bloqueios.alternar_formulario()
-        self.assertEqual(bloqueios.contador_motivo.cget("text"), "0/200")
-        bloqueios.motivo.master.colar("m" * 300)
-        self.assertEqual(bloqueios.contador_motivo.cget("text"), "200/200")
+        desativar = self.app.tela_pessoas.desativadas.desativar()
+        contador = desativar.motivo.master.contador
+        self.assertEqual(contador.cget("text"), "0/200")
+        desativar.motivo.master.colar("m" * 300)
+        self.assertEqual(contador.cget("text"), "200/200")
+        desativar.fechar()
 
     def test_justificativa_longa_e_recusada_pela_validacao(self):
         dialogo = JanelaAutorizacao(self.app, ["Regra"], "Teste")

@@ -8,7 +8,7 @@ SEM a senha do administrador quando quem leva:
   - com a autorização ativa e dentro da validade (sem data = até alguém
     remover; com data, vale até o fim daquele dia);
   - está no campus, entrou a pé (a visita dela não tem placa) e sai agora;
-  - não tem bloqueio de CPF.
+  - não está desativada (RN12).
 Nos demais casos continua valendo a RN32 (só com a senha). Quem cadastra:
 o porteiro, só com o dono presente (visita aberta do dono no campus); o
 administrador, a qualquer hora. Remover só diminui a permissão: qualquer
@@ -110,7 +110,7 @@ def autorizacao_vale(autorizado, dia):
     return fim is None or dia <= fim
 
 
-def pode_levar(autorizado, dia, visita_a_pe, cpf_bloqueado):
+def pode_levar(autorizado, dia, visita_a_pe, cpf_desativado):
     """
     RN35: (ok, motivo) de quem sai do campus agora levar o carro da placa
     autorizada sem o dono e sem senha. `autorizado`: a linha da lista
@@ -124,8 +124,8 @@ def pode_levar(autorizado, dia, visita_a_pe, cpf_bloqueado):
         return False, "a autorização venceu"
     if not visita_a_pe:
         return False, "entrou com outro veículo"
-    if cpf_bloqueado:
-        return False, "o CPF está bloqueado"
+    if cpf_desativado:
+        return False, "a pessoa está desativada"
     return True, ""
 
 

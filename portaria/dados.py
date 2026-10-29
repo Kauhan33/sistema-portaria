@@ -1,7 +1,8 @@
 """
 Banco de dados SQLite: pessoas, registros de acesso (visitas), usuários,
-histórico de ações (auditoria), tentativas de login, lista de bloqueio,
-configuração dos horários de acesso e migração do antigo arquivo JSON.
+histórico de ações (auditoria), tentativas de login, desativações de
+pessoas e veículos, configuração dos horários de acesso e migração do
+antigo arquivo JSON.
 
 Cada visita aponta para a pessoa (pessoa_id), mas guarda também uma cópia
 dos dados daquele dia: se a pessoa trocar de celular, o histórico antigo
@@ -12,14 +13,14 @@ certo em SQL; para o resto do sistema elas saem no formato da tela
 ('16/10/2026 08:00').
 
 Permissões (`autor` = login de quem faz, conferido NO BANCO):
-- operações sensíveis (excluir, corrigir, exportar, bloquear, desbloquear,
-  criar, ativar ou desativar usuário e definir senha) EXIGEM um autor
-  existente, ativo e com o perfil certo (RN02, RN11, RN12 e gestão de
-  usuários). Sem autor, recusam: é o caso da sessão que expirou com uma
+- operações sensíveis (excluir, corrigir, exportar, desativar e reativar
+  pessoa ou veículo, excluir pessoa, criar, editar, ativar ou desativar
+  usuário e definir senha) EXIGEM um autor existente, ativo e com o perfil
+  certo (RN02, RN11, RN12, RN42 e gestão de usuários). Sem autor, recusam: é o caso da sessão que expirou com uma
   caixa de confirmação aberta. A única exceção é o primeiro acesso:
   criar_usuario sem autor só funciona com a tabela de usuários vazia;
-- nas escritas do dia a dia (entrada, saída, desfazer saída e corrigir
-  pessoa), o autor informado precisa existir e estar ativo (usuário
+- nas escritas do dia a dia (entrada, saída, desfazer saída, cadastrar e
+  corrigir pessoa), o autor informado precisa existir e estar ativo (usuário
   desativado com a sessão aberta não continua operando). Sem autor elas
   são chamadas internas (importação do JSON antigo, testes) e não vão
   para o histórico.
@@ -36,7 +37,7 @@ corrige a estadia aberta por ela.
 
 QUEM PODE RETIRAR O VEÍCULO (RN35, v11): a lista autorizados_veiculo
 diz, por placa, quem leva o carro sem o dono e sem senha (ativo, na
-validade, no campus a pé e sem bloqueio de CPF: veiculos.pode_levar); o
+validade, no campus a pé e não desativado: veiculos.pode_levar); o
 carro sai junto com a saída dessa pessoa, com o evento "Veículo saiu com
 autorizado". O porteiro só cadastra com o dono no campus (conferido aqui).
 
@@ -59,6 +60,13 @@ para o histórico nem para o log.
 Tamanho dos textos: os métodos que gravam recusam (ErroDados) texto acima
 dos máximos de validacao.py (MAXIMO_*), sem mudar o esquema.
 
+DESATIVAÇÃO (RN12, 2.3): desativar uma pessoa é desativar o CPF dela;
+desativar um veículo, a placa. Fica na tabela `bloqueios` da v5 (uma
+desativação = um bloqueio ativo; reativar = encerrá-lo, guardando quem e
+quando): o esquema não mudou e os bloqueios antigos viraram desativações
+sem migração. O banco confere de novo (validacao.checar_desativacao) na
+entrada (inserir) e na correção (editar): desativado não entra.
+
 Exceções de horário (horarios.py): a tela pede a autorização do
 administrador e a passa em `autorizacao` ({"autorizado_por", "regras",
 "justificativa"}). O banco confere de novo (defesa em profundidade): uma
@@ -75,14 +83,15 @@ import sqlite3
 from contextlib import closing, contextmanager
 from datetime import date, datetime, timedelta
 
-from . import horarios, senhas, veiculos
+from . import horarios, senhas, validacao, veiculos
 from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
                        conferir_autorizador, pode_editar)
 from .validacao import (FORMATO, MAXIMO_BUSCA, MAXIMO_CELULAR, MAXIMO_CPF,
                         MAXIMO_CODIGO, MAXIMO_DATA_HORA, MAXIMO_DESCRICAO,
                         MAXIMO_JUSTIFICATIVA, MAXIMO_LOGIN, MAXIMO_MOTIVO,
                         MAXIMO_NOME, MAXIMO_PLACA, MAXIMO_SENHA, TIPOS_ACESSO,
-                        checar_tamanho, formatar_placa, mascarar_cpf,
+                        TIPOS_DESATIVACAO, checar_tamanho, formatar_placa,
+                        mascarar_cpf,
                         mascarar_cpfs_no_texto, normalizar, so_digitos,
                         validar)
 
@@ -90,7 +99,8 @@ FORMATO_ISO = "%Y-%m-%d %H:%M"
 FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
 # 1: registros | 2: + usuarios e auditoria | 3: + pessoas
 # 4: auditoria ligada ao registro (histórico de cada visita)
-# 5: + bloqueios (lista de CPFs e placas com acesso negado)
+# 5: + bloqueios (CPFs e placas com acesso negado; na 2.3, as
+#    desativações de pessoa e de veículo, na mesma tabela)
 # 6: uma visita aberta por CPF garantida no banco, índices de desempenho
 #    e tentativas de login guardadas no banco
 # 7: índice das saídas (o Movimento mostra também quem saiu hoje) e
@@ -106,6 +116,8 @@ FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
 #     códigos de recuperação do administrador, pessoas autorizadas a
 #     retirar o veículo e a lotação do estacionamento (parametros vagas e
 #     bloquear_lotado)
+# (2.3: sem mudança de esquema — desativação, cadastro e exclusão de
+#  pessoa usam as tabelas que já existiam)
 VERSAO_ESQUEMA = 11
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
@@ -235,6 +247,10 @@ OUTRO_CARRO_LIBERADO = "Terceiro carro da mesma pessoa liberado"
 # RN38: códigos de recuperação do administrador (o código nunca vai ao
 # histórico, só quantos restam)
 CODIGOS_GERADOS = "Códigos de recuperação gerados"
+# RN12 (2.3): desativação de pessoa (CPF) e de veículo (placa)
+DESATIVADA = {"cpf": "Pessoa desativada", "placa": "Veículo desativado"}
+REATIVADA = {"cpf": "Pessoa reativada", "placa": "Veículo reativado"}
+ENTRADA_RECUSADA = "Entrada recusada (desativação)"
 CODIGO_RECUPERACAO_USADO = "Senha redefinida com código de recuperação"
 RECUPERACAO_RECUSADA = "Recuperação de senha recusada"
 # todas as exceções, na ordem do filtro "Tipo" do relatório
@@ -320,7 +336,7 @@ def mensagem_amigavel(erro):
                     "Registre a saída dele pela placa antes de uma nova "
                     "entrada com ele.")
         if "bloqueios.tipo" in texto:
-            return "Este CPF ou placa já está bloqueado."
+            return "Esta pessoa ou veículo já está desativado."
         if "foreign key" in texto:
             return ("O registro aponta para um cadastro que não existe mais.\n"
                     "Atualize a tela e tente de novo.")
@@ -1247,18 +1263,23 @@ class Banco:
         }
 
     def contadores(self):
-        """Números da barra lateral: pessoas cadastradas, quem está no
-        campus e bloqueios ativos (três contagens com índice: rápido)."""
+        """Números da barra lateral e das subabas de Pessoas: pessoas
+        cadastradas, quem está no campus, pessoas (CPFs) e veículos
+        (placas) desativados e carros no estacionamento (contagens com
+        índice: rápido)."""
         with self._conexao() as con:
             pessoas, = con.execute("SELECT COUNT(*) FROM pessoas").fetchone()
             no_campus, = con.execute("SELECT COUNT(*) FROM registros "
                                      "WHERE saida = ''").fetchone()
-            bloqueios, = con.execute("SELECT COUNT(*) FROM bloqueios "
-                                     "WHERE ativo = 1").fetchone()
+            desativadas = dict(con.execute(
+                "SELECT tipo, COUNT(*) FROM bloqueios WHERE ativo = 1 "
+                "GROUP BY tipo").fetchall())
             veiculos, = con.execute("SELECT COUNT(*) FROM estadias_veiculo "
                                     "WHERE saida = ''").fetchone()
         return {"pessoas": pessoas, "no_campus": no_campus,
-                "bloqueios": bloqueios, "veiculos": veiculos}
+                "desativadas": desativadas.get("cpf", 0),
+                "veiculos_desativados": desativadas.get("placa", 0),
+                "veiculos": veiculos}
 
     def inserir(self, registro, autor=None, autorizacao=None,
                 lotado_confirmado=False, autorizacao_lotacao=None,
@@ -1286,6 +1307,7 @@ class Banco:
                                                          autor)
         with self._conexao() as con:
             self._conferir_autor(con, autor)
+            self._conferir_desativacao(con, registro)
             self._conferir_autorizacao(con, autorizacao)
             self._exigir_autorizacao_24h(
                 _duracao_iso(para_iso(registro["entrada"]),
@@ -1521,6 +1543,8 @@ class Banco:
                                 (id_registro,)).fetchone()
             if linha is None:
                 raise ErroDados("Este registro não existe mais.")
+            self._conferir_desativacao(con, novo, original={
+                "cpf": linha[5], "placa": linha[4], "saida": linha[3]})
             pessoa_antiga = linha[0]
             sem_o_dono = self._correcao_mexe_no_carro(
                 con, id_registro, {"cpf": linha[5], "saida": linha[3]}, novo)
@@ -1912,15 +1936,15 @@ class Banco:
         dia = datetime.strptime(saida, FORMATO_ISO).date()
         visita_a_pe = con.execute("SELECT placa = '' FROM registros "
                                   "WHERE id = ?", (id_registro,)).fetchone()[0]
-        bloqueado = con.execute("SELECT 1 FROM bloqueios WHERE tipo = 'cpf' "
-                                "AND valor = ? AND ativo = 1",
-                                (cpf,)).fetchone() is not None
+        desativada = con.execute("SELECT 1 FROM bloqueios WHERE tipo = 'cpf' "
+                                 "AND valor = ? AND ativo = 1",
+                                 (cpf,)).fetchone() is not None
         for linha in con.execute(f"SELECT {COLUNAS_AUTORIZADO} FROM "
                                  "autorizados_veiculo WHERE placa = ? AND "
                                  "cpf = ? AND ativo = 1", (placa, cpf)):
             autorizado = _autorizado(linha)
             ok, _ = veiculos.pode_levar(autorizado, dia, bool(visita_a_pe),
-                                        bloqueado)
+                                        desativada)
             if ok:
                 return autorizado
         return None
@@ -2118,8 +2142,8 @@ class Banco:
 
     def veiculos_que_pode_levar(self, cpf, dia):
         """Carros no estacionamento que `cpf` pode levar sem o dono (RN35),
-        cada um com o "autorizado" (a linha da lista). Vazio se o CPF está
-        bloqueado. Sem os carros dela mesma."""
+        cada um com o "autorizado" (a linha da lista). Vazio se a pessoa
+        está desativada. Sem os carros dela mesma."""
         with self._conexao() as con:
             if con.execute("SELECT 1 FROM bloqueios WHERE tipo = 'cpf' AND "
                            "valor = ? AND ativo = 1", (cpf,)).fetchone():
@@ -2141,7 +2165,7 @@ class Banco:
 
     def autorizados_no_campus(self, placa, dia):
         """RN35: quem da lista da placa está no campus a pé agora (pode
-        levar o carro), com a visita aberta; sem os CPFs bloqueados."""
+        levar o carro), com a visita aberta; sem as pessoas desativadas."""
         with self._conexao() as con:
             linhas = con.execute(
                 f"SELECT {COLUNAS_AUTORIZADO_A}, r.id FROM autorizados_veiculo a "
@@ -2331,54 +2355,120 @@ class Banco:
                         f"{assunto}: " + "; ".join(mudancas))
 
     # --------------------------------------------------------------
-    # Lista de bloqueio
+    # Desativação de pessoa (CPF) e de veículo (placa) — RN12
     # --------------------------------------------------------------
-    def listar_bloqueios(self, incluir_removidos=False):
-        """Bloqueios (ativos primeiro, mais recentes primeiro) com o nome da
-        pessoa quando o CPF já é conhecido."""
-        filtro = "" if incluir_removidos else "WHERE b.ativo = 1"
+    def listar_desativacoes(self, incluir_reativadas=False, tipo=None):
+        """
+        Desativações (as em vigor primeiro, mais recentes primeiro), só de
+        um `tipo` ("cpf" ou "placa") se informado. Cada uma traz o nome e o
+        id da pessoa: a dona do CPF (CPF sem cadastro: nome "" e pessoa_id
+        None, aparece como "(sem cadastro)") ou, na placa, quem tem aquela
+        placa cadastrada.
+        """
+        condicoes = ([] if incluir_reativadas else ["b.ativo = 1"]) + (
+            ["b.tipo = ?"] if tipo else [])
+        filtro = f"WHERE {' AND '.join(condicoes)}" if condicoes else ""
         with self._conexao() as con:
             linhas = con.execute(
                 "SELECT b.id, b.tipo, b.valor, b.motivo, b.criado_em, "
                 "b.criado_por, b.ativo, b.removido_em, b.removido_por, "
-                "COALESCE(p.nome, '') FROM bloqueios b "
-                "LEFT JOIN pessoas p ON b.tipo = 'cpf' AND p.cpf = b.valor "
-                f"{filtro} ORDER BY b.ativo DESC, b.id DESC").fetchall()
-        return [{"id": i, "tipo": tipo, "valor": valor, "motivo": motivo,
+                "COALESCE(p.nome, ''), p.id FROM bloqueios b "
+                "LEFT JOIN pessoas p ON p.id = (SELECT q.id FROM pessoas q "
+                "WHERE (b.tipo = 'cpf' AND q.cpf = b.valor) OR "
+                "(b.tipo = 'placa' AND q.placa = b.valor) "
+                "ORDER BY q.id LIMIT 1) "
+                f"{filtro} ORDER BY b.ativo DESC, b.id DESC",
+                (tipo,) if tipo else ()).fetchall()
+        return [{"id": i, "tipo": tipo_, "valor": valor, "motivo": motivo,
                  "criado_em": de_iso(criado), "criado_por": por,
-                 "ativo": bool(ativo), "removido_em": de_iso(removido),
-                 "removido_por": removido_por, "nome": nome}
-                for (i, tipo, valor, motivo, criado, por, ativo, removido,
-                     removido_por, nome) in linhas]
+                 "ativo": bool(ativo), "reativado_em": de_iso(removido),
+                 "reativado_por": removido_por, "nome": nome,
+                 "pessoa_id": pessoa_id}
+                for (i, tipo_, valor, motivo, criado, por, ativo, removido,
+                     removido_por, nome, pessoa_id) in linhas]
 
-    def bloquear(self, tipo, valor, motivo, autor):
-        agora = datetime.now().strftime(FORMATO_ISO)
-        _exigir_tamanho("CPF ou placa", valor,
+    @staticmethod
+    def _desativacoes_que_pegam(con, cpf, placa):
+        """As desativações em vigor do CPF ou da placa (para conferir)."""
+        linhas = con.execute(
+            "SELECT tipo, valor, motivo, criado_em, criado_por FROM bloqueios "
+            "WHERE ativo = 1 AND ((tipo = 'cpf' AND valor = ?) OR "
+            "(tipo = 'placa' AND valor = ?))", (cpf or "", placa or "")
+        ).fetchall()
+        return [{"tipo": t, "valor": v, "motivo": m, "criado_em": de_iso(c),
+                 "criado_por": por} for t, v, m, c, por in linhas]
+
+    @classmethod
+    def _conferir_desativacao(cls, con, registro, original=None):
+        """RN12 no banco: a pessoa (CPF) ou o veículo (placa) desativado
+        não entra; na correção (`original`), só se a mudança o põe no
+        campus (validacao.checar_desativacao_correcao)."""
+        ativas = cls._desativacoes_que_pegam(con, registro.get("cpf"),
+                                             registro.get("placa"))
+        if not ativas:
+            return
+        ok, msg = (validacao.checar_desativacao_correcao(original, registro,
+                                                         ativas)
+                   if original is not None
+                   else validacao.checar_desativacao(registro, ativas))
+        if not ok:
+            raise ErroDados(msg)
+
+    def desativar(self, tipo, valor, motivo, autor):
+        """
+        Desativa a pessoa (tipo "cpf") ou o veículo ("placa"): a entrada
+        passa a ser recusada. Só o administrador (RN12); o banco confere
+        de novo o CPF/placa, o motivo e se já não está desativado.
+        Devolve o id.
+        """
+        motivo = " ".join((motivo or "").split())
+        _exigir_tamanho("CPF ou placa", valor or "",
                         MAXIMO_CPF if tipo == "cpf" else MAXIMO_PLACA)
-        _exigir_tamanho("Motivo", motivo.strip(), MAXIMO_MOTIVO)
+        _exigir_tamanho("Motivo", motivo, MAXIMO_MOTIVO)
         with self._conexao() as con:
-            self._exigir(con, autor, para="bloquear CPF ou placa")
+            self._exigir(con, autor, para="desativar pessoas ou veículos")
+            ativas = self._desativacoes_que_pegam(
+                con, valor if tipo == "cpf" else "",
+                valor if tipo == "placa" else "")
+            ok, msg = validacao.validar_desativacao(tipo, valor, motivo, ativas)
+            if not ok:
+                raise ErroDados(msg)
+            nome = con.execute(
+                "SELECT nome FROM pessoas WHERE "
+                + ("cpf = ?" if tipo == "cpf" else "placa = ?")
+                + " ORDER BY id LIMIT 1", (valor,)).fetchone()
             cursor = con.execute(
                 "INSERT INTO bloqueios (tipo, valor, motivo, criado_em, criado_por) "
-                "VALUES (?, ?, ?, ?, ?)", (tipo, valor, motivo.strip(), agora, autor))
-            self._evento(con, autor, "Bloqueio criado",
-                         f"{tipo.upper()} {valor} — {motivo.strip()}")
+                "VALUES (?, ?, ?, ?, ?)",
+                (tipo, valor, motivo, self.relogio().strftime(FORMATO_ISO),
+                 autor))
+            quem = f" ({nome[0]})" if nome else (
+                " (sem cadastro)" if tipo == "cpf" else "")
+            self._evento(con, autor, DESATIVADA[tipo],
+                         f"{TIPOS_DESATIVACAO[tipo]} "
+                         f"{validacao.formatar_desativacao(tipo, valor)}"
+                         f"{quem} — {motivo}")
             return cursor.lastrowid
 
-    def desbloquear(self, id_bloqueio, autor):
-        agora = datetime.now().strftime(FORMATO_ISO)
+    def reativar(self, id_desativacao, autor):
+        """Reativa (a entrada volta a ser permitida). Só o administrador;
+        a desativação fica guardada com quem reativou e quando."""
         with self._conexao() as con:
-            self._exigir(con, autor, para="remover bloqueios")
+            self._exigir(con, autor, para="reativar pessoas ou veículos")
             linha = con.execute("SELECT tipo, valor FROM bloqueios "
                                 "WHERE id = ? AND ativo = 1",
-                                (id_bloqueio,)).fetchone()
+                                (id_desativacao,)).fetchone()
             if linha is None:
-                raise ErroDados("Este bloqueio não está mais ativo.")
+                raise ErroDados("Esta desativação não está mais em vigor "
+                                "(já foi reativada).")
+            tipo, valor = linha
             con.execute("UPDATE bloqueios SET ativo = 0, removido_em = ?, "
                         "removido_por = ? WHERE id = ?",
-                        (agora, autor, id_bloqueio))
-            self._evento(con, autor, "Bloqueio removido",
-                         f"{linha[0].upper()} {linha[1]}")
+                        (self.relogio().strftime(FORMATO_ISO), autor,
+                         id_desativacao))
+            self._evento(con, autor, REATIVADA[tipo],
+                         f"{TIPOS_DESATIVACAO[tipo]} "
+                         f"{validacao.formatar_desativacao(tipo, valor)}")
 
     # --------------------------------------------------------------
     # Pessoas
@@ -2398,16 +2488,22 @@ class Banco:
                                  "ORDER BY p.nome COLLATE NOCASE").fetchall()
         return [self._pessoa(linha) for linha in linhas]
 
-    def buscar_pessoas(self, texto, limite=200, so_cpf_completo=False):
+    def buscar_pessoas(self, texto, limite=200, so_cpf_completo=False,
+                       so_ativas=False):
         """
         Aba Pessoas sem carregar todo mundo: mesmo critério de
         consultas.filtrar (nome, tipo, placa; CPF e celular pelos dígitos),
         em ordem alfabética, no máximo `limite`. Passando do limite, quem
         está no campus entra primeiro (a lista abre ordenada pela situação).
         so_cpf_completo: ver _condicao_busca (porteiro).
+        so_ativas: sem as pessoas desativadas (subaba Ativas, 2.3).
         """
         condicao, params = _condicao_busca(
             texto, "pessoas", COLUNAS_BUSCA, so_cpf_completo)
+        if so_ativas:
+            condicao = " AND ".join(c for c in (condicao, (
+                "NOT EXISTS (SELECT 1 FROM bloqueios b WHERE b.tipo = 'cpf' "
+                "AND b.valor = pessoas.cpf AND b.ativo = 1)")) if c)
         where = f"WHERE {condicao}" if condicao else ""
         with self._conexao() as con:
             linhas = con.execute(

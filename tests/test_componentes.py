@@ -218,15 +218,16 @@ class TestComponentes(unittest.TestCase):
     # --- faixa de aviso, placa, tabela
     def test_aviso_muda_de_estado(self):
         aviso = componentes.Aviso(self.pai)
-        aviso.mostrar("erro", "CPF bloqueado: teste", acao="Ver bloqueio",
+        aviso.mostrar("erro", "Pessoa desativada: teste",
+                      acao="Ver desativação",
                       comando=lambda: None)
-        self.assertEqual(aviso.lbl.cget("text"), "CPF bloqueado: teste")
+        self.assertEqual(aviso.lbl.cget("text"), "Pessoa desativada: teste")
         self.assertEqual(aviso.lbl.cget("fg"), ESTADO["erro"][0])
-        self.assertEqual(aviso.acao.cget("text"), "Ver bloqueio")
+        self.assertEqual(aviso.acao.cget("text"), "Ver desativação")
         aviso.mostrar("sucesso", "ok")
         self.assertIsNone(aviso.acao)
 
-    def test_placa_guarda_texto_e_bloqueio(self):
+    def test_placa_guarda_texto_e_desativacao(self):
         placa = componentes.Placa(self.pai)
         placa.mostrar("ABC1D23", bloqueada=True)
         self.assertEqual((placa.texto, placa.bloqueada), ("ABC1D23", True))

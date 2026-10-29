@@ -42,11 +42,11 @@ class TestRegrasPuras(unittest.TestCase):
                  (self.autorizado(ativo=False), HOJE, True, False, "removida"),
                  (vale, HOJE + timedelta(days=1), True, False, "venceu"),
                  (vale, HOJE, False, False, "outro veículo"),
-                 (vale, HOJE, True, True, "bloqueado")]
-        for autorizado, dia, a_pe, bloqueado, trecho in casos:
+                 (vale, HOJE, True, True, "desativada")]
+        for autorizado, dia, a_pe, desativada, trecho in casos:
             with self.subTest(trecho=trecho):
                 ok, motivo = veiculos.pode_levar(autorizado, dia, a_pe,
-                                                 bloqueado)
+                                                 desativada)
                 self.assertFalse(ok)
                 self.assertIn(trecho, motivo)
 
@@ -217,8 +217,8 @@ class TestQuemLevaOCarro(BaseAutorizadosNoBanco):
             self.banco.remover_autorizado(autorizado["id"], autor="paulo")
         self.assert_pede_senha()
 
-    def test_bloqueado_pede_senha(self):
-        self.banco.bloquear("cpf", BRUNO, "Motivo de teste", "ana")
+    def test_desativado_pede_senha(self):
+        self.banco.desativar("cpf", BRUNO, "Motivo de teste", "ana")
         self.assert_pede_senha()
 
     def test_quem_entrou_com_outro_carro_pede_senha(self):
@@ -258,7 +258,7 @@ class TestQuemLevaOCarro(BaseAutorizadosNoBanco):
         self.assertEqual(self.banco.veiculos_que_pode_levar(DAVI, dia), [])
         no_campus, = self.banco.autorizados_no_campus("BRA2E19", dia)
         self.assertEqual(no_campus["registro_id"], self.bruno)
-        self.banco.bloquear("cpf", BRUNO, "Motivo de teste", "ana")
+        self.banco.desativar("cpf", BRUNO, "Motivo de teste", "ana")
         self.assertEqual(self.banco.veiculos_que_pode_levar(BRUNO, dia), [])
         self.assertEqual(self.banco.autorizados_no_campus("BRA2E19", dia), [])
 

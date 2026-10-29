@@ -1,18 +1,34 @@
 """
-Página Pessoas: lista + ficha. À esquerda, todo mundo que já passou pela
-portaria (busca no banco, banco.buscar_pessoas), ordenada pela coluna
-clicada no cabeçalho (1º clique crescente, 2º decrescente; abre ordenada
-pela situação: no campus, bloqueado, fora, e depois pelo nome). À direita,
-a ficha da pessoa escolhida: placa desenhada, número de visitas, faixa de
-bloqueio e duas seções:
-- Cadastro: o formulário para corrigir o cadastro ou começar uma entrada;
+Página Pessoas, com três subabas (2.3: a antiga página Bloqueios virou a
+desativação, aqui dentro):
+
+- Ativas: todo mundo que pode entrar (busca no banco,
+  banco.buscar_pessoas), ordenada pela coluna clicada no cabeçalho (1º
+  clique crescente, 2º decrescente; abre ordenada pela situação: no campus,
+  fora, e depois pelo nome);
+- Desativadas: as pessoas (CPFs) desativadas — com o cadastro ou "(sem
+  cadastro)" —, o motivo, quando e quem desativou; "Mostrar reativadas"
+  traz também as que já voltaram;
+- Veículos desativados: as placas desativadas, com o dono (quem tem a placa
+  no cadastro), o motivo, quando e quem desativou.
+
+Desativado não entra (RN12). Só o administrador desativa e reativa (o
+porteiro vê as listas, com o aviso); tudo vai ao histórico. No banco é a
+tabela de bloqueios de sempre (dados.Banco.desativar / reativar).
+
+À direita (Ativas e Desativadas), a ficha da pessoa escolhida: placa
+desenhada (Mercosul ou antiga), número de visitas, faixa de situação e
+três seções:
+- Cadastro: o formulário para corrigir o cadastro ou começar uma entrada
+  e, para o administrador, Desativar / Reativar;
 - Visitas: o histórico de visitas dela, da mais recente para a mais
   antiga (entrada, saída, duração, tipo, placa e situação), com os dados
   que foram preenchidos em cada registro;
 - Veículo (RN35): "Quem pode retirar" o carro da placa dela sem o dono e
   sem senha, com Adicionar e Remover. O porteiro só adiciona com o dono no
   campus (o botão fica apagado, com a dica); o administrador, a qualquer
-  hora. Qualquer um remove.
+  hora. Qualquer um remove. O administrador desativa (ou reativa) o
+  veículo aqui também.
 """
 
 import tkinter as tk
@@ -21,20 +37,23 @@ from datetime import datetime
 from tkinter import ttk
 
 from . import horarios, mensagens
-from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao, Dialogo,
-                          EsperaDigitacao, OrdenacaoTabela, Placa, Seletor,
-                          campo_rotulado, inserir_linha, plural, rotulo_campo,
-                          tabela, titulo_cartao)
+from .componentes import (Alternador, Aviso, Botao, Cabecalho, Campo, Cartao,
+                          Dialogo, EsperaDigitacao, OrdenacaoTabela, Placa,
+                          Seletor, campo_rotulado, inserir_linha, plural,
+                          rotulo_campo, tabela, titulo_cartao)
+from .consultas import encontrar_dentro
 from .estilo import (COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, fonte_icone,
                      px)
-from .usuarios import eh_admin
-from .validacao import (MAXIMO_BUSCA, MAXIMO_NOME, TIPOS_ACESSO,
-                        converter_data, cpf_valido,
-                        formatar_celular, formatar_placa, normalizar,
-                        so_digitos, validar_campos)
+from .usuarios import eh_admin, pode_gerenciar_desativacoes
+from .validacao import (DESATIVADO, MAXIMO_BUSCA, MAXIMO_MOTIVO, MAXIMO_NOME,
+                        O_QUE, TIPOS_ACESSO, converter_data, cpf_valido,
+                        formatar_celular, formatar_desativacao,
+                        formatar_placa, normalizar, normalizar_desativacao,
+                        so_digitos, validar_campos, validar_desativacao)
 from .veiculos import (DONO_PRECISA_ESTAR,
                        pode_cadastrar_autorizado, validar_autorizado)
 
+ABAS = ("Ativas", "Desativadas", "Veículos desativados")
 COLUNAS = [("nome", "Nome", 160, "w"), ("cpf", "CPF", 112, "w"),
            ("celular", "Celular", 115, "w"), ("placa", "Placa", 80, "w"),
            ("tipo", "Tipo", 110, "w"), ("visitas", "Visitas", 66, "center"),
@@ -44,6 +63,7 @@ COLUNAS = [("nome", "Nome", 160, "w"), ("cpf", "CPF", 112, "w"),
 COLUNAS_VISIVEIS = ("nome", "cpf", "visitas", "ultima")
 LIMITE_BUSCA = 200
 SEM_SELECAO = "Escolha uma pessoa na lista para ver a ficha."
+SEM_CADASTRO = "(sem cadastro)"
 SECOES_FICHA = ("Cadastro", "Visitas", "Veículo")
 COLUNAS_AUTORIZADOS = [("nome", "Nome", 124, "w"),
                        ("cpf", "CPF", 104, "w"),
@@ -53,9 +73,41 @@ SEM_VEICULO = ("Sem veículo cadastrado. A lista de quem pode retirar vale "
 LIMITE_VISITAS = 200
 SEM_VISITAS = "Nenhuma visita registrada."
 
+# Desativadas (CPF) e Veículos desativados (placa): colunas de cada lista.
+# Com a ficha ao lado, a de pessoas mostra nome, CPF e motivo; com largura
+# sobrando (tela grande), também quando e quem desativou.
+COLUNAS_DESATIVACAO = {
+    "cpf": [("nome", "Nome", 140, "w"), ("valor", "CPF", 104, "w"),
+            ("motivo", "Motivo", 150, "w"),
+            ("criado", "Desativada em", 124, "w"), ("por", "Por", 90, "w"),
+            ("reativado", "Reativada em", 190, "w")],
+    "placa": [("valor", "Placa", 90, "w"), ("nome", "Pessoa", 150, "w"),
+              ("motivo", "Motivo", 300, "w"),
+              ("criado", "Desativado em", 124, "w"), ("por", "Por", 90, "w"),
+              ("reativado", "Reativado em", 190, "w")],
+}
+VISIVEIS_ESTREITA = ("nome", "valor", "motivo")
+# estreita mostrando também as reativadas: a coluna Situação entra e o
+# motivo fica só na ficha
+VISIVEIS_ESTREITA_REATIVADAS = ("nome", "valor")
+LARGURA_PARA_TODAS = 720        # px lógicos da tabela de pessoas desativadas
+TEXTOS_LISTA = {
+    "cpf": {"botao": "Desativar CPF", "reativadas": "Mostrar reativadas",
+            "vazia": "Nenhuma pessoa desativada",
+            "uma": "pessoa desativada", "varias": "pessoas desativadas",
+            "porteiro": "Pessoas desativadas não entram. Só um administrador "
+                        "desativa ou reativa."},
+    "placa": {"botao": "Desativar placa", "reativadas": "Mostrar reativados",
+              "vazia": "Nenhum veículo desativado",
+              "uma": "veículo desativado", "varias": "veículos desativados",
+              "porteiro": "Veículos desativados não entram. Só um "
+                          "administrador desativa ou reativa."},
+}
+SO_ADMIN = "Somente o administrador desativa ou reativa pessoas e veículos."
+
 # Situação na lista: (ordem, texto da bolinha, cor). Crescente = quem está
-# no campus primeiro (o que a guarita mais procura), depois os bloqueados.
-NO_CAMPUS, BLOQUEADO, FORA = 0, 1, 2
+# no campus primeiro (o que a guarita mais procura).
+NO_CAMPUS, FORA = 0, 2
 # token da cor de cada situação de visita (as do Movimento); o nome, e não
 # a cor, porque a cor depende do tema em uso
 COR_SITUACAO = {horarios.NO_CAMPUS: "sucesso",
@@ -81,31 +133,87 @@ def duracao(entrada, saida):
     return horarios.formatar_horas(minutos / 60)
 
 
+def descrever_desativacao(d):
+    """'Desativada em 20/10/2026 10:00 por ana.admin. Motivo: ...' (e a
+    reativação, se houver)."""
+    texto = (f"{O_QUE[d['tipo']]} {DESATIVADO[d['tipo']]} em {d['criado_em']} "
+             f"por {d['criado_por']}. Motivo: {d['motivo']}")
+    if not d["ativo"]:
+        texto += (f" Reativad{'a' if d['tipo'] == 'cpf' else 'o'} em "
+                  f"{d['reativado_em']} por {d['reativado_por']}.")
+    return texto
+
+
 class AbaPessoas:
     def __init__(self, aba, app):
         self.aba = aba
         self.app = app
+        self.admin = pode_gerenciar_desativacoes(app.usuario)
         self.pessoas = []
-        self.bloqueados = {}          # cpf -> motivo do bloqueio ativo
-        self.selecionada = None
+        self.desativacoes = {}        # cpf -> desativação em vigor
+        self.placas_desativadas = {}  # placa -> desativação em vigor
+        self.selecionada = None       # pessoa da ficha
+        self.desativacao_da_ficha = None   # CPF sem cadastro na ficha
         self.visitas = []             # visitas da pessoa (mais recente primeiro)
+        self.dialogo = None
+        self.aba_atual = ABAS[0]
 
         cab = Cabecalho(aba, "Pessoas").posicionar()
+        self.cabecalho = cab
         self.lbl_total = cab.subtitulo
-        corpo = tk.Frame(aba, bg=COR["fundo"])
+        self.seletor = Seletor(aba, ABAS, self.mostrar_aba)
+        self.seletor.pack(fill="x", padx=px(MARGEM), pady=(0, px(12)))
+        self.corpo = corpo = tk.Frame(aba, bg=COR["fundo"])
         corpo.pack(fill="both", expand=True, padx=px(MARGEM),
                    pady=(0, px(MARGEM)))
         self._montar_ficha(corpo)
-        self._montar_lista(corpo)
+        self.cartao_ativas = self._montar_lista(corpo)
+        self.desativadas = ListaDesativacoes(self, corpo, "cpf")
+        self.veiculos_desativados = ListaDesativacoes(self, corpo, "placa")
+        self.seletor.selecionar(ABAS[0])
+
+    # --------------------------------------------------------------
+    # Subabas
+    # --------------------------------------------------------------
+    def mostrar_aba(self, nome):
+        """Ativas e Desativadas: lista + ficha; Veículos desativados: a
+        lista com a largura toda."""
+        self.aba_atual = nome
+        cartoes = {ABAS[0]: self.cartao_ativas,
+                   ABAS[1]: self.desativadas.cartao,
+                   ABAS[2]: self.veiculos_desativados.cartao}
+        for cartao in (*cartoes.values(), self.cartao_ficha):
+            cartao.pack_forget()
+        if nome != ABAS[2]:
+            self.cartao_ficha.pack(side="right", fill="y")
+        cartoes[nome].pack(side="left", fill="both", expand=True,
+                           padx=(0, px(ESPACO_CARTOES)) if nome != ABAS[2]
+                           else 0)
+        self.limpar_ficha()
         self.atualizar()
+
+    def mostrar_contadores(self, n):
+        """Contagens no subtítulo e nas subabas (app.atualizar_contadores)."""
+        self.lbl_total.config(
+            text=plural(n["pessoas"], "pessoa cadastrada", "pessoas cadastradas")
+            + f"  ·  {n['no_campus']} no campus agora")
+        for aba, chave in ((ABAS[1], "desativadas"),
+                           (ABAS[2], "veiculos_desativados")):
+            self.seletor.definir_texto(
+                aba, f"{aba} ({n[chave]})" if n[chave] else aba)
+
+    def mostrar_desativacao(self, tipo, valor):
+        """Abre Desativadas (CPF) ou Veículos desativados (placa) com a
+        desativação em vigor de `valor` selecionada."""
+        self.seletor.selecionar(ABAS[1] if tipo == "cpf" else ABAS[2])
+        lista = self.desativadas if tipo == "cpf" else self.veiculos_desativados
+        lista.selecionar_valor(valor)
 
     # --------------------------------------------------------------
     # Montagem
     # --------------------------------------------------------------
     def _montar_lista(self, corpo):
         cartao = Cartao(corpo, pad=0)
-        cartao.pack(side="left", fill="both", expand=True,
-                    padx=(0, px(ESPACO_CARTOES)))
         m = cartao.miolo
         m.pack_configure(padx=px(1), pady=px(8))
         barra = tk.Frame(m, bg=COR["superficie"])
@@ -141,6 +249,7 @@ class AbaPessoas:
              "ultima": lambda p: _data(p["ultima_visita"])},
             self.mostrar_lista, coluna="#0",
             desempate=lambda p: _sem_acento(p["nome"]))
+        return cartao
 
     def _ao_duplo_clique(self, event):
         # duplo clique no cabeçalho ordena; só na linha começa a entrada
@@ -151,7 +260,7 @@ class AbaPessoas:
         cartao = Cartao(corpo, pad=20)
         cartao.config(width=px(372))
         cartao.pack_propagate(False)
-        cartao.pack(side="right", fill="y")
+        self.cartao_ficha = cartao
         fundo = COR["superficie"]
 
         # estado vazio (nada escolhido)
@@ -159,8 +268,12 @@ class AbaPessoas:
         self.vazio.place(relx=0.5, rely=0.4, anchor="center")
         tk.Label(self.vazio, text=ICONE["pessoa"], font=fonte_icone(28),
                  bg=fundo, fg=COR["texto_3"]).pack()
-        tk.Label(self.vazio, text=SEM_SELECAO, font=FONTE["corpo"], bg=fundo,
-                 fg=COR["texto_2"], wraplength=px(240)).pack(pady=(px(10), 0))
+        self.lbl_vazio = tk.Label(self.vazio, text=SEM_SELECAO,
+                                  font=FONTE["corpo"], bg=fundo,
+                                  fg=COR["texto_2"], wraplength=px(240))
+        self.lbl_vazio.pack(pady=(px(10), 0))
+
+        self._montar_sem_cadastro(cartao.miolo)
 
         self.conteudo = tk.Frame(cartao.miolo, bg=fundo)
         c = self.conteudo
@@ -187,6 +300,26 @@ class AbaPessoas:
                        "Visitas": self._montar_visitas(c),
                        "Veículo": self._montar_veiculo(c)}
         self.seletor_ficha.selecionar(SECOES_FICHA[0])
+
+    def _montar_sem_cadastro(self, pai):
+        """Ficha de um CPF desativado que nunca foi cadastrado."""
+        fundo = COR["superficie"]
+        self.sem_cadastro = f = tk.Frame(pai, bg=fundo)
+        titulo_cartao(f, SEM_CADASTRO).pack(anchor="w")
+        self.lbl_cpf_sem_cadastro = tk.Label(f, font=FONTE["cpf"], bg=fundo,
+                                             fg=COR["texto_2"])
+        self.lbl_cpf_sem_cadastro.pack(anchor="w")
+        self.faixa_sem_cadastro = Aviso(f)
+        self.faixa_sem_cadastro.pack(fill="x", pady=(px(14), 0))
+        tk.Label(f, text="Este CPF nunca foi cadastrado. A desativação vale "
+                         "para a primeira entrada dele.", font=FONTE["dica"],
+                 bg=fundo, fg=COR["texto_3"], wraplength=px(320),
+                 justify="left").pack(anchor="w", pady=(px(10), 0))
+        self.btn_reativar_sem_cadastro = None
+        if self.admin:
+            self.btn_reativar_sem_cadastro = Botao(
+                f, "Reativar", self._reativar_da_ficha, "secundario")
+            self.btn_reativar_sem_cadastro.pack(anchor="w", pady=(px(14), 0))
 
     def _montar_cadastro(self, c):
         fundo = COR["superficie"]
@@ -218,10 +351,19 @@ class AbaPessoas:
 
         botoes = tk.Frame(secao, bg=fundo)
         botoes.pack(fill="x", pady=(px(4), 0))
-        Botao(botoes, "Registrar entrada", self.registrar_entrada,
-              "primario").pack(side="left")
+        self.btn_entrada = Botao(botoes, "Registrar entrada",
+                                 self.registrar_entrada, "primario")
+        self.btn_entrada.pack(side="left")
         Botao(botoes, "Salvar alterações", self.salvar,
               "secundario").pack(side="left", padx=(px(8), 0))
+        self.btn_desativar = None
+        if self.admin:          # RN12: só o administrador desativa
+            admin = tk.Frame(secao, bg=fundo)
+            admin.pack(fill="x", pady=(px(8), 0))
+            self.btn_desativar = Botao(admin, "Desativar",
+                                       self.desativar_selecionada, "perigo",
+                                       largura=120)
+            self.btn_desativar.pack(side="left")
         return secao
 
     def _montar_visitas(self, c):
@@ -254,7 +396,8 @@ class AbaPessoas:
         return secao
 
     def _montar_veiculo(self, c):
-        """RN35: quem pode retirar o carro da pessoa sem ela e sem senha."""
+        """RN35: quem pode retirar o carro da pessoa sem ela e sem senha;
+        e (administrador) desativar ou reativar o veículo."""
         fundo = COR["superficie"]
         secao = tk.Frame(c, bg=fundo)
         self.lbl_veiculo = tk.Label(secao, font=FONTE["rotulo"], bg=fundo,
@@ -264,7 +407,7 @@ class AbaPessoas:
             secao, font=FONTE["dica"], bg=fundo, fg=COR["texto_3"],
             justify="left", anchor="w", wraplength=px(320),
             text="Levam o carro sem o dono e sem senha, se estiverem no "
-                 "campus a pé e sem bloqueio.")
+                 "campus a pé e não estiverem desativados.")
         self.lbl_veiculo_dica.pack(fill="x", pady=(px(2), px(8)))
         self.quadro_autorizados, self.tabela_autorizados = tabela(
             secao, COLUNAS_AUTORIZADOS, altura=3, rolagem=True, compacta=True)
@@ -281,6 +424,18 @@ class AbaPessoas:
         self.lbl_dono_fora = tk.Label(secao, font=FONTE["dica"], bg=fundo,
                                       fg=COR["alerta"], justify="left",
                                       anchor="w", wraplength=px(320))
+        # desativar o veículo (RN12): só o administrador
+        self.linha_desativar_veiculo = tk.Frame(secao, bg=fundo)
+        self.lbl_veiculo_desativado = tk.Label(
+            self.linha_desativar_veiculo, font=FONTE["dica"], bg=fundo,
+            fg=COR["erro"], justify="left", anchor="w", wraplength=px(320))
+        self.btn_desativar_veiculo = None
+        if self.admin:
+            self.btn_desativar_veiculo = Botao(
+                self.linha_desativar_veiculo, "Desativar veículo",
+                self.desativar_veiculo, "perigo")
+            self.btn_desativar_veiculo.pack(side="bottom", anchor="w",
+                                            pady=(px(6), 0))
         self.autorizados = []
         return secao
 
@@ -290,6 +445,7 @@ class AbaPessoas:
         placa = pessoa["placa"]
         self.autorizados = []
         self.tabela_autorizados.delete(*self.tabela_autorizados.get_children())
+        self._mostrar_desativacao_do_veiculo(placa)
         if not placa:
             self.lbl_veiculo.config(text=SEM_VEICULO, font=FONTE["corpo"],
                                     fg=COR["texto_2"], wraplength=px(320),
@@ -334,6 +490,27 @@ class AbaPessoas:
             self.lbl_dono_fora.pack(fill="x", pady=(px(6), 0),
                                     after=self.botoes_veiculo)
         self.btn_remover_autorizado.definir_ativo(bool(self.autorizados))
+
+    def _mostrar_desativacao_do_veiculo(self, placa):
+        """Na seção Veículo: "Veículo desativado: motivo" e o botão
+        Desativar / Reativar veículo (administrador)."""
+        linha = self.linha_desativar_veiculo
+        desativado = self.placas_desativadas.get(placa) if placa else None
+        if not placa or (desativado is None and self.btn_desativar_veiculo
+                         is None):
+            linha.pack_forget()
+            return
+        linha.pack(fill="x", side="bottom", pady=(px(12), 0))
+        if desativado:
+            self.lbl_veiculo_desativado.config(
+                text=f"Veículo desativado: {desativado['motivo']}")
+            self.lbl_veiculo_desativado.pack(side="top", fill="x")
+        else:
+            self.lbl_veiculo_desativado.pack_forget()
+        if self.btn_desativar_veiculo is not None:
+            self.btn_desativar_veiculo.definir_texto(
+                *(("Reativar veículo", "secundario") if desativado
+                  else ("Desativar veículo", "perigo")))
 
     def adicionar_autorizado(self):
         """Abre o diálogo "Quem pode retirar"; devolve o diálogo."""
@@ -395,10 +572,6 @@ class AbaPessoas:
     # --------------------------------------------------------------
     def _situacao_da_pessoa(self, p):
         """(ordem, texto da coluna Situação, texto da bolinha, cor)."""
-        if p["cpf"] in self.bloqueados:
-            texto = ("No campus · " if p["dentro_desde"] else "") + "Bloqueado"
-            ordem = NO_CAMPUS if p["dentro_desde"] else BLOQUEADO
-            return ordem, texto, "Bloqueado", COR["erro"]
         if p["dentro_desde"]:
             return NO_CAMPUS, "No campus", "No campus", COR["sucesso"]
         return FORA, "—", "Fora", COR["barra"]
@@ -406,24 +579,35 @@ class AbaPessoas:
     def _ordem_situacao(self, p):
         return self._situacao_da_pessoa(p)[0]
 
-    def atualizar(self):
-        ok, pessoas = self.app.tentar(
-            self.app.banco.buscar_pessoas, self.busca.get(), LIMITE_BUSCA,
-            so_cpf_completo=not eh_admin(self.app.usuario))
-        if not ok:
-            return
-        ok, bloqueios = self.app.tentar(self.app.banco.listar_bloqueios)
-        self.bloqueados = {b["valor"]: b["motivo"] for b in (bloqueios or [])
-                           if b["tipo"] == "cpf"}
-        self.pessoas = pessoas
-        self.mostrar_lista()
+    def _ler_desativacoes(self):
+        ok, ativas = self.app.tentar(self.app.banco.listar_desativacoes)
+        ativas = ativas if ok else []
+        self.desativacoes = {d["valor"]: d for d in ativas
+                             if d["tipo"] == "cpf"}
+        self.placas_desativadas = {d["valor"]: d for d in ativas
+                                   if d["tipo"] == "placa"}
 
+    def atualizar(self):
+        """Relê a subaba aberta, as desativações em vigor e os números."""
+        self._ler_desativacoes()
+        if self.aba_atual == ABAS[0]:
+            self._atualizar_ativas()
+        elif self.aba_atual == ABAS[1]:
+            self.desativadas.atualizar()
+        else:
+            self.veiculos_desativados.atualizar()
         ok, n = self.app.tentar(self.app.banco.contadores)
         if ok:
-            self.lbl_total.config(
-                text=plural(n["pessoas"], "pessoa cadastrada",
-                            "pessoas cadastradas")
-                + f"  ·  {n['no_campus']} no campus agora")
+            self.mostrar_contadores(n)
+
+    def _atualizar_ativas(self):
+        ok, pessoas = self.app.tentar(
+            self.app.banco.buscar_pessoas, self.busca.get(), LIMITE_BUSCA,
+            so_cpf_completo=not eh_admin(self.app.usuario), so_ativas=True)
+        if not ok:
+            return
+        self.pessoas = pessoas
+        self.mostrar_lista()
         status = plural(len(pessoas), "pessoa na lista", "pessoas na lista")
         if len(pessoas) >= LIMITE_BUSCA:
             status += f" (as {LIMITE_BUSCA} primeiras: refine a busca)"
@@ -449,8 +633,22 @@ class AbaPessoas:
         if not selecao:
             return
         p = next(p for p in self.pessoas if p["id"] == int(selecao[0]))
+        self.mostrar_ficha(p)
+
+    def limpar_ficha(self, texto=SEM_SELECAO):
+        """Ficha vazia (nada escolhido)."""
+        self.selecionada = self.desativacao_da_ficha = None
+        self.conteudo.pack_forget()
+        self.sem_cadastro.pack_forget()
+        self.lbl_vazio.config(text=texto)
+        self.vazio.place(relx=0.5, rely=0.4, anchor="center")
+
+    def mostrar_ficha(self, p):
+        """Ficha da pessoa `p` (de banco.buscar_pessoa / buscar_pessoas)."""
         self.selecionada = p
+        self.desativacao_da_ficha = None
         self.vazio.place_forget()
+        self.sem_cadastro.pack_forget()
         self.conteudo.pack(fill="both", expand=True)
         self.lbl_titulo.config(text=p["nome"])
         self.lbl_cpf.config(text="CPF " + self.app.exibir_cpf(p["cpf"]))
@@ -462,16 +660,36 @@ class AbaPessoas:
         self.celular.insert(0, p["celular"])
         self.var_placa.set(p["placa"])
         self.tipo.set(p["tipo"])
-        motivo = self.bloqueados.get(p["cpf"])
-        if motivo:
-            self._faixa("erro", f"CPF bloqueado: {motivo}")
+        desativacao = self.desativacoes.get(p["cpf"])
+        if desativacao:
+            self._faixa("erro", descrever_desativacao(desativacao))
         elif p["dentro_desde"]:
             self._faixa("sucesso", f"No campus desde {p['dentro_desde']}.")
         else:
             self.faixa.pack_forget()
+        if self.btn_desativar is not None:
+            self.btn_desativar.definir_texto(
+                *(("Reativar", "secundario") if desativacao
+                  else ("Desativar", "perigo")))
+        self.btn_entrada.definir_ativo(desativacao is None)
         self._mostrar_placa()
         self.mostrar_visitas(p)
         self.mostrar_autorizados(p)
+
+    def mostrar_ficha_sem_cadastro(self, desativacao):
+        """CPF desativado sem cadastro: CPF, desativação e Reativar."""
+        self.selecionada = None
+        self.desativacao_da_ficha = desativacao
+        self.vazio.place_forget()
+        self.conteudo.pack_forget()
+        self.sem_cadastro.pack(fill="both", expand=True)
+        self.lbl_cpf_sem_cadastro.config(
+            text="CPF " + self.app.exibir_cpf(desativacao["valor"]))
+        self.faixa_sem_cadastro.mostrar(
+            "erro" if desativacao["ativo"] else "neutro",
+            descrever_desativacao(desativacao))
+        if self.btn_reativar_sem_cadastro is not None:
+            self.btn_reativar_sem_cadastro.definir_ativo(desativacao["ativo"])
 
     # --------------------------------------------------------------
     # Histórico de visitas da pessoa
@@ -544,7 +762,9 @@ class AbaPessoas:
         self.faixa.pack(fill="x", pady=(px(14), 0), before=self.seletor_ficha)
 
     def _mostrar_placa(self):
-        self.desenho_placa.mostrar(self.var_placa.get().strip())
+        placa = self.var_placa.get().strip().upper()
+        self.desenho_placa.mostrar(placa,
+                                   bloqueada=placa in self.placas_desativadas)
 
     def _exigir_selecao(self):
         if self.selecionada is None:
@@ -570,9 +790,20 @@ class AbaPessoas:
                                 dados["tipo"], autor=self.app.autor)
         if not ok:
             return
-        self.atualizar()
-        self.ao_selecionar()
+        self.recarregar_ficha()
         self._faixa("sucesso", "Alterações salvas.")
+
+    def recarregar_ficha(self):
+        """Relê a lista e a pessoa da ficha (depois de gravar)."""
+        cpf = self.selecionada["cpf"] if self.selecionada else None
+        self.atualizar()
+        if cpf is None:
+            return
+        ok, pessoa = self.app.tentar(self.app.banco.buscar_pessoa, cpf)
+        if ok and pessoa:
+            self.mostrar_ficha(pessoa)
+        else:
+            self.limpar_ficha()
 
     def registrar_entrada(self):
         if not self._exigir_selecao():
@@ -585,6 +816,308 @@ class AbaPessoas:
                            "Entrada e saída.")
             return
         self.app.preencher_pessoa(p)
+
+    # --- desativação (RN12: só o administrador) ----------------------
+    def _exigir_admin(self):
+        if not pode_gerenciar_desativacoes(self.app.usuario):
+            mensagens.erro("Acesso negado", SO_ADMIN)
+            return False
+        return True
+
+    def desativar_selecionada(self):
+        """Ficha › Desativar (ou Reativar, se a pessoa já está
+        desativada). Devolve o diálogo, se abriu um."""
+        if not self._exigir_selecao() or not self._exigir_admin():
+            return None
+        p = self.selecionada
+        desativacao = self.desativacoes.get(p["cpf"])
+        if desativacao:
+            self.reativar(desativacao)
+            return None
+        self.dialogo = DialogoDesativar(self, "cpf", p["cpf"], p["nome"])
+        return self.dialogo
+
+    def desativar_veiculo(self):
+        """Ficha › Veículo › Desativar (ou Reativar) veículo."""
+        if not self._exigir_selecao() or not self._exigir_admin():
+            return None
+        placa = self.selecionada["placa"]
+        if not placa:
+            return None
+        desativacao = self.placas_desativadas.get(placa)
+        if desativacao:
+            self.reativar(desativacao)
+            return None
+        self.dialogo = DialogoDesativar(self, "placa", placa,
+                                        self.selecionada["nome"])
+        return self.dialogo
+
+    def _reativar_da_ficha(self):
+        if self.desativacao_da_ficha is not None:
+            self.reativar(self.desativacao_da_ficha)
+
+    def reativar(self, desativacao):
+        """Pergunta e reativa (a entrada volta a ser permitida)."""
+        if not self._exigir_admin():
+            return False
+        tipo = desativacao["tipo"]
+        quem = desativacao["nome"] or SEM_CADASTRO
+        rotulo = formatar_desativacao(tipo, desativacao["valor"])
+        texto = (f"Reativar {quem} (CPF {self.app.exibir_cpf(desativacao['valor'])})?"
+                 if tipo == "cpf" else f"Reativar o veículo {rotulo}?")
+        if not self.app.perguntar(mensagens.confirmar, "Reativar",
+                                  texto + "\nA entrada volta a ser permitida. "
+                                          "A reativação fica no histórico."):
+            return False
+        ok, _ = self.app.tentar(self.app.banco.reativar, desativacao["id"],
+                                self.app.autor)
+        if ok:
+            self.depois_de_mudar()
+        return ok
+
+    def depois_de_mudar(self, tipo=None, valor=None):
+        """Desativou ou reativou: relê a página, os contadores e o
+        Movimento; a ficha mostra a pessoa como ficou."""
+        self.app.atualizar_contadores()
+        self.app.recarregar_registros()
+        # desativou uma pessoa ou, pela lista, uma placa: a lista mostra;
+        # o veículo desativado pela ficha continua na ficha
+        if tipo is not None and (tipo == "cpf" or self.selecionada is None):
+            self.mostrar_desativacao(tipo, valor)
+            return
+        if self.selecionada is not None:
+            self.recarregar_ficha()
+        else:
+            self.atualizar()
+            self.limpar_ficha()
+
+    def avisar_se_no_campus(self, tipo, valor):
+        """Desativou alguém que está no campus agora: vale para as
+        próximas entradas (a visita aberta continua)."""
+        dentro = encontrar_dentro(self.app.registros, valor)
+        if dentro:
+            nomes = ", ".join(r["nome"] for r in dentro)
+            mensagens.info("Atenção", f"{O_QUE[tipo]} "
+                                      f"{formatar_desativacao(tipo, valor)} "
+                                      f"{DESATIVADO[tipo]}.\n\nNo campus "
+                                      f"agora: {nomes}.\nA desativação vale "
+                                      "para as próximas entradas.")
+
+
+class ListaDesativacoes:
+    """Subaba Desativadas (tipo "cpf") ou Veículos desativados ("placa"):
+    a lista, "Mostrar reativadas" e, para o administrador, Desativar e
+    Reativar. Selecionar uma pessoa abre a ficha dela ao lado."""
+
+    def __init__(self, pagina, corpo, tipo):
+        self.pagina, self.app, self.tipo = pagina, pagina.app, tipo
+        self.textos = TEXTOS_LISTA[tipo]
+        self.linhas = []
+        self.colunas = COLUNAS_DESATIVACAO[tipo]
+        self.todas = tuple(c[0] for c in self.colunas)
+        self.sem_reativacao = self.todas[:-1]
+        self.cartao = Cartao(corpo, pad=0)
+        m = self.cartao.miolo
+        m.pack_configure(padx=px(1), pady=px(8))
+        self.btn_desativar = self.btn_reativar = None
+        if pagina.admin:
+            barra = tk.Frame(m, bg=COR["superficie"])
+            barra.pack(fill="x", padx=px(19), pady=(px(6), px(12)))
+            self.btn_desativar = Botao(barra, self.textos["botao"],
+                                       self.desativar, "perigo",
+                                       icone=ICONE["bloqueio"])
+            self.btn_desativar.pack(side="left")
+            self.btn_reativar = Botao(barra, "Reativar", self.reativar,
+                                      "secundario")
+            self.btn_reativar.pack(side="left", padx=(px(8), 0))
+        else:
+            faixa = Aviso(m)
+            faixa.mostrar("info", self.textos["porteiro"])
+            faixa.pack(fill="x", padx=px(19), pady=(px(6), px(12)))
+        # rodapé: quantas e "Mostrar reativadas" (a barra de cima fica com
+        # os botões: cabe ao lado da ficha no notebook)
+        rodape = tk.Frame(m, bg=COR["superficie"])
+        rodape.pack(side="bottom", fill="x", padx=px(19), pady=(px(6), 0))
+        self.lbl_status = tk.Label(rodape, text="", font=FONTE["dica"],
+                                   bg=COR["superficie"], fg=COR["texto_3"])
+        self.lbl_status.pack(side="left")
+        self.ver_reativadas = tk.BooleanVar(pagina.aba, value=False)
+        Alternador(rodape, self.textos["reativadas"], self.ver_reativadas,
+                   self.atualizar).pack(side="right")
+        quadro, self.tabela = tabela(m, self.colunas, situacao="Situação",
+                                     mostrar=self._visiveis(0))
+        quadro.pack(fill="both", expand=True, padx=px(12))
+        self.tabela.bind("<<TreeviewSelect>>", lambda e: self._ao_selecionar())
+        self.tabela.bind("<Configure>", lambda e: self._ajustar_colunas(),
+                         add="+")
+
+    def _visiveis(self, largura):
+        """Colunas mostradas: a lista de pessoas, com a ficha ao lado, só
+        mostra quando e quem desativou se houver largura."""
+        reativadas = self.ver_reativadas.get()
+        if self.tipo == "cpf" and largura < px(LARGURA_PARA_TODAS):
+            return (VISIVEIS_ESTREITA_REATIVADAS if reativadas
+                    else VISIVEIS_ESTREITA)
+        return self.todas if reativadas else self.sem_reativacao
+
+    def _ajustar_colunas(self):
+        """Colunas conforme a largura; a coluna Situação (bolinha) só
+        aparece com as reativadas na lista (sem elas, todas estão
+        desativadas)."""
+        visiveis = self._visiveis(self.tabela.winfo_width())
+        mostrar = "tree headings" if self.ver_reativadas.get() else "headings"
+        if (tuple(self.tabela["displaycolumns"]) != visiveis
+                or str(self.tabela["show"]) != mostrar):
+            self.tabela.configure(displaycolumns=visiveis, show=mostrar)
+            self.tabela.event_generate("<Configure>")   # encaixa as larguras
+
+    def atualizar(self):
+        ok, linhas = self.app.tentar(self.app.banco.listar_desativacoes,
+                                     self.ver_reativadas.get(), tipo=self.tipo)
+        if not ok:
+            return
+        self.linhas = linhas
+        selecao = self.tabela.selection()
+        self._ajustar_colunas()
+        self.tabela.delete(*self.tabela.get_children())
+        for i, d in enumerate(linhas):
+            valor = (self.app.exibir_cpf(d["valor"]) if self.tipo == "cpf"
+                     else formatar_placa(d["valor"]))
+            nome = d["nome"] or (SEM_CADASTRO if self.tipo == "cpf" else "—")
+            reativacao = ("" if d["ativo"] else
+                          f"{d['reativado_em']} por {d['reativado_por']}")
+            valores = ((nome, valor) if self.tipo == "cpf" else (valor, nome))
+            situacao = (DESATIVADO[self.tipo].capitalize() if d["ativo"]
+                        else "Reativad" + ("a" if self.tipo == "cpf" else "o"))
+            inserir_linha(self.tabela, i, (
+                *valores, d["motivo"], d["criado_em"], d["criado_por"],
+                reativacao), iid=str(d["id"]), situacao=situacao,
+                cor=COR["erro"] if d["ativo"] else COR["barra"],
+                tags=() if d["ativo"] else ("apagado",))
+        if selecao and self.tabela.exists(selecao[0]):
+            self.tabela.selection_set(selecao[0])
+        ativas = sum(1 for d in linhas if d["ativo"])
+        self.lbl_status.config(
+            text=plural(ativas, self.textos["uma"], self.textos["varias"])
+            if ativas else self.textos["vazia"])
+        self._ao_selecionar()
+
+    def _selecionada(self):
+        selecao = self.tabela.selection()
+        return next((d for d in self.linhas
+                     if selecao and str(d["id"]) == selecao[0]), None)
+
+    def _ao_selecionar(self):
+        """Reativar só com uma desativação em vigor; na de pessoas, a ficha
+        ao lado mostra quem foi escolhido."""
+        d = self._selecionada()
+        if self.btn_reativar is not None:
+            self.btn_reativar.definir_ativo(d is not None and d["ativo"])
+        if self.tipo != "cpf":
+            return
+        if d is None:
+            if self.pagina.desativacao_da_ficha or self.pagina.selecionada:
+                self.pagina.limpar_ficha()
+            return
+        ok, pessoa = self.app.tentar(self.app.banco.buscar_pessoa, d["valor"])
+        if ok and pessoa:
+            self.pagina.mostrar_ficha(pessoa)
+        else:
+            self.pagina.mostrar_ficha_sem_cadastro(d)
+
+    def selecionar_valor(self, valor):
+        """Seleciona a desativação em vigor de `valor` (CPF ou placa)."""
+        d = next((d for d in self.linhas if d["valor"] == valor
+                  and d["ativo"]), None)
+        if d is not None:
+            self.tabela.selection_set(str(d["id"]))
+            self.tabela.see(str(d["id"]))
+            self._ao_selecionar()
+
+    def desativar(self):
+        """Desativar CPF / Desativar placa: abre o diálogo (devolve)."""
+        if not self.pagina._exigir_admin():
+            return None
+        self.pagina.dialogo = DialogoDesativar(self.pagina, self.tipo)
+        return self.pagina.dialogo
+
+    def reativar(self):
+        if not self.pagina._exigir_admin():
+            return False
+        d = self._selecionada()
+        if d is None:
+            mensagens.aviso("Atenção", "Selecione uma linha da lista.")
+            return False
+        if not d["ativo"]:
+            mensagens.info("Aviso", "Esta desativação já foi encerrada "
+                                    "(reativada).")
+            return False
+        return self.pagina.reativar(d)
+
+
+class DialogoDesativar(Dialogo):
+    """Desativar uma pessoa (CPF) ou um veículo (placa): o motivo é
+    obrigatório (de 5 a 200 caracteres). Da ficha, o CPF/placa já vem; da
+    lista, é digitado."""
+
+    def __init__(self, pagina, tipo, valor=None, nome=None):
+        self.pagina, self.tipo, self.valor_fixo = pagina, tipo, valor
+        app = pagina.app
+        titulo = "Desativar pessoa" if tipo == "cpf" else "Desativar veículo"
+        if valor:
+            rotulo = formatar_desativacao(tipo, valor)
+            quem = (f"{nome} (CPF {app.exibir_cpf(valor)})" if tipo == "cpf"
+                    else f"o veículo {rotulo}"
+                    + (f", de {nome}," if nome else ""))
+        else:
+            quem = "esta pessoa" if tipo == "cpf" else "este veículo"
+        super().__init__(app.janela, titulo,
+                         f"A entrada de {quem} fica recusada até um "
+                         "administrador reativar. Fica no histórico.",
+                         largura=440, ao_usar=app.registrar_uso)
+        form = self.miolo
+        self.valor = None
+        if not valor:
+            grupo, campo = campo_rotulado(
+                form, "CPF" if tipo == "cpf" else "Placa",
+                "só números" if tipo == "cpf" else "ABC1234 ou ABC1D23",
+                **({"numeros": 11} if tipo == "cpf" else {"placa": True}))
+            grupo.pack(fill="x", pady=(0, px(14)))
+            self.valor = campo.entrada
+        grupo, campo = campo_rotulado(form, "Motivo", "aparece na entrada",
+                                      contador=True, maximo=MAXIMO_MOTIVO)
+        grupo.pack(fill="x")
+        self.motivo = campo.entrada
+        self.faixa = Aviso(form)
+        self.adicionar_botao(titulo.split()[0], self.salvar, "primario")
+        self.adicionar_botao("Cancelar", self.fechar)
+        self.abrir(confirmar=self.salvar, foco=self.valor or self.motivo)
+
+    def _erro(self, texto):
+        self.faixa.mostrar("erro", texto)
+        self.faixa.pack(fill="x", pady=(px(12), 0))
+
+    def salvar(self):
+        app = self.pagina.app
+        valor = normalizar_desativacao(
+            self.tipo, self.valor_fixo or (self.valor.get() if self.valor
+                                           else ""))
+        motivo = " ".join(self.motivo.get().split())
+        ok, ativas = app.tentar(app.banco.listar_desativacoes, tipo=self.tipo)
+        if not ok:
+            return False
+        ok, msg = validar_desativacao(self.tipo, valor, motivo, ativas)
+        if not ok:
+            self._erro(msg)
+            return False
+        ok, _ = app.tentar(app.banco.desativar, self.tipo, valor, motivo,
+                           app.autor)
+        if not ok:
+            return False
+        self.fechar()
+        self.pagina.depois_de_mudar(self.tipo, valor)
+        self.pagina.avisar_se_no_campus(self.tipo, valor)
+        return True
 
 
 class DialogoAutorizado(Dialogo):

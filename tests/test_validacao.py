@@ -2,10 +2,10 @@ import unittest
 from datetime import datetime
 
 from portaria import validacao
-from portaria.validacao import (celular_valido, checar_bloqueio,
-                                checar_bloqueio_correcao,
+from portaria.validacao import (celular_valido, checar_desativacao,
+                                checar_desativacao_correcao,
                                 checar_saida, cpf_valido,
-                                normalizar_bloqueio, validar_bloqueio,
+                                normalizar_desativacao, validar_desativacao,
                                 formatar_celular,
                                 formatar_cpf, formatar_placa, mascarar_cpf,
                                 mascarar_cpfs_no_texto, nome_valido,
@@ -193,72 +193,74 @@ class TestChecarSaida(unittest.TestCase):
         self.assertIn("anterior à entrada", msg)
 
 
-def bloqueio(tipo, valor, motivo="Agrediu o porteiro"):
+def desativacao(tipo, valor, motivo="Agrediu o porteiro"):
     return {"tipo": tipo, "valor": valor, "motivo": motivo,
             "criado_em": "10/10/2026 08:00", "criado_por": "ana"}
 
 
-class TestBloqueio(unittest.TestCase):
+class TestDesativacao(unittest.TestCase):
     def test_normalizar(self):
-        self.assertEqual(normalizar_bloqueio("cpf", "529.982.247-25"), CPF_ANA)
-        self.assertEqual(normalizar_bloqueio("placa", " abc-1234 "), "ABC1234")
+        self.assertEqual(normalizar_desativacao("cpf", "529.982.247-25"), CPF_ANA)
+        self.assertEqual(normalizar_desativacao("placa", " abc-1234 "), "ABC1234")
 
-    def test_validar_bloqueio(self):
-        ativos = [bloqueio("cpf", CPF_BETO)]
-        self.assertEqual(validar_bloqueio("cpf", CPF_ANA, "Furto na biblioteca",
+    def test_validar_desativacao(self):
+        ativos = [desativacao("cpf", CPF_BETO)]
+        self.assertEqual(validar_desativacao("cpf", CPF_ANA, "Furto na biblioteca",
                                           ativos), (True, ""))
-        self.assertEqual(validar_bloqueio("placa", "ABC1D23", "Estacionou na "
+        self.assertEqual(validar_desativacao("placa", "ABC1D23", "Estacionou na "
                                           "vaga de ambulância", ativos), (True, ""))
         casos = {
-            "tipo vazio": (("", CPF_ANA, "Motivo qualquer"), "CPF ou de placa"),
+            "tipo vazio": (("", CPF_ANA, "Motivo qualquer"), "pessoa (CPF)"),
             "cpf inválido": (("cpf", "12345678900", "Motivo qualquer"), "CPF inválido"),
             "placa inválida": (("placa", "AB12", "Motivo qualquer"), "Placa inválida"),
             "sem motivo": (("cpf", CPF_ANA, "  ab "), "motivo"),
-            "já bloqueado": (("cpf", CPF_BETO, "Motivo qualquer"), "já está bloqueado"),
+            "já desativada": (("cpf", CPF_BETO, "Motivo qualquer"),
+                              "Esta pessoa já está desativada"),
         }
         for caso, (args, trecho) in casos.items():
             with self.subTest(caso):
-                ok, msg = validar_bloqueio(*args, ativos)
+                ok, msg = validar_desativacao(*args, ativos)
                 self.assertFalse(ok)
                 self.assertIn(trecho, msg)
 
-    def test_entrada_de_cpf_bloqueado_e_recusada(self):  # RN12
-        ok, msg = checar_bloqueio(registro(), [bloqueio("cpf", CPF_ANA)])
+    def test_entrada_de_pessoa_desativada_e_recusada(self):  # RN12
+        ok, msg = checar_desativacao(registro(), [desativacao("cpf", CPF_ANA)])
         self.assertFalse(ok)
         self.assertIn("Acesso negado", msg)
         self.assertIn("Motivo: Agrediu o porteiro", msg)
-        self.assertIn("CPF 529.982.247-25 bloqueado", msg)
+        self.assertIn("Pessoa desativada: CPF 529.982.247-25", msg)
+        self.assertIn("Só um administrador pode reativar", msg)
 
-    def test_entrada_com_placa_bloqueada_e_recusada(self):
-        ok, msg = checar_bloqueio(registro(placa="abc1d23"),
-                                  [bloqueio("placa", "ABC1D23")])
+    def test_entrada_com_veiculo_desativado_e_recusada(self):
+        ok, msg = checar_desativacao(registro(placa="abc1d23"),
+                                  [desativacao("placa", "ABC1D23")])
         self.assertFalse(ok)
-        self.assertIn("Placa ABC1D23 bloqueada", msg)
+        self.assertIn("Veículo desativado: Placa ABC1D23", msg)
 
-    def test_correcao_nao_pode_colocar_bloqueado_no_campus(self):  # S01
-        ativos = [bloqueio("cpf", CPF_ANA), bloqueio("placa", "ABC1D23")]
+    def test_correcao_nao_pode_colocar_desativado_no_campus(self):  # S01
+        ativos = [desativacao("cpf", CPF_ANA), desativacao("placa", "ABC1D23")]
         livre = registro(cpf=CPF_BETO)
         trocou_cpf = registro()
         trocou_placa = registro(cpf=CPF_BETO, placa="ABC1D23")
-        self.assertFalse(checar_bloqueio_correcao(livre, trocou_cpf, ativos)[0])
-        self.assertFalse(checar_bloqueio_correcao(livre, trocou_placa, ativos)[0])
+        self.assertFalse(checar_desativacao_correcao(livre, trocou_cpf, ativos)[0])
+        self.assertFalse(checar_desativacao_correcao(livre, trocou_placa, ativos)[0])
         encerrada = registro(saida="16/10/2026 09:00")
         reaberta = registro(saida="")
-        self.assertFalse(checar_bloqueio_correcao(encerrada, reaberta, ativos)[0])
+        self.assertFalse(checar_desativacao_correcao(encerrada, reaberta, ativos)[0])
 
-    def test_correcao_de_nome_de_quem_foi_bloqueado_depois(self):
-        ativos = [bloqueio("cpf", CPF_ANA)]
+    def test_correcao_de_nome_de_quem_foi_desativado_depois(self):
+        ativos = [desativacao("cpf", CPF_ANA)]
         for saida in ["16/10/2026 09:00", ""]:          # encerrada ou aberta
             with self.subTest(saida=saida):
                 antes = registro(saida=saida)
                 depois = registro(nome="Ana Silva Costa", saida=saida)
-                self.assertEqual(checar_bloqueio_correcao(antes, depois, ativos),
+                self.assertEqual(checar_desativacao_correcao(antes, depois, ativos),
                                  (True, ""))
 
-    def test_sem_bloqueio_ou_a_pe(self):
-        ativos = [bloqueio("cpf", CPF_BETO), bloqueio("placa", "ABC1D23")]
-        self.assertEqual(checar_bloqueio(registro(), ativos), (True, ""))
-        self.assertEqual(checar_bloqueio(registro(placa=""), []), (True, ""))
+    def test_sem_desativacao_ou_a_pe(self):
+        ativos = [desativacao("cpf", CPF_BETO), desativacao("placa", "ABC1D23")]
+        self.assertEqual(checar_desativacao(registro(), ativos), (True, ""))
+        self.assertEqual(checar_desativacao(registro(placa=""), []), (True, ""))
 
 
 class TestMascararCpf(unittest.TestCase):  # S08 (LGPD)

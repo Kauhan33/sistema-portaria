@@ -148,8 +148,8 @@ class TestEntradaDeCarroOuAPe(BaseInterface):
         self.assertEqual(self.perguntas_veiculo, [])
         self.assertEqual(len(self.no_banco()), 3)
 
-    def test_de_carro_com_placa_bloqueada_e_recusado(self):
-        self.banco.bloquear("placa", "QWE1234", "Carro com restrição",
+    def test_de_carro_com_veiculo_desativado_e_recusado(self):
+        self.banco.desativar("placa", "QWE1234", "Carro com restrição",
                             "ana.admin")
         self.responder(COM_CARRO)
         self.entrar_pelo_cpf()

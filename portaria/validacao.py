@@ -54,6 +54,7 @@ MAXIMO_CPF = 11
 MAXIMO_CELULAR = 11
 MAXIMO_PLACA = 7
 MAXIMO_CODIGO = 9             # código de recuperação: K7QM-2F9X (RN38)
+MAXIMO_COMANDO = 200          # linha de comando (2.4): cabe o cadastro completo
 
 
 # ------------------------------------------------------------------

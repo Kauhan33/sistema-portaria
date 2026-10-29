@@ -1446,44 +1446,60 @@ class TestAbaPessoas(BaseInterface):
         self.aba.atualizar()
         self.assertEqual(self.aba.tabela.get_children(), (str(self.beto),))
 
-    def test_selecionar_preenche_o_formulario(self):
+    def test_selecionar_mostra_a_ficha(self):
         self.assertEqual(self.aba.vazio.winfo_manager(), "place")  # ficha vazia
         self.selecionar(self.beto)
         self.assertEqual(self.aba.vazio.winfo_manager(), "")
-        self.assertEqual(self.aba.nome.get(), "Beto Rocha")
-        self.assertEqual(self.aba.var_placa.get(), "QWE1234")
         self.assertEqual(self.aba.lbl_titulo.cget("text"), "Beto Rocha")
         self.assertIn("111.444.777-35", self.aba.lbl_cpf.cget("text"))
         self.assertEqual(self.aba.lbl_visitas.cget("text"), "1")
         self.assertEqual(self.aba.desenho_placa.texto, "QWE1234")
+        self.assertEqual(self.aba.lbl_contato.cget("text"),
+                         "(31) 93333-4444  ·  Professor")
+
+    def test_editar_abre_o_dialogo_preenchido_com_o_cpf_fixo(self):
+        self.selecionar(self.beto)
+        dialogo = self.aba.editar()
+        self.assertEqual(dialogo.nome.get(), "Beto Rocha")
+        self.assertEqual(dialogo.caixa_placa.get(), "QWE1234")
+        self.assertEqual(dialogo.cpf.cget("state"), "disabled")
+        self.assertEqual(dialogo.janela.title(), "Editar pessoa")
+        dialogo.fechar()
 
     def test_placa_e_celular_so_aceitam_o_formato(self):  # Q04
         self.selecionar(self.beto)
+        dialogo = self.aba.editar()
         for caixa, digitado, esperado in [
-                (self.aba.celular, "31a9-8", "3198"),
-                (self.aba.caixa_placa, "abc-1d234", "ABC1D23")]:
+                (dialogo.celular, "31a9-8", "3198"),
+                (dialogo.caixa_placa, "abc-1d234", "ABC1D23")]:
             caixa.delete(0, tk.END)
             for letra in digitado:
                 caixa.insert(tk.END, letra)
             self.assertEqual(caixa.get(), esperado)
+        dialogo.fechar()
 
     def test_salvar_alteracoes(self):
         self.selecionar(self.beto)
-        self.aba.celular.delete(0, tk.END)
-        self.aba.celular.insert(0, "31955556666")
-        self.aba.salvar()
+        dialogo = self.aba.editar()
+        dialogo.celular.delete(0, tk.END)
+        dialogo.celular.insert(0, "31955556666")
+        self.assertTrue(dialogo.salvar())
         self.assertEqual(self.banco.buscar_pessoa("11144477735")["celular"],
                          "31955556666")
         self.assertIn(("ana.admin", "Dados de pessoa alterados"), self.acoes())
+        self.assertIn("(31) 95555-6666", self.aba.lbl_contato.cget("text"))
+        self.assertEqual(self.aba.faixa.lbl.cget("text"), "Alterações salvas.")
 
     def test_salvar_dados_invalidos_e_recusado(self):
         self.selecionar(self.beto)
-        self.aba.nome.delete(0, tk.END)
-        self.aba.nome.insert(0, "Beto")
-        self.aba.salvar()
-        self.assertIn("nome completo", self.msg.showerror.call_args[0][1])
+        dialogo = self.aba.editar()
+        dialogo.nome.delete(0, tk.END)
+        dialogo.nome.insert(0, "Beto")
+        self.assertFalse(dialogo.salvar())
+        self.assertIn("nome completo", dialogo.faixa.lbl.cget("text"))
         self.assertEqual(self.banco.buscar_pessoa("11144477735")["nome"],
                          "Beto Rocha")
+        dialogo.fechar()
 
     def test_registrar_entrada_abre_o_cadastro_preenchido(self):
         self.selecionar(self.beto)
@@ -1499,8 +1515,107 @@ class TestAbaPessoas(BaseInterface):
         self.assertEqual(self.app.cpf.get(), "")
 
     def test_acao_sem_selecao_avisa(self):
-        self.aba.salvar()
+        self.assertIsNone(self.aba.editar())
         self.assertIn("Selecione", self.msg.showwarning.call_args[0][1])
+
+
+class TestNovaPessoa(BaseInterface):
+    """2.3: "Nova pessoa" cadastra sem registrar entrada."""
+    entrar_como = "porteiro"         # o porteiro também cadastra
+
+    def setUp(self):
+        super().setUp()
+        self.aba = self.app.tela_pessoas
+
+    def preencher(self, cpf="52998224725", nome="Fernanda Souza",
+                  celular="31987654321", placa="NEY4829", tipo="Visitante"):
+        dialogo = self.aba.nova_pessoa()
+        dialogo.cpf.insert(0, cpf)
+        dialogo.nome.insert(0, nome)
+        dialogo.celular.insert(0, celular)
+        dialogo.caixa_placa.insert(0, placa)
+        dialogo.tipo.set(tipo)
+        return dialogo
+
+    def test_cadastra_sem_registrar_entrada_e_abre_a_ficha(self):
+        dialogo = self.preencher()
+        self.assertTrue(dialogo.salvar())
+        pessoa = self.banco.buscar_pessoa("52998224725")
+        self.assertEqual((pessoa["nome"], pessoa["placa"], pessoa["visitas"]),
+                         ("Fernanda Souza", "NEY4829", 0))
+        self.assertEqual(self.no_banco(), [])                 # sem entrada
+        self.assertEqual(self.aba.selecionada["cpf"], "52998224725")
+        self.assertTrue(self.aba.desenho_placa.antiga)        # NEY-4829
+        self.assertIn("A entrada não foi registrada",
+                      self.aba.faixa.lbl.cget("text"))
+        self.assertIn(("paulo", "Pessoa cadastrada"), self.acoes())
+        self.assertEqual(self.app.itens_menu[str(self.app.aba_pessoas)].contador,
+                         "1")
+
+    def test_mesma_validacao_da_entrada(self):
+        casos = [({"nome": "Fernanda"}, "nome completo"),
+                 ({"cpf": "12345678900"}, "CPF inválido"),
+                 ({"celular": "3198765432"}, "Celular inválido"),
+                 ({"placa": "AB12"}, "Placa inválida"),
+                 ({"tipo": ""}, "tipo de acesso")]
+        for mudanca, trecho in casos:
+            with self.subTest(mudanca):
+                dialogo = self.preencher(**mudanca)
+                self.assertFalse(dialogo.salvar())
+                self.assertIn(trecho, dialogo.faixa.lbl.cget("text"))
+                dialogo.fechar()
+        self.assertIsNone(self.banco.buscar_pessoa("52998224725"))
+
+    def test_limites_de_tamanho_dos_campos(self):
+        dialogo = self.aba.nova_pessoa()
+        for caixa, maximo in ((dialogo.cpf, 11), (dialogo.nome, 80),
+                              (dialogo.celular, 11), (dialogo.caixa_placa, 7)):
+            with self.subTest(maximo=maximo):
+                self.assertEqual(caixa.master.maximo, maximo)
+        dialogo.fechar()
+
+    def test_cpf_ja_cadastrado_e_recusado_e_abre_a_ficha(self):
+        self.banco.inserir(dict(VISITA_ANTIGA))                # Beto Rocha
+        dialogo = self.preencher(cpf="11144477735", nome="Outro Nome")
+        self.assertIn("Já cadastrado: Beto Rocha",
+                      dialogo.faixa.lbl.cget("text"))          # na digitação
+        self.assertFalse(dialogo.salvar())
+        self.assertFalse(dialogo.janela.winfo_exists())
+        self.assertIn("nada foi cadastrado",
+                      self.msg.showwarning.call_args[0][1])
+        self.assertEqual(self.aba.selecionada["nome"], "Beto Rocha")
+        self.assertEqual(self.banco.buscar_pessoa("11144477735")["nome"],
+                         "Beto Rocha")
+        self.assertNotIn(("paulo", "Pessoa cadastrada"), self.acoes())
+
+    def test_cpf_desativado_avisa_e_pede_confirmacao(self):
+        self.banco.desativar("cpf", "52998224725", "Ameaçou um aluno",
+                             "ana.admin")
+        dialogo = self.preencher()
+        self.assertIn("CPF desativado: Ameaçou um aluno",
+                      dialogo.faixa.lbl.cget("text"))
+        self.msg.askyesno.return_value = False                 # não cadastra
+        self.assertFalse(dialogo.salvar())
+        self.assertIsNone(self.banco.buscar_pessoa("52998224725"))
+        self.msg.askyesno.return_value = True
+        self.assertTrue(dialogo.salvar())
+        self.assertIsNotNone(self.banco.buscar_pessoa("52998224725"))
+        self.assertEqual(self.aba.seletor.ativa, "Desativadas")   # continua
+        self.assertEqual(self.aba.faixa.tipo, "sucesso")
+
+    def test_banco_recusa_cpf_repetido_e_dado_invalido(self):
+        self.banco.cadastrar_pessoa("52998224725", "Fernanda Souza",
+                                    "31987654321", "", "Visitante", "paulo")
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.cadastrar_pessoa("52998224725", "Outra Pessoa",
+                                        "31987654321", "", "Visitante", "paulo")
+        self.assertIn("já está cadastrado", str(erro.exception))
+        with self.assertRaises(dados.ErroDados):
+            self.banco.cadastrar_pessoa("11144477735", "Beto", "31987654321",
+                                        "", "Aluno", "paulo")
+        with self.assertRaises(dados.ErroDados):                # sem sessão
+            self.banco.cadastrar_pessoa("11144477735", "Beto Rocha",
+                                        "31987654321", "", "Aluno", None)
 
 
 
@@ -1598,7 +1713,7 @@ class TestHistoricoEOrdemNaPaginaPessoas(BaseInterface):
                          ("15/10/2026 07:00", "12:00", "5 h", "QWE-1234", "Saiu"))
         self.aba.seletor_ficha.selecionar("Visitas")
         self.assertTrue(self.aba.secoes["Visitas"].winfo_manager())
-        self.assertFalse(self.aba.secoes["Cadastro"].winfo_manager())
+        self.assertFalse(self.aba.secoes["Veículo"].winfo_manager())
         texto = self.aba.lista_visitas.get("1.0", tk.END)
         self.assertIn("15/10/2026 07:00  " + chr(0x2192) + "  12:00", texto)
         self.assertIn("Registrado como (31) 90000-1111", texto)
@@ -2410,7 +2525,7 @@ class TestAbaDesativadas(BaseInterface):
         self.assertIn("Veículo desativado: Veículo furtado",
                       self.aba.lbl_veiculo_desativado.cget("text"))
         self.assertEqual(self.aba.btn_desativar_veiculo.cget("text"),
-                         "Reativar veículo")
+                         "Reativar placa")
         self.aba.desativar_veiculo()                          # = Reativar
         self.assertEqual(self.banco.listar_desativacoes(), [])
 

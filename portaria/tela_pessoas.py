@@ -16,11 +16,17 @@ Desativado não entra (RN12). Só o administrador desativa e reativa (o
 porteiro vê as listas, com o aviso); tudo vai ao histórico. No banco é a
 tabela de bloqueios de sempre (dados.Banco.desativar / reativar).
 
-À direita (Ativas e Desativadas), a ficha da pessoa escolhida: placa
-desenhada (Mercosul ou antiga), número de visitas, faixa de situação e
-três seções:
-- Cadastro: o formulário para corrigir o cadastro ou começar uma entrada
-  e, para o administrador, Desativar / Reativar;
+"Nova pessoa" (cabeçalho) cadastra CPF, nome, celular, placa (opcional)
+e tipo SEM registrar entrada, com a mesma validação e os mesmos limites da
+entrada; CPF já cadastrado é recusado e abre a ficha que já existe; CPF
+desativado avisa (pode cadastrar, mas continua sem entrar).
+
+À direita (Ativas e Desativadas), a ficha da pessoa escolhida: nome, CPF,
+celular e tipo, placa desenhada (Mercosul ou antiga), número de visitas,
+faixa de situação, os botões (sempre à vista, no pé da ficha) Registrar
+entrada e Editar (o mesmo diálogo da Nova pessoa, com o CPF fixo:
+qualquer usuário corrige o cadastro, como já fazia) e, para o
+administrador, Desativar / Reativar; e duas seções:
 - Visitas: o histórico de visitas dela, da mais recente para a mais
   antiga (entrada, saída, duração, tipo, placa e situação), com os dados
   que foram preenchidos em cada registro;
@@ -40,7 +46,7 @@ from . import horarios, mensagens
 from .componentes import (Alternador, Aviso, Botao, Cabecalho, Campo, Cartao,
                           Dialogo, EsperaDigitacao, OrdenacaoTabela, Placa,
                           Seletor, campo_rotulado, inserir_linha, plural,
-                          rotulo_campo, tabela, titulo_cartao)
+                          tabela, titulo_cartao)
 from .consultas import encontrar_dentro
 from .estilo import (COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, fonte_icone,
                      px)
@@ -64,7 +70,10 @@ COLUNAS_VISIVEIS = ("nome", "cpf", "visitas", "ultima")
 LIMITE_BUSCA = 200
 SEM_SELECAO = "Escolha uma pessoa na lista para ver a ficha."
 SEM_CADASTRO = "(sem cadastro)"
-SECOES_FICHA = ("Cadastro", "Visitas", "Veículo")
+SECOES_FICHA = ("Visitas", "Veículo")
+# Abaixo desta altura (px lógicos) a página fica compacta: no notebook
+# 1366x670 a página tem uns 536
+ALTURA_CONFORTAVEL = 700
 COLUNAS_AUTORIZADOS = [("nome", "Nome", 124, "w"),
                        ("cpf", "CPF", 104, "w"),
                        ("validade", "Válido até", 92, "w")]
@@ -161,6 +170,10 @@ class AbaPessoas:
         cab = Cabecalho(aba, "Pessoas").posicionar()
         self.cabecalho = cab
         self.lbl_total = cab.subtitulo
+        self.btn_nova = Botao(cab.acoes, "Nova pessoa", self.nova_pessoa,
+                              "primario", icone=ICONE["mais"],
+                              fundo_pai=COR["fundo"])
+        self.btn_nova.pack()
         self.seletor = Seletor(aba, ABAS, self.mostrar_aba)
         self.seletor.pack(fill="x", padx=px(MARGEM), pady=(0, px(12)))
         self.corpo = corpo = tk.Frame(aba, bg=COR["fundo"])
@@ -170,7 +183,35 @@ class AbaPessoas:
         self.cartao_ativas = self._montar_lista(corpo)
         self.desativadas = ListaDesativacoes(self, corpo, "cpf")
         self.veiculos_desativados = ListaDesativacoes(self, corpo, "placa")
+        self.compacta = None
+        self.aba.bind("<Configure>", self._ao_redimensionar, add="+")
         self.seletor.selecionar(ABAS[0])
+
+    def _ao_redimensionar(self, event):
+        if event.widget is self.aba:
+            self.aplicar_densidade(event.height < px(ALTURA_CONFORTAVEL))
+
+    def aplicar_densidade(self, compacta):
+        """Tela baixa (notebook 1366x670): cabeçalho, subabas e ficha com
+        menos respiro, para os botões da ficha e a lista caberem."""
+        if compacta == self.compacta:
+            return
+        self.compacta = compacta
+        self.cabecalho.pack_configure(
+            pady=(px(8), px(8)) if compacta else (px(20), px(16)))
+        self.seletor.compactar(compacta)
+        self.seletor.pack_configure(pady=(0, px(6) if compacta else px(12)))
+        self.cartao_ficha.miolo.pack_configure(
+            padx=px(16 if compacta else 20), pady=px(14 if compacta else 20))
+        self.seletor_ficha.compactar(compacta)
+        self.seletor_ficha.pack_configure(
+            pady=(px(8), px(6)) if compacta else (px(12), px(10)))
+        self.faixa.definir_respiro(4 if compacta else 7)
+        if compacta:
+            self.lbl_veiculo_dica.pack_forget()
+        elif self.selecionada is not None:
+            self.mostrar_autorizados(self.selecionada)
+        self.mostrar_secao(self.seletor_ficha.ativa or SECOES_FICHA[0])
 
     # --------------------------------------------------------------
     # Subabas
@@ -277,27 +318,32 @@ class AbaPessoas:
 
         self.conteudo = tk.Frame(cartao.miolo, bg=fundo)
         c = self.conteudo
+        # os botões vão primeiro, no pé: ficam à vista mesmo na tela baixa
+        self._montar_botoes(c)
         self.lbl_titulo = titulo_cartao(c, "")
         self.lbl_titulo.pack(anchor="w")
         self.lbl_cpf = tk.Label(c, font=FONTE["cpf"], bg=fundo,
                                 fg=COR["texto_2"])
         self.lbl_cpf.pack(anchor="w")
+        # celular e tipo (o que antes era a seção Cadastro)
+        self.lbl_contato = tk.Label(c, font=FONTE["corpo"], bg=fundo,
+                                    fg=COR["texto_2"], anchor="w")
+        self.lbl_contato.pack(anchor="w", fill="x", pady=(px(2), 0))
 
+        # placa e, ao lado, os números (lado a lado: a ficha cabe no
+        # notebook 1366x670)
         self.linha_placa = linha = tk.Frame(c, bg=fundo)
-        linha.pack(fill="x", pady=(px(12), 0))
-        self.desenho_placa = Placa(linha, fundo, largura=170)
+        linha.pack(fill="x", pady=(px(10), 0))
+        self.desenho_placa = Placa(linha, fundo, largura=150)
         self.desenho_placa.pack(side="left")
-        numeros = tk.Frame(linha, bg=fundo)
-        numeros.pack(side="left", padx=(px(18), 0))
-        self.lbl_visitas = self._numero(numeros, "visitas")
-        self.lbl_ultima = self._numero(numeros, "última vinda")
+        self.lbl_visitas = self._numero(linha, "visitas")
+        self.lbl_ultima = self._numero(linha, "última vinda")
 
         self.faixa = Aviso(c)
         self.seletor_ficha = Seletor(c, SECOES_FICHA, self.mostrar_secao,
                                      fundo_pai=fundo)
-        self.seletor_ficha.pack(fill="x", pady=(px(12), px(12)))
-        self.secoes = {"Cadastro": self._montar_cadastro(c),
-                       "Visitas": self._montar_visitas(c),
+        self.seletor_ficha.pack(fill="x", pady=(px(12), px(10)))
+        self.secoes = {"Visitas": self._montar_visitas(c),
                        "Veículo": self._montar_veiculo(c)}
         self.seletor_ficha.selecionar(SECOES_FICHA[0])
 
@@ -321,50 +367,29 @@ class AbaPessoas:
                 f, "Reativar", self._reativar_da_ficha, "secundario")
             self.btn_reativar_sem_cadastro.pack(anchor="w", pady=(px(14), 0))
 
-    def _montar_cadastro(self, c):
+    def _montar_botoes(self, c):
+        """Pé da ficha: Registrar entrada e Editar; para o administrador,
+        Desativar (ou Reativar) e Excluir."""
         fundo = COR["superficie"]
-        secao = tk.Frame(c, bg=fundo)
-        form = tk.Frame(secao, bg=fundo)
-        form.pack(fill="x")
-        form.columnconfigure((0, 1), weight=1, uniform="p")
-
-        def grupo(texto, linha_, coluna, campo, juntas=1, apoio=""):
-            frame, _ = rotulo_campo(form, texto, apoio)
-            frame.grid(row=linha_, column=coluna, columnspan=juntas, sticky="w",
-                       pady=(0, px(4)))
-            campo.grid(row=linha_ + 1, column=coluna, columnspan=juntas,
-                       sticky="ew", pady=(0, px(12)),
-                       padx=(0, px(10)) if coluna == 0 and juntas == 1 else 0)
-            return campo
-
-        self.campo_nome = grupo("Nome completo", 0, 0,
-                                Campo(form, maximo=MAXIMO_NOME), juntas=2)
-        self.nome = self.campo_nome.entrada
-        # Q04: as mesmas restrições de digitação da Entrada e saída
-        self.celular = grupo("Celular", 2, 0, Campo(form, numeros=11)).entrada
-        campo_placa = grupo("Placa", 2, 1, Campo(form, placa=True),
-                            apoio="opcional")
-        self.var_placa, self.caixa_placa = campo_placa.var, campo_placa.entrada
-        self.var_placa.trace_add("write", lambda *a: self._mostrar_placa())
-        self.tipo = grupo("Tipo de acesso", 4, 0, Campo(form, opcoes=TIPOS_ACESSO),
-                          juntas=2).entrada
-
-        botoes = tk.Frame(secao, bg=fundo)
-        botoes.pack(fill="x", pady=(px(4), 0))
+        self.rodape_ficha = rodape = tk.Frame(c, bg=fundo)
+        rodape.pack(side="bottom", fill="x", pady=(px(10), 0))
+        botoes = tk.Frame(rodape, bg=fundo)
+        botoes.pack(fill="x")
         self.btn_entrada = Botao(botoes, "Registrar entrada",
                                  self.registrar_entrada, "primario")
         self.btn_entrada.pack(side="left")
-        Botao(botoes, "Salvar alterações", self.salvar,
-              "secundario").pack(side="left", padx=(px(8), 0))
+        self.btn_editar = Botao(botoes, "Editar", self.editar, "secundario",
+                                icone=ICONE["editar"])
+        self.btn_editar.pack(side="left", padx=(px(8), 0))
         self.btn_desativar = None
+        self.linha_admin = None
         if self.admin:          # RN12: só o administrador desativa
-            admin = tk.Frame(secao, bg=fundo)
+            self.linha_admin = admin = tk.Frame(rodape, bg=fundo)
             admin.pack(fill="x", pady=(px(8), 0))
             self.btn_desativar = Botao(admin, "Desativar",
                                        self.desativar_selecionada, "perigo",
-                                       largura=120)
+                                       icone=ICONE["bloqueio"], largura=132)
             self.btn_desativar.pack(side="left")
-        return secao
 
     def _montar_visitas(self, c):
         """Histórico de visitas: um "cartão" de texto por visita, com
@@ -416,7 +441,7 @@ class AbaPessoas:
         self.botoes_veiculo.pack(fill="x", pady=(px(10), 0))
         self.btn_adicionar_autorizado = Botao(
             self.botoes_veiculo, "Adicionar", self.adicionar_autorizado,
-            "secundario", icone=ICONE["mais"])
+            "secundario")
         self.btn_adicionar_autorizado.pack(side="left")
         self.btn_remover_autorizado = Botao(
             self.botoes_veiculo, "Remover", self.remover_autorizado, "perigo")
@@ -424,18 +449,15 @@ class AbaPessoas:
         self.lbl_dono_fora = tk.Label(secao, font=FONTE["dica"], bg=fundo,
                                       fg=COR["alerta"], justify="left",
                                       anchor="w", wraplength=px(320))
-        # desativar o veículo (RN12): só o administrador
-        self.linha_desativar_veiculo = tk.Frame(secao, bg=fundo)
+        # desativar o veículo (RN12): só o administrador, na mesma linha
         self.lbl_veiculo_desativado = tk.Label(
-            self.linha_desativar_veiculo, font=FONTE["dica"], bg=fundo,
-            fg=COR["erro"], justify="left", anchor="w", wraplength=px(320))
+            secao, font=FONTE["rotulo"], bg=fundo, fg=COR["erro"],
+            justify="left", anchor="w", wraplength=px(320))
         self.btn_desativar_veiculo = None
         if self.admin:
             self.btn_desativar_veiculo = Botao(
-                self.linha_desativar_veiculo, "Desativar veículo",
-                self.desativar_veiculo, "perigo")
-            self.btn_desativar_veiculo.pack(side="bottom", anchor="w",
-                                            pady=(px(6), 0))
+                self.botoes_veiculo, "Desativar placa", self.desativar_veiculo,
+                "perigo")
         self.autorizados = []
         return secao
 
@@ -458,9 +480,13 @@ class AbaPessoas:
         self.lbl_veiculo.config(
             text=f"Quem pode retirar o carro {formatar_placa(placa)}",
             font=FONTE["rotulo"], fg=COR["texto"])
-        self.lbl_veiculo_dica.pack(fill="x", pady=(px(2), px(8)),
-                                   after=self.lbl_veiculo)
-        self.quadro_autorizados.pack(fill="x", after=self.lbl_veiculo_dica)
+        if self.compacta:       # tela baixa: a dica sai da frente
+            self.lbl_veiculo_dica.pack_forget()
+        else:
+            self.lbl_veiculo_dica.pack(fill="x", pady=(px(2), px(8)),
+                                       after=self.lbl_veiculo)
+        self.quadro_autorizados.pack(fill="x", pady=(px(4), 0),
+                                     after=self.lbl_veiculo)
         self.botoes_veiculo.pack(fill="x", pady=(px(10), 0),
                                  after=self.quadro_autorizados)
         ok, lista = self.app.tentar(self.app.banco.listar_autorizados, placa)
@@ -493,24 +519,20 @@ class AbaPessoas:
 
     def _mostrar_desativacao_do_veiculo(self, placa):
         """Na seção Veículo: "Veículo desativado: motivo" e o botão
-        Desativar / Reativar veículo (administrador)."""
-        linha = self.linha_desativar_veiculo
+        Desativar / Reativar placa (administrador)."""
         desativado = self.placas_desativadas.get(placa) if placa else None
-        if not placa or (desativado is None and self.btn_desativar_veiculo
-                         is None):
-            linha.pack_forget()
-            return
-        linha.pack(fill="x", side="bottom", pady=(px(12), 0))
         if desativado:
             self.lbl_veiculo_desativado.config(
                 text=f"Veículo desativado: {desativado['motivo']}")
-            self.lbl_veiculo_desativado.pack(side="top", fill="x")
+            self.lbl_veiculo_desativado.pack(fill="x", pady=(px(2), px(4)),
+                                             after=self.lbl_veiculo)
         else:
             self.lbl_veiculo_desativado.pack_forget()
         if self.btn_desativar_veiculo is not None:
             self.btn_desativar_veiculo.definir_texto(
-                *(("Reativar veículo", "secundario") if desativado
-                  else ("Desativar veículo", "perigo")))
+                *(("Reativar placa", "secundario") if desativado
+                  else ("Desativar placa", "perigo")))
+            self.btn_desativar_veiculo.pack(side="left", padx=(px(8), 0))
 
     def adicionar_autorizado(self):
         """Abre o diálogo "Quem pode retirar"; devolve o diálogo."""
@@ -543,13 +565,14 @@ class AbaPessoas:
             self.mostrar_autorizados(self.selecionada)
 
     def mostrar_secao(self, nome):
-        """Cadastro, Visitas ou Veículo. Nas visitas e no veículo a placa e
-        os números saem da frente: sobra altura para a lista (tela
-        pequena)."""
-        if nome != SECOES_FICHA[0]:
+        """Visitas ou Veículo. Na tela baixa, com o Veículo aberto, a placa
+        e os números saem da frente: sobra altura para a lista de quem
+        pode retirar."""
+        if nome == SECOES_FICHA[1] and self.compacta:
             self.linha_placa.pack_forget()
         else:
-            self.linha_placa.pack(fill="x", pady=(px(12), 0), after=self.lbl_cpf)
+            self.linha_placa.pack(fill="x", pady=(px(10), 0),
+                                  after=self.lbl_contato)
         for secao, frame in getattr(self, "secoes", {}).items():
             if secao == nome:
                 frame.pack(fill="both", expand=True)
@@ -559,7 +582,7 @@ class AbaPessoas:
     @staticmethod
     def _numero(pai, legenda):
         bloco = tk.Frame(pai, bg=COR["superficie"])
-        bloco.pack(anchor="w")
+        bloco.pack(side="left", anchor="center", padx=(px(18), 0))
         valor = tk.Label(bloco, text="—", font=FONTE["numero"],
                          bg=COR["superficie"], fg=COR["texto"])
         valor.pack(anchor="w")
@@ -654,12 +677,8 @@ class AbaPessoas:
         self.lbl_cpf.config(text="CPF " + self.app.exibir_cpf(p["cpf"]))
         self.lbl_visitas.config(text=str(p["visitas"]))
         self.lbl_ultima.config(text=(p["ultima_visita"] or "—")[:5])
-        self.nome.delete(0, tk.END)
-        self.nome.insert(0, p["nome"])
-        self.celular.delete(0, tk.END)
-        self.celular.insert(0, p["celular"])
-        self.var_placa.set(p["placa"])
-        self.tipo.set(p["tipo"])
+        self.lbl_contato.config(text=f"{formatar_celular(p['celular'])}  ·  "
+                                     f"{p['tipo']}")
         desativacao = self.desativacoes.get(p["cpf"])
         if desativacao:
             self._faixa("erro", descrever_desativacao(desativacao))
@@ -759,10 +778,10 @@ class AbaPessoas:
 
     def _faixa(self, tipo, texto):
         self.faixa.mostrar(tipo, texto)
-        self.faixa.pack(fill="x", pady=(px(14), 0), before=self.seletor_ficha)
+        self.faixa.pack(fill="x", pady=(px(10), 0), before=self.seletor_ficha)
 
     def _mostrar_placa(self):
-        placa = self.var_placa.get().strip().upper()
+        placa = self.selecionada["placa"] if self.selecionada else ""
         self.desenho_placa.mostrar(placa,
                                    bloqueada=placa in self.placas_desativadas)
 
@@ -775,23 +794,36 @@ class AbaPessoas:
     # --------------------------------------------------------------
     # Ações
     # --------------------------------------------------------------
-    def salvar(self):
+    def nova_pessoa(self):
+        """Cabeçalho › Nova pessoa: abre o diálogo (e devolve)."""
+        self.dialogo = DialogoPessoa(self)
+        return self.dialogo
+
+    def editar(self):
+        """Ficha › Editar: o mesmo diálogo, com o CPF fixo."""
         if not self._exigir_selecao():
-            return
-        p = self.selecionada
-        dados = normalizar(self.nome.get(), p["cpf"], self.celular.get(),
-                           self.var_placa.get(), self.tipo.get(), "", "")
-        ok, msg = validar_campos(dados)
-        if not ok:
-            mensagens.erro("Dados inválidos", msg)
-            return
-        ok, _ = self.app.tentar(self.app.banco.atualizar_pessoa, p["id"],
-                                dados["nome"], dados["celular"], dados["placa"],
-                                dados["tipo"], autor=self.app.autor)
-        if not ok:
-            return
-        self.recarregar_ficha()
-        self._faixa("sucesso", "Alterações salvas.")
+            return None
+        self.dialogo = DialogoPessoa(self, self.selecionada)
+        return self.dialogo
+
+    def abrir_ficha(self, pessoa, aviso=None):
+        """Mostra a ficha de `pessoa` na subaba certa (Ativas, ou
+        Desativadas se o CPF estiver desativado), com um aviso opcional
+        (tipo, texto) na faixa."""
+        self._ler_desativacoes()
+        if pessoa["cpf"] in self.desativacoes:
+            self.mostrar_desativacao("cpf", pessoa["cpf"])
+        else:
+            if self.aba_atual != ABAS[0]:
+                self.seletor.selecionar(ABAS[0])
+            else:
+                self.atualizar()
+            if self.tabela.exists(str(pessoa["id"])):
+                self.tabela.selection_set(str(pessoa["id"]))
+                self.tabela.see(str(pessoa["id"]))
+            self.mostrar_ficha(pessoa)
+        if aviso:
+            self._faixa(*aviso)
 
     def recarregar_ficha(self):
         """Relê a lista e a pessoa da ficha (depois de gravar)."""
@@ -1053,6 +1085,143 @@ class ListaDesativacoes:
                                     "(reativada).")
             return False
         return self.pagina.reativar(d)
+
+
+class DialogoPessoa(Dialogo):
+    """
+    Nova pessoa (CPF, nome, celular, placa opcional e tipo) ou Editar
+    pessoa (o CPF não muda). Mesma validação e mesmos limites da entrada
+    (validacao.validar_campos; o banco confere de novo). Cadastrar NÃO
+    registra entrada. CPF já cadastrado: recusa e abre a ficha que já
+    existe. CPF desativado: avisa já na digitação e pede confirmação.
+    """
+
+    def __init__(self, pagina, pessoa=None):
+        self.pagina, self.pessoa = pagina, pessoa
+        app = pagina.app
+        nova = pessoa is None
+        super().__init__(
+            app.janela, "Nova pessoa" if nova else "Editar pessoa",
+            "Só o cadastro: a entrada não é registrada. Para isso, use "
+            "Registrar entrada na ficha." if nova else
+            "As visitas antigas continuam com os dados da época.",
+            largura=440, ao_usar=app.registrar_uso)
+        form = self.miolo
+        form.columnconfigure((0, 1), weight=1, uniform="p")
+
+        def campo(texto, linha, coluna, juntas=1, apoio="", **opcoes):
+            grupo, c = campo_rotulado(form, texto, apoio, **opcoes)
+            grupo.grid(row=linha, column=coluna, columnspan=juntas,
+                       sticky="ew", pady=(0, px(14)),
+                       padx=(0, px(10)) if coluna == 0 and juntas == 1 else 0)
+            return c
+
+        c = campo("CPF", 0, 0, apoio="só números", numeros=11)
+        self.cpf, self.var_cpf = c.entrada, c.var
+        self.tipo = campo("Tipo de acesso", 0, 1, opcoes=TIPOS_ACESSO).entrada
+        self.nome = campo("Nome completo", 1, 0, juntas=2,
+                          maximo=MAXIMO_NOME).entrada
+        self.celular = campo("Celular com DDD", 2, 0, apoio="só números",
+                             numeros=11).entrada
+        self.caixa_placa = campo("Placa", 2, 1, apoio="opcional",
+                                 placa=True).entrada
+        self.faixa = Aviso(form)
+        if nova:
+            self.var_cpf.trace_add("write", lambda *a: self._ao_digitar_cpf())
+        else:
+            self.cpf.insert(0, app.exibir_cpf(pessoa["cpf"]))
+            self.cpf.config(state="disabled")
+            self.nome.insert(0, pessoa["nome"])
+            self.celular.insert(0, pessoa["celular"])
+            self.caixa_placa.insert(0, pessoa["placa"])
+            self.tipo.set(pessoa["tipo"])
+        self.adicionar_botao("Cadastrar" if nova else "Salvar alterações",
+                             self.salvar, "primario")
+        self.adicionar_botao("Cancelar", self.fechar)
+        self.abrir(confirmar=self.salvar, foco=self.cpf if nova else self.nome)
+
+    def _mostrar_faixa(self, tipo, texto):
+        self.faixa.mostrar(tipo, texto)
+        self.faixa.grid(row=3, column=0, columnspan=2, sticky="ew")
+
+    def _desativacao(self, cpf):
+        app = self.pagina.app
+        ok, ativas = app.tentar(app.banco.listar_desativacoes, tipo="cpf")
+        return next((d for d in (ativas or []) if d["valor"] == cpf), None)
+
+    def _ao_digitar_cpf(self):
+        """CPF completo: avisa se é inválido, se já está cadastrado ou se
+        está desativado."""
+        cpf = so_digitos(self.var_cpf.get())
+        if len(cpf) != 11:
+            self.faixa.grid_forget()
+            return
+        if not cpf_valido(cpf):
+            self._mostrar_faixa("erro", "CPF inválido: confira os números.")
+            return
+        app = self.pagina.app
+        ok, pessoa = app.tentar(app.banco.buscar_pessoa, cpf)
+        desativada = self._desativacao(cpf)
+        if ok and pessoa:
+            self._mostrar_faixa("info", f"Já cadastrado: {pessoa['nome']}. "
+                                        "Cadastrar abre a ficha dele.")
+        elif desativada:
+            self._mostrar_faixa("erro", f"CPF desativado: "
+                                        f"{desativada['motivo']}. Pode "
+                                        "cadastrar, mas a entrada continua "
+                                        "recusada.")
+        else:
+            self.faixa.grid_forget()
+
+    def salvar(self):
+        """Grava; devolve True se gravou."""
+        app = self.pagina.app
+        cpf = self.pessoa["cpf"] if self.pessoa else self.cpf.get()
+        dados = normalizar(self.nome.get(), cpf, self.celular.get(),
+                           self.caixa_placa.get(), self.tipo.get(), "", "")
+        ok, msg = validar_campos(dados)
+        if not ok:
+            self._mostrar_faixa("erro", msg)
+            return False
+        if self.pessoa is not None:
+            ok, _ = app.tentar(app.banco.atualizar_pessoa, self.pessoa["id"],
+                               dados["nome"], dados["celular"], dados["placa"],
+                               dados["tipo"], autor=app.autor)
+            if not ok:
+                return False
+            self.fechar()
+            self.pagina.recarregar_ficha()
+            self.pagina._faixa("sucesso", "Alterações salvas.")
+            return True
+        ok, existente = app.tentar(app.banco.buscar_pessoa, dados["cpf"])
+        if not ok:
+            return False
+        if existente:           # recusa e abre a ficha que já existe
+            self.fechar()
+            self.pagina.abrir_ficha(existente)
+            mensagens.aviso("Pessoa já cadastrada",
+                            f"Este CPF já é de {existente['nome']}: nada foi "
+                            "cadastrado. A ficha dele está aberta.")
+            return False
+        desativada = self._desativacao(dados["cpf"])
+        if desativada and not app.perguntar(
+                mensagens.confirmar, "CPF desativado",
+                f"Este CPF está desativado: {desativada['motivo']}\n\n"
+                "Cadastrar mesmo assim? A pessoa continua desativada e a "
+                "entrada continua recusada."):
+            return False
+        ok, _ = app.tentar(app.banco.cadastrar_pessoa, dados["cpf"],
+                           dados["nome"], dados["celular"], dados["placa"],
+                           dados["tipo"], app.autor)
+        if not ok:
+            return False
+        self.fechar()
+        app.atualizar_contadores()
+        ok, pessoa = app.tentar(app.banco.buscar_pessoa, dados["cpf"])
+        if ok and pessoa:
+            self.pagina.abrir_ficha(pessoa, ("sucesso", "Pessoa cadastrada. "
+                                             "A entrada não foi registrada."))
+        return True
 
 
 class DialogoDesativar(Dialogo):

@@ -251,6 +251,9 @@ CODIGOS_GERADOS = "Códigos de recuperação gerados"
 DESATIVADA = {"cpf": "Pessoa desativada", "placa": "Veículo desativado"}
 REATIVADA = {"cpf": "Pessoa reativada", "placa": "Veículo reativado"}
 ENTRADA_RECUSADA = "Entrada recusada (desativação)"
+# 2.3: cadastro de pessoa sem entrada e exclusão (só sem visitas)
+PESSOA_CADASTRADA = "Pessoa cadastrada"
+PESSOA_EXCLUIDA = "Pessoa excluída"
 CODIGO_RECUPERACAO_USADO = "Senha redefinida com código de recuperação"
 RECUPERACAO_RECUSADA = "Recuperação de senha recusada"
 # todas as exceções, na ordem do filtro "Tipo" do relatório
@@ -2532,12 +2535,55 @@ class Banco:
                                 (cpf,)).fetchone()
         return self._pessoa(linha) if linha else None
 
+    def cadastrar_pessoa(self, cpf, nome, celular, placa, tipo, autor):
+        """
+        "Nova pessoa" (2.3): cadastra SEM registrar entrada. Mesma
+        validação e mesmos limites da entrada (validacao.validar_campos,
+        conferida de novo aqui); CPF já cadastrado é recusado. Qualquer
+        usuário ativo cadastra (o porteiro já cadastra na entrada). CPF
+        desativado pode ser cadastrado: continua desativado. Devolve o id.
+        """
+        dados = {"nome": " ".join((nome or "").split()), "cpf": cpf or "",
+                 "celular": celular or "", "placa": (placa or "").upper(),
+                 "tipo": tipo}
+        _exigir_tamanho("CPF", dados["cpf"], MAXIMO_CPF)
+        _exigir_tamanhos_da_visita(dados)
+        ok, msg = validacao.validar_campos(dados)
+        if not ok:
+            raise ErroDados(msg)
+        with self._conexao() as con:
+            self._exigir(con, autor, so_admin=False)
+            existente = con.execute("SELECT nome FROM pessoas WHERE cpf = ?",
+                                    (dados["cpf"],)).fetchone()
+            if existente:
+                raise ErroDados(f"Este CPF já está cadastrado "
+                                f"({existente[0]}).")
+            cursor = con.execute(
+                "INSERT INTO pessoas (cpf, nome, celular, placa, tipo) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (dados["cpf"], dados["nome"], dados["celular"], dados["placa"],
+                 dados["tipo"]))
+            self._evento(con, autor, PESSOA_CADASTRADA,
+                         f"{dados['nome']} (pessoa #{cursor.lastrowid}), sem "
+                         "entrada")
+            return cursor.lastrowid
+
     def atualizar_pessoa(self, id_pessoa, nome, celular, placa, tipo, autor=None):
-        """Corrige o cadastro da pessoa (as visitas antigas não mudam)."""
+        """Corrige o cadastro da pessoa (as visitas antigas não mudam). O
+        banco confere de novo os campos (validacao.validar_campos)."""
         _exigir_tamanhos_da_visita({"nome": nome, "celular": celular,
                                     "placa": placa})
         with self._conexao() as con:
             self._conferir_autor(con, autor)
+            linha = con.execute("SELECT cpf FROM pessoas WHERE id = ?",
+                                (id_pessoa,)).fetchone()
+            if linha is None:
+                raise ErroDados("Esta pessoa não está mais cadastrada.")
+            ok, msg = validacao.validar_campos(
+                {"nome": nome, "cpf": linha[0], "celular": celular,
+                 "placa": placa, "tipo": tipo})
+            if not ok:
+                raise ErroDados(msg)
             con.execute("UPDATE pessoas SET nome = ?, celular = ?, placa = ?, "
                         "tipo = ? WHERE id = ?",
                         (nome, celular, placa, tipo, id_pessoa))

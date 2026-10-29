@@ -268,6 +268,38 @@ class TestDesativacaoNoBanco(BaseTemp):
         self.banco.desativar("placa", "ABC1D23", "Motivo três", "ana")
         self.assertEqual(len(self.banco.listar_desativacoes(True)), 2)
 
+    def test_banco_recusa_entrada_e_correcao_de_desativado(self):  # RN12
+        self.banco.inserir(registro(entrada="15/10/2026 08:00",
+                                    saida="15/10/2026 09:00"))
+        self.banco.desativar("cpf", "52998224725", "Motivo válido", "ana")
+        self.banco.desativar("placa", "XYZ9A87", "Veículo furtado", "ana")
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.inserir(registro(), autor="ana")
+        self.assertIn("Pessoa desativada", str(erro.exception))
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.inserir(registro(cpf="11144477735", placa="XYZ9A87"),
+                               autor="ana")
+        self.assertIn("Veículo desativado", str(erro.exception))
+        visita = self.banco.listar()[0]
+        with self.assertRaises(dados.ErroDados):              # reabrir
+            self.banco.editar(visita["id"], dict(visita, saida=""), ["Saída"],
+                              autor="ana")
+        # corrigir só o nome da visita encerrada continua permitido
+        self.banco.editar(visita["id"], dict(visita, nome="João Ávila Neto"),
+                          ["Nome"], autor="ana")
+        self.assertEqual(len(self.banco.listar()), 1)
+
+    def test_lista_mostra_cpf_sem_cadastro_e_dono_da_placa(self):
+        self.banco.inserir(registro(placa="NEY4829"))
+        self.banco.desativar("cpf", "11144477735", "Motivo válido", "ana")
+        self.banco.desativar("placa", "NEY4829", "Motivo válido", "ana")
+        por_tipo = {d["tipo"]: d for d in self.banco.listar_desativacoes()}
+        self.assertEqual((por_tipo["cpf"]["nome"], por_tipo["cpf"]["pessoa_id"]),
+                         ("", None))
+        self.assertEqual(por_tipo["placa"]["nome"], "João Ávila")
+        self.assertEqual([d["tipo"] for d in
+                          self.banco.listar_desativacoes(tipo="placa")], ["placa"])
+
     def test_reativar_o_que_ja_foi_reativado(self):
         id_ = self.banco.desativar("cpf", "52998224725", "Motivo um", "ana")
         self.banco.reativar(id_, "ana")
@@ -380,6 +412,42 @@ class TestPessoas(BaseTemp):
         pessoas = self.banco.listar_pessoas()
         self.assertEqual([p["nome"] for p in pessoas], ["ana Souza", "Zeca Lima"])
         self.assertEqual([bool(p["dentro_desde"]) for p in pessoas], [False, True])
+
+    def test_cadastrar_pessoa_sem_entrada(self):  # 2.3
+        id_ = self.banco.cadastrar_pessoa("52998224725", " Ana   Silva ",
+                                          "31987654321", "ney4829",
+                                          "Visitante", "paulo")
+        p = self.banco.buscar_pessoa("52998224725")
+        self.assertEqual((p["id"], p["nome"], p["placa"], p["visitas"]),
+                         (id_, "Ana Silva", "NEY4829", 0))
+        self.assertEqual(self.banco.listar(), [])            # nenhuma visita
+        self.assertEqual(self.banco.listar_eventos()[0]["acao"],
+                         "Pessoa cadastrada")
+
+    def test_cadastrar_pessoa_recusa_repetida_invalida_e_longa(self):
+        self.banco.cadastrar_pessoa("52998224725", "Ana Silva", "31987654321",
+                                    "", "Visitante", "paulo")
+        casos = [("52998224725", "Ana Silva", "31987654321", "", "Visitante"),
+                 ("12345678900", "Beto Rocha", "31987654321", "", "Aluno"),
+                 ("11144477735", "Beto", "31987654321", "", "Aluno"),
+                 ("11144477735", "Beto Rocha", "3198765432", "", "Aluno"),
+                 ("11144477735", "Beto Rocha", "31987654321", "AB12", "Aluno"),
+                 ("11144477735", "Beto Rocha", "31987654321", "", "Morador"),
+                 ("11144477735", "A " + "b" * 79, "31987654321", "", "Aluno")]
+        for caso in casos:
+            with self.subTest(caso), self.assertRaises(dados.ErroDados):
+                self.banco.cadastrar_pessoa(*caso, "paulo")
+        self.assertEqual(len(self.banco.listar_pessoas()), 1)
+
+    def test_corrigir_pessoa_confere_os_campos_no_banco(self):
+        self.banco.inserir(registro())
+        id_ = self.banco.buscar_pessoa("52998224725")["id"]
+        for nome, celular, placa in (("Ana", "31987654321", ""),
+                                     ("Ana Silva", "123", ""),
+                                     ("Ana Silva", "31987654321", "XX")):
+            with self.subTest(nome=nome), self.assertRaises(dados.ErroDados):
+                self.banco.atualizar_pessoa(id_, nome, celular, placa, "Aluno",
+                                            autor="ana")
 
     def test_corrigir_dados_nao_muda_as_visitas(self):
         self.banco.inserir(registro())

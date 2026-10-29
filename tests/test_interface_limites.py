@@ -79,13 +79,15 @@ class TestTamanhoDosCampos(BaseInterface):
         config = self.app.tela_configuracoes
         desativar = self.app.tela_pessoas.desativadas.desativar()
         dialogos.append(desativar)
+        nova = self.app.tela_pessoas.nova_pessoa()
+        dialogos.append(nova)
         casos = [
             (self.app.nome, 80), (self.app.cpf, 11), (self.app.celular, 11),
             (self.app.tela_cadastro.pecas["placa"][1].entrada, 7),
             (self.app.entrada, 16), (self.app.saida, 16),
             (self.app.busca, 60), (self.app.campo_saida_rapida, 14),
-            (pessoas.busca, 60), (pessoas.nome, 80), (pessoas.celular, 11),
-            (pessoas.caixa_placa, 7),
+            (pessoas.busca, 60), (nova.nome, 80), (nova.celular, 11),
+            (nova.caixa_placa, 7), (nova.cpf, 11),
             (usuarios.busca, 60),
             (novo.nome, 80), (novo.login, 20), (novo.senha, 64),
             (novo.confirmacao, 64),

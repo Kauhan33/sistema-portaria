@@ -40,12 +40,23 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NOME = "relatorio_testes"
 
 POSITIVO, NEGATIVO = "positivo", "negativo"
+# seções do relatório (e do Word): a linguagem de comandos (2.4) tem a sua
+SISTEMA, LINGUAGEM = "Sistema", "Linguagem de comandos"
 
 
-def caso(id_, requisitos, tipo, titulo, entrada, esperado, testes):
+def caso(id_, requisitos, tipo, titulo, entrada, esperado, testes,
+         secao=SISTEMA, fase=""):
     return {"id": id_, "requisitos": requisitos, "tipo": tipo,
             "titulo": titulo, "entrada": entrada, "esperado": esperado,
-            "testes": ["tests." + t for t in testes]}
+            "testes": ["tests." + t for t in testes], "secao": secao,
+            "fase": fase}
+
+
+def caso_da_linguagem(id_, fase, requisitos, tipo, titulo, entrada,
+                      esperado, testes):
+    """Caso da seção "Linguagem de comandos", com a fase do analisador."""
+    return caso(id_, requisitos, tipo, f"[{fase}] {titulo}", entrada,
+                esperado, testes, secao=LINGUAGEM, fase=fase)
 
 
 # ------------------------------------------------------------------
@@ -556,6 +567,240 @@ CASOS = [
           "test_interface.TestEditarUsuario."
           "test_nao_muda_o_proprio_perfil_mas_muda_o_nome",
           "test_dados.TestCrudNoBanco.test_editar_nome_e_perfil_de_usuario"]),
+
+    # --- Linguagem de comandos (2.4): um bloco por fase do analisador -----
+    caso_da_linguagem(
+        "CT-54", "Léxico", ["RF14", "RN06"], POSITIVO,
+        "CPF, placa, acentos e plurais viram tokens",
+        "No campo Comando: \"SAÍDA 529.982.247-25\", \"52998224725\", "
+        "\"ABC1234\", \"abc-1234\", \"ABC1D23\", \"Situação\", \"até\", "
+        "\"visitantes\".",
+        "Tokens COMANDO saida, CPF, NUMERO (11 dígitos: o sintático decide "
+        "se é CPF ou celular), PLACA antiga e Mercosul (o autômato termina "
+        "em q8), COMANDO situacao, PALAVRA_CHAVE ate e TIPO Visitante, cada "
+        "um com a coluna.",
+        ["test_linguagem.TestLexico.test_cpf_com_e_sem_pontos",
+         "test_linguagem.TestLexico.test_placa_antiga_e_mercosul",
+         "test_linguagem.TestLexico.test_automato_da_placa",
+         "test_linguagem.TestLexico."
+         "test_automato_aceita_o_mesmo_que_a_validacao",
+         "test_linguagem.TestLexico.test_acentos_maiusculas_e_plurais"]),
+    caso_da_linguagem(
+        "CT-55", "Léxico", ["RF14", "RN06"], NEGATIVO,
+        "Placa, data, símbolo e aspas fora da linguagem",
+        "\"saida placa AB12345\"; \"buscar maria de 32/13/2026\"; "
+        "\"entrada 529.982.247-25 visitante @casa\"; "
+        "'desativar placa ABC1D23 motivo \"furto'.",
+        "Erro [Léxico] com o ^ na coluna: \"AB12345\" não é uma placa "
+        "(coluna 13); o dia 32 e o mês 13 não existem (coluna 17); o "
+        "símbolo \"@\" não pertence à linguagem (coluna 34); texto sem "
+        "aspas de fechamento. Nada é gravado.",
+        ["test_linguagem.TestLexico.test_placa_invalida",
+         "test_linguagem.TestLexico.test_data_invalida",
+         "test_linguagem.TestLexico.test_simbolo_estranho",
+         "test_linguagem.TestLexico.test_aspas_abertas",
+         "test_linguagem.TestLexico.test_tokenizar_continua_depois_do_erro"]),
+    caso_da_linguagem(
+        "CT-56", "Sintático", ["RF14"], POSITIVO,
+        "Os 13 comandos montam a árvore (gramática LL(1))",
+        "Um exemplo de cada comando: entrada, saida, só o CPF ou a placa, "
+        "cadastrar, editar, excluir, desativar, reativar, situacao, dentro, "
+        "buscar, pendentes e ajuda.",
+        "Cada linha vira a árvore do seu comando (ComandoEntrada, "
+        "ComandoSaida...). A gramática não tem conflito LL(1): os conjuntos "
+        "FIRST de cada escolha são disjuntos, e a EBNF do documento é a do "
+        "código.",
+        ["test_linguagem.TestSintatico."
+         "test_cada_comando_monta_a_sua_arvore",
+         "test_linguagem.TestGramatica.test_a_gramatica_e_ll1",
+         "test_linguagem.TestGramatica.test_conflito_e_detectado",
+         "test_linguagem.TestGramatica."
+         "test_o_documento_tem_a_mesma_gramatica",
+         "test_linguagem.TestGramatica.test_uma_funcao_por_regra",
+         "test_linguagem.TestGramatica.test_os_exemplos_sao_validos"]),
+    caso_da_linguagem(
+        "CT-57", "Sintático", ["RF14"], NEGATIVO,
+        "Ordem errada, falta argumento e comando desconhecido",
+        "\"visitante entrada 52998224725\"; \"saida placa\" (a linha "
+        "acaba); 'desativar 52998224725 \"briga\"'; \"entrda 52998224725 "
+        "aluno\".",
+        "Erro [Sintático]: esperado um comando, encontrado o tipo "
+        "\"visitante\" (dica: o comando vem primeiro); fim da linha: "
+        "esperado a PLACA; esperado \"motivo\" antes do texto; comando "
+        "desconhecido \"entrda\" — \"Você quis dizer entrada?\" (Tab "
+        "corrige). O console mostra a linha e o ^.",
+        ["test_linguagem.TestSintatico.test_ordem_errada",
+         "test_linguagem.TestSintatico.test_falta_argumento",
+         "test_linguagem.TestSintatico.test_falta_motivo",
+         "test_linguagem.TestSintatico.test_comando_desconhecido_sugere",
+         "test_interface_comando.TestCampoComando."
+         "test_erro_no_console_no_formato_do_compilador"]),
+    caso_da_linguagem(
+        "CT-58", "Semântico", ["RN03", "RN05", "RN06", "RN12"], NEGATIVO,
+        "Frase bem escrita que não faz sentido",
+        "\"entrada 12345678900 aluno\" (dígito errado); \"entrada\" de quem "
+        "já está no campus; \"saida\" de quem já saiu; \"entrada ... placa "
+        "QWE1E34\" com a placa desativada.",
+        "Erro [Semântico] com a regra: os dígitos verificadores não "
+        "conferem (RN06); está no campus desde 08:14 (RN05, com a dica "
+        "\"saida CPF\"); não está no campus, saiu hoje às 09:34 (RN03); "
+        "veículo desativado (RN12, o ^ na placa) e a recusa vai ao "
+        "histórico, como no formulário.",
+        ["test_linguagem.TestSemantico.test_cpf_invalido",
+         "test_linguagem.TestSemantico.test_ja_no_campus",
+         "test_linguagem.TestSemantico.test_saida_sem_entrada_aberta",
+         "test_linguagem.TestSemantico.test_desativado",
+         "test_interface_comando.TestComandoAbreOsDialogos."
+         "test_desativado_vai_ao_historico"]),
+    caso_da_linguagem(
+        "CT-59", "Semântico", ["RN02", "RN12", "RN46"], NEGATIVO,
+        "Porteiro em comando de administrador",
+        "Porteiro digita \"excluir 11144477735\", 'desativar 11144477735 "
+        "motivo \"teste de motivo\"' e \"reativar placa QWE1E34\".",
+        "Erro [Semântico] na coluna 1: só o administrador (RN02/RN12/RN42). "
+        "Nada muda no banco (que também recusaria). O administrador passa "
+        "na mesma checagem.",
+        ["test_linguagem.TestSemantico.test_porteiro_em_comando_de_admin",
+         "test_interface_comando.TestPrivacidade."
+         "test_comando_de_admin_recusado_para_o_porteiro"]),
+    caso_da_linguagem(
+        "CT-60", "Semântico", ["RF14", "RN46"], POSITIVO,
+        "Aviso de tipo, opção repetida e período invertido",
+        "\"entrada 11144477735 prestador sem carro\" (o cadastro diz "
+        "Visitante); \"entrada ... placa ABC1234 placa XYZ9876\"; \"buscar "
+        "maria de 15/10/2026 ate 01/10/2026\".",
+        "Tipo diferente é um AVISO (como uma conversão de tipo): pergunta "
+        "\"Registrar como Prestador de serviço?\" e, com Não, nada é "
+        "gravado. A placa dada duas vezes é \"variável declarada duas "
+        "vezes\" (erro). O período que termina antes de começar é erro.",
+        ["test_linguagem.TestSemantico.test_tipo_diferente_e_aviso",
+         "test_interface_comando.TestComandoAbreOsDialogos."
+         "test_tipo_diferente_pergunta_antes",
+         "test_linguagem.TestSemantico.test_opcao_repetida_e_contraditoria",
+         "test_linguagem.TestSemantico.test_periodo_invertido"]),
+    caso_da_linguagem(
+        "CT-61", "Semântico", ["RN17", "RN24"], POSITIVO,
+        "Horário e retroativo pedem a autorização",
+        "\"entrada ... visitante sem carro em 18/10/2026 08:00\" (dia já "
+        "fechado); às 19:30, \"entrada ... visitante sem carro as 19:10\" "
+        "(fora da janela 08:00–18:00); \"as 20:00\" (futuro).",
+        "Os dois primeiros passam no semântico com a checagem "
+        "AUTORIZACAO (a execução abre a autorização do administrador); o "
+        "horário no futuro é erro (RN07).",
+        ["test_linguagem.TestSemantico."
+         "test_retroativo_e_horario_pedem_autorizacao",
+         "test_linguagem.TestSemantico.test_saida_retroativa_e_futuro"]),
+    caso_da_linguagem(
+        "CT-62", "Execução", ["RF02", "RF14"], POSITIVO,
+        "Campo Comando (F2 ou Ctrl+K) e a Saída rápida de antes",
+        "F2 ou Ctrl+K em qualquer página; no campo, só \"111.444.777-35\" "
+        "ou só \"qwe-1234\" e Enter.",
+        "O cursor vai ao campo Comando (no lugar da Saída rápida). Só o "
+        "CPF dá a saída da pessoa (com a pergunta do carro); só a placa "
+        "tira o carro (\"Beto saiu junto com o carro?\"), como antes.",
+        ["test_interface_comando.TestCampoComando."
+         "test_f2_e_ctrl_k_levam_ao_campo",
+         "test_interface_comando.TestSaidaRapidaContinua."
+         "test_so_o_cpf_da_a_saida",
+         "test_interface_comando.TestSaidaRapidaContinua."
+         "test_so_a_placa_tira_o_carro",
+         "test_interface.TestSaidaRapida.test_saida_pelo_cpf_formatado",
+         "test_interface.TestSaidaRapida."
+         "test_placa_tira_o_carro_e_pergunta_pelo_responsavel"]),
+    caso_da_linguagem(
+        "CT-63", "Léxico", ["RF14", "RN33"], POSITIVO,
+        "Realce, Tab e o máximo de 200 caracteres",
+        "Digitar \"entrada 52998224725 visitante placa ABC1D23\"; \"entr\" + "
+        "Tab; \"situacao bet\" + Tab; colar 300 caracteres.",
+        "Cada token ganha a sua cor a cada tecla (o erro, vermelho e "
+        "sublinhado); Tab completa \"entrada\" e troca o pedaço do nome "
+        "pelo CPF de Beto Rocha; a colagem entra cortada em 200.",
+        ["test_interface_comando.TestCampoComando.test_realce_por_token",
+         "test_interface_comando.TestCampoComando."
+         "test_tab_completa_comando_e_palavra",
+         "test_interface_comando.TestCampoComando."
+         "test_tab_troca_o_nome_pelo_cpf",
+         "test_interface_comando.TestCampoComando.test_uma_linha_com_maximo"]),
+    caso_da_linguagem(
+        "CT-64", "Execução", ["RN14", "RN46", "RNF05"], POSITIVO,
+        "Privacidade: CPF mascarado e nada gravado",
+        "Porteiro digita o CPF inteiro em \"situacao\", \"entrada\" e "
+        "\"dentro\", abre o modo didático e usa o Tab; um texto marcador "
+        "vai em \"buscar\" e em \"desativar\".",
+        "Resposta, console, modo didático e tabela de símbolos mostram "
+        "***.444.777-**; o Tab escreve o CPF mascarado e o comando ainda "
+        "funciona. O texto do comando não aparece no log, no histórico nem "
+        "no arquivo do banco.",
+        ["test_interface_comando.TestPrivacidade."
+         "test_porteiro_ve_o_cpf_mascarado",
+         "test_interface_comando.TestPrivacidade."
+         "test_tab_do_porteiro_escreve_o_cpf_mascarado",
+         "test_interface_comando.TestPrivacidade."
+         "test_o_texto_do_comando_nao_e_gravado",
+         "test_linguagem.TestSemantico.test_porteiro_ve_o_cpf_mascarado",
+         "test_linguagem.TestLexico."
+         "test_mascarar_linha_mantem_as_colunas"]),
+    caso_da_linguagem(
+        "CT-65", "Semântico", ["RF32"], POSITIVO,
+        "Modo didático mostra onde o comando parou",
+        "Ligar \"Didático\" e digitar \"entrada 11144477735 visitante\" de "
+        "quem já está no campus; depois \"saida placa AB12345\".",
+        "Faixa Léxico ✓ → Sintático ✓ → Semântico ✗ → Execução —, a mesma "
+        "mensagem do console e as abas Tokens, Árvore (o nó com erro em "
+        "vermelho), Símbolos e Checagens (a última, RN05, \"Parou "
+        "aqui\"); no erro léxico, a árvore diz que parou no Léxico.",
+        ["test_interface_comando.TestModoDidatico."
+         "test_mostra_onde_parou_com_o_mesmo_erro",
+         "test_interface_comando.TestModoDidatico."
+         "test_erro_lexico_e_digitacao",
+         "test_interface_comando.TestModoDidatico."
+         "test_no_com_erro_fica_vermelho",
+         "test_linguagem.TestSemantico.test_fases_e_simbolos"]),
+    caso_da_linguagem(
+        "CT-66", "Execução", ["RN24", "RN34", "RN40", "RN46"], POSITIVO,
+        "O comando abre os mesmos diálogos do formulário",
+        "\"entrada 11144477735\" de quem tem placa no cadastro; \"saida\" de "
+        "quem tem dois carros; entrada retroativa de dia fechado.",
+        "Abre \"Beto vai entrar de carro?\", \"Com qual carro Beto está "
+        "saindo?\" e a autorização do administrador; cancelar não grava "
+        "nada; com a senha, grava a \"Exceção autorizada\".",
+        ["test_interface_comando.TestComandoAbreOsDialogos."
+         "test_vai_entrar_de_carro",
+         "test_interface_comando.TestComandoAbreOsDialogos."
+         "test_com_qual_carro",
+         "test_interface_comando.TestComandoAbreOsDialogos."
+         "test_autorizacao_do_administrador"]),
+    caso_da_linguagem(
+        "CT-67", "Execução", ["RF01", "RF02", "RN46"], POSITIVO,
+        "Entrada e saída: o banco fica igual ao do formulário",
+        "Dois bancos iguais: num, o formulário; no outro, \"entrada "
+        "529.982.247-25 visitante nome \"Ana Silva\" cel ... placa "
+        "ABC1D23\", \"entrada CPF\" (pergunta do carro), \"saida CPF sem "
+        "carro\" e a entrada retroativa autorizada.",
+        "Visitas, estadias dos carros, pessoas e histórico (quem fez o "
+        "quê) iguais nos dois bancos: o comando é só outra porta de "
+        "entrada.",
+        ["test_interface_comando.TestExecucaoIgualAoFormulario."
+         "test_entrada_de_pessoa_nova",
+         "test_interface_comando.TestExecucaoIgualAoFormulario."
+         "test_entrada_com_a_pergunta_do_carro",
+         "test_interface_comando.TestExecucaoIgualAoFormulario."
+         "test_saida_a_pe",
+         "test_interface_comando.TestExecucaoIgualAoFormulario."
+         "test_retroativo_com_autorizacao"]),
+    caso_da_linguagem(
+        "CT-68", "Execução", ["RF27", "RF28", "RF10", "RN46"], POSITIVO,
+        "CRUD de pessoas pela linguagem",
+        "Administrador: cadastrar, editar (celular e tipo), desativar, "
+        "reativar e excluir a mesma pessoa pelos diálogos de Pessoas num "
+        "banco e pelos comandos no outro.",
+        "Os dois bancos ficam iguais (pessoas, desativações e histórico); "
+        "a página Pessoas mostra a pessoa cadastrada pelo comando.",
+        ["test_interface_comando.TestExecucaoIgualAoFormulario."
+         "test_crud_da_pessoa",
+         "test_interface_comando.TestExecucaoIgualAoFormulario."
+         "test_cadastrar_atualiza_a_pagina_pessoas",
+         "test_linguagem.TestSemantico.test_crud_da_pessoa"]),
 ]
 
 
@@ -660,6 +905,8 @@ def montar_relatorio(casos, testes_rodados, duracao, suite):
         "reprovados": len(casos) - aprovados,
         "positivos": sum(c["tipo"] == POSITIVO for c in casos),
         "negativos": sum(c["tipo"] == NEGATIVO for c in casos),
+        "secoes": {s: [c["id"] for c in casos if c["secao"] == s]
+                   for s in (SISTEMA, LINGUAGEM)},
         "testes_automaticos_dos_casos": testes_rodados,
         "tempo_dos_casos_segundos": round(duracao, 2),
         "suite_completa": suite,
@@ -674,10 +921,11 @@ def montar_relatorio(casos, testes_rodados, duracao, suite):
 def gravar_csv(rel, caminho):
     with open(caminho, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f, delimiter=";")
-        w.writerow(["ID", "Requisito/Regra", "Tipo", "Caso", "Entrada",
-                    "Esperado", "Resultado", "Testes automáticos"])
+        w.writerow(["ID", "Seção", "Requisito/Regra", "Tipo", "Caso",
+                    "Entrada", "Esperado", "Resultado", "Testes automáticos"])
         for c in rel["casos"]:
-            w.writerow([c["id"], " ".join(c["requisitos"]), c["tipo"],
+            w.writerow([c["id"], c["secao"], " ".join(c["requisitos"]),
+                        c["tipo"],
                         c["titulo"], c["entrada"], c["esperado"],
                         c["resultado"],
                         " | ".join(f"{t['id']} ({t['resultado']})"
@@ -687,8 +935,12 @@ def gravar_csv(rel, caminho):
 def gravar_html(rel, caminho):
     e = html.escape
     suite = rel["suite_completa"]
-    linhas = []
+    linhas, secao = [], None
     for c in rel["casos"]:
+        if c["secao"] != secao:                # título de cada seção
+            secao = c["secao"]
+            linhas.append(f"<tr><th colspan='7' class='secao'>{e(secao)}"
+                          "</th></tr>")
         ok = c["resultado"] == "PASSOU"
         testes = "<br>".join(
             f"<code>{e(t['id'].removeprefix('tests.'))}</code> "
@@ -727,6 +979,7 @@ th,td{{border:1px solid #ccc;padding:5px;vertical-align:top;text-align:left}}
 th{{background:#F3E5E6}} td.ok{{color:#176B2C;font-weight:bold}}
 td.falha{{color:#B0121B;font-weight:bold}} td.testes{{font-size:11px}}
 th.v{{writing-mode:vertical-rl;font-size:10px}} td.m{{text-align:center}}
+th.secao{{background:#B0121B;color:#fff;font-size:13px}}
 code{{font-size:11px}}
 </style></head><body>
 <h1>Relatório de testes — Sistema de Portaria {e(rel['versao'])}</h1>

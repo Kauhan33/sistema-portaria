@@ -543,10 +543,10 @@ class PainelComando:
         antes, depois = texto[:tab["inicio"]], texto[tab["fim"]:]
         if not depois.startswith(" "):
             novo += " "
-        self.linha.escrever(antes + novo + depois)
+        tab["texto"] = antes + novo + depois   # antes de escrever: o
+        self.linha.escrever(tab["texto"])      # _ao_mudar não desfaz o Tab
         self.linha.icursor(len(antes) + len(novo))
         tab["fim"] = len(antes) + len(novo)
-        tab["texto"] = self.linha.get()
         if len(tab["opcoes"]) > 1:
             self.responder(INFO, f"Tab {tab['i'] + 1}/{len(tab['opcoes'])}: "
                                  f"{rotulo} · Tab de novo: a próxima")

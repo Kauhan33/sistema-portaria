@@ -367,6 +367,7 @@ FAMILIAS = {
     "numero_semi": "Bahnschrift",
     "placa": "Bahnschrift",           # placa Mercosul (parente da fonte das placas)
     "icone": "Segoe MDL2 Assets",
+    "mono": "Consolas",               # console e modo didático (2.4)
 }
 
 PREFERIDAS = {
@@ -378,6 +379,7 @@ PREFERIDAS = {
     "placa": ("Bahnschrift SemiBold SemiConden", "Bahnschrift SemiBold",
               "Bahnschrift"),
     "icone": ("Segoe Fluent Icons", "Segoe MDL2 Assets"),
+    "mono": ("Cascadia Mono", "Consolas", "Courier New"),
 }
 
 
@@ -406,6 +408,9 @@ def _montar_fontes():
         "placa_pequena": (f["numero_semi"], 7),  # "BRASIL" na placa
         "grafico": (f["texto"], 9),              # legendas dos gráficos
         "grafico_valor": (f["numero_semi"], 10),  # valores nos gráficos
+        # linha de comando (2.4): o ^ do erro precisa cair na coluna certa
+        "mono": (f["mono"], 9),
+        "mono_semi": (f["mono"], 9, "bold"),
     }
 
 
@@ -496,6 +501,17 @@ def aplicar_tema(janela):
                 arrowsize=px(8), gripcount=0,
                 relief="flat")
     s.map("Fina.Vertical.TScrollbar", background=[("active", COR["barra"])])
+    # a horizontal (árvore do modo didático, 2.4), igual
+    s.layout("Fina.Horizontal.TScrollbar", [
+        ("Horizontal.Scrollbar.trough", {"sticky": "ew", "children": [
+            ("Horizontal.Scrollbar.thumb", {"expand": "1",
+                                            "sticky": "nswe"})]})])
+    s.configure("Fina.Horizontal.TScrollbar", troughcolor=sup,
+                background=COR["rolagem"], bordercolor=sup,
+                lightcolor=COR["rolagem"], darkcolor=COR["rolagem"],
+                arrowsize=px(8), gripcount=0, relief="flat")
+    s.map("Fina.Horizontal.TScrollbar",
+          background=[("active", COR["barra"])])
 
     # Páginas: um Notebook com as abas escondidas (a navegação é a barra
     # lateral; app.abas.select(...) continua valendo)

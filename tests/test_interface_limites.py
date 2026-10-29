@@ -85,7 +85,7 @@ class TestTamanhoDosCampos(BaseInterface):
             (self.app.nome, 80), (self.app.cpf, 11), (self.app.celular, 11),
             (self.app.tela_cadastro.pecas["placa"][1].entrada, 7),
             (self.app.entrada, 16), (self.app.saida, 16),
-            (self.app.busca, 60), (self.app.campo_saida_rapida, 14),
+            (self.app.busca, 60), (self.app.campo_saida_rapida, 200),
             (pessoas.busca, 60), (nova.nome, 80), (nova.celular, 11),
             (nova.caixa_placa, 7), (nova.cpf, 11),
             (usuarios.busca, 60),

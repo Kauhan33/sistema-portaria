@@ -1897,6 +1897,11 @@ class TestSaidaRapida(BaseInterface):
     def aviso(self):
         return self.app.lbl_aviso.cget("text")
 
+    def resposta(self):
+        """A linha de resposta do campo Comando (2.4: o erro da saída
+        rápida aparece ali e no console, sem caixa que trava a tela)."""
+        return self.app.tela_cadastro.comando.texto_resposta
+
     def desfazer_visivel(self):
         return self.app.btn_desfazer.winfo_manager() != ""   # está no layout
 
@@ -1924,14 +1929,17 @@ class TestSaidaRapida(BaseInterface):
         self.assertIn("Saída de Beto registrada", self.aviso())
 
     def test_cpf_ou_placa_sem_ninguem_dentro(self):
-        for texto in ["12345678909", "111444777"]:
-            with self.subTest(texto=texto):
-                self.digitar(texto)
-                self.assertIn("Ninguém no campus", self.msg.showerror.call_args[0][1])
+        self.digitar("12345678909")
+        self.assertIn("ninguém no campus nem veículo no estacionamento",
+                      self.resposta())
+        self.assertIn("RN03", self.resposta())
+        self.assertIn("***.456.789-**", self.resposta())   # porteiro
+        self.digitar("111444777")                  # 9 números: não é CPF
+        self.assertIn("um CPF tem 11 números", self.resposta())
         self.digitar("ZZZ9999")
-        self.assertIn("ZZZ-9999 não está no estacionamento",
-                      self.msg.showerror.call_args[0][1])
+        self.assertIn("ZZZ-9999 não está no estacionamento", self.resposta())
         self.assertTrue(all(not r["saida"] for r in self.no_banco()))
+        self.msg.showerror.assert_not_called()     # não trava com caixinha
 
     def test_placa_de_carro_que_ja_saiu_nao_da_saida_na_pessoa(self):
         """QA1 A1: 'Só o carro saiu' e a placa de novo davam a saída do
@@ -1943,17 +1951,18 @@ class TestSaidaRapida(BaseInterface):
         self.assertEqual(self.saida("Beto"), "")
         self.digitar("QWE1234")                       # segunda leitura
         self.assertEqual(self.saida("Beto"), "")      # continua no campus
-        self.assertIn("não está no estacionamento",
-                      self.msg.showerror.call_args[0][1])
+        self.assertIn("não está no estacionamento", self.resposta())
 
     def test_quem_ja_saiu_nao_e_encontrado_de_novo(self):
         self.digitar("39053344705")
         self.digitar("39053344705")
-        self.assertIn("Ninguém no campus", self.msg.showerror.call_args[0][1])
+        self.assertIn("Duda Reis não está no campus (saiu hoje às 10:00)",
+                      self.resposta())
+        self.assertIn("RN03", self.resposta())
 
     def test_campo_vazio_avisa(self):
         self.digitar("  ")
-        self.assertIn("Digite o CPF", self.msg.showwarning.call_args[0][1])
+        self.assertIn("Digite o CPF", self.resposta())
 
     def test_duplo_clique_na_linha(self):
         self.assertTrue(self.app.tabela.bind("<Double-1>"))

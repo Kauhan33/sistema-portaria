@@ -48,7 +48,6 @@ Fala com a janela principal só pelo contrato público do app (ver
 interface.py).
 """
 
-import re
 import tkinter as tk
 from datetime import datetime
 
@@ -56,11 +55,11 @@ from . import horarios, mensagens
 from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao,
                           EsperaDigitacao, Placa, Seletor, bolinha, data_por_extenso, inserir_linha,
                           link, plural, rotulo_campo, tabela, titulo_cartao)
-from .consultas import encontrar_dentro
 from .dados import ENTRADA_RECUSADA
 from .estilo import (COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM,
                      fonte_icone, px)
 from .tela_autorizacao import autorizar_excecao
+from .tela_comando import DICA_VAZIO, PainelComando
 from .tela_edicao import JanelaEdicao
 from .tela_veiculo import (A_PE, COM_CARRO, ENTRAR_COM_SENHA, JA_SAIU,
                            JUNTO, LEVA, OUTRO_CARRO, com_qual_carro,
@@ -69,7 +68,7 @@ from .tela_veiculo import (A_PE, COM_CARRO, ENTRAR_COM_SENHA, JA_SAIU,
                            vai_entrar_de_carro, vai_levar_o_carro)
 from .usuarios import eh_admin, pode_editar, pode_excluir
 from .validacao import (FORMATO, FORMATO_EXIBICAO, MAXIMO_BUSCA,
-                        MAXIMO_CPF_OU_PLACA, MAXIMO_NOME, PLACA_OBRIGATORIA,
+                        MAXIMO_NOME, PLACA_OBRIGATORIA,
                         TIPOS_ACESSO, checar_desativacao, checar_saida,
                         cpf_valido, formatar_celular, formatar_cpf,
                         formatar_placa, normalizar, placa_valida, so_digitos,
@@ -124,10 +123,9 @@ ESPACOS = {
                  "movimento": (4, 10), "miolo_mov": 3,
                  "titulo_mov": (0, 0), "barra": (0, 2)},
 }
-# Na compacta o rótulo "Saída rápida (F2)" sai de cima do campo e vai para
-# dentro dele (sobra altura para o Movimento)
-DICA_SAIDA_RAPIDA = {"normal": "CPF ou placa",
-                     "compacta": "Saída rápida (F2): CPF ou placa"}
+# Na compacta o rótulo "Comando (F2 · Ctrl+K)" sai de cima do campo e vai
+# para dentro dele (sobra altura para o Movimento)
+DICA_COMANDO = DICA_VAZIO
 DICA_BUSCA = "Buscar: nome, placa, CPF…"
 
 
@@ -172,6 +170,7 @@ class AbaCadastro:
         self.veiculos = []                  # carros no estacionamento
         self.lista = LISTAS[0]              # lista mostrada no Movimento
         self._dia_mostrado = None           # o "hoje" da última leitura
+        self.ultimo_aviso = ""              # o último texto de avisar()
 
         self._montar_cabecalho()
         self._montar_alertas()
@@ -184,8 +183,9 @@ class AbaCadastro:
     # Montagem
     # --------------------------------------------------------------
     def _montar_cabecalho(self):
-        """Título, data e quantos estão no campus; à direita a saída rápida
-        (a ação mais usada da guarita: F2 leva o cursor até ela)."""
+        """Título, data e quantos estão no campus; à direita o campo
+        Comando (2.4, no lugar da saída rápida: F2 ou Ctrl+K levam o
+        cursor até ele; só o CPF ou a placa continuam dando a saída)."""
         cab = Cabecalho(self.aba, "Entrada e saída").posicionar()
         self.cabecalho = cab
         self.lbl_no_campus = tk.Label(cab.linha, font=FONTE["corpo_semi"],
@@ -197,24 +197,11 @@ class AbaCadastro:
         self.lbl_estacionamento.pack(side="left", anchor="s",
                                      padx=(px(16), 0), pady=(0, px(4)))
 
-        self.lbl_saida_rapida = tk.Label(cab.acoes, text="Saída rápida (F2)",
-                                         font=FONTE["rotulo"], bg=COR["fundo"],
-                                         fg=COR["texto_2"])
-        self.lbl_saida_rapida.pack(anchor="w", pady=(0, px(4)))
-        linha = tk.Frame(cab.acoes, bg=COR["fundo"])
-        linha.pack()
-        campo = Campo(linha, fundo_pai=COR["fundo"], largura=230,
-                      icone=ICONE["busca"], acao_icone=self.saida_rapida,
-                      dica_vazio=DICA_SAIDA_RAPIDA["normal"],
-                      maximo=MAXIMO_CPF_OU_PLACA)
-        campo.pack(side="left")
-        self.campo_saida_rapida_quadro = campo
-        self.campo_saida_rapida = campo.entrada
-        self.campo_saida_rapida.bind("<Return>", self.saida_rapida)
-        self.campo_saida_rapida.bind("<KP_Enter>", self.saida_rapida)
-        Botao(linha, "Registrar saída", self.saida_rapida, "secundario",
-              fundo_pai=COR["fundo"], dica_tecla="Enter"
-              ).pack(side="left", padx=(px(8), 0))
+        self.comando = PainelComando(cab.acoes, self)
+        # os nomes de antes continuam valendo (testes e interface.py)
+        self.lbl_saida_rapida = self.comando.lbl_titulo
+        self.campo_saida_rapida_quadro = self.comando.campo
+        self.campo_saida_rapida = self.comando.linha
 
     def _montar_alertas(self):
         """Faixas que só aparecem quando importam (sem caixa de diálogo):
@@ -310,9 +297,9 @@ class AbaCadastro:
             self.lbl_saida_rapida.pack_forget()
         else:
             self.lbl_saida_rapida.pack(anchor="w", pady=(0, px(4)),
-                                       before=self.campo_saida_rapida_quadro.master)
+                                       before=self.comando.linha_campo)
         self.campo_saida_rapida_quadro.lbl_vazio.config(
-            text=DICA_SAIDA_RAPIDA[densidade])
+            text=DICA_COMANDO[densidade])
         self.seletor_lista.compactar(compacta)
         self.cartao_form.miolo.pack_configure(padx=px(e["cartao"]),
                                               pady=px(e["cartao"]))
@@ -853,67 +840,84 @@ class AbaCadastro:
                               self.celular.get(), self.var_placa.get(),
                               self.tipo.get(), self.entrada.get(),
                               self.saida.get())
+        if self.registrar_entrada(registro, self._placa_sugerida(),
+                                  (self._auto or {}).get("pessoa_id"),
+                                  self._digitar_outro_carro):
+            self.limpar()
+
+    def registrar_entrada(self, registro, sugerida="", pessoa_id=None,
+                          ao_outro_carro=None):
+        """
+        O caminho ÚNICO da entrada: o formulário (cadastrar) e a linha de
+        comando (linguagem/executor.py) passam por aqui, com as mesmas
+        checagens, os mesmos diálogos e a mesma gravação. `sugerida`: a
+        placa do cadastro que ninguém confirmou (a pergunta "vai entrar de
+        carro?", RN34); `ao_outro_carro`: o que fazer se a resposta for
+        "Com outro carro". Devolve o texto do aviso de sucesso ou None.
+        """
         # RN12: pessoa ou veículo desativado primeiro, para não preencher
         # a ficha à toa (o banco confere de novo)
         ok, ativas = self.app.tentar(self.app.banco.listar_desativacoes)
         if not ok:
-            return
+            return None
         ok, msg = checar_desativacao(registro, ativas)
         if not ok:
-            self._registrar_recusa(registro)
+            self.registrar_recusa(registro)
             mensagens.erro("Acesso negado", msg)
-            return
-        placa = self._como_vai_entrar(registro)
+            return None
+        placa = self._como_vai_entrar(registro, sugerida, pessoa_id,
+                                      ao_outro_carro)
         if placa is None:
-            return
+            return None
         registro["placa"] = placa
         if registro["placa"] and not registro["saida"]:
             estadia = self._carro_no_estacionamento(registro["placa"])
             if estadia is not None:
                 mensagens.erro("Veículo no estacionamento",
                                self._texto_carro_ja_dentro(estadia))
-                return
+                return None
         # a sobreposição é conferida com TODAS as visitas desse CPF no banco
         # (a tabela só tem o movimento do dia)
         ok, anteriores = self.app.tentar(self.app.banco.listar_por_cpf,
                                          registro["cpf"])
         if not ok:
-            return
+            return None
         agora = self.app.relogio()
         ok, msg = validar(registro, anteriores, agora)
         if not ok:
             mensagens.erro("Dados inválidos", msg)
-            return
+            return None
         # VERIFICAÇÃO SEMÂNTICA 6: a entrada faz sentido para a categoria
         # naquele dia e horário? Se não, é exceção: só com autorização
         ok, config = self.app.tentar(self.app.banco.ler_configuracao)
         if not ok:
-            return
+            return None
         autorizacao = None
         regras = horarios.excecoes_do_registro(config, registro, agora)
         if regras:
             autorizacao = autorizar_excecao(self.app, regras,
                                             f"A entrada de {registro['nome']}")
             if autorizacao is None:
-                return
+                return None
         carros = self._entrada_com_outro_carro(registro)
         if carros is None:
-            return
+            return None
         lotacao = self._entrada_com_lotacao(registro, carros)
         if lotacao is None:
-            return
+            return None
         if not self.app.gravar(self.app.banco.inserir, registro,
                                autorizacao=autorizacao, **carros, **lotacao):
-            return
+            return None
         self.app.atualizar_tabela()
-        self.limpar()
         hora = registro["entrada"][-5:]
         # texto do enunciado do exercício, na faixa (sem caixa para fechar);
         # é o único caminho da entrada: Pessoas › Registrar entrada, o
-        # retroativo e a entrada com outro carro também passam por aqui
-        self.avisar(f"{SUCESSO_CADASTRO} Entrada de "
-                    f"{registro['nome'].split()[0]} às {hora}"
-                    + self._com_autorizacao(autorizacao))
+        # retroativo, a entrada com outro carro e o comando passam por aqui
+        texto = (f"{SUCESSO_CADASTRO} Entrada de "
+                 f"{registro['nome'].split()[0]} às {hora}"
+                 + self._com_autorizacao(autorizacao))
+        self.avisar(texto)
+        return texto
 
     def _entrada_com_outro_carro(self, registro):
         """RN40: quem já tem carro no estacionamento e entra com OUTRO.
@@ -984,26 +988,33 @@ class AbaCadastro:
             return None
         return {"lotado_confirmado": True}
 
-    def _como_vai_entrar(self, registro):
+    def _como_vai_entrar(self, registro, sugerida, pessoa_id,
+                         ao_outro_carro=None):
         """RN34: quem tem placa cadastrada (o CPF a preencheu e ninguém mexeu
-        no campo Placa) responde se entra de carro. Devolve a placa da
-        visita ('' = a pé) ou None (cancelou ou vai digitar outra placa).
+        no campo Placa; no comando, nem "placa" nem "sem carro") responde
+        se entra de carro. Devolve a placa da visita ('' = a pé) ou None
+        (cancelou ou vai digitar outra placa).
         Não pergunta se a Placa foi digitada ou apagada à mão (vale o que
         está no campo), se o carro dela já está no estacionamento (o CPF
         nem preenche a placa: ela volta a pé) ou se não há placa
         cadastrada."""
-        sugerida = self._placa_sugerida()
         if not sugerida or registro["placa"] != sugerida:
             return registro["placa"]
         resposta = vai_entrar_de_carro(self.app, registro["nome"], sugerida,
-                                       self._ultima_visita_de_carro())
+                                       self._ultima_visita_de_carro(pessoa_id))
         if resposta == OUTRO_CARRO:
-            self.var_placa.set("")
-            self.pecas["placa"][1].entrada.focus_set()
+            if ao_outro_carro is not None:
+                ao_outro_carro()
             return None
         if resposta is None:
             return None
         return sugerida if resposta == COM_CARRO else ""
+
+    def _digitar_outro_carro(self):
+        """"Com outro carro" no formulário: o campo Placa fica vazio e com
+        o foco, para digitar a outra placa."""
+        self.var_placa.set("")
+        self.pecas["placa"][1].entrada.focus_set()
 
     def _placa_sugerida(self):
         """A placa cadastrada que o CPF preencheu, se o campo continua com
@@ -1011,9 +1022,11 @@ class AbaCadastro:
         auto = (self._auto or {}).get("campos", {}).get("placa", "")
         return auto if auto and self.var_placa.get() == auto else ""
 
-    def _ultima_visita_de_carro(self):
+    def _ultima_visita_de_carro(self, pessoa_id):
+        if pessoa_id is None:
+            return False
         ok, visitas = self.app.tentar(self.app.banco.visitas_da_pessoa,
-                                      self._auto["pessoa_id"], 1)
+                                      pessoa_id, 1)
         return bool(ok and visitas and visitas[0]["placa"])
 
     @staticmethod
@@ -1034,7 +1047,8 @@ class AbaCadastro:
                 f"(responsável: {estadia['nome']}).\nRegistre a saída dele "
                 "pela placa ou deixe a placa vazia (entrada a pé).")
 
-    def _registrar_recusa(self, registro):
+    def registrar_recusa(self, registro):
+        """RN12: a entrada recusada vai ao histórico (o comando também)."""
         detalhe = f"{registro['nome'] or '?'}, CPF {formatar_cpf(registro['cpf'])}"
         if registro["placa"]:
             detalhe += f", placa {registro['placa']}"
@@ -1061,6 +1075,7 @@ class AbaCadastro:
         estado["entrada"] = (None if self.entrada_automatica()
                              else self.entrada.get())
         estado["busca"], estado["lista"] = self.busca.get(), self.lista
+        estado["comando"] = self.comando.ler()      # só na memória
         return estado
 
     def restaurar_formulario(self, estado):
@@ -1075,6 +1090,7 @@ class AbaCadastro:
         self.seletor_lista.selecionar(estado["lista"])
         self.var_cpf.set(estado["cpf"])
         self.atualizar_tabela()
+        self.comando.restaurar(estado.get("comando"))
 
     def _campos_digitaveis(self):
         return {**self._campos_pessoa(), "cpf": self.var_cpf,
@@ -1342,61 +1358,13 @@ class AbaCadastro:
             self._dar_saida([registro])
 
     def saida_rapida(self, event=None):
-        """Campo Saída rápida: CPF ou placa exatos + Enter."""
-        texto = self.campo_saida_rapida.get().strip()
-        if not texto:
-            mensagens.aviso("Saída rápida", "Digite o CPF ou a placa.")
-            return "break"
-        self.app.recarregar_registros()        # outra estação pode ter mudado
-        chave = re.sub(r"[\s.\-]", "", texto).upper()
-        if not chave.isdigit():                # placa: SÓ o carro sai
-            estadia = self._carro_no_estacionamento(chave)
-            if estadia is None:
-                # nunca dá saída na pessoa pela placa: ela pode ter saído a
-                # pé e voltado, e continua no campus (QA1 A1)
-                mensagens.erro("Saída rápida", self._sem_carro(chave, texto))
-            elif self._saida_do_carro(estadia):
-                self.campo_saida_rapida.delete(0, tk.END)
-            return "break"
-        encontrados = encontrar_dentro(self.app.registros, texto)
-        if not encontrados:
-            if not self._so_o_carro_do_cpf(chave):
-                mensagens.erro("Saída rápida", "Ninguém no campus nem veículo "
-                                               f"no estacionamento com “{texto}”.")
-            return "break"
-        if len(encontrados) > 1:
-            nomes = "\n".join(f"• {r['nome']}" for r in encontrados)
-            if not self.app.perguntar(
-                    mensagens.confirmar,
-                    "Saída rápida",
-                    f"{len(encontrados)} pessoas estão no campus com essa placa:"
-                    f"\n{nomes}\n\nRegistrar a saída de todas?"):
-                return "break"
-        if self._dar_saida(encontrados):
-            self.campo_saida_rapida.delete(0, tk.END)
-        return "break"
-
-    @staticmethod
-    def _sem_carro(chave, texto):
-        if not placa_valida(chave):
-            return (f"“{texto}” não é um CPF nem uma placa.\nDigite os 11 "
-                    "números do CPF ou a placa (ABC1234 ou ABC1D23).")
-        return (f"O carro {formatar_placa(chave)} não está no "
-                "estacionamento.\nPela placa só sai o carro. Para a saída de "
-                "uma pessoa, digite o CPF dela ou use o Movimento.")
-
-    def _so_o_carro_do_cpf(self, chave):
-        """CPF de quem não está no campus, mas deixou o carro: oferece a
-        saída do carro. False se não há carro desse CPF."""
-        if len(chave) != 11:
-            return False
-        ok, estadia = self.app.tentar(self.app.banco.estadia_aberta, cpf=chave)
-        if not ok or estadia is None:
-            return False
-        # o dono está fora: o carro só sai com a senha (RN32)
-        if self._sair_so_o_carro(estadia):
-            self.campo_saida_rapida.delete(0, tk.END)
-        return True
+        """Enter no campo Comando (o nome de antes continua): a linha passa
+        pelo léxico, sintático e semântico e, sem erro, é executada pelos
+        mesmos caminhos do formulário (tela_comando.py). Só o CPF ou só a
+        placa continuam dando a saída, como na Saída rápida: pela placa
+        SÓ o carro sai (nunca a pessoa: QA1 A1); o CPF de quem saiu a pé
+        e deixou o carro oferece a saída do carro, com a senha (RN32)."""
+        return self.comando.executar(event)
 
     def _saida_do_carro(self, estadia):
         """O carro sai (placa ou lista de veículos). Com o dono no campus,
@@ -1526,12 +1494,32 @@ class AbaCadastro:
                 return estadia
         return None
 
-    def _dar_saida(self, registros, com_veiculo=None, levados=None):
+    def dar_saida(self, registros, com_veiculo=None, levados=None,
+                  momento=None, a_pe=None):
+        """A saída de uma pessoa, pelo mesmo caminho do botão, do duplo
+        clique e da Saída rápida (a linha de comando usa este)."""
+        return self._dar_saida(registros, com_veiculo, levados, momento, a_pe)
+
+    def saida_do_carro(self, estadia):
+        """A saída do carro pela placa (Saída rápida e linha de comando)."""
+        return self._saida_do_carro(estadia)
+
+    def sair_so_o_carro(self, estadia):
+        """O carro sai sem o dono: só com a senha (RN32)."""
+        return self._sair_so_o_carro(estadia)
+
+    def _dar_saida(self, registros, com_veiculo=None, levados=None,
+                   momento=None, a_pe=None):
         """Registra a saída agora; avisa sem travar a tela e oferece desfazer.
         Quem tem carro no estacionamento responde se saiu com ele (a não ser
-        que `com_veiculo` já diga). Visita que passaria de 24 h é exceção:
-        pede a autorização antes."""
-        momento = self.app.relogio().replace(second=0, microsecond=0)
+        que `com_veiculo` já diga; `a_pe` = as placas que ficam, para o
+        aviso). Visita que passaria de 24 h é exceção: pede a autorização
+        antes. `momento` (comando "saida ... as 14:05"): a saída num horário
+        de hoje que já passou; o lançamento retroativo segue a RN24
+        (horarios.retroativo), como na correção."""
+        agora = self.app.relogio().replace(second=0, microsecond=0)
+        retroativa = momento is not None
+        momento = momento or agora
         prontos, recusas = [], []
         for r in registros:
             ok, msg = checar_saida(r, momento)
@@ -1542,15 +1530,24 @@ class AbaCadastro:
         if not prontos:
             mensagens.info("Aviso", "\n".join(recusas))
             return False
-        a_pe, levados = {}, dict(levados or {})
+        a_pe, levados = dict(a_pe or {}), dict(levados or {})
         if com_veiculo is None:
             respostas = self._perguntar_veiculos(prontos)
             if respostas is None:
                 return False
             com_veiculo, a_pe, levados = respostas
-        regras = [f"{r['nome']}: {regra}" for r in prontos
-                  for regra in horarios.excecoes_da_duracao(
-                      datetime.strptime(r["entrada"], FORMATO), momento)]
+        regras = horarios.Excecoes([
+            f"{r['nome']}: {regra}" for r in prontos
+            for regra in horarios.excecoes_da_duracao(
+                datetime.strptime(r["entrada"], FORMATO), momento)])
+        if retroativa:
+            ok, config = self.app.tentar(self.app.banco.ler_configuracao)
+            if not ok:
+                return False
+            for r in prontos:
+                regras.juntar(horarios.retroativo(config, "Saída", momento,
+                                                  self.app.relogio(),
+                                                  r["tipo"]))
         autorizacao = None
         if regras:
             autorizacao = autorizar_excecao(self.app, regras, "Esta saída")
@@ -1645,6 +1642,7 @@ class AbaCadastro:
         (ids), mostra o link Desfazer."""
         if self._timer_aviso:
             self.aba.after_cancel(self._timer_aviso)
+        self.ultimo_aviso = texto          # a linha de comando repete
         self.lbl_aviso.config(text=texto)
         self.lbl_aviso_icone.config(text=(icone or ICONE["ok"]) if texto else "")
         self._para_desfazer = desfazer

@@ -97,8 +97,8 @@ from .usuarios import (MINUTOS_INATIVIDADE, PERFIS, SESSAO_ENCERRADA,
                        TEMA_PADRAO, eh_admin, pode_gerenciar_usuarios)
 from .validacao import formatar_cpf, mascarar_cpf
 
-TECLAS_DA_SESSAO = ("<Return>", "<KP_Enter>", "<F2>", "<Control-l>",
-                    "<Control-L>")
+TECLAS_DA_SESSAO = ("<Return>", "<KP_Enter>", "<F2>", "<Control-k>",
+                    "<Control-K>", "<Control-l>", "<Control-L>")
 ITEM_CODIGOS = "Gerar novos códigos de recuperação"
 GUARITA_TRAVADA = "Guarita travada"
 GUARITA_DESTRAVADA = "Guarita destravada"
@@ -717,6 +717,8 @@ class AppPortaria:
         self.janela.bind("<Return>", self.tela_cadastro.cadastrar)
         self.janela.bind("<KP_Enter>", self.tela_cadastro.cadastrar)
         self.janela.bind("<F2>", self.ir_para_saida_rapida)
+        self.janela.bind("<Control-k>", self.ir_para_saida_rapida)  # 2.4
+        self.janela.bind("<Control-K>", self.ir_para_saida_rapida)
         self.janela.bind("<Control-l>", self.travar)       # Ausentar (B4)
         self.janela.bind("<Control-L>", self.travar)
 
@@ -738,7 +740,8 @@ class AppPortaria:
         self.ao_trocar_aba()
 
     def ir_para_saida_rapida(self, event=None):
-        """F2: de qualquer página, leva o cursor à saída rápida."""
+        """F2 ou Ctrl+K: de qualquer página, leva o cursor ao campo Comando
+        (a antiga saída rápida, no mesmo lugar)."""
         if self.abas.select() != str(self.aba_cad):
             self.ir_para(self.aba_cad)
         self.tela_cadastro.campo_saida_rapida.focus_set()

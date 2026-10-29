@@ -307,12 +307,15 @@ def analisar_lexico(texto, apelidos=None):
 # Privacidade: a linha mostrada ao porteiro (RN14)
 # ------------------------------------------------------------------
 # CPF formatado ou 11 dígitos: os 3 primeiros e os 2 últimos números viram
-# "*" (o tamanho não muda, então o ^ do erro continua na coluna certa)
-_CPF_NA_LINHA = re.compile(r"(?<!\d)(\d{3})(\.?\d{3}\.?\d{3}-?)(\d{2})(?!\d)")
+# "*" (o tamanho não muda, então o ^ do erro continua na coluna certa).
+# O número logo depois de "cel " é o celular e fica como está.
+_CPF_NA_LINHA = re.compile(
+    r"(?<!\d)(?<![Cc][Ee][Ll] )(\d{3})(\.?\d{3}\.?\d{3}-?)(\d{2})(?!\d)")
 
 
 def mascarar_lexema(lexema):
-    """'529.982.247-25' -> '***.982.247-**'; '52998224725' -> '***982247**'."""
+    """'529.982.247-25' -> '***.982.247-**'; '52998224725' -> '***982247**'
+    (o celular depois de "cel " não muda)."""
     return _CPF_NA_LINHA.sub(lambda m: "***" + m.group(2) + "**", lexema)
 
 

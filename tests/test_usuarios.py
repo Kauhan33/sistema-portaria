@@ -292,6 +292,28 @@ class TestPermissoes(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("Somente o administrador", msg)
 
+    def test_editar_usuario(self):  # RN43
+        from portaria.usuarios import validar_edicao_usuario as validar
+        bia = dict(ADMIN_2, nome="Bia Prado")
+        self.assertEqual(validar(PORTEIRO, "Paulo Souza", "porteiro", ADMIN, 2),
+                         (True, ""))
+        self.assertEqual(validar(PORTEIRO, "Paulo Souza", "admin", ADMIN, 1),
+                         (True, ""))                      # vira administrador
+        self.assertEqual(validar(bia, "Bia Prado", "porteiro", ADMIN, 2),
+                         (True, ""))
+        casos = [((bia, "Bia", "admin", ADMIN, 2), "nome completo"),
+                 ((bia, "B" * 40 + " " + "P" * 40, "admin", ADMIN, 2),
+                  "no máximo 80"),
+                 ((bia, "Bia Prado", "chefe", ADMIN, 2), "perfil"),
+                 ((ADMIN, "Ana Admin", "porteiro", ADMIN, 2), "próprio perfil"),
+                 ((bia, "Bia Prado", "porteiro", ADMIN, 1),
+                  "pelo menos um administrador")]
+        for args, trecho in casos:
+            with self.subTest(trecho):
+                ok, msg = validar(*args)
+                self.assertFalse(ok)
+                self.assertIn(trecho, msg)
+
     def test_so_admin_desativa_e_reativa(self):
         self.assertTrue(pode_gerenciar_desativacoes(ADMIN))
         self.assertFalse(pode_gerenciar_desativacoes(PORTEIRO))

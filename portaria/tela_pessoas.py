@@ -33,10 +33,10 @@ desativar); e duas seções:
   antiga (entrada, saída, duração, tipo, placa e situação), com os dados
   que foram preenchidos em cada registro;
 - Veículo (RN35): "Quem pode retirar" o carro da placa dela sem o dono e
-  sem senha, com Adicionar e Remover. O porteiro só adiciona com o dono no
-  campus (o botão fica apagado, com a dica); o administrador, a qualquer
-  hora. Qualquer um remove. O administrador desativa (ou reativa) o
-  veículo aqui também.
+  sem senha, com Adicionar, Validade (RN45: trocar a data) e Remover. O
+  porteiro só adiciona ou muda a validade com o dono no campus (o botão
+  fica apagado, com a dica); o administrador, a qualquer hora. Qualquer um
+  remove. O administrador desativa (ou reativa) a placa aqui também.
 """
 
 import tkinter as tk
@@ -47,7 +47,7 @@ from tkinter import ttk
 from . import horarios, mensagens
 from .componentes import (Alternador, Aviso, Botao, Cabecalho, Campo, Cartao,
                           Dialogo, EsperaDigitacao, OrdenacaoTabela, Placa,
-                          Seletor, campo_rotulado, inserir_linha, plural,
+                          Seletor, campo_rotulado, inserir_linha, link, plural,
                           tabela, titulo_cartao)
 from .consultas import encontrar_dentro
 from .estilo import (COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, fonte_icone,
@@ -59,8 +59,8 @@ from .validacao import (DESATIVADO, MAXIMO_BUSCA, MAXIMO_MOTIVO, MAXIMO_NOME,
                         formatar_celular, formatar_desativacao,
                         formatar_placa, normalizar, normalizar_desativacao,
                         so_digitos, validar_campos, validar_desativacao)
-from .veiculos import (DONO_PRECISA_ESTAR,
-                       pode_cadastrar_autorizado, validar_autorizado)
+from .veiculos import (DONO_PRECISA_ESTAR, pode_cadastrar_autorizado,
+                       validar_autorizado, validar_nova_validade)
 
 ABAS = ("Ativas", "Desativadas", "Veículos desativados")
 COLUNAS = [("nome", "Nome", 160, "w"), ("cpf", "CPF", 112, "w"),
@@ -210,6 +210,9 @@ class AbaPessoas:
         self.seletor_ficha.pack_configure(
             pady=(px(8), px(6)) if compacta else (px(12), px(10)))
         self.faixa.definir_respiro(4 if compacta else 7)
+        # na tela baixa a lista de quem pode retirar mostra 2 linhas
+        self.tabela_autorizados.configure(height=2 if compacta else 3)
+        self.botoes_veiculo.pack_configure(pady=(px(6 if compacta else 10), 0))
         if compacta:
             self.lbl_veiculo_dica.pack_forget()
         elif self.selecionada is not None:
@@ -433,9 +436,17 @@ class AbaPessoas:
         e (administrador) desativar ou reativar o veículo."""
         fundo = COR["superficie"]
         secao = tk.Frame(c, bg=fundo)
-        self.lbl_veiculo = tk.Label(secao, font=FONTE["rotulo"], bg=fundo,
+        self.cab_veiculo = cab = tk.Frame(secao, bg=fundo)
+        cab.pack(fill="x")
+        # desativar a placa (RN12): só o administrador, um link no título
+        self.btn_desativar_veiculo = None
+        if self.admin:
+            self.btn_desativar_veiculo = link(cab, "Desativar placa",
+                                              self.desativar_veiculo,
+                                              cor=COR["erro"])
+        self.lbl_veiculo = tk.Label(cab, font=FONTE["rotulo"], bg=fundo,
                                     fg=COR["texto"], anchor="w")
-        self.lbl_veiculo.pack(fill="x")
+        self.lbl_veiculo.pack(side="left", fill="x", expand=True)
         self.lbl_veiculo_dica = tk.Label(
             secao, font=FONTE["dica"], bg=fundo, fg=COR["texto_3"],
             justify="left", anchor="w", wraplength=px(320),
@@ -451,21 +462,19 @@ class AbaPessoas:
             self.botoes_veiculo, "Adicionar", self.adicionar_autorizado,
             "secundario")
         self.btn_adicionar_autorizado.pack(side="left")
+        self.btn_validade_autorizado = Botao(
+            self.botoes_veiculo, "Validade", self.editar_validade,
+            "secundario", icone=ICONE["editar"])
+        self.btn_validade_autorizado.pack(side="left", padx=(px(8), 0))
         self.btn_remover_autorizado = Botao(
             self.botoes_veiculo, "Remover", self.remover_autorizado, "perigo")
         self.btn_remover_autorizado.pack(side="left", padx=(px(8), 0))
         self.lbl_dono_fora = tk.Label(secao, font=FONTE["dica"], bg=fundo,
                                       fg=COR["alerta"], justify="left",
                                       anchor="w", wraplength=px(320))
-        # desativar o veículo (RN12): só o administrador, na mesma linha
         self.lbl_veiculo_desativado = tk.Label(
             secao, font=FONTE["rotulo"], bg=fundo, fg=COR["erro"],
             justify="left", anchor="w", wraplength=px(320))
-        self.btn_desativar_veiculo = None
-        if self.admin:
-            self.btn_desativar_veiculo = Botao(
-                self.botoes_veiculo, "Desativar placa", self.desativar_veiculo,
-                "perigo")
         self.autorizados = []
         return secao
 
@@ -492,10 +501,13 @@ class AbaPessoas:
             self.lbl_veiculo_dica.pack_forget()
         else:
             self.lbl_veiculo_dica.pack(fill="x", pady=(px(2), px(8)),
-                                       after=self.lbl_veiculo)
-        self.quadro_autorizados.pack(fill="x", pady=(px(4), 0),
-                                     after=self.lbl_veiculo)
-        self.botoes_veiculo.pack(fill="x", pady=(px(10), 0),
+                                       after=self.cab_veiculo)
+        self.quadro_autorizados.pack(
+            fill="x", pady=(px(4), 0),
+            after=self.lbl_veiculo_dica if not self.compacta
+            else self.cab_veiculo)
+        self.botoes_veiculo.pack(fill="x", pady=(px(6 if self.compacta else 10),
+                                                 0),
                                  after=self.quadro_autorizados)
         ok, lista = self.app.tentar(self.app.banco.listar_autorizados, placa)
         if ok:
@@ -516,11 +528,13 @@ class AbaPessoas:
         ok, _ = pode_cadastrar_autorizado(eh_admin(self.app.usuario),
                                           bool(pessoa["dentro_desde"]))
         self.btn_adicionar_autorizado.definir_ativo(ok)
+        self.btn_validade_autorizado.definir_ativo(ok and bool(self.autorizados))
         if ok:
             self.lbl_dono_fora.pack_forget()
         else:
             self.lbl_dono_fora.config(text="O dono precisa estar no campus "
-                                           "para o porteiro adicionar.")
+                                           "para o porteiro adicionar ou "
+                                           "mudar a validade.")
             self.lbl_dono_fora.pack(fill="x", pady=(px(6), 0),
                                     after=self.botoes_veiculo)
         self.btn_remover_autorizado.definir_ativo(bool(self.autorizados))
@@ -533,14 +547,18 @@ class AbaPessoas:
             self.lbl_veiculo_desativado.config(
                 text=f"Veículo desativado: {desativado['motivo']}")
             self.lbl_veiculo_desativado.pack(fill="x", pady=(px(2), px(4)),
-                                             after=self.lbl_veiculo)
+                                             after=self.cab_veiculo)
         else:
             self.lbl_veiculo_desativado.pack_forget()
         if self.btn_desativar_veiculo is not None:
-            self.btn_desativar_veiculo.definir_texto(
-                *(("Reativar placa", "secundario") if desativado
-                  else ("Desativar placa", "perigo")))
-            self.btn_desativar_veiculo.pack(side="left", padx=(px(8), 0))
+            if placa:
+                self.btn_desativar_veiculo.config(
+                    text="Reativar placa" if desativado else "Desativar placa",
+                    fg=COR["foco"] if desativado else COR["erro"])
+                self.btn_desativar_veiculo.pack(side="right", before=
+                                                self.lbl_veiculo)
+            else:
+                self.btn_desativar_veiculo.pack_forget()
 
     def adicionar_autorizado(self):
         """Abre o diálogo "Quem pode retirar"; devolve o diálogo."""
@@ -553,6 +571,25 @@ class AbaPessoas:
             mensagens.aviso("Quem pode retirar", motivo)
             return None
         self.dialogo = DialogoAutorizado(self, p)
+        return self.dialogo
+
+    def editar_validade(self):
+        """Veículo › Validade (RN45): nova data de quem está selecionado
+        na lista; devolve o diálogo."""
+        if not self._exigir_selecao():
+            return None
+        selecao = self.tabela_autorizados.selection()
+        if not selecao:
+            mensagens.aviso("Atenção", "Selecione na lista quem terá a "
+                                       "validade alterada.")
+            return None
+        ok, motivo = pode_cadastrar_autorizado(
+            eh_admin(self.app.usuario), bool(self.selecionada["dentro_desde"]))
+        if not ok:
+            mensagens.aviso("Quem pode retirar", motivo)
+            return None
+        a = next(x for x in self.autorizados if str(x["id"]) == selecao[0])
+        self.dialogo = DialogoValidade(self, a)
         return self.dialogo
 
     def remover_autorizado(self):
@@ -1323,6 +1360,46 @@ class DialogoDesativar(Dialogo):
         self.fechar()
         self.pagina.depois_de_mudar(self.tipo, valor)
         self.pagina.avisar_se_no_campus(self.tipo, valor)
+        return True
+
+
+class DialogoValidade(Dialogo):
+    """RN45: troca a validade de quem pode retirar o carro (vazio = sem
+    prazo, até alguém remover; nunca antes de hoje)."""
+
+    def __init__(self, aba, autorizado):
+        self.aba, self.autorizado = aba, autorizado
+        app = aba.app
+        placa = formatar_placa(autorizado["placa"])
+        super().__init__(app.janela, "Validade da autorização",
+                         f"Até quando {autorizado['nome']} pode retirar o "
+                         f"carro {placa}. Vazio = sem prazo (até alguém "
+                         "remover).", largura=380, ao_usar=app.registrar_uso)
+        grupo, campo = campo_rotulado(self.miolo, "Válido até", "opcional",
+                                      seletor="data", relogio=app.relogio)
+        grupo.pack(fill="x")
+        self.validade = campo.entrada
+        if autorizado["valido_ate"] is not None:
+            self.validade.insert(0, f"{autorizado['valido_ate']:%d/%m/%Y}")
+        self.faixa = Aviso(self.miolo)
+        self.adicionar_botao("Salvar", self.salvar, "primario")
+        self.adicionar_botao("Cancelar", self.fechar)
+        self.abrir(confirmar=self.salvar, foco=self.validade)
+
+    def salvar(self):
+        app = self.aba.app
+        valido_ate, erro = validar_nova_validade(self.validade.get(),
+                                                 app.relogio().date())
+        if erro:
+            self.faixa.mostrar("erro", erro)
+            self.faixa.pack(fill="x", pady=(px(12), 0))
+            return False
+        ok, _ = app.tentar(app.banco.alterar_validade_autorizado,
+                           self.autorizado["id"], valido_ate, autor=app.autor)
+        if not ok:
+            return False
+        self.fechar()
+        self.aba.mostrar_autorizados(self.aba.selecionada)
         return True
 
 

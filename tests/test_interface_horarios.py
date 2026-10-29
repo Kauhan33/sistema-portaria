@@ -492,6 +492,41 @@ class TestConfiguracoes(BaseHorarios):
         self.tela.remover_feriado()
         self.assertEqual(self.banco.ler_configuracao().feriados, {})
 
+    def test_editar_feriado_e_evento(self):  # RN44
+        self.tela.seletor.selecionar("Feriados e eventos")
+        self.banco.adicionar_feriado(date(2026, 12, 25), "Natal", "ana.admin")
+        evento, _ = horarios.ler_evento("25/10/2026", "18:00", "23:00", "Show",
+                                        horarios.configuracao_padrao())
+        self.banco.adicionar_evento(evento, "ana.admin")
+        self.tela.atualizar()
+        self.assertFalse(self.tela.editar_feriado())          # sem seleção
+        self.tela.tabela_feriados.selection_set("2026-12-25")
+        self.assertTrue(self.tela.editar_feriado())
+        self.assertEqual((self.tela.data_feriado.get(),
+                          self.tela.nome_feriado.get()), ("25/12/2026", "Natal"))
+        self.assertEqual(self.tela.btn_feriado.cget("text"), "Salvar alteração")
+        self.tela.nome_feriado.delete(0, tk.END)
+        self.tela.nome_feriado.insert(0, "Natal (recesso)")
+        self.tela.adicionar_feriado()
+        self.assertEqual(self.banco.ler_configuracao().feriados,
+                         {date(2026, 12, 25): "Natal (recesso)"})
+        self.assertEqual(self.tela.btn_feriado.cget("text"), "Adicionar")
+        self.assertEqual(self.tela.data_feriado.get(), "")
+        self.tela.tabela_eventos.selection_set("2026-10-25")
+        self.tela.editar_evento()
+        self.assertEqual(self.tela.abre_evento.get(), "18:00")
+        self.tela.fecha_evento.delete(0, tk.END)
+        self.tela.fecha_evento.insert(0, "23:30")
+        self.tela.adicionar_evento()
+        self.assertEqual(str(self.banco.ler_configuracao().eventos[
+            date(2026, 10, 25)].horario), "18:00–23:30")
+        self.assertIn("alterado", self.tela.faixa_eventos.lbl.cget("text"))
+        self.tela.tabela_eventos.selection_set("2026-10-25")
+        self.tela.editar_evento()
+        self.tela.cancelar_edicao("evento")                   # desiste
+        self.assertEqual(self.tela.nome_evento.get(), "")
+        self.assertIsNone(self.tela.editando["evento"])
+
 
 class TestLancamentoRetroativoNaTela(BaseHorarios):
     """RN24 nas três situações, no cadastro e na correção."""

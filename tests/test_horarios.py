@@ -592,3 +592,30 @@ class TestSituacaoDoCarro(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEditarFeriadoEEvento(unittest.TestCase):  # RN44 (2.3)
+    def test_a_propria_data_pode_ficar_e_outra_repetida_nao(self):
+        from datetime import date as _date
+        from portaria import horarios as h
+        config = h.configuracao_padrao()
+        config.feriados[_date(2026, 12, 25)] = "Natal"
+        config.feriados[_date(2026, 11, 2)] = "Finados"
+        valor, erro = h.ler_feriado("25/12/2026", "Natal de novo", config,
+                                    editando=_date(2026, 12, 25))
+        self.assertEqual((valor, erro), ((_date(2026, 12, 25), "Natal de novo"),
+                                         ""))
+        _, erro = h.ler_feriado("02/11/2026", "Natal", config,
+                                editando=_date(2026, 12, 25))
+        self.assertIn("já é feriado", erro)
+        _, erro = h.ler_feriado("25/12/2026", "Natal", config)
+        self.assertIn("já é feriado", erro)
+        evento, _ = h.ler_evento("25/10/2026", "18:00", "23:00", "Show",
+                                 config)
+        config.eventos[evento.data] = evento
+        novo, erro = h.ler_evento("25/10/2026", "19:00", "23:30", "Show",
+                                  config, editando=evento.data)
+        self.assertEqual(erro, "")
+        self.assertEqual(novo.descricao, "Show")
+        _, erro = h.ler_evento("25/10/2026", "19:00", "23:30", "Show", config)
+        self.assertIn("Já há um evento", erro)

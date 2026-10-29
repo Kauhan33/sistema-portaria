@@ -694,7 +694,9 @@ def _ler_descricao(descricao, falta):
     return (descricao, "") if ok else (None, erro)
 
 
-def ler_feriado(data, descricao, config):
+def ler_feriado(data, descricao, config, editando=None):
+    """(dia, descrição) ou o erro. `editando`: a data do feriado que está
+    sendo corrigido (RN44): ela pode ficar como está."""
     dia, erro = ler_data(data)
     if erro:
         return None, erro
@@ -702,12 +704,14 @@ def ler_feriado(data, descricao, config):
                                      "Informe o nome do feriado (ex.: Natal).")
     if erro:
         return None, erro
-    if dia in config.feriados:
+    if dia in config.feriados and dia != editando:
         return None, f"{dia:{FORMATO_DATA}} já é feriado."
     return (dia, descricao), ""
 
 
-def ler_evento(data, abre, fecha, descricao, config):
+def ler_evento(data, abre, fecha, descricao, config, editando=None):
+    """Evento lido dos campos, ou o erro. `editando`: a data do evento que
+    está sendo corrigido (RN44)."""
     dia, erro = ler_data(data)
     if erro:
         return None, erro
@@ -718,7 +722,7 @@ def ler_evento(data, abre, fecha, descricao, config):
         descricao, "Descreva o evento (ex.: Formatura de Direito).")
     if erro:
         return None, erro
-    if dia in config.eventos:
+    if dia in config.eventos and dia != editando:
         return None, f"Já há um evento em {dia:{FORMATO_DATA}}."
     return Evento(dia, horario, descricao), ""
 

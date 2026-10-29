@@ -46,6 +46,9 @@ CONTRATO DO APP — o que as telas podem usar da AppPortaria:
     app.exibir_cpf(cpf)          CPF como a tabela mostra: completo para o
                                  administrador, mascarado para o porteiro
     app.registrar_uso()          conta como uso (sessão por inatividade)
+    app.atualizar_nome_do_usuario()  o nome de quem está logado mudou
+                                 (Usuários › Editar): o rodapé da barra
+                                 lateral mostra o novo
     app.trocar_tema(preferencia) "claro", "escuro" ou "sistema" (seguir o
                                  Windows): grava no usuário e remonta a
                                  janela sem perder a sessão
@@ -310,6 +313,12 @@ class AppPortaria:
         Veículos desativados (placa), com a linha escolhida."""
         self.ir_para(self.aba_pessoas)
         self.tela_pessoas.mostrar_desativacao(tipo, valor)
+
+    def atualizar_nome_do_usuario(self):
+        """Rodapé da barra lateral com o nome atual de quem está logado."""
+        if self.usuario:
+            self.avatar.mostrar(self.usuario["nome"])
+            self.lbl_usuario.config(text=self.usuario["nome"])
 
     def avisar(self, texto, desfazer=None):
         self.tela_cadastro.avisar(texto, desfazer)

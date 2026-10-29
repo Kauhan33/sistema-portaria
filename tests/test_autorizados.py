@@ -124,6 +124,45 @@ class BaseAutorizadosNoBanco(unittest.TestCase):
         return [e for e in self.banco.listar_eventos() if e["acao"] == acao]
 
 
+class TestValidadeDoAutorizado(BaseAutorizadosNoBanco):  # RN45 (2.3)
+    def test_regra_pura_da_nova_validade(self):
+        self.assertEqual(veiculos.validar_nova_validade("", HOJE), (None, ""))
+        self.assertEqual(veiculos.validar_nova_validade("31/12/2026", HOJE),
+                         (date(2026, 12, 31), ""))
+        _, erro = veiculos.validar_nova_validade("01/01/2026", HOJE)
+        self.assertIn("antes de hoje", erro)
+        _, erro = veiculos.validar_nova_validade("31/02/2026", HOJE)
+        self.assertIn("data inválida", erro)
+
+    def test_trocar_a_validade_e_ir_ao_historico(self):
+        id_ = self.autorizar(valido_ate=date(2026, 10, 20))
+        self.banco.alterar_validade_autorizado(id_, date(2026, 12, 31),
+                                               autor="paulo")   # dono no campus
+        autorizado, = self.banco.listar_autorizados("BRA2E19")
+        self.assertEqual(autorizado["valido_ate"], date(2026, 12, 31))
+        evento, = self.eventos(dados.AUTORIZADO_VALIDADE)
+        self.assertIn("até 20/10/2026 → até 31/12/2026", evento["detalhe"])
+        self.banco.alterar_validade_autorizado(id_, None, autor="ana")
+        self.assertIsNone(self.banco.listar_autorizados("BRA2E19")[0][
+            "valido_ate"])
+
+    def test_porteiro_com_o_dono_fora_ou_data_passada_e_recusado(self):
+        id_ = self.autorizar()
+        with self.assertRaises(dados.ErroDados):
+            self.banco.alterar_validade_autorizado(id_, date(2026, 10, 1),
+                                                   autor="ana")
+        self.carla_sai_a_pe()
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.alterar_validade_autorizado(id_, date(2026, 12, 31),
+                                                   autor="paulo")
+        self.assertIn("dono precisa estar no campus", str(erro.exception))
+        self.banco.alterar_validade_autorizado(id_, date(2026, 12, 31),
+                                               autor="ana")      # admin pode
+        self.banco.remover_autorizado(id_, autor="ana")
+        with self.assertRaises(dados.ErroDados):
+            self.banco.alterar_validade_autorizado(id_, None, autor="ana")
+
+
 class TestQuemCadastra(BaseAutorizadosNoBanco):
     def test_porteiro_com_o_dono_fora_e_recusado_direto_no_banco(self):
         self.carla_sai_a_pe()
@@ -403,6 +442,33 @@ class TestFichaQuemPodeRetirar(BaseAutorizadosNaTela):
         pessoas.remover_autorizado()
         self.assertEqual(self.banco.listar_autorizados("BRA2E19"), [])
         self.assertIn(("paulo", dados.AUTORIZADO_REMOVIDO), self.acoes())
+
+    def test_editar_a_validade_pela_ficha(self):  # RN45
+        id_ = self.banco.adicionar_autorizado(CARLA, BRUNO, "Bruno Almeida",
+                                              None, autor="paulo")
+        pessoas = self.abrir_ficha()
+        self.assertTrue(pessoas.btn_validade_autorizado.ativo)
+        self.assertIsNone(pessoas.editar_validade())          # sem seleção
+        pessoas.tabela_autorizados.selection_set(str(id_))
+        dialogo = pessoas.editar_validade()
+        dialogo.validade.insert(0, "01/01/2020")
+        self.assertFalse(dialogo.salvar())
+        self.assertIn("antes de hoje", dialogo.faixa.lbl.cget("text"))
+        dialogo.validade.delete(0, "end")
+        dialogo.validade.insert(0, "31/12/2030")
+        self.assertTrue(dialogo.salvar())
+        linha = pessoas.tabela_autorizados.item(str(id_))
+        self.assertEqual(linha["values"][2], "31/12/2030")
+        self.assertIn(("paulo", dados.AUTORIZADO_VALIDADE), self.acoes())
+
+    def test_porteiro_com_o_dono_fora_nao_muda_a_validade(self):
+        id_ = self.banco.adicionar_autorizado(CARLA, BRUNO, "Bruno Almeida",
+                                              None, autor="paulo")
+        self.carla_sai_a_pe()
+        pessoas = self.abrir_ficha()
+        self.assertFalse(pessoas.btn_validade_autorizado.ativo)
+        pessoas.tabela_autorizados.selection_set(str(id_))
+        self.assertIsNone(pessoas.editar_validade())
 
     def test_pessoa_sem_placa_mostra_sem_veiculo(self):
         pessoas = self.abrir_ficha(BRUNO)

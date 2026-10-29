@@ -10,7 +10,9 @@ Três seções, escolhidas no seletor do topo:
   fechamento de cada tipo de acesso;
 - Feriados e eventos: datas com o campus fechado e datas com horário
   especial (o evento SOMA ao funcionamento do dia: num sábado normal com
-  formatura à noite o campus abre nas duas janelas).
+  formatura à noite o campus abre nas duas janelas). Adicionar, Editar
+  (RN44: a linha escolhida volta para os campos e o botão vira "Salvar")
+  e Remover.
 
 Tudo o que é digitado passa pelas funções horarios.ler_* (fecha depois de
 abre, hh:mm válido, números nos limites) antes de ir ao banco, que confere
@@ -330,8 +332,9 @@ class AbaConfiguracoes:
         secao.columnconfigure(0, weight=2, uniform="c")
         secao.columnconfigure(1, weight=3, uniform="c")
         secao.rowconfigure(0, weight=1)
+        self.editando = {"feriado": None, "evento": None}
         m = self._cartao_lista(secao, 0, "Feriados", "campus fechado o dia todo",
-                               self.remover_feriado)
+                               self.remover_feriado, self.editar_feriado)
         linha = tk.Frame(m, bg=COR["superficie"])
         linha.pack(fill="x")
         linha.columnconfigure(1, weight=1)
@@ -339,9 +342,14 @@ class AbaConfiguracoes:
                                         seletor="data")
         self.nome_feriado = self._campo(linha, 0, 1, "Descrição", "ex.: Natal",
                                         maximo=MAXIMO_DESCRICAO)
-        Botao(linha, "Adicionar", self.adicionar_feriado, "secundario",
-              icone=ICONE["mais"]).grid(row=2, column=0, columnspan=2,
-                                        sticky="e", pady=(px(10), 0))
+        acoes = tk.Frame(linha, bg=COR["superficie"])
+        acoes.grid(row=2, column=0, columnspan=2, sticky="e", pady=(px(10), 0))
+        self.btn_cancelar_feriado = Botao(acoes, "Cancelar",
+                                          lambda: self.cancelar_edicao("feriado"),
+                                          "fantasma")
+        self.btn_feriado = Botao(acoes, "Adicionar", self.adicionar_feriado,
+                                 "secundario", icone=ICONE["mais"])
+        self.btn_feriado.pack(side="right")
         self.faixa_feriados = Aviso(m)
         quadro, self.tabela_feriados = tabela(m, COLUNAS_FERIADOS, altura=5)
         quadro.pack(fill="both", expand=True, pady=(px(12), 0))
@@ -349,7 +357,7 @@ class AbaConfiguracoes:
 
         m = self._cartao_lista(secao, 1, "Eventos",
                                "abre também nesse horário (soma ao do dia)",
-                               self.remover_evento)
+                               self.remover_evento, self.editar_evento)
         linha = tk.Frame(m, bg=COR["superficie"])
         linha.pack(fill="x")
         linha.columnconfigure(3, weight=1)
@@ -362,14 +370,20 @@ class AbaConfiguracoes:
         self.nome_evento = self._campo(linha, 2, 0, "Descrição", "ex.: Formatura",
                                        juntas=4, maximo=MAXIMO_DESCRICAO)
         # na linha da data: ao lado da descrição, era cortado no notebook
-        Botao(linha, "Adicionar", self.adicionar_evento, "secundario",
-              icone=ICONE["mais"]).grid(row=1, column=3, sticky="e")
+        acoes = tk.Frame(linha, bg=COR["superficie"])
+        acoes.grid(row=1, column=3, sticky="e")
+        self.btn_cancelar_evento = Botao(acoes, "Cancelar",
+                                         lambda: self.cancelar_edicao("evento"),
+                                         "fantasma")
+        self.btn_evento = Botao(acoes, "Adicionar", self.adicionar_evento,
+                                "secundario", icone=ICONE["mais"])
+        self.btn_evento.pack(side="right")
         self.faixa_eventos = Aviso(m)
         quadro, self.tabela_eventos = tabela(m, COLUNAS_EVENTOS, altura=5)
         quadro.pack(fill="both", expand=True, pady=(px(12), 0))
         self.faixa_eventos.antes_de = quadro
 
-    def _cartao_lista(self, secao, coluna, titulo, apoio, remover):
+    def _cartao_lista(self, secao, coluna, titulo, apoio, remover, editar):
         cartao = Cartao(secao, pad=16)
         cartao.grid(row=0, column=coluna, sticky="nsew",
                     padx=(0, px(ESPACO_CARTOES)) if coluna == 0 else 0)
@@ -381,8 +395,14 @@ class AbaConfiguracoes:
         titulo_cartao(textos, titulo).pack(anchor="w")
         tk.Label(textos, text=apoio, font=FONTE["dica"], bg=COR["superficie"],
                  fg=COR["texto_3"]).pack(anchor="w")
-        Botao(cab, "Remover", remover, "secundario", icone=ICONE["lixo"]
+        # Editar e Remover embaixo da lista (no notebook o cartão dos
+        # feriados é estreito para o título e dois botões)
+        acoes = tk.Frame(m, bg=COR["superficie"])
+        acoes.pack(side="bottom", fill="x", pady=(px(10), 0))
+        Botao(acoes, "Remover", remover, "secundario", icone=ICONE["lixo"]
               ).pack(side="right")
+        Botao(acoes, "Editar", editar, "secundario", icone=ICONE["editar"]
+              ).pack(side="right", padx=(0, px(8)))
         return m
 
     def _campo(self, grade, linha, coluna, texto, dica, largura=None, juntas=1,
@@ -415,34 +435,101 @@ class AbaConfiguracoes:
                           tags=("apagado",) if evento.data < hoje else ())
 
     def adicionar_feriado(self):
+        """Adicionar (ou, editando, Salvar a alteração do feriado)."""
+        editando = self.editando["feriado"]
         valor, erro = horarios.ler_feriado(self.data_feriado.get(),
-                                           self.nome_feriado.get(), self.config)
+                                           self.nome_feriado.get(), self.config,
+                                           editando=editando)
         if erro:
             self._resultado(self.faixa_feriados, "erro", erro)
             return
-        ok, _ = self.app.tentar(self.app.banco.adicionar_feriado, *valor,
-                                autor=self.app.autor)
+        if editando is not None:
+            ok, mudou = self.app.tentar(self.app.banco.editar_feriado,
+                                        editando, *valor, autor=self.app.autor)
+            texto = f"Feriado de {valor[0]:{FORMATO_DATA}} alterado."
+        else:
+            ok, mudou = self.app.tentar(self.app.banco.adicionar_feriado,
+                                        *valor, autor=self.app.autor)
+            mudou = 1
+            texto = f"Feriado de {valor[0]:{FORMATO_DATA}} adicionado."
         if ok:
-            for campo in (self.data_feriado, self.nome_feriado):
-                campo.delete(0, tk.END)
-            self._salvo(self.faixa_feriados, 1, f"Feriado de "
-                        f"{valor[0]:{FORMATO_DATA}} adicionado.")
+            self.cancelar_edicao("feriado")
+            self._salvo(self.faixa_feriados, mudou,
+                        texto if mudou else "Nada mudou.")
 
     def adicionar_evento(self):
+        """Adicionar (ou, editando, Salvar a alteração do evento)."""
+        editando = self.editando["evento"]
         evento, erro = horarios.ler_evento(
             self.data_evento.get(), self.abre_evento.get(),
-            self.fecha_evento.get(), self.nome_evento.get(), self.config)
+            self.fecha_evento.get(), self.nome_evento.get(), self.config,
+            editando=editando)
         if erro:
             self._resultado(self.faixa_eventos, "erro", erro)
             return
-        ok, _ = self.app.tentar(self.app.banco.adicionar_evento, evento,
-                                autor=self.app.autor)
+        if editando is not None:
+            ok, mudou = self.app.tentar(self.app.banco.editar_evento, editando,
+                                        evento, autor=self.app.autor)
+            texto = f"Evento de {evento.data:{FORMATO_DATA}} alterado."
+        else:
+            ok, mudou = self.app.tentar(self.app.banco.adicionar_evento, evento,
+                                        autor=self.app.autor)
+            mudou = 1
+            texto = f"Evento de {evento.data:{FORMATO_DATA}} adicionado."
         if ok:
-            for campo in (self.data_evento, self.abre_evento, self.fecha_evento,
-                          self.nome_evento):
-                campo.delete(0, tk.END)
-            self._salvo(self.faixa_eventos, 1, f"Evento de "
-                        f"{evento.data:{FORMATO_DATA}} adicionado.")
+            self.cancelar_edicao("evento")
+            self._salvo(self.faixa_eventos, mudou,
+                        texto if mudou else "Nada mudou.")
+
+    # --- editar (RN44): a linha volta para os campos -----------------
+    def _campos(self, nome):
+        if nome == "feriado":
+            return (self.data_feriado, self.nome_feriado)
+        return (self.data_evento, self.abre_evento, self.fecha_evento,
+                self.nome_evento)
+
+    def _botoes_de(self, nome):
+        if nome == "feriado":
+            return self.btn_feriado, self.btn_cancelar_feriado
+        return self.btn_evento, self.btn_cancelar_evento
+
+    def _editar(self, nome, tab, valores):
+        selecao = tab.selection()
+        if not selecao:
+            mensagens.aviso("Atenção", f"Selecione um {nome} na lista.")
+            return False
+        dia = date.fromisoformat(selecao[0])
+        for campo, valor in zip(self._campos(nome), valores(dia)):
+            _texto(campo, valor)
+        self.editando[nome] = dia
+        salvar, cancelar = self._botoes_de(nome)
+        salvar.icone = None
+        salvar.definir_texto("Salvar alteração", "primario")
+        cancelar.pack(side="right", padx=(0, px(8)), before=salvar)
+        return True
+
+    def editar_feriado(self):
+        """Feriados › Editar: a data e a descrição voltam para os campos."""
+        return self._editar("feriado", self.tabela_feriados, lambda dia: (
+            f"{dia:{FORMATO_DATA}}", self.config.feriados[dia]))
+
+    def editar_evento(self):
+        """Eventos › Editar: data, horário e descrição voltam aos campos."""
+        def valores(dia):
+            evento = self.config.eventos[dia]
+            return (f"{dia:{FORMATO_DATA}}", _hhmm(evento.horario.abre),
+                    _hhmm(evento.horario.fecha), evento.descricao)
+        return self._editar("evento", self.tabela_eventos, valores)
+
+    def cancelar_edicao(self, nome):
+        """Limpa os campos e o botão volta a ser "Adicionar"."""
+        for campo in self._campos(nome):
+            _texto(campo, "")
+        self.editando[nome] = None
+        salvar, cancelar = self._botoes_de(nome)
+        salvar.icone = ICONE["mais"]
+        salvar.definir_texto("Adicionar", "secundario")
+        cancelar.pack_forget()
 
     def remover_feriado(self):
         self._remover(self.tabela_feriados, "feriado",
@@ -464,6 +551,8 @@ class AbaConfiguracoes:
             return
         ok, _ = self.app.tentar(operacao, dia, autor=self.app.autor)
         if ok:
+            if self.editando.get(nome) == dia:
+                self.cancelar_edicao(nome)
             self._salvo(faixa, 1, f"{nome.capitalize()} de "
                                   f"{dia:{FORMATO_DATA}} removido.")
 

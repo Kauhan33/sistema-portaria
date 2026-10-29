@@ -104,6 +104,31 @@ def validar_novo_usuario(nome, login, senha, confirmacao, perfil,
     return validar_senha(senha, confirmacao, login)
 
 
+def validar_edicao_usuario(alvo, nome, perfil, logado, admins_ativos):
+    """
+    RN43 (2.3): (ok, mensagem) para o administrador editar o nome e o
+    perfil de uma conta. O login não muda (é ele que identifica quem fez
+    cada ação no histórico). Ninguém muda o próprio perfil, e o último
+    administrador ativo não vira porteiro (RN08).
+    """
+    nome = " ".join((nome or "").split())
+    ok, msg = checar_tamanho("Nome completo", nome, MAXIMO_NOME)
+    if not ok:
+        return False, msg
+    if not nome_valido(nome):
+        return False, "Informe o nome completo do usuário (só letras)."
+    if perfil not in PERFIS:
+        return False, "Selecione o perfil do usuário."
+    if perfil != alvo["perfil"]:
+        if logado is not None and alvo["id"] == logado["id"]:
+            return False, "Você não pode mudar o seu próprio perfil."
+        if (alvo["perfil"] == "admin" and alvo.get("ativo", True)
+                and admins_ativos <= 1):
+            return False, ("O sistema precisa de pelo menos um "
+                           "administrador ativo.")
+    return True, ""
+
+
 def validar_troca_senha(guardado, senha_atual, nova, confirmacao, login=""):
     """
     Troca da própria senha. Retorna (ok, mensagem). `guardado` é o hash

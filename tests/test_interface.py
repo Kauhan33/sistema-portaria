@@ -1333,6 +1333,47 @@ class TestAbaUsuarios(BaseInterface):
         self.assertEqual(acoes[0], "Cadastro de entrada")
 
 
+class TestEditarUsuario(BaseInterface):  # RN43
+    def setUp(self):
+        super().setUp()
+        self.aba = self.app.tela_usuarios
+        self.aba.atualizar()
+
+    def editar(self, login):
+        alvo = next(u for u in self.aba.usuarios if u["login"] == login)
+        self.aba.tabela.selection_set(str(alvo["id"]))
+        return self.aba.editar_usuario()
+
+    def test_admin_edita_nome_e_perfil(self):
+        dialogo = self.editar("paulo")
+        self.assertEqual(dialogo.nome.get(), "Paulo Porteiro")
+        self.assertEqual(dialogo.perfil.get(), "Porteiro")
+        dialogo.nome.delete(0, tk.END)
+        dialogo.nome.insert(0, "Paulo Souza")
+        dialogo.perfil.set("Administrador")
+        self.assertTrue(dialogo.salvar())
+        paulo = self.banco.buscar_usuario("paulo")
+        self.assertEqual((paulo["nome"], paulo["perfil"]),
+                         ("Paulo Souza", "admin"))
+        self.assertIn(("ana.admin", "Usuário alterado"), self.acoes())
+
+    def test_nao_muda_o_proprio_perfil_mas_muda_o_nome(self):
+        dialogo = self.editar("ana.admin")
+        dialogo.perfil.set("Porteiro")
+        self.assertFalse(dialogo.salvar())
+        self.assertIn("próprio perfil", dialogo.faixa.lbl.cget("text"))
+        dialogo.perfil.set("Administrador")
+        dialogo.nome.delete(0, tk.END)
+        dialogo.nome.insert(0, "Ana Lima")
+        self.assertTrue(dialogo.salvar())
+        self.assertEqual(self.app.lbl_usuario.cget("text"), "Ana Lima")
+
+    def test_sem_selecao_avisa(self):
+        self.aba.tabela.selection_set(())
+        self.assertIsNone(self.aba.editar_usuario())
+        self.assertIn("Selecione", self.msg.showwarning.call_args[0][1])
+
+
 class TestPreenchimentoAutomatico(BaseInterface):
     entrar_como = "porteiro"
 

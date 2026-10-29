@@ -1,6 +1,7 @@
 """
 Página Usuários (só administrador): as contas (criar porteiros e
-administradores, ativar ou desativar, redefinir senha) e a atividade do
+administradores, editar o nome e o perfil — RN43 —, ativar ou desativar,
+redefinir senha) e a atividade do
 sistema (histórico de ações, com filtro). "Novo usuário" e "Redefinir
 senha" abrem diálogos no estilo Guarita (as caixas de senha têm o mesmo
 limite de 64 caracteres das outras).
@@ -22,7 +23,8 @@ from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao, Dialogo,
 from .estilo import COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, px
 from .validacao import MAXIMO_BUSCA, MAXIMO_LOGIN, MAXIMO_NOME
 from .usuarios import (PERFIS, SENHA_MINIMA, gerar_hash, normalizar_login,
-                       pode_desativar, validar_novo_usuario, validar_senha)
+                       pode_desativar, validar_edicao_usuario,
+                       validar_novo_usuario, validar_senha)
 
 PERFIL_POR_NOME = {nome: chave for chave, nome in PERFIS.items()}
 COLUNAS = [("login", "Usuário", 140, "w"), ("nome", "Nome", 260, "w"),
@@ -84,6 +86,8 @@ class AbaUsuarios:
         self.btn_ativo.pack(side="right")
         Botao(barra, "Redefinir senha", self.redefinir_senha, "secundario",
               icone=ICONE["chave"]).pack(side="right", padx=(0, px(8)))
+        Botao(barra, "Editar", self.editar_usuario, "secundario",
+              icone=ICONE["editar"]).pack(side="right", padx=(0, px(8)))
         quadro, self.tabela = tabela(m, COLUNAS, situacao="Situação",
                                      mostrar=COLUNAS_VISIVEIS, altura=4,
                                      rolagem=True)
@@ -293,6 +297,14 @@ class AbaUsuarios:
         self.dialogo = DialogoUsuario(self)
         return self.dialogo
 
+    def editar_usuario(self):
+        """Contas › Editar (RN43): nome e perfil; devolve o diálogo."""
+        alvo = self._selecionado()
+        if alvo is None:
+            return None
+        self.dialogo = DialogoEditarUsuario(self, alvo)
+        return self.dialogo
+
     def alternar_ativo(self):
         alvo = self._selecionado()
         if alvo is None:
@@ -368,6 +380,57 @@ class DialogoRedefinirSenha(Dialogo):
                        "próximo login ele define uma senha nova. Se o login "
                        "estava travado por tentativas erradas, já foi "
                        "liberado.")
+
+
+class DialogoEditarUsuario(Dialogo):
+    """RN43: nome e perfil de uma conta. O login não muda (identifica quem
+    fez cada ação no histórico); ninguém muda o próprio perfil e o último
+    administrador ativo não vira porteiro."""
+
+    def __init__(self, aba, alvo):
+        self.aba, self.alvo = aba, alvo
+        app = aba.app
+        super().__init__(app.janela, "Editar usuário",
+                         f"Usuário {alvo['login']}: o login não muda (é ele "
+                         "que aparece no histórico).", largura=400,
+                         ao_usar=app.registrar_uso)
+        grupo, campo = campo_rotulado(self.miolo, "Nome completo",
+                                      maximo=MAXIMO_NOME)
+        grupo.pack(fill="x", pady=(0, px(14)))
+        self.nome = campo.entrada
+        self.nome.insert(0, alvo["nome"])
+        grupo, campo = campo_rotulado(self.miolo, "Perfil",
+                                      opcoes=PERFIL_POR_NOME)
+        grupo.pack(fill="x")
+        self.perfil = campo.entrada
+        self.perfil.set(PERFIS[alvo["perfil"]])
+        self.faixa = Aviso(self.miolo)
+        self.adicionar_botao("Salvar", self.salvar, "primario")
+        self.adicionar_botao("Cancelar", self.fechar)
+        self.abrir(confirmar=self.salvar, foco=self.nome)
+
+    def salvar(self):
+        app = self.aba.app
+        nome = " ".join(self.nome.get().split())
+        perfil = PERFIL_POR_NOME.get(self.perfil.get(), "")
+        admins = sum(1 for u in self.aba.usuarios
+                     if u["perfil"] == "admin" and u["ativo"])
+        ok, msg = validar_edicao_usuario(self.alvo, nome, perfil, app.usuario,
+                                         admins)
+        if not ok:
+            self.faixa.mostrar("erro", msg)
+            self.faixa.pack(fill="x", pady=(px(12), 0))
+            return False
+        ok, mudancas = app.tentar(app.banco.editar_usuario, self.alvo["id"],
+                                  nome, perfil, autor=app.autor)
+        if not ok:
+            return False
+        self.fechar()
+        if mudancas and self.alvo["login"] == app.autor:
+            app.usuario["nome"] = nome          # o rodapé da barra lateral
+            app.atualizar_nome_do_usuario()
+        self.aba.atualizar()
+        return True
 
 
 class DialogoUsuario(Dialogo):

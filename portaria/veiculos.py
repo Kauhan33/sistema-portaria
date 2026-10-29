@@ -102,6 +102,20 @@ def validar_autorizado(dono, cpf, nome, validade, hoje):
             "nome": nome, "valido_ate": valido_ate}, ""
 
 
+def validar_nova_validade(texto, hoje):
+    """
+    RN45 (2.3): "Editar validade" de quem pode retirar o carro. Vazio =
+    sem prazo (até alguém remover); com data, não pode ser antes de hoje.
+    Devolve (valido_ate: date ou None, erro).
+    """
+    valido_ate, erro = ler_validade(texto)
+    if erro:
+        return None, erro
+    if valido_ate is not None and valido_ate < hoje:
+        return None, "A validade não pode ser antes de hoje."
+    return valido_ate, ""
+
+
 def autorizacao_vale(autorizado, dia):
     """Ativa e dentro da validade no dia `dia` (date)."""
     if not autorizado.get("ativo", True):

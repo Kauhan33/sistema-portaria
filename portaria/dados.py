@@ -85,7 +85,8 @@ from datetime import date, datetime, timedelta
 
 from . import horarios, senhas, validacao, veiculos
 from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
-                       conferir_autorizador, pode_editar, pode_excluir_pessoa)
+                       conferir_autorizador, pode_editar, pode_excluir_pessoa,
+                       validar_edicao_usuario)
 from .validacao import (FORMATO, MAXIMO_BUSCA, MAXIMO_CELULAR, MAXIMO_CPF,
                         MAXIMO_CODIGO, MAXIMO_DATA_HORA, MAXIMO_DESCRICAO,
                         MAXIMO_JUSTIFICATIVA, MAXIMO_LOGIN, MAXIMO_MOTIVO,
@@ -238,6 +239,7 @@ VEICULO_SEM_DONO = "Veículo saiu sem o dono"     # evento e regra (RN32)
 VEICULO_COM_AUTORIZADO = "Veículo saiu com autorizado"
 AUTORIZADO_ADICIONADO = "Autorizado a retirar veículo"
 AUTORIZADO_REMOVIDO = "Autorização de retirada removida"
+AUTORIZADO_VALIDADE = "Validade de autorização alterada"   # 2.3 (RN45)
 # RN37: lotação do estacionamento
 LOTACAO_LIBERADA = "Estacionamento lotado liberado"           # com a senha
 LOTACAO_CONFIRMADA = "Entrada com estacionamento lotado"      # só o aviso
@@ -2135,6 +2137,41 @@ class Banco:
                          f"Placa {formatar_placa(linha[0])}: {linha[1]} (CPF "
                          f"{linha[2]}) não pode mais retirar o carro.")
 
+    def alterar_validade_autorizado(self, id_autorizado, valido_ate, autor):
+        """
+        RN45 (2.3): troca a validade (date ou None = sem prazo) de quem
+        pode retirar o carro. Mesma permissão de quem cadastra (RN35): o
+        porteiro só com o dono no campus agora; o administrador, a
+        qualquer hora. A validade não pode ser antes de hoje. Vai ao
+        histórico com a validade antiga e a nova.
+        """
+        with self._conexao() as con:
+            usuario = self._exigir(con, autor, so_admin=False)
+            linha = con.execute(
+                f"SELECT {COLUNAS_AUTORIZADO} FROM autorizados_veiculo "
+                "WHERE id = ? AND ativo = 1", (id_autorizado,)).fetchone()
+            if linha is None:
+                raise ErroDados("Esta autorização já tinha sido removida.")
+            antes = _autorizado(linha)
+            presente = con.execute("SELECT 1 FROM registros WHERE cpf = ? "
+                                   "AND saida = ''", (antes["dono_cpf"],)
+                                   ).fetchone() is not None
+            ok, msg = veiculos.pode_cadastrar_autorizado(
+                usuario["perfil"] == "admin", presente)
+            if not ok:
+                raise ErroDados(msg)
+            hoje = self.relogio().date()
+            if valido_ate is not None and valido_ate < hoje:
+                raise ErroDados("A validade não pode ser antes de hoje.")
+            con.execute("UPDATE autorizados_veiculo SET valido_ate = ? "
+                        "WHERE id = ?",
+                        (veiculos.dia_iso(valido_ate), id_autorizado))
+            self._evento(con, autor, AUTORIZADO_VALIDADE,
+                         f"Placa {formatar_placa(antes['placa'])}: "
+                         f"{antes['nome']} (CPF {antes['cpf']}), "
+                         f"{veiculos.descrever_validade(antes['valido_ate'])}"
+                         f" → {veiculos.descrever_validade(valido_ate)}.")
+
     def contar_autorizados(self, dia):
         """{placa: quantos podem retirar o carro no dia} (aba Veículos)."""
         with self._conexao() as con:
@@ -2329,6 +2366,56 @@ class Banco:
             self._evento_de_configuracao(
                 con, autor, "Feriado removido",
                 [f"{dia:{horarios.FORMATO_DATA}} — {linha[0]}"])
+
+    def editar_feriado(self, dia_antigo, dia, descricao, autor):
+        """RN44 (2.3): corrige a data e/ou a descrição de um feriado (só o
+        administrador; a data nova não pode já ser feriado)."""
+        descricao = descricao.strip()
+        _exigir_tamanho("Descrição", descricao, MAXIMO_DESCRICAO)
+        with self._conexao() as con:
+            self._exigir(con, autor, para="alterar as configurações")
+            linha = con.execute("SELECT descricao FROM feriados WHERE data = ?",
+                                (dia_antigo.isoformat(),)).fetchone()
+            if linha is None:
+                raise ErroDados("Este feriado já foi removido.")
+            if dia != dia_antigo and con.execute(
+                    "SELECT 1 FROM feriados WHERE data = ?",
+                    (dia.isoformat(),)).fetchone():
+                raise ErroDados(f"{dia:{horarios.FORMATO_DATA}} já é feriado.")
+            con.execute("UPDATE feriados SET data = ?, descricao = ? "
+                        "WHERE data = ?", (dia.isoformat(), descricao,
+                                           dia_antigo.isoformat()))
+            antes = f"{dia_antigo:{horarios.FORMATO_DATA}} — {linha[0]}"
+            depois = f"{dia:{horarios.FORMATO_DATA}} — {descricao}"
+            if antes != depois:
+                self._evento_de_configuracao(con, autor, "Feriado alterado",
+                                             [f"{antes} → {depois}"])
+            return int(antes != depois)
+
+    def editar_evento(self, dia_antigo, evento, autor):
+        """RN44 (2.3): corrige a data, o horário e/ou a descrição de um
+        evento (só o administrador; um evento por data)."""
+        _exigir_tamanho("Descrição", evento.descricao, MAXIMO_DESCRICAO)
+        with self._conexao() as con:
+            self._exigir(con, autor, para="alterar as configurações")
+            eventos = self._ler_configuracao(con).eventos
+            antes = eventos.get(dia_antigo)
+            if antes is None:
+                raise ErroDados("Este evento já foi removido.")
+            if evento.data != dia_antigo and evento.data in eventos:
+                raise ErroDados(f"Já há um evento em "
+                                f"{evento.data:{horarios.FORMATO_DATA}}.")
+            con.execute("UPDATE eventos SET data = ?, abre = ?, fecha = ?, "
+                        "descricao = ? WHERE data = ?",
+                        (evento.data.isoformat(), *_horario_iso(evento.horario),
+                         evento.descricao, dia_antigo.isoformat()))
+            mudou = _descrever_evento(antes) != _descrever_evento(evento)
+            if mudou:
+                self._evento_de_configuracao(
+                    con, autor, "Evento alterado",
+                    [f"{_descrever_evento(antes)} → "
+                     f"{_descrever_evento(evento)}"])
+            return int(mudou)
 
     def adicionar_evento(self, evento, autor):
         _exigir_tamanho("Descrição", evento.descricao, MAXIMO_DESCRICAO)
@@ -2697,6 +2784,41 @@ class Banco:
                     (login, nome, perfil, senha_hash, int(trocar_senha)))
             self._evento(con, autor or login, "Usuário criado", f"{login} ({perfil})")
             return cursor.lastrowid
+
+    def editar_usuario(self, id_usuario, nome, perfil, autor):
+        """
+        RN43 (2.3): o administrador corrige o nome e o perfil de uma conta
+        (o login não muda). O banco confere de novo: ninguém muda o próprio
+        perfil e o último administrador ativo não vira porteiro (RN08).
+        Devolve quantas coisas mudaram (0 = nada).
+        """
+        nome = " ".join((nome or "").split())
+        _exigir_tamanho("Nome completo", nome, MAXIMO_NOME)
+        with self._conexao() as con:
+            logado = self._exigir(con, autor, para="editar usuários")
+            linha = con.execute("SELECT id, login, nome, perfil, ativo FROM "
+                                "usuarios WHERE id = ?",
+                                (id_usuario,)).fetchone()
+            if linha is None:
+                raise ErroDados("Este usuário não existe mais.")
+            alvo = dict(zip(("id", "login", "nome", "perfil", "ativo"), linha))
+            admins, = con.execute("SELECT COUNT(*) FROM usuarios WHERE "
+                                  "perfil = 'admin' AND ativo = 1").fetchone()
+            ok, msg = validar_edicao_usuario(alvo, nome, perfil, logado, admins)
+            if not ok:
+                raise ErroDados(msg)
+            mudancas = []
+            if nome != alvo["nome"]:
+                mudancas.append(f"nome: {alvo['nome']} → {nome}")
+            if perfil != alvo["perfil"]:
+                mudancas.append(f"perfil: {alvo['perfil']} → {perfil}")
+            if not mudancas:
+                return 0
+            con.execute("UPDATE usuarios SET nome = ?, perfil = ? WHERE id = ?",
+                        (nome, perfil, id_usuario))
+            self._evento(con, autor, "Usuário alterado",
+                         f"{alvo['login']}: " + "; ".join(mudancas))
+            return len(mudancas)
 
     def definir_ativo(self, id_usuario, ativo, autor):
         with self._conexao() as con:

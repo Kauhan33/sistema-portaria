@@ -307,6 +307,90 @@ class TestDesativacaoNoBanco(BaseTemp):
             self.banco.reativar(id_, "ana")
 
 
+class TestCrudNoBanco(BaseTemp):
+    """2.3: editar usuário (RN43), feriado e evento (RN44)."""
+
+    def setUp(self):
+        super().setUp()
+        self.criar_equipe()
+        self.ids = {u["login"]: u["id"] for u in self.banco.listar_usuarios()}
+
+    def test_editar_nome_e_perfil_de_usuario(self):
+        self.assertEqual(self.banco.editar_usuario(
+            self.ids["paulo"], "Paulo  Souza", "admin", "ana"), 2)
+        paulo = self.banco.buscar_usuario("paulo")
+        self.assertEqual((paulo["nome"], paulo["perfil"]),
+                         ("Paulo Souza", "admin"))
+        evento = self.banco.listar_eventos()[0]
+        self.assertEqual(evento["acao"], "Usuário alterado")
+        self.assertIn("perfil: porteiro → admin", evento["detalhe"])
+        self.assertEqual(self.banco.editar_usuario(
+            self.ids["paulo"], "Paulo Souza", "admin", "ana"), 0)   # nada mudou
+
+    def test_editar_usuario_recusado_no_banco(self):
+        casos = [(self.ids["bia"], "Bia Prado", "admin", "paulo"),   # porteiro
+                 (self.ids["bia"], "Bia Prado", "admin", None),      # sem sessão
+                 (self.ids["ana"], "Ana Lima", "porteiro", "ana"),   # o próprio
+                 (self.ids["bia"], "Bia", "admin", "ana"),           # nome
+                 (self.ids["bia"], "Bia Prado", "dono", "ana"),      # perfil
+                 (999, "Bia Prado", "admin", "ana")]
+        for caso in casos:
+            with self.subTest(caso), self.assertRaises(dados.ErroDados):
+                self.banco.editar_usuario(*caso)
+        self.banco.definir_ativo(self.ids["bia"], False, autor="ana")
+        with self.assertRaises(dados.ErroDados) as erro:     # RN08
+            self.banco.editar_usuario(self.ids["ana"], "Ana", "porteiro", "bia")
+        self.assertTrue(str(erro.exception))
+
+    def test_ultimo_administrador_nao_vira_porteiro(self):  # RN08
+        self.banco.definir_ativo(self.ids["bia"], False, autor="ana")
+        self.banco.editar_usuario(self.ids["paulo"], "Paulo Porteiro",
+                                  "admin", "ana")
+        # com dois administradores ativos, a Ana rebaixa o Paulo de novo
+        self.banco.editar_usuario(self.ids["paulo"], "Paulo Porteiro",
+                                  "porteiro", "ana")
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.editar_usuario(self.ids["ana"], "Ana Admin",
+                                      "porteiro", "paulo")
+        self.assertIn("Somente o administrador", str(erro.exception))
+
+    def test_editar_feriado(self):
+        self.banco.adicionar_feriado(date(2026, 12, 25), "Natal", "ana")
+        self.banco.adicionar_feriado(date(2026, 11, 2), "Finados", "ana")
+        self.assertEqual(self.banco.editar_feriado(
+            date(2026, 12, 25), date(2026, 12, 24), "Véspera de Natal", "ana"),
+            1)
+        self.assertEqual(self.banco.ler_configuracao().feriados,
+                         {date(2026, 12, 24): "Véspera de Natal",
+                          date(2026, 11, 2): "Finados"})
+        self.assertIn("Feriado alterado", self.banco.listar_eventos()[0][
+            "detalhe"])
+        for args in ((date(2026, 12, 24), date(2026, 11, 2), "Finados", "ana"),
+                     (date(2026, 1, 1), date(2026, 1, 2), "Ano", "ana"),
+                     (date(2026, 12, 24), date(2026, 12, 24), "x" * 81, "ana"),
+                     (date(2026, 12, 24), date(2026, 12, 24), "Véspera",
+                      "paulo")):
+            with self.subTest(args), self.assertRaises(dados.ErroDados):
+                self.banco.editar_feriado(*args)
+
+    def test_editar_evento(self):
+        from portaria import horarios
+        config = horarios.configuracao_padrao()
+        show, _ = horarios.ler_evento("25/10/2026", "18:00", "23:00", "Show",
+                                      config)
+        self.banco.adicionar_evento(show, "ana")
+        novo, _ = horarios.ler_evento("26/10/2026", "19:00", "23:30",
+                                      "Show adiado", config)
+        self.assertEqual(self.banco.editar_evento(show.data, novo, "ana"), 1)
+        eventos = self.banco.ler_configuracao().eventos
+        self.assertEqual(list(eventos), [date(2026, 10, 26)])
+        self.assertEqual(eventos[date(2026, 10, 26)].descricao, "Show adiado")
+        with self.assertRaises(dados.ErroDados):
+            self.banco.editar_evento(show.data, novo, "ana")    # já mudou
+        with self.assertRaises(dados.ErroDados):
+            self.banco.editar_evento(novo.data, novo, "paulo")
+
+
 class TestUsuariosNoBanco(BaseTemp):
     def test_criar_listar_e_buscar(self):
         self.assertFalse(self.banco.tem_usuarios())

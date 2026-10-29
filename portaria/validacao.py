@@ -31,6 +31,9 @@ DDDS_VALIDOS = {
 
 # Placa antiga (ABC1234) e Mercosul (ABC1D23)
 REGEX_PLACA = re.compile(r"^([A-Z]{3}[0-9]{4}|[A-Z]{3}[0-9][A-Z][0-9]{2})$")
+# Modelo antigo enquanto se digita: 3 letras e só números depois, com pelo
+# menos 2 deles (o 5º caractere da Mercosul é letra: ABC1D23)
+REGEX_PLACA_ANTIGA = re.compile(r"^[A-Z]{3}[0-9]{2,4}$")
 
 # Tamanho máximo de cada campo, num lugar só. Vale em três camadas: a
 # digitação e a colagem (componentes.Campo não deixa passar), a validação
@@ -138,6 +141,13 @@ def mascarar_cpfs_no_texto(texto):
 
 def formatar_celular(c):
     return f"({c[:2]}) {c[2:7]}-{c[7:]}" if len(c) == 11 else c
+
+
+def placa_antiga(p):
+    """A placa é (ou, ainda incompleta, vai ser) do modelo antigo LLL-NNNN?
+    'NEY4829' e 'NEY48' sim; 'BRA2E19', 'BRA2' e '' não (Mercosul ou
+    ainda não dá para saber)."""
+    return bool(REGEX_PLACA_ANTIGA.match((p or "").strip().upper()))
 
 
 def formatar_placa(p):

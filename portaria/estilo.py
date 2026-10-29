@@ -101,6 +101,11 @@ PALETAS = {
         "placa_erro": "#B00017",
         "placa_azul": "#0B3C9C",
         "placa_verde": "#009B3A",
+        # placa antiga (cinza, antes do Mercosul): também igual nos dois temas
+        "placa_cinza": "#D5D8DC",
+        "placa_cinza_faixa": "#B9BEC5",
+        "placa_moldura": "#2B3038",
+        "placa_preto": "#111317",
     },
     # "Guarita à noite": ardósia azulada (nem preto puro, nem o claro
     # invertido). As superfícies sobem de tom em vez de ganhar sombra; o
@@ -143,6 +148,11 @@ PALETAS = {
         "placa_erro": "#B00017",
         "placa_azul": "#0B3C9C",
         "placa_verde": "#009B3A",
+        # placa antiga (cinza, antes do Mercosul): também igual nos dois temas
+        "placa_cinza": "#D5D8DC",
+        "placa_cinza_faixa": "#B9BEC5",
+        "placa_moldura": "#2B3038",
+        "placa_preto": "#111317",
     },
 }
 
@@ -304,6 +314,12 @@ def pares_de_contraste():
         ("placa bloqueada / placa", c["placa_erro"], c["placa_fundo"], TEXTO_AA),
         ("placa: BRASIL / faixa azul", c["placa_fundo"], c["placa_azul"],
          TEXTO_AA),
+        ("placa antiga: caracteres / placa cinza", c["placa_preto"],
+         c["placa_cinza"], TEXTO_AA),
+        ("placa antiga desativada / placa cinza", c["placa_erro"],
+         c["placa_cinza"], TEXTO_AA),
+        ("placa antiga: moldura / placa cinza", c["placa_moldura"],
+         c["placa_cinza"], GRAFICO_AA),
         ("traco_campo / superficie (linha do campo)", c["traco_campo"],
          c["superficie"], GRAFICO_AA),
         ("foco / superficie (anel de foco)", c["foco"], c["superficie"],

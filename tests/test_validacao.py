@@ -1,6 +1,7 @@
 import unittest
 from datetime import datetime
 
+from portaria import validacao
 from portaria.validacao import (celular_valido, checar_bloqueio,
                                 checar_bloqueio_correcao,
                                 checar_saida, cpf_valido,
@@ -65,6 +66,15 @@ class TestCampos(unittest.TestCase):
         self.assertEqual(formatar_celular("31987654321"), "(31) 98765-4321")
         self.assertEqual(formatar_placa("ABC1234"), "ABC-1234")
         self.assertEqual(formatar_placa("ABC1D23"), "ABC1D23")
+
+    def test_placa_antiga_ou_mercosul(self):
+        for placa in ("NEY4829", "ney4829", "NEY48", "ABC1234"):
+            with self.subTest(placa=placa):
+                self.assertTrue(validacao.placa_antiga(placa))
+        for placa in ("BRA2E19", "BRA2", "NEY4", "", None, "AB12345",
+                      "NEY48291"):
+            with self.subTest(placa=placa):
+                self.assertFalse(validacao.placa_antiga(placa))
 
     def test_normalizar_limpa_o_texto_digitado(self):
         r = normalizar("  Ana   Silva ", "529.982.247-25", "(31) 98765-4321",

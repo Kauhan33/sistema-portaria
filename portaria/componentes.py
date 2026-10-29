@@ -1,6 +1,7 @@
 """
 Peças de tela reutilizáveis do sistema de design "Guarita": cartões,
-botões e campos desenhados, faixas de aviso, tabelas, placa Mercosul,
+botões e campos desenhados, faixas de aviso, tabelas, placa (Mercosul ou
+antiga),
 itens da barra lateral e diálogos.
 
 As telas dizem O QUE montar (ex.: Campo(pai, numeros=11)); o COMO (cor,
@@ -26,7 +27,7 @@ from tkinter import ttk
 from .estilo import (ALTURA_CAMPO, COR, ESTADO, FONTE, ICONE, MARGEM, TEMA,
                      fonte_icone, pintar_barra_de_titulo, px)
 from .validacao import (MAXIMO_DATA, MAXIMO_DATA_HORA, MAXIMO_HORA,
-                        MAXIMO_PLACA, MAXIMO_SENHA)
+                        MAXIMO_PLACA, MAXIMO_SENHA, placa_antiga)
 
 TAMANHO_PLACA = MAXIMO_PLACA
 MAXIMO_DO_SELETOR = {"data_hora": MAXIMO_DATA_HORA, "data": MAXIMO_DATA,
@@ -758,19 +759,44 @@ class Aviso(tk.Frame):
 
 
 # ----------------------------------------------------------------------
-# Placa Mercosul
+# Placa: Mercosul ou antiga
 # ----------------------------------------------------------------------
 class Placa(tk.Canvas):
-    """Placa Mercosul desenhada (faixa azul "BRASIL" + caracteres DIN).
-    Sem placa: caixa clara "Sem veículo (a pé)". Bloqueada: borda vermelha."""
+    """
+    Placa desenhada. Mercosul (ABC1D23): branca, faixa azul "BRASIL" e
+    caracteres DIN. Antiga (ABC1234, validacao.placa_antiga): cinza claro,
+    moldura escura, faixa superior cinza e o hífen (ABC-1234). Sem placa:
+    caixa clara "Sem veículo (a pé)". Desativada (`bloqueada`): borda e
+    caracteres vermelhos.
+
+    O fundo do Canvas (o que aparece fora dos cantos arredondados) é o do
+    widget pai, lido a cada desenho: no tema escuro é o cartão escuro, e
+    acompanha a troca de tema sem reiniciar. `fundo_pai` fica só para quem
+    já passava a cor (é usado se o pai não tiver cor de fundo).
+    """
 
     def __init__(self, pai, fundo_pai=None, largura=200):
-        self.fundo_pai = fundo_pai or COR["superficie"]
+        self.fundo_padrao = fundo_pai
         w = px(largura)
-        super().__init__(pai, width=w, height=round(w * 0.33), bg=self.fundo_pai,
-                         highlightthickness=0, bd=0)
+        super().__init__(pai, width=w, height=round(w * 0.33),
+                         bg=self._fundo_do_pai(pai), highlightthickness=0, bd=0)
         self.texto, self.bloqueada = "", False
         self.bind("<Configure>", lambda e: self._desenhar())
+
+    def _fundo_do_pai(self, pai=None):
+        try:
+            return (pai or self.master).cget("bg")
+        except (tk.TclError, AttributeError):
+            return self.fundo_padrao or COR["superficie"]
+
+    @property
+    def fundo_pai(self):
+        return self._fundo_do_pai()
+
+    @property
+    def antiga(self):
+        """A placa mostrada é do modelo antigo (cinza, com hífen)?"""
+        return placa_antiga(self.texto)
 
     def mostrar(self, texto, bloqueada=False):
         self.texto, self.bloqueada = texto or "", bloqueada
@@ -778,25 +804,36 @@ class Placa(tk.Canvas):
 
     def _desenhar(self):
         self.delete("all")
+        fundo = self._fundo_do_pai()
+        if self.cget("bg") != fundo:
+            self.configure(bg=fundo)
         w, h = self.winfo_width(), self.winfo_height()
-        if w < 10:
-            return
+        if w < 10:        # ainda não apareceu: o tamanho pedido
+            w, h = int(self.cget("width")), int(self.cget("height"))
         r = px(7)
         if not self.texto:
             ret_arredondado(self, 0, 0, w, h, r, COR["superficie_2"],
-                            self.fundo_pai, COR["borda_campo"])
+                            fundo, COR["borda_campo"])
             self.create_text(w / 2, h / 2 - px(9), text="Sem veículo (a pé)",
                              font=FONTE["corpo_semi"], fill=COR["texto_2"])
             self.create_text(w / 2, h / 2 + px(11), text="ABC1234 ou ABC1D23",
                              font=FONTE["dica"], fill=COR["texto_3"])
             return
+        if self.antiga:
+            self._desenhar_antiga(w, h, r, fundo)
+        else:
+            self._desenhar_mercosul(w, h, r, fundo)
+
+    def _desenhar_mercosul(self, w, h, r, fundo):
         branco = COR["placa_fundo"]
         cor_texto = COR["placa_erro"] if self.bloqueada else COR["placa_texto"]
-        ret_arredondado(self, 0, 0, w, h, r, branco, self.fundo_pai,
-                        cor_texto, px(3) if self.bloqueada else px(2))
-        faixa, e = round(h * 0.26), px(3) if self.bloqueada else px(2)
+        e = px(3) if self.bloqueada else px(2)
+        ret_arredondado(self, 0, 0, w, h, r, branco, fundo, cor_texto, e)
+        faixa = round(h * 0.26)
+        # os cantos da faixa azul se misturam com a MOLDURA (não com o
+        # branco da placa): no tema escuro não sobra recorte branco
         ret_arredondado(self, e, e, w - e, e + faixa + r, max(1, r - e),
-                        COR["placa_azul"], branco)
+                        COR["placa_azul"], cor_texto)
         self.create_rectangle(e, e + faixa, w - e, e + faixa + r,
                               fill=branco, width=0)
         self.create_text(w / 2, e + faixa / 2 + 1, text="BRASIL",
@@ -806,8 +843,42 @@ class Placa(tk.Canvas):
                               fill=COR["placa_verde"], width=0)
         self.create_text(e + px(10), e + faixa / 2 + 1, text="BR", anchor="w",
                          font=(FONTE["placa_pequena"][0], 6), fill=branco)
-        self.create_text(w / 2, e + faixa + (h - faixa - e) / 2 + 1,
-                         text=self.texto, font=FONTE["placa"], fill=cor_texto)
+        self._caracteres(w, e + faixa, h - e, self.texto, cor_texto)
+
+    def _desenhar_antiga(self, w, h, r, fundo):
+        """Modelo antigo: cinza claro, moldura escura, faixa de cima cinza
+        (sem o "BRASIL" do Mercosul) e caracteres pretos com hífen."""
+        cinza = COR["placa_cinza"]
+        moldura = COR["placa_erro"] if self.bloqueada else COR["placa_moldura"]
+        cor_texto = COR["placa_erro"] if self.bloqueada else COR["placa_preto"]
+        e = px(3)
+        ret_arredondado(self, 0, 0, w, h, r, cinza, fundo, moldura, e)
+        faixa = round(h * 0.2)
+        ret_arredondado(self, e, e, w - e, e + faixa + r, max(1, r - e),
+                        COR["placa_cinza_faixa"], moldura)
+        self.create_rectangle(e, e + faixa, w - e, e + faixa + r,
+                              fill=cinza, width=0)
+        self.create_rectangle(e, e + faixa, w - e, e + faixa + 1,
+                              fill=moldura, width=0)
+        furo = max(2, px(2))       # os dois parafusos da faixa
+        for x in (e + px(12), w - e - px(12)):
+            self.create_oval(x - furo, e + faixa / 2 - furo, x + furo,
+                             e + faixa / 2 + furo, fill=moldura, width=0)
+        # o hífen aparece já durante a digitação (NEY-48)
+        texto = self.texto.strip().upper()
+        self._caracteres(w, e + faixa + 1, h - e, f"{texto[:3]}-{texto[3:]}",
+                         cor_texto)
+
+    def _caracteres(self, w, topo, base, texto, cor):
+        """Os caracteres centralizados entre a faixa e a borda de baixo;
+        a fonte diminui se o texto não couber (ABC-1234 tem 8)."""
+        familia, tamanho = FONTE["placa"][0], FONTE["placa"][1]
+        fonte = tkfont.Font(root=self, family=familia, size=tamanho)
+        while tamanho > 8 and fonte.measure(texto) > w - px(16):
+            tamanho -= 1
+            fonte.configure(size=tamanho)
+        self.create_text(w / 2, topo + (base - topo) / 2 + 1, text=texto,
+                         font=(familia, tamanho), fill=cor)
 
 
 # ----------------------------------------------------------------------

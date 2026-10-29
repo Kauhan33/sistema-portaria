@@ -233,6 +233,84 @@ class TestComponentes(unittest.TestCase):
         placa.mostrar("")
         self.assertEqual(placa.texto, "")
 
+    # --- placa: Mercosul ou antiga, com o fundo do cartão do tema
+    def _textos(self, placa):
+        return [placa.itemcget(i, "text") for i in placa.find_all()
+                if placa.type(i) == "text"]
+
+    def _placa_desenhada(self, texto, pai=None, **kw):
+        placa = componentes.Placa(pai or self.pai, largura=200)
+        placa.pack()
+        placa.update()
+        placa.mostrar(texto, **kw)
+        return placa
+
+    def test_placa_mercosul_tem_a_faixa_brasil(self):
+        placa = self._placa_desenhada("BRA2E19")
+        self.assertFalse(placa.antiga)
+        self.assertIn("BRASIL", self._textos(placa))
+        self.assertIn("BRA2E19", self._textos(placa))
+
+    def test_placa_antiga_cinza_com_hifen_e_sem_brasil(self):
+        placa = self._placa_desenhada("NEY4829")
+        self.assertTrue(placa.antiga)
+        textos = self._textos(placa)
+        self.assertIn("NEY-4829", textos)
+        self.assertNotIn("BRASIL", textos)
+        preenchidas = {placa.itemcget(i, "fill") for i in placa.find_all()
+                       if placa.type(i) == "rectangle"}
+        self.assertIn(COR["placa_cinza"], preenchidas)
+        self.assertNotIn(COR["placa_azul"], preenchidas)
+
+    def test_placa_antiga_enquanto_digita_e_desativada(self):
+        placa = self._placa_desenhada("NEY48", bloqueada=True)
+        self.assertTrue(placa.antiga)
+        self.assertIn("NEY-48", self._textos(placa))
+        cores = {placa.itemcget(i, "fill") for i in placa.find_all()
+                 if placa.type(i) == "text"}
+        self.assertEqual(cores, {COR["placa_erro"]})
+        placa.mostrar("BRA2")          # ainda não dá para saber: Mercosul
+        self.assertFalse(placa.antiga)
+
+    def _cor_do_pixel(self, placa, x, y):
+        """Cor do pixel (0, 0) da imagem de canto desenhada em (x, y)."""
+        for item in placa.find_all():
+            if placa.type(item) == "image" and placa.coords(item) == [x, y]:
+                nome = placa.itemcget(item, "image")
+                cor = placa.tk.call(nome, "get", 0, 0)
+                if isinstance(cor, str):
+                    cor = cor.split()
+                return tuple(int(v) for v in cor)
+        return None
+
+    def test_placa_sem_recorte_branco_nos_cantos_no_escuro(self):
+        estilo.usar_tema("escuro")
+        self.addCleanup(estilo.usar_tema, "claro")
+        cartao = tk.Frame(self.pai, bg=COR["superficie"])
+        cartao.pack()
+        for texto in ("BRA2E19", "NEY4829"):
+            with self.subTest(placa=texto):
+                placa = self._placa_desenhada(texto, cartao)
+                self.assertEqual(placa.cget("bg"), COR["superficie"])
+                fora = self._cor_do_pixel(placa, 0, 0)       # canto da placa
+                self.assertEqual("#%02x%02x%02x" % fora,
+                                 COR["superficie"].lower())
+                e = estilo.px(3) if placa.antiga else estilo.px(2)
+                faixa = self._cor_do_pixel(placa, e, e)      # canto da faixa
+                self.assertIsNotNone(faixa)
+                self.assertNotEqual(faixa, (255, 255, 255))
+                placa.destroy()
+
+    def test_placa_acompanha_o_fundo_do_pai(self):
+        cartao = tk.Frame(self.pai, bg="#123456")
+        cartao.pack()
+        placa = self._placa_desenhada("BRA2E19", cartao)
+        self.assertEqual(placa.cget("bg"), "#123456")
+        cartao.configure(bg="#654321")       # o tema trocou
+        placa.mostrar("BRA2E19")
+        self.assertEqual(placa.cget("bg"), "#654321")
+        self.assertEqual(placa.fundo_pai, "#654321")
+
     def test_tabela_com_situacao_zebra_e_colunas_escondidas(self):
         colunas = [("a", "A", 50, "w"), ("b", "B", 50, "w")]
         quadro, tab = componentes.tabela(self.pai, colunas, situacao="Situação",

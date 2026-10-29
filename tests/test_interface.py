@@ -1522,6 +1522,7 @@ class TestAbaPessoas(BaseInterface):
         self.assertEqual(dialogo.nome.get(), "Beto Rocha")
         self.assertEqual(dialogo.caixa_placa.get(), "QWE1234")
         self.assertEqual(dialogo.cpf.cget("state"), "disabled")
+        self.assertEqual(dialogo.cpf.get(), "111.444.777-35")
         self.assertEqual(dialogo.janela.title(), "Editar pessoa")
         dialogo.fechar()
 

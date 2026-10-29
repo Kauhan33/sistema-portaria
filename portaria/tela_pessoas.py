@@ -1203,6 +1203,9 @@ class DialogoPessoa(Dialogo):
         if nova:
             self.var_cpf.trace_add("write", lambda *a: self._ao_digitar_cpf())
         else:
+            # o CPF não muda: aparece como na tela (mascarado para o
+            # porteiro), sem a trava de "só números" do campo
+            self.cpf.config(validate="none")
             self.cpf.insert(0, app.exibir_cpf(pessoa["cpf"]))
             self.cpf.config(state="disabled")
             self.nome.insert(0, pessoa["nome"])

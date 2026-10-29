@@ -26,9 +26,9 @@ from datetime import datetime
 
 from .. import horarios, mensagens
 from ..usuarios import eh_admin
-from ..validacao import (FORMATO, formatar_celular, formatar_desativacao,
-                         formatar_placa)
-from ..validacao import DESATIVADO, O_QUE
+from ..dados import REATIVADA
+from ..validacao import (DESATIVADO, FORMATO, O_QUE, formatar_celular,
+                         formatar_desativacao, formatar_placa)
 from .gramatica import EXEMPLOS, FAZ, SO_ADMIN, regras_de
 from .lexico import COMANDOS
 
@@ -197,9 +197,8 @@ class Executor:
         self._depois_de_mudar()
         rotulo = (app.exibir_cpf(valor) if tipo == "cpf"
                   else formatar_desativacao(tipo, valor))
-        return Resposta(SUCESSO, f"{'Pessoa reativada' if tipo == 'cpf' else 'Veículo reativado'}"
-                                 f": {rotulo}. A entrada volta a ser "
-                                 "permitida.")
+        return Resposta(SUCESSO, f"{REATIVADA[tipo]}: {rotulo}. A entrada "
+                                 "volta a ser permitida.")
 
     # --------------------------------------------------------------
     # Consultas (só leitura)
@@ -324,10 +323,11 @@ def resultado_da_busca(registros, texto, tipo, inicio, fim, exibir_cpf):
                  " · no campus")
               for r in achados]
     n = len(achados)
-    limite = f" (os {LIMITE_BUSCA} mais recentes)" if len(registros) >= \
-        LIMITE_BUSCA else ""
-    return Resposta(INFO, f"{n} {'visita encontrada' if n == 1 else 'visitas encontradas'}"
-                          f" no histórico{limite}.", _cortar(linhas))
+    limite = (f" (os {LIMITE_BUSCA} mais recentes)"
+              if len(registros) >= LIMITE_BUSCA else "")
+    achadas = "visita encontrada" if n == 1 else "visitas encontradas"
+    return Resposta(INFO, f"{n} {achadas} no histórico{limite}.",
+                    _cortar(linhas))
 
 
 def pendencias(config, registros, estadias, agora, quando):

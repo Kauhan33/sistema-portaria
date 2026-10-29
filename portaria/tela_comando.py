@@ -719,12 +719,13 @@ class JanelaDidatica:
         self.quadro_arvore = tk.Frame(self.area, bg=fundo)
         self.arvore = tk.Canvas(self.quadro_arvore, bg=fundo,
                                 highlightthickness=0, bd=0)
-        rolagem = ttk.Scrollbar(self.quadro_arvore, orient="horizontal",
-                                command=self.arvore.xview,
-                                style="Fina.Horizontal.TScrollbar")
-        self.arvore.configure(xscrollcommand=rolagem.set)
-        rolagem.pack(side="bottom", fill="x")
+        self.rolagem = ttk.Scrollbar(self.quadro_arvore, orient="horizontal",
+                                     command=self.arvore.xview,
+                                     style="Fina.Horizontal.TScrollbar")
+        self.arvore.configure(xscrollcommand=self.rolagem.set)
         self.arvore.pack(fill="both", expand=True)
+        # a árvore se centraliza de novo quando a janela muda de tamanho
+        self.arvore.bind("<Configure>", lambda e: self._redesenhar_arvore())
         self.paineis["Árvore"] = (self.quadro_arvore, self.arvore)
         self.analise = None
         self.aba = ABAS[0]
@@ -893,6 +894,7 @@ class JanelaDidatica:
         cv.delete("all")
         a = self.analise
         if a.arvore is None:
+            self._rolagem(False)
             self._vazio(f"A árvore não foi montada: o comando parou na fase "
                         f"{a.erro.fase if a.erro else LEXICO}."
                         if a.erro else "Digite um comando.")
@@ -902,6 +904,20 @@ class JanelaDidatica:
         if erro is not None and erro.coluna and erro.fase != LEXICO:
             marcar = (erro.coluna, erro.coluna + erro.tamanho)
         desenhar_arvore(cv, arvore_visual(a.arvore), marcar, self._mostrar)
+        largura = float(str(cv.cget("scrollregion")).split()[2])
+        self._rolagem(largura > cv.winfo_width() > 1)
+
+    def _rolagem(self, precisa):
+        """A barra de rolagem só aparece se a árvore não couber (e só muda
+        quando precisa: mostrar ou esconder muda a altura do Canvas)."""
+        if precisa and not self.rolagem.winfo_ismapped():
+            self.rolagem.pack(side="bottom", fill="x", before=self.arvore)
+        elif not precisa and self.rolagem.winfo_ismapped():
+            self.rolagem.pack_forget()
+
+    def _redesenhar_arvore(self):
+        if self.aba == "Árvore" and self.analise is not None:
+            self._arvore(self.arvore)
 
 
 # ----------------------------------------------------------------------

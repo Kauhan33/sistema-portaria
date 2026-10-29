@@ -128,7 +128,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-919 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
+920 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
 comandos** (uma classe por fase: léxico, gramática LL(1), sintático,
 semântico e a execução comparada com o formulário, além do campo, do console
 e do modo didático), validações, regras de
@@ -766,7 +766,7 @@ no banco):
   checagens; realce, **Tab** e "você quis dizer…?";
 - CPF mascarado para o porteiro em tudo o que a linguagem mostra; o texto
   dos comandos não é gravado;
-- casos de teste CT-01 a CT-68 (seção "Linguagem de comandos") e 919 testes
+- casos de teste CT-01 a CT-68 (seção "Linguagem de comandos") e 920 testes
   automatizados; prints `docs/design/final/v24_*`.
 
 **2.3** (29/10/2026) — pessoas, desativação e CRUD (sem mudança no banco: a

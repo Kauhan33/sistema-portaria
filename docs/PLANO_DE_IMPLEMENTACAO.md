@@ -377,7 +377,7 @@ que o formulário monta e passa pelas **mesmas** funções: `validacao`,
   (CT-54 a CT-68, com a fase de cada caso), além dos CT-01 a CT-53.
 - `tests/test_linguagem.py` (uma classe por fase) e
   `tests/test_interface_comando.py` (a tela; a execução compara o banco
-  do comando com o do formulário, em dois bancos iguais). 919 testes.
+  do comando com o do formulário, em dois bancos iguais). 920 testes.
 
 ### O que ficou para depois
 - Lote de comandos (E3), busca traduzida para SQL (E6), voz (E5).

@@ -204,6 +204,14 @@ class TestLexico(unittest.TestCase):
         self.assertIn("31987651234", mascarada)
         self.assertIn("***.982.247-**", mascarada)
 
+    def test_mensagem_do_erro_nao_mascara_o_celular(self):
+        """Nas linhas do erro e na dica (texto livre), o número depois de
+        "cel" também fica como está; o CPF continua mascarado."""
+        texto = lexico.mascarar_lexema("editar 52998224725 cel 31987651234")
+        self.assertEqual(texto, "editar ***982247** cel 31987651234")
+        self.assertEqual(lexico.mascarar_lexema("Cel 31987651234"),
+                         "Cel 31987651234")
+
 
 # ----------------------------------------------------------------------
 # Gramática

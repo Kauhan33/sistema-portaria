@@ -1188,6 +1188,12 @@ class Seletor(tk.Frame):
         linha.place(relx=0, rely=1, relwidth=1, y=-1)
         linha.lower()              # o traço da seção ativa fica por cima
 
+    def compactar(self, compacto=True):
+        """Tela baixa: menos respiro em cima e embaixo do texto (sobra
+        altura para a lista de baixo)."""
+        for rotulo, _ in self.itens.values():
+            rotulo.config(pady=px(1) if compacto else px(4))
+
     def definir_texto(self, opcao, texto):
         """Troca o texto mostrado de uma opção (ex.: "Veículos (2)")."""
         self.itens[opcao][0].config(text=texto)

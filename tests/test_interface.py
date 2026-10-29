@@ -459,6 +459,40 @@ class TestTelaPequena(BaseInterface):
         self.assertEqual(tela.btn_limpar.texto, "Limpar formulário")
         self.assertGreaterEqual(self.linhas_visiveis(), 4)
 
+    def _conferir_cabecalho_do_movimento(self):
+        """2.3: o título "Movimento" numa linha própria, no canto de cima;
+        as subabas logo embaixo, à esquerda; busca e botões à direita, na
+        linha das subabas; o status ao lado do título."""
+        tela = self.app.tela_cadastro
+        self.janela.update()
+        titulo, seletor = tela.titulo_mov, tela.seletor_lista
+        botoes = [b for b in (tela.btn_saida, tela.btn_corrigir,
+                              tela.btn_excluir) if b is not None]
+        for w in (titulo, seletor, tela.campo_busca, *botoes):
+            self.assertTrue(w.winfo_ismapped(), w)
+        base_titulo = titulo.winfo_rooty() + titulo.winfo_height()
+        self.assertLessEqual(base_titulo, seletor.winfo_rooty())
+        self.assertLessEqual(abs(titulo.winfo_rootx() - seletor.winfo_rootx()),
+                             2)
+        for b in [tela.campo_busca, *botoes]:
+            self.assertGreater(b.winfo_rootx(), seletor.winfo_rootx()
+                               + seletor.winfo_width())
+            self.assertGreaterEqual(b.winfo_rooty(), base_titulo)
+        self.assertEqual(tela.lbl_status.master.master, tela.barra_titulo_mov)
+        self.assertGreaterEqual(self.linhas_visiveis(), 4)
+
+    def test_cabecalho_do_movimento_na_tela_pequena(self):
+        self.tamanho(self.PEQUENA)
+        self.assertTrue(self.app.tela_cadastro.compacta)
+        self._conferir_cabecalho_do_movimento()
+
+    def test_cabecalho_do_movimento_na_tela_grande(self):
+        if self.janela.winfo_screenheight() < 900:
+            self.skipTest("monitor mais baixo que a janela de 900 px")
+        self.tamanho("1400x900")
+        self.assertFalse(self.app.tela_cadastro.compacta)
+        self._conferir_cabecalho_do_movimento()
+
     def test_janela_corrigir_cabe_com_os_botoes(self):
         self.tamanho(self.PEQUENA)
         self.app.tabela.selection_set(self.app.tabela.get_children()[0])
@@ -517,7 +551,7 @@ class TestTelaPequena(BaseInterface):
                     "QWE-1D23 fica no estacionamento).", desfazer=[1])
         self.janela.update()
         self.assertFalse(tela.lbl_status.winfo_ismapped())  # não disputa
-        aviso, rodape = tela.quadro_aviso, tela.rodape_mov
+        aviso, rodape = tela.quadro_aviso, tela.status_mov
         self.assertLessEqual(aviso.winfo_rootx() + aviso.winfo_width(),
                              rodape.winfo_rootx() + rodape.winfo_width())
         self.assertTrue(tela.btn_desfazer.winfo_ismapped())

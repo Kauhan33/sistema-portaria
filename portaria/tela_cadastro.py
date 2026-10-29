@@ -113,13 +113,15 @@ GRADE = {
     "saida": ((5, 1, 1), (3, 3, 1)),
 }
 # Espaços (px lógicos) de cada densidade
+# (2.3: o Movimento sobe — menos espaço entre os dois cartões — e ganha a
+# linha do título; as subabas Pessoas | Veículos ficam logo embaixo dele)
 ESPACOS = {
     "normal": {"topo": (20, 16), "cartao": 18, "titulo": 10,
-               "movimento": (ESPACO_CARTOES, MARGEM), "miolo_mov": 8,
-               "barra": (6, 12), "rodape": (8, 2)},
-    "compacta": {"topo": (6, 6), "cartao": 10, "titulo": 6,
-                 "movimento": (6, 10), "miolo_mov": 2,
-                 "barra": (2, 4), "rodape": (2, 0)},
+               "movimento": (10, MARGEM), "miolo_mov": 10,
+               "titulo_mov": (6, 4), "barra": (0, 10)},
+    "compacta": {"topo": (6, 6), "cartao": 8, "titulo": 6,
+                 "movimento": (4, 10), "miolo_mov": 3,
+                 "titulo_mov": (0, 0), "barra": (0, 2)},
 }
 # Na compacta o rótulo "Saída rápida (F2)" sai de cima do campo e vai para
 # dentro dele (sobra altura para o Movimento)
@@ -310,19 +312,15 @@ class AbaCadastro:
                                        before=self.campo_saida_rapida_quadro.master)
         self.campo_saida_rapida_quadro.lbl_vazio.config(
             text=DICA_SAIDA_RAPIDA[densidade])
-        if compacta:                       # a busca fica com a largura
-            self.titulo_mov.pack_forget()
-        else:
-            self.titulo_mov.pack(side="left", before=self.seletor_lista)
-        self.seletor_lista.pack_configure(padx=(0 if compacta else px(16), 0))
+        self.seletor_lista.compactar(compacta)
         self.cartao_form.miolo.pack_configure(padx=px(e["cartao"]),
                                               pady=px(e["cartao"]))
         self.cab_form.pack_configure(pady=(0, px(e["titulo"])))
         self._posicionar_formulario(compacta)
         self.cartao_mov.pack_configure(pady=_px(e["movimento"]))
         self.cartao_mov.miolo.pack_configure(pady=px(e["miolo_mov"]))
+        self.barra_titulo_mov.pack_configure(pady=_px(e["titulo_mov"]))
         self.barra_mov.pack_configure(pady=_px(e["barra"]))
-        self.rodape_mov.pack_configure(pady=_px(e["rodape"]))
         for tab in (self.tabela, self.tabela_veiculos):
             tab.configure(style="Compacta.Tabela.Treeview" if compacta
                           else "Tabela.Treeview")
@@ -410,17 +408,22 @@ class AbaCadastro:
         return valor
 
     def _montar_movimento(self):
+        """Cartão Movimento: o título numa linha própria, no canto de cima;
+        embaixo dele as subabas Pessoas | Veículos à esquerda e, na mesma
+        linha, a busca e os botões à direita."""
         self.cartao_mov = Cartao(self.aba, pad=0)
         self.cartao_mov.pack(fill="both", expand=True, padx=px(MARGEM))
         m = self.cartao_mov.miolo
         m.pack_configure(padx=px(1))
+        self.barra_titulo_mov = tk.Frame(m, bg=COR["superficie"])
+        self.barra_titulo_mov.pack(fill="x", padx=px(19))
+        self.titulo_mov = titulo_cartao(self.barra_titulo_mov, "Movimento")
+        self.titulo_mov.pack(side="left")
         self.barra_mov = barra = tk.Frame(m, bg=COR["superficie"])
         barra.pack(fill="x", padx=px(19))
-        self.titulo_mov = titulo_cartao(barra, "Movimento")
-        self.titulo_mov.pack(side="left")
         self.seletor_lista = Seletor(barra, LISTAS, self.mostrar_lista,
                                      fundo_pai=COR["superficie"])
-        self.seletor_lista.pack(side="left", padx=(px(16), 0))
+        self.seletor_lista.pack(side="left", anchor="s")
         self.campo_busca = Campo(barra, largura=300, icone=ICONE["busca"],
                                  dica_vazio=DICA_BUSCA, maximo=MAXIMO_BUSCA)
         self.busca = self.campo_busca.entrada
@@ -437,14 +440,19 @@ class AbaCadastro:
         self.btn_saida = Botao(barra, "Registrar saída", self.registrar_saida,
                                "secundario", icone=ICONE["seta"])
 
-        self.rodape_mov = rodape = tk.Frame(m, bg=COR["superficie"])
-        rodape.pack(side="bottom", fill="x", padx=px(19))
-        self.lbl_status = tk.Label(rodape, text="", font=FONTE["dica"],
+        # o status ("6 entradas hoje · 5 no campus") e o aviso que some
+        # sozinho ficam na linha do título, à direita dele: sobra altura
+        # para a tabela (antes era uma linha de rodapé)
+        self.status_mov = linha = tk.Frame(self.barra_titulo_mov,
+                                           bg=COR["superficie"])
+        linha.pack(side="left", fill="x", expand=True, anchor="s",
+                   padx=(px(16), 0), pady=(0, px(1)))
+        self.lbl_status = tk.Label(linha, text="", font=FONTE["dica"],
                                    bg=COR["superficie"], fg=COR["texto_3"])
         self.lbl_status.pack(side="left")
         # aviso que some sozinho (com o Desfazer da saída): enquanto ele
-        # aparece, ocupa a linha toda no lugar do status (não corta)
-        self.quadro_aviso = aviso = tk.Frame(rodape, bg=COR["superficie"])
+        # aparece, ocupa o lugar do status (não corta: quebra a linha)
+        self.quadro_aviso = aviso = tk.Frame(linha, bg=COR["superficie"])
         self.lbl_aviso_icone = tk.Label(aviso, text="", font=fonte_icone(10),
                                         bg=COR["superficie"], fg=COR["sucesso"])
         self.lbl_aviso_icone.pack(side="left", padx=(0, px(6)))
@@ -622,7 +630,7 @@ class AbaCadastro:
             fg=COR["alerta"] if lotado else COR["texto_2"])
 
     def _mostrar_status(self):
-        """Linha de rodapé do Movimento, conforme a lista mostrada."""
+        """Status do Movimento (ao lado do título), conforme a lista mostrada."""
         if self.lista == LISTAS[1]:
             status = (plural(len(self.veiculos), "veículo", "veículos")
                       + " no estacionamento  ·  duplo clique registra a saída "
@@ -1627,7 +1635,7 @@ class AbaCadastro:
     # Aviso que some sozinho (com o Desfazer, se for o caso)
     # --------------------------------------------------------------
     def avisar(self, texto, desfazer=None, icone=None):
-        """Mensagem no rodapé do Movimento que some sozinha; com `desfazer`
+        """Mensagem na linha do título do Movimento que some sozinha; com `desfazer`
         (ids), mostra o link Desfazer."""
         if self._timer_aviso:
             self.aba.after_cancel(self._timer_aviso)
@@ -1641,7 +1649,7 @@ class AbaCadastro:
         if texto:
             self.lbl_status.pack_forget()
             self.quadro_aviso.pack(side="left", fill="x")
-            largura = self.rodape_mov.winfo_width()
+            largura = self.status_mov.winfo_width()
             self.lbl_aviso.config(wraplength=max(largura - px(130), px(240))
                                   if largura > 1 else 0)
         else:

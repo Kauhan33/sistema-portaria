@@ -6,6 +6,10 @@
 - todos podem ligar o modo didático, que mostra o CPF mascarado;
 - "a pé" se escreve `sem carro`.
 
+**Implementada na versão 2.4** (`portaria/linguagem/`): a seção 8 conta
+como ficou. Um teste confere que a EBNF da seção 3 é a mesma do código
+(`portaria/linguagem/gramatica.py`) e que ela é LL(1).
+
 Esta é a proposta da linguagem da 2.4 (item E1 do plano). Ela atualiza o
 esboço de `docs/IDEIAS_NOVAS.md`, seção 2, com o que mudou até a 2.3:
 - bloquear virou desativar e reativar;
@@ -169,3 +173,47 @@ entre colchetes e uma dica.
 - Comando por voz (E5).
 - Busca traduzida para SQL (E6).
 - Opções do visitante completo, `visita` e `cracha`, que entram com a 2.5 (A1).
+
+## 8. Como ficou na implementação (2.4)
+
+**Módulos** (`portaria/linguagem/`, só biblioteca padrão):
+
+| Fase | Módulo | O que faz |
+|---|---|---|
+| Léxico | `lexico.py` | `tokenizar()` (tolerante, para o realce) e `analisar_lexico()` (para no 1º erro); `Token(tipo, lexema, coluna, valor)`; o autômato finito da placa em `TRANSICOES_PLACA` |
+| Gramática | `gramatica.py` | o texto EBNF da seção 3, lido pelo próprio módulo; FIRST, FOLLOW e `conflitos_ll1()` (vazio = LL(1)); os exemplos do `ajuda` |
+| Sintático | `sintatico.py` | `AnalisadorSintatico`, um método por regra (`linha`, `_comando`, `_entrada`, `_opcao_ent`...); árvore de `dataclasses` |
+| Semântico | `simbolos.py` e `semantico.py` | a tabela de símbolos (só consulta o banco) e as checagens na ordem, cada uma com a regra |
+| Execução | `executor.py` | grava pelos caminhos do formulário (`AbaCadastro.registrar_entrada`, `dar_saida`, `saida_do_carro`) e pelos mesmos métodos do `Banco` que os diálogos de Pessoas |
+| (as três) | `interpretador.py` | `analisar()` junta léxico, sintático e semântico numa `Analise` (o que o modo didático mostra) |
+
+**Formato dos erros:** `[Fase] coluna N: mensagem (RN)` ou `[Fase] fim da
+linha: ...`, com a linha digitada e o `^` embaixo, a sugestão ("Você quis
+dizer entrada? (Tab corrige)") e a dica.
+
+**Decisões da implementação** (não mudam a gramática):
+- `semana` = os últimos 7 dias (hoje e os 6 anteriores); `mes` = os
+  últimos 30 dias; `ontem` = só ontem; `de DATA` sem `ate` vai até hoje.
+- Opções que não combinam são erro semântico, como as repetidas: `placa` com
+  `sem carro`, `as` com `em`.
+- Na saída pela placa (`saida placa X` ou só `X`) só sai o carro (RN27):
+  as opções `placa`, `sem carro` e `as` valem só na saída pelo CPF.
+- `saida CPF placa X`: X é um carro da pessoa (RN40) ou um que ela pode
+  retirar (RN35); `saida CPF as HORA` é uma saída de hoje num horário que
+  já passou, com a regra do retroativo (RN24), como na correção.
+- `entrada` de quem tem placa no cadastro, sem `placa` nem `sem carro`:
+  abre a pergunta "Vai entrar de carro?" (RN34); "Com outro carro" pede
+  para escrever `placa`. Se o carro dela já está no estacionamento, a
+  entrada é a pé, como no formulário.
+- `editar` muda nome, celular, placa e tipo; apagar a placa do cadastro
+  continua no formulário (a gramática não tem "sem placa" no `editar`).
+- Tipo diferente do cadastro é um **aviso**: o programa pergunta
+  "Registrar como Prestador de serviço?" e, com Não, nada é gravado.
+- Excluir e reativar pedem a mesma confirmação dos diálogos de Pessoas.
+- O CPF mascarado que o Tab escreve para o porteiro (`***.982.247-**`) só
+  vale se veio do Tab: o campo guarda o CPF de verdade só na memória.
+- A linha tem no máximo **200 caracteres** (`validacao.MAXIMO_COMANDO`):
+  a digitação para no máximo e a colagem entra cortada, como nos outros
+  campos (RN33).
+- **RN46** resume a regra de ouro, a privacidade e as permissões da
+  linguagem (`IDEIAS_E_MELHORIAS.md`, seção 4).

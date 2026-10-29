@@ -95,7 +95,7 @@ ideia) está em `docs/PLANO_DE_IMPLEMENTACAO.md`.
 - Gráfico de **horário de pico** (entradas por hora do dia).
 - Tempo médio de permanência por tipo; visitantes mais frequentes.
 
-### Etapa 4 — Diferencial ligado a Compiladores ⭐
+### Etapa 4 — Diferencial ligado a Compiladores ⭐ (feita na versão 2.4 ✅)
 **Linha de comando da portaria**: um campo onde o porteiro digita comandos curtos,
 analisados como uma mini linguagem:
 
@@ -103,9 +103,12 @@ analisados como uma mini linguagem:
 entrada 529.982.247-25 visitante placa ABC1D23
 saida 52998224725
 saida placa ABC1D23
-buscar visitante hoje
+buscar maria visitante hoje
 dentro
 ```
+
+(Ideia original abaixo; a linguagem que foi feita está em
+`docs/GRAMATICA_DA_LINGUAGEM.md` e na seção "Versão 2.4".)
 
 - **Léxico**: tokens `COMANDO`, `CPF`, `PLACA`, `TIPO`, `PERIODO`, `DESCONHECIDO`.
 - **Sintático**: gramática (ex.: `entrada <cpf> <tipo> [placa <placa>]`), erro se a ordem estiver errada.
@@ -295,6 +298,38 @@ de Compiladores passou a ser a 2.4). Sem mudança de esquema (banco v11).
   o carro. Painel e Exceções são só leitura (justificado na matriz).
 - 834 testes automatizados; casos de teste CT-01 a CT-53.
 
+### Versão 2.4 — Compiladores: linha de comando (29/10/2026) ✅
+Plano em `docs/PLANO_DE_IMPLEMENTACAO.md` (seção "Versão 2.4") e a
+gramática aprovada pelo aluno em `docs/GRAMATICA_DA_LINGUAGEM.md`. Sem
+mudança de esquema (banco v11).
+- ✅ **E1 / RF14 / RN46** — a "Saída rápida (F2)" virou o campo
+  **Comando (F2 ou Ctrl+K)**, no mesmo lugar: a linguagem da portaria em
+  `portaria/linguagem/` (léxico, gramática LL(1) conferida pelo código,
+  sintático por descida recursiva, tabela de símbolos, semântico com a RN
+  de cada checagem e executor). 13 comandos, inclusive o CRUD de pessoas;
+  só o CPF ou só a placa continuam dando a saída. O comando monta o mesmo
+  registro do formulário e passa pelas mesmas funções; quando falta o que o
+  formulário perguntaria, abre o mesmo diálogo. Resposta numa linha e
+  console recolhível com as últimas respostas (linha, ^, fase e dica).
+- ✅ **E2 / RF32** — **modo didático** (interruptor "Didático"): a faixa
+  Léxico → Sintático → Semântico → Execução (✓/✗/—) e as abas Tokens,
+  Árvore (desenhada no Canvas, o nó com erro em vermelho), Símbolos e
+  Checagens; janela por cima da tabela (cabe no 1366×670), claro e escuro.
+- ✅ **E4** — realce por token a cada tecla, Tab que completa comando,
+  palavra, tipo e nome (o nome vira o CPF, mascarado para o porteiro) e o
+  "você quis dizer…?" (difflib).
+- ✅ **F1** — casos CT-54 a CT-68 na seção "Linguagem de comandos" do
+  relatório, por fase; a execução é testada comparando o banco do comando
+  com o do formulário.
+- Privacidade: para o porteiro, toda resposta, o console e o modo didático
+  mostram o CPF mascarado; o texto dos comandos não vai para o log nem para
+  o banco.
+- 919 testes automatizados; casos de teste CT-01 a CT-68.
+- Ideias para depois: lote de comandos (E3), busca traduzida para SQL (E6),
+  as opções `visita` e `cracha` com o visitante completo (A1, 2.5), "sem
+  placa" no `editar`, histórico das linhas digitadas (seta para cima) só
+  na memória.
+
 ## 4. Rascunho de requisitos para o Word
 
 **RF**: RF01 cadastrar entrada · RF02 registrar saída (botão, duplo clique,
@@ -304,7 +339,8 @@ exportar CSV (admin) · RF08 cadastro de pessoas com preenchimento automático �
 RF09 corrigir registro com histórico · RF10 desativar e reativar pessoa e
 veículo (até a 2.2: lista de bloqueio) · RF11 gerenciar
 usuários (admin) · RF12 trocar a própria senha · RF13 backup diário automático ·
-RF14 comando digitado (Etapa 4, futuro) · RF15 configurar os horários de
+RF14 linha de comando da portaria: registrar, consultar e o CRUD de pessoas por
+comandos digitados (2.4) · RF15 configurar os horários de
 acesso: funcionamento, categorias, feriados e eventos (admin) · RF16 autorizar
 exceção de horário (admin) · RF17 encerrar o dia (admin) · RF18 alertar tempo
 excedido, saída pendente e fechamento próximo · RF19 registrar a entrada e a
@@ -317,7 +353,9 @@ travar a guarita ("Ausentar") (2.2) · RF26 escolher com qual carro a pessoa sai
 com exportação (2.2) · RF27 cadastrar pessoa sem registrar entrada ("Nova
 pessoa") (2.3) · RF28 editar e excluir o cadastro de uma pessoa (2.3) · RF29
 editar o nome e o perfil de um usuário (2.3) · RF30 editar feriado e evento
-(2.3) · RF31 editar a validade de quem pode retirar o veículo (2.3).
+(2.3) · RF31 editar a validade de quem pode retirar o veículo (2.3) · RF32 modo
+didático: mostrar as fases da análise do comando (tokens, árvore, tabela de
+símbolos e checagens) (2.4).
 
 **RNF**: RNF01 interface simples com botões identificados · RNF02 senha oculta e
 armazenada com hash · RNF03 tela principal e busca respondem na hora mesmo com
@@ -459,6 +497,17 @@ outro feriado (ou evento); a mudança vai ao histórico com o antes e o depois �
 VALIDADE DE QUEM PODE RETIRAR: muda com a mesma permissão de quem cadastra (RN35: o
 porteiro só com o dono no campus); vazio = sem prazo; nunca antes de hoje; vai ao
 histórico.
+
+Nova na 2.4 (linguagem de comandos):
+RN46 A LINGUAGEM É SÓ OUTRA PORTA: um comando monta o mesmo registro do formulário e
+passa pelas mesmas regras e gravações (RN01 a RN45; o banco confere de novo); quando
+falta o que o formulário perguntaria (de carro ou a pé, com qual carro, a senha do
+administrador, o tipo diferente do cadastro), abre o mesmo diálogo; os comandos do
+administrador (excluir, desativar, reativar) são recusados ao porteiro já na análise
+semântica (e no banco); para o porteiro, toda resposta, o console e o modo didático
+mostram o CPF mascarado (RN14), mesmo que ele tenha digitado o número inteiro; o texto
+dos comandos não é gravado no log nem no banco (o histórico recebe só os eventos
+normais); a linha tem no máximo 200 caracteres (RN33).
 
 ## 5. Pendências registradas na revisão final (para a versão 2.1+)
 

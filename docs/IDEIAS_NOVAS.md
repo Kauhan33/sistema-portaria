@@ -151,14 +151,14 @@ a entrega pede (casos de teste no Word, dados para mostrar).
 
 ## E. Ligação com Compiladores (nota e apresentação)
 
-### E1. Linha de comando da portaria ⭐ *(já registrada; esboço completo na seção 2)*
+### E1. Linha de comando da portaria ⭐ *(feita na versão 2.4: `docs/GRAMATICA_DA_LINGUAGEM.md`)*
 - **Problema:** em horário de pico (07:00 e 18:30), o porteiro experiente quer registrar sem tirar a mão do teclado: `entrada 52998224725 visitante placa ABC1D23` e Enter. Para a disciplina, é o lugar onde léxico, sintático e semântico deixam de ser comentário no código e viram funcionalidade.
 - **Na tela:** a "Saída rápida (F2)" vira **Comando (F2 ou Ctrl+K)**: o mesmo campo no topo, que continua aceitando só um CPF ou placa (vira `saida` implícito, então nada do que já funciona quebra). A resposta aparece abaixo, num pequeno console com as últimas linhas. Detalhes, gramática e erros na seção 2.
 - **Esforço:** G · **Valor:** alto (é o diferencial da disciplina).
 - **Riscos:** o maior é a linguagem ter **regras próprias** diferentes do formulário. Regra de ouro: a árvore do comando é traduzida para o **mesmo** objeto que o formulário monta e passa pelas **mesmas** funções (`validacao.validar`, `horarios.excecoes_*`, `Banco`). A linguagem é só outra porta de entrada.
 - **pip/internet:** não (`re`, `dataclasses`, `difflib`).
 
-### E2. Modo didático: tokens, árvore, tabela de símbolos e checagens na tela ⭐
+### E2. Modo didático: tokens, árvore, tabela de símbolos e checagens na tela ⭐ *(feita na 2.4)*
 - **Problema:** a professora precisa *ver* as fases acontecendo. Ler o comentário no `portaria_universidade.py` não tem o mesmo efeito de digitar um comando errado e ver em qual fase ele parou.
 - **Na tela:** interruptor **Modo didático** ao lado do campo de comando. Liga um painel lateral com uma faixa de fases (Léxico ✓ → Sintático ✓ → Semântico ✗ → Execução —) e quatro abas: **Tokens** (tabela lexema/tipo/coluna e "fichas" coloridas), **Árvore** (desenhada no Canvas), **Símbolos** (as entradas consultadas: pessoa, veículo, bloqueio, usuário logado) e **Checagens** (lista com ✓/✗ e a regra de negócio: "RN05 um CPF não pode ter duas entradas abertas ✗"). Mockup na seção 2.5.
 - **Esforço:** M (depois do E1) · **Valor:** alto (é o que mais impressiona numa banca de Compiladores).
@@ -171,7 +171,7 @@ a entrega pede (casos de teste no Word, dados para mostrar).
 - **Riscos:** lote não pode virar porta para burlar as regras: cada linha passa pelas mesmas checagens; a ordem cronológica importa (o semântico simula o estado: "linha 9: saída de Pedro, mas a entrada dele só aparece na linha 12").
 - **pip/internet:** não.
 
-### E4. Realce de sintaxe, autocompletar e "você quis dizer…?"
+### E4. Realce de sintaxe, autocompletar e "você quis dizer…?" *(feita na 2.4)*
 - **Problema:** o comando digitado errado gera frustração; o porteiro não lembra se é `saida` ou `saída`, nem o CPF inteiro de quem quer dar saída.
 - **Na tela:** o campo de comando colore os pedaços **enquanto se digita** (comando em tinta escura, CPF em azul, placa em fundo de placa, tipo em verde, texto entre aspas em cinza, erro léxico sublinhado em vermelho): é o analisador léxico rodando a cada tecla. **Tab** completa comando, tipo e — a partir da tabela de símbolos — nome → CPF ("maria so" + Tab → lista "Mariana Souza (no campus)"). Comando desconhecido traz sugestão por semelhança, como na Lanchonete.
 - **Esforço:** M · **Valor:** médio (operação) / alto (demonstração do léxico em tempo real).
@@ -233,6 +233,10 @@ a entrega pede (casos de teste no Word, dados para mostrar).
 ---
 
 ## 2. Esboço da linha de comando da portaria
+
+> Este é o esboço original. A linguagem implementada na 2.4 (com o CRUD de
+> pessoas, desativar no lugar de bloquear e `sem carro`) está em
+> `docs/GRAMATICA_DA_LINGUAGEM.md`.
 
 ### 2.1 Comandos
 

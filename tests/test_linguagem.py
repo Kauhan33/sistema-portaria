@@ -651,3 +651,24 @@ class TestConsultas(BaseBanco):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ----------------------------------------------------------------------
+# O comentário "RELAÇÃO COM COMPILADORES" aponta para linhas reais
+# ----------------------------------------------------------------------
+class TestComentarioDeCompiladores(unittest.TestCase):
+    def test_as_linhas_citadas_existem(self):
+        """Cada "arquivo, linha N:" do comentário em
+        portaria_universidade.py tem embaixo o código daquela linha."""
+        with open(os.path.join(RAIZ, "portaria_universidade.py"),
+                  encoding="utf-8") as f:
+            comentario = f.read()
+        citacoes = re.findall(r"#    (portaria/\S+\.py), linha (\d+):\n"
+                              r"#        (.+)\n", comentario)
+        self.assertGreaterEqual(len(citacoes), 5)
+        for arquivo, linha, codigo in citacoes:
+            with self.subTest(arquivo=arquivo, linha=linha):
+                with open(os.path.join(RAIZ, arquivo), encoding="utf-8") as f:
+                    linhas = f.read().splitlines()
+                self.assertEqual(linhas[int(linha) - 1].strip(),
+                                 codigo.strip())

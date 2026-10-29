@@ -4,9 +4,13 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
-**Versão atual: 2.3** — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
+**Versão atual: 2.4** — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
 
-![Tela Entrada e saída](docs/design/final/v23_entrada_admin_claro.png)
+![Tela Entrada e saída com o campo Comando](docs/design/final/v24_comando_sucesso_claro.png)
+
+Na 2.4 o sistema ganhou uma **linguagem de comandos** com analisador léxico,
+sintático e semântico de verdade — veja
+[Linguagem de comandos](#linguagem-de-comandos-compiladores).
 
 ## Como executar
 
@@ -124,7 +128,10 @@ logado e ativo.
 python -m unittest -v
 ```
 
-834 testes (biblioteca padrão `unittest`) cobrindo validações, regras de
+919 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
+comandos** (uma classe por fase: léxico, gramática LL(1), sintático,
+semântico e a execução comparada com o formulário, além do campo, do console
+e do modo didático), validações, regras de
 negócio, login, senhas, permissões, cadastro de pessoas e preenchimento
 automático, saída rápida e desfazer, correção de registros, **desativação de
 pessoa e de veículo**, **Nova pessoa, Editar e Excluir pessoa**, editar
@@ -165,9 +172,10 @@ resultado não depende da hora em que eles rodam.
 python -m tests.relatorio [pasta de saída] [--sem-suite]
 ```
 
-Roda os testes automáticos ligados a cada caso (CT-01 a CT-53, positivos e
+Roda os testes automáticos ligados a cada caso (CT-01 a CT-68, positivos e
 negativos, cada um com o RF/RN, a entrada, o resultado esperado e o teste
-que o comprova), marca **PASSOU** ou **FALHOU** e grava
+que o comprova; os CT-54 a CT-68 ficam na seção **"Linguagem de comandos"**,
+com a fase do analisador), marca **PASSOU** ou **FALHOU** e grava
 `relatorio_testes.html`, `.csv` e `.json` (com a matriz de rastreabilidade
 requisito × caso e o resultado da suíte completa `python -m unittest`, como
 evidência) numa pasta temporária ou na pasta pedida — nunca dentro do
@@ -175,12 +183,25 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 ## Galeria
 
-As telas `v23_*` são da versão atual. As das versões anteriores mostram recursos
-que continuam iguais, mas a barra lateral delas ainda tem a página Bloqueios
-(desde a 2.3 é Pessoas › Desativadas).
+As telas `v24_*` (linguagem de comandos) e `v23_*` são da versão atual. As
+das versões anteriores mostram recursos que continuam iguais, mas a barra
+lateral delas ainda tem a página Bloqueios (desde a 2.3 é Pessoas ›
+Desativadas) e a "Saída rápida" no lugar do campo Comando.
 
 | | |
 |---|---|
+| ![Comando com sucesso](docs/design/final/v24_comando_sucesso_claro.png) | ![Realce e Tab](docs/design/final/v24_realce_autocompletar_claro.png) |
+| **Campo Comando (2.4)** — a resposta numa linha e o console com as últimas | **Realce e Tab** — cada token com a sua cor; o nome vira o CPF; "15:0" em vermelho |
+| ![Erro léxico](docs/design/final/v24_erro_lexico_claro_1366x670.png) | ![Erro sintático](docs/design/final/v24_erro_sintatico_claro_1366x670.png) |
+| **[Léxico]** "AB12345" não é uma placa, com o ^ na coluna 13 | **[Sintático]** comando desconhecido — "Você quis dizer entrada?" |
+| ![Erro semântico](docs/design/final/v24_erro_semantico_escuro_1366x670.png) | ![Abre o mesmo diálogo](docs/design/final/v24_comando_dialogo_claro_1366x670.png) |
+| **[Semântico]** a pessoa já está no campus (RN05), no tema escuro | O comando **abre o mesmo diálogo** do formulário ("Vai entrar de carro?") |
+| ![Modo didático: tokens](docs/design/final/v24_didatico_tokens_claro_1366x670.png) | ![Modo didático: árvore](docs/design/final/v24_didatico_arvore_claro_1366x670.png) |
+| **Modo didático › Tokens** — lexema, token, valor (o caminho do autômato da placa) e coluna | **Modo didático › Árvore** — o nó com erro em vermelho (placa desativada, RN12) |
+| ![Modo didático: símbolos](docs/design/final/v24_didatico_simbolos_escuro_1366x670.png) | ![Modo didático: checagens](docs/design/final/v24_didatico_checagens_claro_1366x670.png) |
+| **Modo didático › Símbolos** — as linhas da tabela de símbolos consultadas | **Modo didático › Checagens** — na ordem, com a RN; "Parou aqui" |
+| ![Porteiro: CPF mascarado](docs/design/final/v24_porteiro_mascarado_claro_1366x670.png) | ![Porteiro no modo didático](docs/design/final/v24_porteiro_didatico_escuro_1366x670.png) |
+| **Porteiro** — o Tab escreve o CPF mascarado; console e respostas também | **Porteiro no modo didático** — tabela de símbolos com o CPF mascarado |
 | ![Entrada e saída 2.3](docs/design/final/v23_entrada_admin_claro.png) | ![Placa antiga no tema escuro](docs/design/final/v23_entrada_porteiro_escuro.png) |
 | **Entrada e saída (2.3)** — o Movimento sobe, com as subabas embaixo do título | **Placa antiga** (NEY-4829) no tema escuro, visão do porteiro |
 | ![Pessoas: ativas](docs/design/final/v23_pessoas_ativas_claro.png) | ![Pessoas: desativadas](docs/design/final/v23_pessoas_desativadas_claro.png) |
@@ -295,10 +316,13 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     ajuste fino), desenhados no estilo Guarita. Digitar continua valendo; Esc
     fecha. Campos só de data (feriados, eventos, exportar) abrem só o
     calendário; os só de hora (Configurações), só o relógio;
-  - **Saída rápida** no topo (atalho **F2**): CPF ou placa exatos + Enter.
-    Pela placa sai o carro: se o dono (o responsável) está no campus, a
-    pergunta se ele saiu junto (sai os dois, sem senha); placa de carro que
-    não está no estacionamento é recusada, nunca dá a saída da pessoa;
+  - campo **Comando** no topo (atalhos **F2** e **Ctrl+K**, no lugar da
+    antiga Saída rápida): aceita a [linguagem de
+    comandos](#linguagem-de-comandos-compiladores) e, como antes, **só o CPF
+    ou só a placa** + Enter dão a saída. Pela placa sai o carro: se o dono
+    (o responsável) está no campus, a pergunta se ele saiu junto (sai os
+    dois, sem senha); placa de carro que não está no estacionamento é
+    recusada, nunca dá a saída da pessoa;
   - cartão **Movimento**, logo abaixo do formulário: o título numa linha
     própria (com o status ao lado: "6 entradas hoje · 5 no campus"), as
     subabas **Pessoas | Veículos** embaixo, à esquerda, e a busca e os
@@ -359,8 +383,8 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
   - **tamanho máximo** em todos os campos (RN33): a digitação para no
     máximo e a colagem corta no máximo (nome 80, login 20, senha 64,
     justificativa e motivo 200 com o contador "123/200", descrição 80,
-    buscas 60, saída rápida 14, data e hora 16, data 10, hora 5, CPF e
-    celular 11, placa 7). A validação e o banco recusam o que passar;
+    buscas 60, linha de comando 200, data e hora 16, data 10, hora 5, CPF
+    e celular 11, placa 7). A validação e o banco recusam o que passar;
   - faixas no topo, só quando importam: **saídas pendentes** e **veículos
     pendentes** depois do fechamento (o administrador tem o atalho **Encerrar
     o dia**) e, nos últimos 30 minutos antes de fechar, **"Campus fecha às
@@ -459,7 +483,7 @@ um visitante às 08:00 num domingo com evento 18:00–23:00 é exceção.
 - **Exceções** (pedem a autorização do administrador): entrada com o campus
   fechado ou fora da janela da categoria, **lançamento retroativo** antigo e
   qualquer visita com mais de **24 h**. Vale ao registrar a entrada, dar a
-  saída (botão, duplo clique ou saída rápida) e corrigir um registro (só o que
+  saída (botão, duplo clique ou campo Comando) e corrigir um registro (só o que
   mudou é conferido de novo).
 - **Lançamento retroativo** (data/hora de entrada ou de saída no passado, no
   cadastro e na correção): (a) até **3 h** atrás, num horário em que a
@@ -530,6 +554,83 @@ Regras e segurança:
   mais recentes). Avisos da atualização do banco ou de backup que falhou
   aparecem ao administrador. Erros técnicos vão para `portaria.log`; o usuário
   vê só uma mensagem simples.
+
+## Linguagem de comandos (Compiladores)
+
+A 2.4 transformou a relação com Compiladores em funcionalidade: o campo
+**Comando** (F2 ou Ctrl+K, na Entrada e saída) entende uma pequena
+linguagem, analisada pelas fases de um compilador, em `portaria/linguagem/`.
+A gramática (EBNF, aprovada pelo aluno) está em
+[`docs/GRAMATICA_DA_LINGUAGEM.md`](docs/GRAMATICA_DA_LINGUAGEM.md); um teste
+confere que ela é a mesma do código e que é **LL(1)**.
+
+```
+entrada 529.982.247-25 aluno placa ABC1D23
+saida 52998224725 sem carro
+ABC1D23                                         (só a placa = saída do carro)
+cadastrar 111.444.777-35 visitante nome "Bruno Almeida" cel 31987651234
+desativar placa ABC1D23 motivo "furto no estacionamento"
+buscar maria visitante semana
+```
+
+| Comando | Exemplo | Faz | Quem |
+|---|---|---|---|
+| `entrada` | `entrada 529.982.247-25 aluno placa ABC1D23` | Registra a entrada | todos |
+| `saida` | `saida 52998224725` · `saida placa ABC1D23` · `saida 52998224725 sem carro` | Saída da pessoa ou do carro (`placa X`: com qual carro; `as 14:05`: horário de hoje que já passou) | todos |
+| *(implícito)* | `52998224725` · `ABC1D23` | Só o CPF ou só a placa = `saida` (a antiga Saída rápida) | todos |
+| `cadastrar` | `cadastrar 111.444.777-35 visitante nome "Bruno Almeida" cel 31987651234` | Nova pessoa, sem entrada (RN41) | todos |
+| `editar` | `editar 11144477735 cel 31999990000 tipo professor` | Muda nome, celular, placa ou tipo | todos |
+| `excluir` | `excluir 11144477735` | Exclui quem nunca teve visita (RN42) | admin |
+| `desativar` | `desativar 11144477735 motivo "agressão ao porteiro"` | Pessoa ou veículo não entra (RN12) | admin |
+| `reativar` | `reativar placa ABC1D23` | Encerra a desativação | admin |
+| `situacao` | `situacao 52998224725` | Dentro ou fora, desde quando, carro, desativado | todos |
+| `dentro` | `dentro visitante` | Quem está no campus agora | todos |
+| `buscar` | `buscar ABC1D23 de 01/10/2026 ate 15/10/2026` | Procura no histórico (tipo e período opcionais) | todos |
+| `pendentes` | `pendentes` | Saídas pendentes, tempo excedido, carro com o dono fora | todos |
+| `ajuda` | `ajuda entrada` | Mostra a regra da gramática e os exemplos | todos |
+
+Maiúsculas e acentos tanto faz (`SAÍDA`, `situação`, `até`) e os tipos
+aceitam o plural (`visitantes`).
+
+- **Léxico** (`lexico.py`): tokens COMANDO, PALAVRA_CHAVE, TIPO, PERIODO,
+  CPF, NUMERO, PLACA (um **autômato finito** reconhece a placa antiga e a
+  Mercosul), DATA, HORA, TEXTO, PALAVRA e FIM, cada um com a coluna. O
+  campo pinta cada token a cada tecla; o erro fica vermelho e sublinhado.
+- **Sintático** (`sintatico.py`): descida recursiva, um método por regra;
+  a saída é uma árvore de `dataclasses`. Comando desconhecido recebe o
+  "Você quis dizer…?" e o **Tab** corrige.
+- **Semântico** (`simbolos.py`, `semantico.py`): a tabela de símbolos
+  consulta pessoas, veículos, desativações, o usuário logado e os horários
+  do dia; as checagens rodam na ordem, cada uma com a RN, e param no
+  primeiro erro. Tipo diferente do cadastro é um **aviso** (pergunta antes).
+- **Execução** (`executor.py`): o comando é **só outra porta** (RN46). Ele
+  monta o mesmo registro do formulário e passa pelas mesmas funções e pelo
+  mesmo `Banco`; quando falta o que o formulário perguntaria ("Vai entrar de
+  carro?", "Com qual carro está saindo?", a senha do administrador), abre o
+  **mesmo diálogo**. Um teste compara o banco do comando com o do
+  formulário.
+- **Erros por fase**, no console (recolhível, com as últimas respostas):
+
+```
+› saida placa AB12345
+              ^^^^^^^
+[Léxico] coluna 13: "AB12345" não é uma placa.
+Dica: Formatos ABC1234 (antiga) ou ABC1D23 (Mercosul).
+```
+
+- **Modo didático** (interruptor ao lado do campo): a faixa Léxico ✓ →
+  Sintático ✓ → Semântico ✗ → Execução — e as abas **Tokens**, **Árvore**
+  (desenhada no Canvas, o nó com erro em vermelho), **Símbolos** e
+  **Checagens**. Abre por cima da tabela e cabe no notebook 1366×670.
+- **Tab** completa o comando, a palavra e o tipo, e troca um pedaço do nome
+  pelo CPF da pessoa.
+- **Privacidade:** para o porteiro, as respostas, o console e o modo
+  didático mostram o CPF mascarado (`***.982.247-**`), mesmo digitado
+  inteiro; o Tab escreve o CPF mascarado (o campo guarda o número só na
+  memória). O texto dos comandos **não** é gravado no log nem no banco.
+  Os comandos do administrador são recusados ao porteiro já na fase
+  semântica (e o banco também recusa). A linha tem no máximo 200
+  caracteres.
 
 ## Segurança e LGPD
 
@@ -618,7 +719,10 @@ danificado):
 | `portaria/interface.py` | Janela principal, barra lateral, sessão e o contrato que as telas usam |
 | `portaria/tela_login.py` | Login, primeiro acesso, "Defina sua senha", "Esqueci a senha" e a guarita travada |
 | `portaria/tela_recuperacao.py` | Códigos de recuperação (mostrar uma vez, imprimir, gerar novos) |
-| `portaria/tela_cadastro.py` | Entrada e saída (formulário, saída rápida, Movimento) |
+| `portaria/tela_cadastro.py` | Entrada e saída (formulário, Movimento) |
+| `portaria/tela_comando.py` | Campo Comando: realce, Tab, console e modo didático (2.4) |
+| `portaria/linguagem/` | A linguagem de comandos: `lexico.py`, `gramatica.py`, `sintatico.py`, `simbolos.py`, `semantico.py`, `executor.py`, `interpretador.py`, `erros.py` |
+| `docs/GRAMATICA_DA_LINGUAGEM.md` | A gramática da linguagem (tokens, EBNF, checagens, erros por fase) |
 | `portaria/tela_pessoas.py` | Pessoas: Ativas, Desativadas e Veículos desativados, ficha, Nova pessoa e Editar |
 | `portaria/tela_dashboard.py` | Painel e exportação; `graficos.py` desenha as barras |
 | `portaria/tela_usuarios.py` | Usuários, atividade e o relatório de exceções (só administrador) |
@@ -645,6 +749,24 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**2.4** (29/10/2026) — Compiladores: a linguagem de comandos (sem mudança
+no banco):
+
+- a **Saída rápida** virou o campo **Comando** (F2 ou Ctrl+K), no mesmo
+  lugar; só o CPF ou só a placa continuam dando a saída;
+- 13 comandos, inclusive o **CRUD de pessoas** (cadastrar, editar,
+  excluir, desativar, reativar), com léxico, gramática **LL(1)**,
+  sintático por descida recursiva, tabela de símbolos e semântico com a RN
+  de cada checagem (`portaria/linguagem/`);
+- o comando é só outra porta (**RN46**): as mesmas regras e gravações do
+  formulário e os mesmos diálogos quando falta algo;
+- **modo didático** (RF32) com as fases, tokens, árvore, símbolos e
+  checagens; realce, **Tab** e "você quis dizer…?";
+- CPF mascarado para o porteiro em tudo o que a linguagem mostra; o texto
+  dos comandos não é gravado;
+- casos de teste CT-01 a CT-68 (seção "Linguagem de comandos") e 919 testes
+  automatizados; prints `docs/design/final/v24_*`.
 
 **2.3** (29/10/2026) — pessoas, desativação e CRUD (sem mudança no banco: a
 desativação usa a tabela de bloqueios que já existia, e nada se perde):

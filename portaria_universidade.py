@@ -8,8 +8,9 @@ Se existir o 'registros_portaria.json' da versão 1, ele é importado para o
 banco na primeira execução e renomeado para '.migrado' (fica de backup).
 Ao abrir: backup do dia na pasta 'backups' e erros técnicos em 'portaria.log'.
 
-Atalhos: ENTER registra a entrada (página Entrada e saída); F2 leva à
-saída rápida de qualquer página.
+Atalhos: ENTER registra a entrada (página Entrada e saída); F2 ou Ctrl+K
+levam ao campo Comando (a linguagem da portaria, versão 2.4; só o CPF ou
+só a placa continuam dando a saída, como a antiga Saída rápida).
 
 Organização do código (pasta portaria/):
     validacao.py       regras de CPF, celular, placa, nome, datas e as
@@ -18,24 +19,31 @@ Organização do código (pasta portaria/):
                        eventos, categorias, exceções, situação da visita)
     dados.py           banco de dados SQLite e migração do JSON antigo
     consultas.py       busca e números do Painel (versão em Python)
-    usuarios.py        senhas (hash), perfis, permissões, login e troca de senha
+    usuarios.py        perfis, permissões, login e troca de senha
+    senhas.py          hash das senhas (PBKDF2) e códigos de recuperação
+    veiculos.py        quem pode retirar o carro e lotação (funções puras)
     backup.py          backup do banco e exportação para CSV
+    linguagem/         a linguagem de comandos (2.4): lexico.py (tokens),
+                       gramatica.py (EBNF e conferência LL(1)),
+                       sintatico.py (árvore), simbolos.py (tabela de
+                       símbolos), semantico.py (checagens com as RN),
+                       executor.py (grava pelos caminhos do formulário)
     estilo.py          tokens do design "Guarita": cores, fontes, ícones,
                        medidas, escala da tela (DPI) e estilos ttk
     componentes.py     peças de tela desenhadas: cartão, botões, campo,
-                       faixa de aviso, placa Mercosul, tabela, diálogo
+                       faixa de aviso, placa, tabela, diálogo
     mensagens.py       caixas de mensagem e "Salvar como"
     interface.py       janela, barra lateral, sessão e o contrato do app
-    tela_login.py      login e primeiro acesso
-    tela_cadastro.py   Entrada e saída (formulário, saída rápida, Movimento)
-    tela_pessoas.py    Pessoas (lista e ficha)
-    tela_bloqueios.py  Bloqueios (CPFs e placas barrados)
+    tela_login.py      login, primeiro acesso e recuperação da senha
+    tela_cadastro.py   Entrada e saída (formulário, Movimento)
+    tela_comando.py    campo Comando, console e modo didático (2.4)
+    tela_pessoas.py    Pessoas (lista, ficha, desativação, Nova pessoa)
     tela_dashboard.py  Painel e exportação; graficos.py desenha as barras
-    tela_usuarios.py   Usuários (só administrador)
+    tela_usuarios.py   Usuários e exceções (só administrador)
     tela_configuracoes.py  Configurações dos horários (só administrador)
     tela_edicao.py     janela "Corrigir registro"
     tela_autorizacao.py  diálogo "Autorização do administrador"
-    tela_veiculo.py    perguntas "Saiu com o veículo?" e "Saiu junto?"
+    tela_veiculo.py    perguntas do carro ("Saiu com o veículo?"...)
     seletor_data.py    calendário e relógio dos campos de data e hora
     tela_senha.py      janela "Trocar minha senha"
 Testes automatizados: python -m unittest
@@ -66,63 +74,60 @@ if __name__ == "__main__":
 # ==================================================================
 # RELAÇÃO COM COMPILADORES (desafio final do exercício)
 # ==================================================================
+# Desde a versão 2.4 o sistema TEM um compilador de verdade: a linguagem
+# de comandos do campo Comando (F2 ou Ctrl+K), em portaria/linguagem/. A
+# gramática está em docs/GRAMATICA_DA_LINGUAGEM.md (EBNF, LL(1)) e o modo
+# didático mostra as fases na tela. As linhas citadas abaixo são conferidas
+# por um teste (tests/test_linguagem.py, TestComentarioDeCompiladores).
+#
 # 1) TOKEN (análise léxica)
-#    Em portaria/tela_cadastro.py (AbaCadastro._montar_formulario), na linha:
-#        self.var_cpf = tk.StringVar(self.aba)
-#    Tokens: self (identificador), . (ponto), var_cpf (identificador),
-#    = (operador de atribuição), tk (identificador), . (ponto),
-#    StringVar (identificador), ( (abre parênteses), self . aba,
-#    ) (fecha parênteses).
-#    E na linha logo abaixo, com literais string e inteiro e argumento nomeado:
-#        self.cpf = self._peca("cpf", "CPF", Campo(form, numeros=11, var=self.var_cpf))
-#    Tokens: self . cpf, = , self . _peca, (, "cpf" e "CPF" (literais
-#    string), ",", Campo, (, form, ",", numeros (identificador), = (sinal do
-#    argumento nomeado), 11 (literal inteiro), ",", var, =, self . var_cpf,
-#    ), ).
-#    Outro, com literal string, em portaria/validacao.py:
-#        FORMATO = "%d/%m/%Y %H:%M"            # usado pelo datetime
-#    Tokens: FORMATO (identificador), = (operador de atribuição),
-#    "%d/%m/%Y %H:%M" (literal string); o comentário (# ...) é descartado
-#    pelo analisador léxico e não vira token.
+#    O token é um objeto com tipo, lexema, coluna e valor, em
+#    portaria/linguagem/lexico.py, linha 128:
+#        class Token:
+#    e o analisador léxico cria um token PLACA (depois que o autômato
+#    finito da placa, TRANSICOES_PLACA, aceita o lexema) em
+#    portaria/linguagem/lexico.py, linha 236:
+#        return Token(PLACA, lexema, coluna,
+#    Para o comando "saida placa ABC1D23" os tokens são:
+#        COMANDO "saida" (coluna 1), PALAVRA_CHAVE "placa" (coluna 7),
+#        PLACA "ABC1D23" (coluna 13) e FIM (coluna 20).
+#    "52998224725" é um NUMERO: o léxico não sabe se é CPF ou celular;
+#    quem decide é o sintático, pela posição (depois de "entrada" é CPF,
+#    depois de "cel" é celular). Erro léxico: "AB12345 não é uma placa",
+#    com o ^ na coluna. (No próprio Python, a linha acima tem os tokens
+#    return (palavra reservada), Token (identificador), "(" , PLACA, ",",
+#    lexema, ",", coluna, "," ...: o mesmo tipo de análise.)
 #
 # 2) VARIÁVEL DA TABELA DE SÍMBOLOS
-#    Símbolo: BANCO | Tipo: str | Valor: caminho do portaria.db | Escopo: global
-#    (também, em validacao.py: FORMATO -> str, TIPOS_ACESSO -> list,
-#     DDDS_VALIDOS -> set, REGEX_PLACA -> re.Pattern;
-#     em estilo.py: COR -> dict, FONTE -> dict;
-#     em interface.py: self.registros -> list, atributo da AppPortaria)
+#    A tabela de símbolos do semântico (portaria/linguagem/simbolos.py)
+#    diz o que cada "nome" do comando significa no banco. O símbolo da
+#    pessoa é registrado em
+#    portaria/linguagem/simbolos.py, linha 83:
+#        self._anotar("Pessoa", chave,
+#    Exemplo (aba Símbolos do modo didático):
+#        Categoria: Pessoa | Símbolo: CPF 529.982.247-25 |
+#        Valor: Ana Silva · Visitante · no campus desde 08:00
+#    O usuário logado também é um símbolo (Usuário: paulo · Porteiro),
+#    como a placa (Veículo: no estacionamento desde 08:20) e o dia (Hoje:
+#    quarta-feira, 06:30–23:00). No Python deste arquivo: Símbolo BANCO |
+#    Tipo: str | Valor: caminho do portaria.db | Escopo: global.
 #
 # 3) VERIFICAÇÃO SEMÂNTICA
-#    Em validacao.validar(): o código está sintaticamente correto, mas só faz
-#    sentido se:  saida_dt < entrada_dt  for falso (saída não anterior à
-#    entrada); a entrada não estiver no futuro; o CPF passar nos dígitos
-#    verificadores; o celular tiver o 9 após o DDD; o nome tiver só letras;
-#    e o mesmo CPF não estiver no campus duas vezes ao mesmo tempo
-#    (entrada aberta ou períodos que se cruzam).
-#    Em validacao.checar_bloqueio(): o registro pode estar perfeito, mas a
-#    entrada não faz sentido se o CPF ou a placa estiverem bloqueados (RN12).
-#    Outro exemplo, em tela_cadastro.AbaCadastro.excluir_selecionado(): a
-#    chamada self.app.tentar(self.app.banco.excluir, ids, autor=...) é
-#    válida, mas só faz sentido para o administrador; por isso ela vem
-#    depois de
-#        if not pode_excluir(self.app.usuario):  # RN02
-#    (usuarios.pode_excluir = eh_admin), e o banco confere de novo quem
-#    está excluindo (dados.Banco.excluir).
-#    Com as regras de horário, em horarios.excecoes_da_entrada() (chamada
-#    por horarios.excecoes_do_registro(), que tela_cadastro.AbaCadastro.
-#    cadastrar usa na "VERIFICAÇÃO SEMÂNTICA 6"):
-#    a entrada "Aluno, 25/10/2026 10:00" é sintaticamente válida (a data
-#    existe, está no formato dd/mm/aaaa hh:mm, não está no futuro), mas não
-#    faz sentido para um aluno num domingo, com o campus fechado. O mesmo
-#    vale para um visitante às 19:00 (janela 08:00–18:00) ou uma visita de
-#    30 h (horarios.excecoes_da_duracao). Como um compilador que recusa
-#    "int x = 'texto';" mesmo com a sintaxe certa, o sistema não grava: pede
-#    a autorização do administrador (tela_autorizacao.py), e o banco confere
-#    de novo o limite de 24 h (dados.Banco._exigir_autorizacao_24h).
-#    O mesmo vale para o lançamento retroativo (horarios.retroativo): a
-#    entrada "20/10/2026 22:00" digitada às 23:10 é uma data bem escrita, mas
-#    o dia dela já fechou; o significado depende do CONTEXTO (o relógio), não
-#    da forma, e por isso só passa com a senha de um administrador. E a placa
-#    "ABC1234" é válida (léxico e sintaxe), mas não faz sentido entrar de novo
-#    se o carro já está no estacionamento (dados.Banco._abrir_estadia): é a
-#    verificação de "símbolo já declarado", só que com carros.
+#    "entrada 39053344705" é léxica e sintaticamente correta, mas não faz
+#    sentido se a pessoa já está no campus (RN05). O semântico recusa em
+#    portaria/linguagem/semantico.py, linha 238:
+#        self._exigir(False, "Não está no campus", "RN05",
+#    e, com o registro montado como o formulário monta, chama a MESMA
+#    validação do formulário (regra de ouro: nada de regra duplicada) em
+#    portaria/linguagem/semantico.py, linha 259:
+#        ok, msg = validar(registro, self.s.visitas(cpf), self.agora)
+#    Outras checagens com a regra de cada uma: CPF com os dígitos
+#    verificadores (RN06), pessoa ou placa desativada (RN12), opção dada
+#    duas vezes ("variável declarada duas vezes"), tipo diferente do
+#    cadastro (um AVISO, como uma conversão de tipo), comando de
+#    administrador digitado pelo porteiro (RN02), horário da categoria e
+#    lançamento retroativo (RN17, RN24: abrem a autorização do
+#    administrador). No formulário, as mesmas regras estão em
+#    validacao.validar() (VERIFICAÇÃO SEMÂNTICA 1 a 5) e em
+#    horarios.excecoes_do_registro() (VERIFICAÇÃO SEMÂNTICA 6); o banco
+#    confere de novo (dados.Banco.inserir).

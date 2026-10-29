@@ -17,7 +17,7 @@ As ideias estão agrupadas em versões. Cada versão é entregável sozinha.
 - **Esquema:** a versão do banco depois da entrega. Hoje o banco está na v10.
   Toda migração é atômica (`PRAGMA user_version`) e faz um backup antes.
 - **RN nova:** a numeração continua a partir da RN35 (na 2.3 foram da RN41
-  à RN45; a próxima livre é a RN46).
+  à RN45; na 2.4, a RN46; a próxima livre é a RN47).
 
 **O que todo item precisa ter para ser considerado pronto** (vale para todos e
 não se repete abaixo):
@@ -42,7 +42,7 @@ não se repete abaixo):
 |---|---|---|---|---|
 | **2.2** ✅ | Veículo e acesso do administrador | V0, V1, V2, V3, B3, S07, B4, V4, V5 | v11 | ~5 dias |
 | **2.3** ✅ | Pessoas, desativação e CRUD | P1, P2, P3, P4, P5, P6 | v11 (sem mudança) | ~2 dias |
-| **2.4** | Compiladores: linha de comando | E1, E2, E4, F1 | v11 (sem mudança) | ~6 dias |
+| **2.4** ✅ | Compiladores: linha de comando | E1, E2, E4, F1 | v11 (sem mudança) | ~6 dias |
 | **2.5** | Visitante e operação da guarita | A1, A4, A3, A2, A6, A5 (opcional) | v12 | ~6 dias |
 | **2.6** | Dados, relatórios e apresentação | F2, D3, C1, C2, C3 | v12 (sem mudança) | ~5 dias |
 | **2.7** | LGPD e segurança | B1, B2, B8, N09, S02 | v13 | ~4 dias |
@@ -56,8 +56,8 @@ não se repete abaixo):
 - **2.3** (feita em 29/10/2026) atende ao pedido da professora de CRUD em
   todas as abas e aos ajustes do aluno: a página Bloqueios virou a
   desativação dentro de Pessoas, com "Nova pessoa", Editar e Excluir.
-- **2.4** é o diferencial da disciplina. Tem que estar pronta bem antes da
-  data de entrega, por isso vem logo em seguida.
+- **2.4** (feita em 29/10/2026) é o diferencial da disciplina: a linha de
+  comando com léxico, sintático, semântico e o modo didático.
 - **2.5 a 2.7** podem ser feitas na ordem que a professora valorizar mais.
   Para a apresentação, a 2.6 (modo treinamento e Painel) dá o maior efeito.
 
@@ -307,74 +307,95 @@ placa), então nenhum bloqueio antigo se perdeu.
 
 ---
 
-## Versão 2.4 — Compiladores: linha de comando (sem mudança de esquema)
+## Versão 2.4 — Compiladores: linha de comando (sem mudança de esquema) ✅
 
-A gramática, os tokens, os erros por fase e o mockup estão em
-`docs/IDEIAS_NOVAS.md`, seção 2.
+Entregue em 29/10/2026 (branch `versao-2.4`). A gramática aprovada pelo
+aluno (a especificação) está em `docs/GRAMATICA_DA_LINGUAGEM.md`; o esboço
+original, em `docs/IDEIAS_NOVAS.md`, seção 2.
 
-**Regra de ouro:** o comando é traduzido para o **mesmo** objeto que o
-formulário monta e passa pelas **mesmas** funções: `validacao`, `horarios` e
-`Banco` (incluindo RN32 a RN39). A linguagem é só outra porta de entrada.
+**Regra de ouro (RN46):** o comando é traduzido para o **mesmo** registro
+que o formulário monta e passa pelas **mesmas** funções: `validacao`,
+`horarios` e `Banco` (RN01 a RN45). A linguagem é só outra porta de entrada.
 
-### E1. Linha de comando da portaria · G
-- **Módulos novos** em `portaria/comando/`:
-  - `lexico.py`: tokens COMANDO, CPF, PLACA, TIPO, HORA, DATA, TEXTO,
-    DESCONHECIDO, com linha e coluna;
-  - `sintatico.py`: descendente recursivo; monta a árvore;
-  - `semantico.py`: usa a tabela de símbolos (pessoas, veículos, bloqueios,
-    usuário logado) e as regras de negócio;
-  - `executor.py`: chama o `Banco`.
-- **Tela:**
-  - A "Saída rápida (F2)" vira **Comando (F2 ou Ctrl+K)**. Um CPF ou uma placa
-    sozinhos continuam significando `saida`, então nada do que funciona hoje
-    quebra.
-  - Abaixo do campo fica um console com as últimas respostas.
-  - Exceção de horário, retroativo e veículo sem o dono abrem os **mesmos**
-    diálogos de autorização.
-- **Testes** (uma classe por fase):
-  - léxico: CPF com e sem pontos, placa antiga e Mercosul, palavra
-    desconhecida;
-  - sintático: ordem errada, falta argumento;
-  - semântico: CPF inválido, já no campus, bloqueado, carro sem o dono;
-  - execução: o resultado é o mesmo do formulário.
+**Decisões do aluno (29/10/2026):**
+1. a linguagem tem os comandos do CRUD de Pessoas (cadastrar, editar,
+   excluir, desativar, reativar), além de entrada, saida, o implícito,
+   situacao, dentro, buscar, pendentes e ajuda;
+2. quando falta algo que o formulário perguntaria (de carro ou a pé, com
+   qual carro, a senha do administrador, o tipo diferente do cadastro), o
+   comando abre o MESMO diálogo do formulário e conclui;
+3. o modo didático é para todos, com o CPF sempre mascarado para o
+   porteiro;
+4. "a pé" se escreve `sem carro`.
 
-### E2. Modo didático · M (depois do E1)
-- Interruptor ao lado do campo de comando. Abre um painel com a faixa de fases
-  (Léxico → Sintático → Semântico → Execução) e quatro abas:
-  - **Tokens**;
-  - **Árvore**, desenhada no Canvas;
-  - **Símbolos**;
-  - **Checagens**, com a RN de cada uma.
-- **Testes:** o painel mostra em qual fase o comando parou e o mesmo erro do
-  console.
+### E1. Linha de comando da portaria · G ✅
+- **Módulos** em `portaria/linguagem/` (o plano dizia `portaria/comando/`):
+  - `lexico.py`: tokens com lexema, tipo, coluna e valor; maiúsculas,
+    acentos e plurais; o **autômato finito da placa** (antiga e Mercosul);
+    erros léxicos com a coluna;
+  - `gramatica.py`: a EBNF, lida pelo próprio código, com FIRST, FOLLOW e
+    a conferência **LL(1)** (um teste confere que é a mesma do documento);
+  - `sintatico.py`: descida recursiva, um método por regra, árvore de
+    `dataclasses`, "você quis dizer…?" (`difflib`);
+  - `simbolos.py` e `semantico.py`: a tabela de símbolos (pessoas,
+    veículos, desativações, usuário logado e perfil, horários do dia; só
+    consulta) e as checagens na ordem, cada uma com a RN (avisos × erros);
+  - `executor.py`: grava pelos caminhos do formulário;
+  - `interpretador.py`: as três fases de análise juntas (a `Analise` que o
+    modo didático mostra).
+- **Refatoração da tela (para não duplicar regra):** `AbaCadastro.
+  registrar_entrada` virou o caminho único da entrada (o formulário e o
+  comando usam); `dar_saida` aceita o "a pé" e o horário do comando (com a
+  regra do retroativo); a recusa por desativação vai ao histórico nos dois.
+- **Tela:** a "Saída rápida (F2)" virou **Comando (F2 ou Ctrl+K)**, no mesmo
+  lugar (`portaria/tela_comando.py`). Só o CPF ou só a placa continuam
+  significando `saida`. Resposta numa linha e console recolhível com as
+  últimas 30 respostas (linha, ^, fase, dica); máximo de 200 caracteres.
+- **Privacidade:** para o porteiro, resposta, console e modo didático com o
+  CPF mascarado (a máscara não muda as colunas); o texto do comando não vai
+  para o log nem para o banco; os comandos do administrador são recusados ao
+  porteiro na fase semântica (e o banco também recusa).
 
-### E4. Realce de sintaxe, autocompletar e "você quis dizer…?" · M
-- O campo vira um `Text` de uma linha com *tags* coloridas pelo léxico a cada
-  tecla.
-- **Tab** completa o comando, o tipo e o nome (o nome vira o CPF mascarado).
-- Comando desconhecido recebe uma sugestão por semelhança (`difflib`).
+### E2. Modo didático · M ✅
+- Interruptor **Didático** ao lado do campo. Janela por cima da tabela
+  (cabe no 1366×670), claro e escuro, com a faixa Léxico → Sintático →
+  Semântico → Execução (✓/✗/—), a mesma mensagem do console e as abas
+  **Tokens** (com o caminho do autômato na placa), **Árvore** (Canvas, o nó
+  com erro em vermelho), **Símbolos** e **Checagens** (com a RN). Enquanto
+  se digita, mostra o léxico e o sintático; o Enter roda o resto.
 
-### F1. Casos de teste prontos para o Word · P/M ✅ (adiantado, 22/10/2026: CT-01 a CT-47; a seção dos testes da linguagem fica para o E1)
-- `python -m tests.relatorio` gera `relatorio_testes.html` e `.csv`, com:
-  - colunas CT-nnn, RN ligada, positivo ou negativo, descrição e
-    Passou/Falhou;
-  - uma matriz RN × testes;
-  - uma seção própria para os testes da linguagem.
-- Docstring padrão nos 40 a 60 testes mais importantes:
-  `"""CT-045 | RN05 | negativo | CPF já no campus não entra de novo"""`.
+### E4. Realce de sintaxe, autocompletar e "você quis dizer…?" · M ✅
+- O campo é um `Text` de uma linha (com a mesma interface do `Entry`) e o
+  léxico pinta cada token a cada tecla; o erro fica vermelho e sublinhado.
+- **Tab** completa comando, palavra-chave, tipo e período; um pedaço do
+  nome vira o CPF (mascarado para o porteiro: o campo guarda o CPF de
+  verdade só na memória). Repetir o Tab passa para a próxima opção.
+- Comando desconhecido recebe a sugestão (`difflib`) e o Tab a aplica.
+
+### F1. Casos de teste prontos para o Word · P/M ✅
+- `python -m tests.relatorio` ganhou a seção **"Linguagem de comandos"**
+  (CT-54 a CT-68, com a fase de cada caso), além dos CT-01 a CT-53.
+- `tests/test_linguagem.py` (uma classe por fase) e
+  `tests/test_interface_comando.py` (a tela; a execução compara o banco
+  do comando com o do formulário, em dois bancos iguais). 919 testes.
+
+### O que ficou para depois
+- Lote de comandos (E3), busca traduzida para SQL (E6), voz (E5).
+- `visita` e `cracha` (com o A1, versão 2.5); "sem placa" no `editar`;
+  corrigir e excluir visita, usuários e configurações pela linguagem.
 
 ---
 
 ## Versão 2.5 — Visitante e operação da guarita (esquema v12)
 
-### A1. Visitante completo: anfitrião, setor, motivo e crachá · M · RN46
+### A1. Visitante completo: anfitrião, setor, motivo e crachá · M · RN47
 - Para Visitante, Prestador e Entregador, aparece uma linha extra no
   formulário:
   - **Vai até:** nome ou setor, com sugestões; até 60 caracteres;
   - **Motivo:** reunião, entrega, manutenção, evento ou outro;
   - **Crachá:** sugere o primeiro número livre, de 1 a 50 (faixa ajustável em
     Configurações).
-- **Regra (RN46):**
+- **Regra (RN47):**
   - um crachá não fica com duas pessoas ao mesmo tempo;
   - na saída, o sistema pergunta "Devolveu o crachá 07?";
   - os crachás não devolvidos aparecem numa faixa.
@@ -457,7 +478,7 @@ formulário monta e passa pelas **mesmas** funções: `validacao`, `horarios` e
 
 ## Versão 2.7 — LGPD e segurança (esquema v13)
 
-### B1. Retenção, anonimização e relatório do titular · M · RN47
+### B1. Retenção, anonimização e relatório do titular · M · RN48
 - **Retenção:** em Configurações › Privacidade, "Guardar visitas identificadas
   por 12 meses". Depois disso, nome, CPF, celular e placa viram "Anonimizado",
   e a contagem do Painel continua igual.

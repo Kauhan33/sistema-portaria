@@ -121,10 +121,10 @@ comando por **voz**, como na Lanchonete.
 - Documento Word completo (capa, RF, RNF, RN, telas com prints, fluxo, testes) na
   pasta `entrega/` (fora do git).
 - ✅ **Casos de teste para o Word** (22/10/2026, item F1 do plano, adiantado):
-  `python -m tests.relatorio` roda os 47 casos CT-01 a CT-47 (positivos e
+  `python -m tests.relatorio` roda os casos CT-01 a CT-53 (53 na 2.3; positivos e
   negativos, cada um ligado a RF/RN e ao teste automático que o comprova) e a
   suíte completa, e grava `relatorio_testes.html`, `.csv` e `.json` fora do
-  repositório. 784 testes automatizados.
+  repositório. 834 testes automatizados na 2.3.
 - ✅ Executável `Portaria.exe` com PyInstaller (`build_exe.py`, 20/10/2026).
 - ✅ **Instalador do Windows** com Inno Setup (`build_instalador.py` +
   `instalador/portaria.iss`, 21/10/2026): programa em Arquivos de Programas,

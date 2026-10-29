@@ -23,7 +23,7 @@ from datetime import datetime
 
 from .. import horarios
 from ..usuarios import PERFIS
-from ..validacao import FORMATO, formatar_placa, mascarar_cpf
+from ..validacao import DESATIVADO, FORMATO, formatar_placa, mascarar_cpf
 from ..veiculos import texto_lotacao
 
 
@@ -114,9 +114,9 @@ class TabelaDeSimbolos:
         chave = ("CPF " + self.exibir_cpf(valor) if tipo == "cpf"
                  else "Placa " + formatar_placa(valor))
         self._anotar("Desativação", chave,
-                     "não está desativado(a)" if d is None else
-                     f"DESATIVADO(A) desde {d['criado_em'][:10]}: "
-                     f"{d['motivo']}")
+                     f"não está {DESATIVADO[tipo]}" if d is None else
+                     f"{DESATIVADO[tipo].upper()} desde "
+                     f"{d['criado_em'][:10]}: {d['motivo']}")
         return d
 
     # --- veículos -----------------------------------------------------

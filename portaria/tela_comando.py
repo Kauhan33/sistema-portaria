@@ -304,7 +304,7 @@ class Console(tk.Frame):
         corpo = tk.Frame(interno, bg=COR["superficie"])
         corpo.pack(fill="both", expand=True, padx=(px(12), px(4)),
                    pady=(0, px(8)))
-        self.texto = tk.Text(corpo, height=9, wrap="none", relief="flat",
+        self.texto = tk.Text(corpo, height=11, wrap="none", relief="flat",
                              bd=0, highlightthickness=0, font=FONTE["mono"],
                              bg=COR["superficie"], fg=COR["texto"],
                              selectbackground=COR["selecao"],

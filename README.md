@@ -183,10 +183,11 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 ## Galeria
 
-As telas `v24_*` (linguagem de comandos) e `v23_*` são da versão atual. As
-das versões anteriores mostram recursos que continuam iguais, mas a barra
-lateral delas ainda tem a página Bloqueios (desde a 2.3 é Pessoas ›
-Desativadas) e a "Saída rápida" no lugar do campo Comando.
+As telas `v24_*` (linguagem de comandos) são da versão atual. As `v23_*` e
+as anteriores mostram recursos que continuam iguais, mas no topo da Entrada e
+saída ainda aparece a "Saída rápida", que na 2.4 virou o campo Comando (e nas
+anteriores à 2.3 a barra lateral ainda tem a página Bloqueios, hoje Pessoas ›
+Desativadas).
 
 | | |
 |---|---|

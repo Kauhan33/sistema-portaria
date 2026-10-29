@@ -175,6 +175,10 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 ## Galeria
 
+As telas `v23_*` são da versão atual. As das versões anteriores mostram recursos
+que continuam iguais, mas a barra lateral delas ainda tem a página Bloqueios
+(desde a 2.3 é Pessoas › Desativadas).
+
 | | |
 |---|---|
 | ![Entrada e saída 2.3](docs/design/final/v23_entrada_admin_claro.png) | ![Placa antiga no tema escuro](docs/design/final/v23_entrada_porteiro_escuro.png) |
@@ -185,17 +189,17 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 | **Pessoas › Veículos desativados** — placas que não entram | **Nova pessoa** — cadastro sem entrada |
 | ![Editar usuário](docs/design/final/v23_usuarios_editar_claro.png) | ![Editar feriado](docs/design/final/v23_config_feriados_claro_1366x670.png) |
 | **Usuários › Editar** — nome e perfil (RN43) | **Configurações** — editar feriado e evento (RN44) |
-| ![Registro cadastrado com sucesso](docs/design/final/v221_cadastro_admin_claro.png) | ![Movimento perto do fechamento](docs/design/final/v221_movimento_admin_claro.png) |
-| **Entrada e saída (2.2.1)** — "Registro cadastrado com sucesso! Entrada de Júlia às 15:20." | **Movimento** — tempo excedido, saída pendente e os avisos do fechamento |
+| ![Registro cadastrado com sucesso](docs/design/final/v23_entrada_admin_escuro.png) | ![Movimento perto do fechamento](docs/design/final/v23_movimento_admin_claro.png) |
+| **Tema escuro** — "Registro cadastrado com sucesso! Entrada de Júlia às 15:20." | **Movimento** — tempo excedido, saída pendente e os avisos do fechamento |
 | ![Login](docs/design/final/login.png) | ![Primeiro acesso](docs/design/final/primeiro_acesso.png) |
 | **Login** — painel da guarita com relógio | **Primeiro acesso** — cria o administrador (sem senha padrão) |
 | ![Pessoa já cadastrada](docs/design/final/cadastro_ok.png) | ![Pessoa desativada](docs/design/final/v23_entrada_desativada_claro.png) |
 | **Entrada e saída** — quem já veio tem os dados preenchidos | **Pessoa desativada** — a entrada é recusada |
 | ![Visão do porteiro](docs/design/final/cadastro_porteiro.png) | ![Layout compacto](docs/design/final/cadastro_compacto.png) |
 | **Visão do porteiro** — CPF mascarado, sem Excluir | **Notebook 1366×768** — layout compacto |
-| ![Painel](docs/design/final/painel.png) | ![Exportar CSV](docs/design/final/exportar_csv.png) |
+| ![Painel](docs/design/final/v23_painel_claro.png) | ![Exportar CSV](docs/design/final/exportar_csv.png) |
 | **Painel** — números do dia e gráficos | **Exportar CSV** — só administrador |
-| ![Usuários](docs/design/final/usuarios.png) | ![Corrigir registro](docs/design/final/corrigir.png) |
+| ![Usuários](docs/design/final/v23_usuarios_claro.png) | ![Corrigir registro](docs/design/final/corrigir.png) |
 | **Usuários** — contas e atividade do sistema | **Corrigir registro** — com o histórico do registro |
 | ![Saída pendente e aviso de fechamento](docs/design/final/horarios_movimento_admin.png) | ![Autorização do administrador](docs/design/final/horarios_autorizacao_porteiro.png) |
 | **Regras de horário** — saída pendente, tempo excedido e "fecha em 20 min" | **Autorização do administrador** — exceção pedida pelo porteiro |
@@ -203,7 +207,7 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 | **Configurações** — janela, permanência e tolerância de cada categoria | **Painel** — veículos no estacionamento e tempo excedido |
 | ![Calendário](docs/design/final/r2_calendario.png) | ![Relógio](docs/design/final/r2_relogio_horas.png) |
 | **Calendário** — clique no campo de data | **Relógio** — horas em dois anéis, depois os minutos |
-| ![Saiu com o veículo?](docs/design/final/r2_saiu_com_o_veiculo.png) | ![Veículos no estacionamento](docs/design/final/r2_movimento_veiculos.png) |
+| ![Saiu com o veículo?](docs/design/final/r2_saiu_com_o_veiculo.png) | ![Veículos no estacionamento](docs/design/final/v23_movimento_veiculos_claro.png) |
 | **Saiu com o veículo?** — sair de carro ou a pé | **Movimento › Veículos** — os carros no estacionamento |
 | ![Carro no estacionamento](docs/design/final/r2_carro_no_estacionamento_1366x670.png) | ![Histórico de visitas](docs/design/final/r2_pessoas_historico.png) |
 | **De volta, a pé** — o carro dela continua no estacionamento | **Pessoas** — histórico de visitas na ficha |
@@ -215,14 +219,14 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 | **Modo noturno** — Entrada e saída no tema escuro | **Modo noturno** — Painel, com a barra de título escura |
 | ![Login no tema escuro](docs/design/final/escuro_login.png) | ![Menu da conta](docs/design/final/escuro_menu_tema.png) |
 | **Modo noturno** — o login segue o tema do Windows | **Menu da conta** — Claro, Escuro ou Seguir o Windows |
-| ![Vai levar o carro?](docs/design/final/v22_vai_levar_o_carro_claro.png) | ![Quem pode retirar](docs/design/final/v22_pessoas_quem_pode_retirar_claro.png) |
+| ![Vai levar o carro?](docs/design/final/v22_vai_levar_o_carro_claro.png) | ![Quem pode retirar](docs/design/final/v23_pessoas_veiculo_claro.png) |
 | **Vai levar o carro?** — quem está na lista leva o carro sem senha (RN35) | **Pessoas › Veículo** — quem pode retirar o carro |
-| ![Carro esquecido](docs/design/final/v22_carro_esquecido_claro.png) | ![Exceções](docs/design/final/v22_excecoes_claro.png) |
+| ![Carro esquecido](docs/design/final/v22_carro_esquecido_claro.png) | ![Exceções](docs/design/final/v23_excecoes_claro.png) |
 | **Carro esquecido** e **Estacionamento 3/50** antes do fechamento (RN36, RN37) | **Usuários › Exceções** — tudo o que passou por cima da regra |
 | ![Códigos de recuperação](docs/design/final/v22_codigos_de_recuperacao_claro.png) | ![Esqueci a senha](docs/design/final/v22_login_esqueci_a_senha_claro.png) |
 | **Códigos de recuperação** — aparecem uma vez (RN38) | **Esqueci a senha** — com um código de uso único |
-| ![Dois carros: entrada](docs/design/final/v22_dois_carros_entrada_claro.png) | ![Dois carros: saída](docs/design/final/v22_dois_carros_saida_claro.png) |
-| **Dois carros** — o aviso na entrada com outro carro (RN40) | **Com qual carro está saindo?** — uma pergunta só |
+| ![Dois carros: entrada](docs/design/final/v23_dois_carros_entrada_claro.png) | ![Dois carros: saída](docs/design/final/v23_dois_carros_saida_claro.png) |
+| **Dois carros** — o aviso na entrada com outro carro (RN40) | **Com qual carro está saindo?** — uma pergunta só (ABC-1234 é placa antiga) |
 | ![Guarita travada](docs/design/final/v22_guarita_travada_escuro.png) | ![Vagas](docs/design/final/v22_config_vagas_claro_1366x670.png) |
 | **Ausentar** — guarita travada, o rascunho fica guardado | **Configurações** — vagas e "Bloquear quando lotado" (notebook 1366×670) |
 | ![O veículo só sai com o dono](docs/design/final/r5_veiculo_so_sai_com_o_dono_claro.png) | ![Senha do administrador](docs/design/final/r5_senha_do_administrador_claro.png) |

@@ -26,7 +26,9 @@ celular e tipo, placa desenhada (Mercosul ou antiga), número de visitas,
 faixa de situação, os botões (sempre à vista, no pé da ficha) Registrar
 entrada e Editar (o mesmo diálogo da Nova pessoa, com o CPF fixo:
 qualquer usuário corrige o cadastro, como já fazia) e, para o
-administrador, Desativar / Reativar; e duas seções:
+administrador, Desativar / Reativar e Excluir (RN42: só o cadastro de
+quem nunca teve visita; com histórico, o botão explica que é preciso
+desativar); e duas seções:
 - Visitas: o histórico de visitas dela, da mais recente para a mais
   antiga (entrada, saída, duração, tipo, placa e situação), com os dados
   que foram preenchidos em cada registro;
@@ -50,7 +52,8 @@ from .componentes import (Alternador, Aviso, Botao, Cabecalho, Campo, Cartao,
 from .consultas import encontrar_dentro
 from .estilo import (COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, fonte_icone,
                      px)
-from .usuarios import eh_admin, pode_gerenciar_desativacoes
+from .usuarios import (eh_admin, pode_excluir_pessoa,
+                       pode_gerenciar_desativacoes)
 from .validacao import (DESATIVADO, MAXIMO_BUSCA, MAXIMO_MOTIVO, MAXIMO_NOME,
                         O_QUE, TIPOS_ACESSO, converter_data, cpf_valido,
                         formatar_celular, formatar_desativacao,
@@ -381,7 +384,7 @@ class AbaPessoas:
         self.btn_editar = Botao(botoes, "Editar", self.editar, "secundario",
                                 icone=ICONE["editar"])
         self.btn_editar.pack(side="left", padx=(px(8), 0))
-        self.btn_desativar = None
+        self.btn_desativar = self.btn_excluir = None
         self.linha_admin = None
         if self.admin:          # RN12: só o administrador desativa
             self.linha_admin = admin = tk.Frame(rodape, bg=fundo)
@@ -390,6 +393,11 @@ class AbaPessoas:
                                        self.desativar_selecionada, "perigo",
                                        icone=ICONE["bloqueio"], largura=132)
             self.btn_desativar.pack(side="left")
+            # RN42: excluir só quem nunca teve visita (o clique explica)
+            self.btn_excluir = Botao(admin, "Excluir",
+                                     self.excluir_selecionada, "perigo",
+                                     icone=ICONE["lixo"])
+            self.btn_excluir.pack(side="left", padx=(px(8), 0))
 
     def _montar_visitas(self, c):
         """Histórico de visitas: um "cartão" de texto por visita, com
@@ -868,6 +876,35 @@ class AbaPessoas:
             return None
         self.dialogo = DialogoDesativar(self, "cpf", p["cpf"], p["nome"])
         return self.dialogo
+
+    def excluir_selecionada(self):
+        """Ficha › Excluir (RN42): só o administrador e só o cadastro de
+        quem nunca teve visita; com visitas, explica que é preciso
+        desativar. Devolve True se excluiu."""
+        if not self._exigir_selecao():
+            return False
+        p = self.selecionada
+        ok, motivo = pode_excluir_pessoa(self.app.usuario, p["visitas"])
+        if not ok:
+            if eh_admin(self.app.usuario):
+                mensagens.aviso("Excluir pessoa", motivo)
+            else:
+                mensagens.erro("Acesso negado", motivo)
+            return False
+        if not self.app.perguntar(
+                mensagens.confirmar, "Excluir pessoa",
+                f"Excluir o cadastro de {p['nome']} (CPF "
+                f"{self.app.exibir_cpf(p['cpf'])})?\nEla nunca teve visita. "
+                "A exclusão não pode ser desfeita e fica no histórico."):
+            return False
+        ok, _ = self.app.tentar(self.app.banco.excluir_pessoa, p["id"],
+                                self.app.autor)
+        if not ok:
+            return False
+        self.app.atualizar_contadores()
+        self.atualizar()
+        self.limpar_ficha(f"{p['nome']}: cadastro excluído.")
+        return True
 
     def desativar_veiculo(self):
         """Ficha › Veículo › Desativar (ou Reativar) veículo."""

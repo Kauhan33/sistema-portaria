@@ -1519,6 +1519,80 @@ class TestAbaPessoas(BaseInterface):
         self.assertIn("Selecione", self.msg.showwarning.call_args[0][1])
 
 
+class TestExcluirPessoa(BaseInterface):
+    """RN42: só o administrador, e só quem nunca teve visita."""
+
+    def setUp(self):
+        super().setUp()
+        self.aba = self.app.tela_pessoas
+        self.banco.cadastrar_pessoa("52998224725", "Fernanda Souza",
+                                    "31987654321", "", "Visitante", "ana.admin")
+        self.banco.inserir(dict(VISITA_ANTIGA))               # Beto: 1 visita
+        self.aba.atualizar()
+
+    def abrir(self, cpf):
+        pessoa = self.banco.buscar_pessoa(cpf)
+        self.aba.tabela.selection_set(str(pessoa["id"]))
+        self.aba.ao_selecionar()
+        return pessoa
+
+    def test_admin_exclui_quem_nunca_teve_visita(self):
+        pessoa = self.abrir("52998224725")
+        self.assertTrue(self.aba.excluir_selecionada())
+        self.assertIn("Excluir o cadastro de Fernanda Souza",
+                      self.msg.askyesno.call_args[0][1])
+        self.assertIsNone(self.banco.buscar_pessoa("52998224725"))
+        self.assertFalse(self.aba.tabela.exists(str(pessoa["id"])))
+        self.assertIsNone(self.aba.selecionada)
+        self.assertIn(("ana.admin", "Pessoa excluída"), self.acoes())
+
+    def test_com_visita_o_botao_explica_que_e_preciso_desativar(self):
+        self.abrir("11144477735")
+        self.assertFalse(self.aba.excluir_selecionada())
+        titulo, texto = self.msg.showwarning.call_args[0]
+        self.assertEqual(titulo, "Excluir pessoa")
+        self.assertIn("1 visita no histórico", texto)
+        self.assertIn("Desativar", texto)
+        self.msg.askyesno.assert_not_called()
+        self.assertIsNotNone(self.banco.buscar_pessoa("11144477735"))
+
+    def test_cancelar_nao_exclui(self):
+        self.abrir("52998224725")
+        self.msg.askyesno.return_value = False
+        self.assertFalse(self.aba.excluir_selecionada())
+        self.assertIsNotNone(self.banco.buscar_pessoa("52998224725"))
+
+    def test_banco_recusa_porteiro_e_pessoa_com_visita(self):
+        fernanda = self.banco.buscar_pessoa("52998224725")["id"]
+        beto = self.banco.buscar_pessoa("11144477735")["id"]
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.excluir_pessoa(fernanda, "paulo")
+        self.assertIn("Somente o administrador", str(erro.exception))
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.excluir_pessoa(beto, "ana.admin")
+        self.assertIn("Desativar", str(erro.exception))
+        with self.assertRaises(dados.ErroDados):                # sem sessão
+            self.banco.excluir_pessoa(fernanda, None)
+        self.assertEqual(len(self.banco.listar_pessoas()), 2)
+
+
+class TestExcluirPessoaPorteiro(BaseInterface):
+    entrar_como = "porteiro"
+
+    def test_porteiro_nao_ve_o_botao_nem_exclui(self):
+        self.banco.cadastrar_pessoa("52998224725", "Fernanda Souza",
+                                    "31987654321", "", "Visitante", "paulo")
+        aba = self.app.tela_pessoas
+        aba.atualizar()
+        aba.tabela.selection_set(aba.tabela.get_children()[0])
+        aba.ao_selecionar()
+        self.assertIsNone(aba.btn_excluir)
+        self.assertFalse(aba.excluir_selecionada())
+        self.assertIn("Somente o administrador",
+                      self.msg.showerror.call_args[0][1])
+        self.assertIsNotNone(self.banco.buscar_pessoa("52998224725"))
+
+
 class TestNovaPessoa(BaseInterface):
     """2.3: "Nova pessoa" cadastra sem registrar entrada."""
     entrar_como = "porteiro"         # o porteiro também cadastra

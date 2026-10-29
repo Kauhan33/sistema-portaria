@@ -281,6 +281,17 @@ class TestPermissoes(unittest.TestCase):
         self.assertFalse(pode_excluir(PORTEIRO))
         self.assertFalse(pode_excluir(None))
 
+    def test_excluir_pessoa_so_admin_e_sem_visitas(self):  # RN42
+        from portaria.usuarios import pode_excluir_pessoa
+        self.assertEqual(pode_excluir_pessoa(ADMIN, 0), (True, ""))
+        ok, msg = pode_excluir_pessoa(ADMIN, 3)
+        self.assertFalse(ok)
+        self.assertIn("3 visitas", msg)
+        self.assertIn("Desativar", msg)
+        ok, msg = pode_excluir_pessoa(PORTEIRO, 0)
+        self.assertFalse(ok)
+        self.assertIn("Somente o administrador", msg)
+
     def test_so_admin_desativa_e_reativa(self):
         self.assertTrue(pode_gerenciar_desativacoes(ADMIN))
         self.assertFalse(pode_gerenciar_desativacoes(PORTEIRO))

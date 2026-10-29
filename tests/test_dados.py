@@ -449,6 +449,35 @@ class TestPessoas(BaseTemp):
                 self.banco.atualizar_pessoa(id_, nome, celular, placa, "Aluno",
                                             autor="ana")
 
+    def test_excluir_pessoa_sem_visitas_e_seus_autorizados(self):  # RN42
+        id_ = self.banco.cadastrar_pessoa("52998224725", "Ana Silva",
+                                          "31987654321", "NEY4829",
+                                          "Visitante", "ana")
+        self.banco.adicionar_autorizado("52998224725", "11144477735",
+                                        "Beto Rocha", None, autor="ana")
+        self.banco.desativar("cpf", "52998224725", "Motivo válido", "ana")
+        self.banco.excluir_pessoa(id_, "ana")
+        self.assertIsNone(self.banco.buscar_pessoa("52998224725"))
+        self.assertEqual(self.banco.listar_autorizados("NEY4829"), [])
+        d = self.banco.listar_desativacoes()[0]                # continua
+        self.assertEqual((d["valor"], d["nome"]), ("52998224725", ""))
+        evento = self.banco.listar_eventos()[0]
+        self.assertEqual(evento["acao"], "Pessoa excluída")
+        self.assertIn("***.982.247-**", evento["detalhe"])
+        self.assertNotIn("52998224725", evento["detalhe"])
+
+    def test_excluir_pessoa_com_visita_ou_por_porteiro_e_recusado(self):
+        self.banco.inserir(registro())
+        com_visita = self.banco.buscar_pessoa("52998224725")["id"]
+        sem_visita = self.banco.cadastrar_pessoa(
+            "11144477735", "Beto Rocha", "31987654321", "", "Aluno", "ana")
+        for id_, autor in ((com_visita, "ana"), (sem_visita, "paulo"),
+                           (sem_visita, None), (999, "ana")):
+            with self.subTest(id_=id_, autor=autor):
+                with self.assertRaises(dados.ErroDados):
+                    self.banco.excluir_pessoa(id_, autor)
+        self.assertEqual(len(self.banco.listar_pessoas()), 2)
+
     def test_corrigir_dados_nao_muda_as_visitas(self):
         self.banco.inserir(registro())
         id_ = self.banco.buscar_pessoa("52998224725")["id"]

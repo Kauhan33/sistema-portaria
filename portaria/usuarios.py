@@ -393,6 +393,23 @@ def pode_editar(usuario, registro, agora):
                    "Para registros mais antigos, peça a um administrador.")
 
 
+def pode_excluir_pessoa(usuario, visitas):
+    """
+    RN42 (2.3): (ok, mensagem) para excluir o cadastro de uma pessoa. Só o
+    administrador, e só se ela nunca teve visita (cadastro feito por
+    engano): o histórico da portaria não se apaga. Com visitas, o caminho
+    é desativar (RN12).
+    """
+    if not eh_admin(usuario):
+        return False, "Somente o administrador exclui o cadastro de pessoas."
+    if visitas:
+        vezes = "1 visita" if visitas == 1 else f"{visitas} visitas"
+        return False, (f"Esta pessoa tem {vezes} no histórico e não pode ser "
+                       "excluída: o histórico da portaria não se apaga.\n"
+                       "Para impedir a entrada, use Desativar.")
+    return True, ""
+
+
 def pode_desativar(alvo, logado, admins_ativos):
     """Retorna (ok, mensagem) para desativar o usuário `alvo`."""
     if alvo["id"] == logado["id"]:

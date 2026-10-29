@@ -85,7 +85,7 @@ from datetime import date, datetime, timedelta
 
 from . import horarios, senhas, validacao, veiculos
 from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
-                       conferir_autorizador, pode_editar)
+                       conferir_autorizador, pode_editar, pode_excluir_pessoa)
 from .validacao import (FORMATO, MAXIMO_BUSCA, MAXIMO_CELULAR, MAXIMO_CPF,
                         MAXIMO_CODIGO, MAXIMO_DATA_HORA, MAXIMO_DESCRICAO,
                         MAXIMO_JUSTIFICATIVA, MAXIMO_LOGIN, MAXIMO_MOTIVO,
@@ -2567,6 +2567,41 @@ class Banco:
                          f"{dados['nome']} (pessoa #{cursor.lastrowid}), sem "
                          "entrada")
             return cursor.lastrowid
+
+    def excluir_pessoa(self, id_pessoa, autor):
+        """
+        RN42 (2.3): exclui o cadastro de uma pessoa que NUNCA teve visita
+        (cadastro feito por engano). Só o administrador; o banco conta as
+        visitas de novo (usuarios.pode_excluir_pessoa) e recusa se houver
+        alguma — aí o caminho é desativar. A desativação do CPF, se houver,
+        continua valendo (o CPF passa a aparecer "sem cadastro"); quem
+        podia retirar o carro dela sai da lista (remoção lógica). Tudo na
+        mesma transação, com o evento "Pessoa excluída".
+        """
+        with self._conexao() as con:
+            usuario = self._exigir(con, autor, para="excluir pessoas")
+            linha = con.execute("SELECT cpf, nome FROM pessoas WHERE id = ?",
+                                (id_pessoa,)).fetchone()
+            if linha is None:
+                raise ErroDados("Esta pessoa já não está cadastrada.")
+            cpf, nome = linha
+            visitas, = con.execute(
+                "SELECT COUNT(*) FROM registros WHERE pessoa_id = ? OR cpf = ?",
+                (id_pessoa, cpf)).fetchone()
+            ok, msg = pode_excluir_pessoa(usuario, visitas)
+            if not ok:
+                raise ErroDados(msg)
+            agora = self.relogio().strftime(FORMATO_ISO)
+            removidos = con.execute(
+                "UPDATE autorizados_veiculo SET ativo = 0, removido_em = ?, "
+                "removido_por = ? WHERE dono_cpf = ? AND ativo = 1",
+                (agora, autor, cpf)).rowcount
+            con.execute("DELETE FROM pessoas WHERE id = ?", (id_pessoa,))
+            self._evento(con, autor, PESSOA_EXCLUIDA,
+                         f"{nome} (CPF {mascarar_cpf(cpf)}, pessoa "
+                         f"#{id_pessoa}): cadastro sem visitas"
+                         + (f"; {removidos} autorizado(s) a retirar o carro "
+                            "removido(s)" if removidos else ""))
 
     def atualizar_pessoa(self, id_pessoa, nome, celular, placa, tipo, autor=None):
         """Corrige o cadastro da pessoa (as visitas antigas não mudam). O

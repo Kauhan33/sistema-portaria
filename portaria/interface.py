@@ -2,7 +2,7 @@
 Janela principal (Tkinter): moldura com a barra lateral, sessão do usuário
 (login, saída, troca de senha e saída automática por inatividade) e as
 páginas. Cada página mora no seu módulo: tela_cadastro.py ("Entrada e
-saída"), tela_pessoas.py (com as subabas Ativas, Desativadas e Veículos
+saída"), tela_pessoas.py (com as subabas Ativas, Pessoas desativadas e Veículos
 desativados: na 2.3 a página Bloqueios virou a desativação dentro de
 Pessoas), tela_dashboard.py ("Painel"),
 tela_usuarios.py e tela_configuracoes.py (as duas só para administrador);
@@ -40,7 +40,7 @@ CONTRATO DO APP — o que as telas podem usar da AppPortaria:
     app.avisar(texto, desfazer=None)  aviso que some sozinho no Movimento
     app.preencher_pessoa(pessoa) abre a Entrada e saída com a pessoa preenchida
     app.ir_para(pagina)          mostra uma página (ex.: app.aba_pessoas)
-    app.mostrar_desativacao(tipo, valor)  abre Pessoas › Desativadas
+    app.mostrar_desativacao(tipo, valor)  abre Pessoas › Pessoas desativadas
                                  (tipo "cpf") ou › Veículos desativados
                                  ("placa") com a desativação escolhida
     app.exibir_cpf(cpf)          CPF como a tabela mostra: completo para o
@@ -318,7 +318,7 @@ class AppPortaria:
             self.tela_pessoas.mostrar_contadores(n)
 
     def mostrar_desativacao(self, tipo, valor):
-        """Link "Ver desativação": Pessoas › Desativadas (CPF) ou ›
+        """Link "Ver desativação": Pessoas › Pessoas desativadas (CPF) ou ›
         Veículos desativados (placa), com a linha escolhida."""
         self.ir_para(self.aba_pessoas)
         self.tela_pessoas.mostrar_desativacao(tipo, valor)

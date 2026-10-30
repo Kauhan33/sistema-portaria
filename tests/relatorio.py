@@ -311,7 +311,7 @@ CASOS = [
           "test_interface.TestAbaDesativadas."
           "test_banco_recusa_a_entrada_de_desativado_mesmo_sem_a_tela"]),
     caso("CT-28", ["RN12"], NEGATIVO, "Porteiro não desativa",
-         "Logado como porteiro: abrir Pessoas › Desativadas e Veículos "
+         "Logado como porteiro: abrir Pessoas › Pessoas desativadas e Veículos "
          "desativados; tentar desativar uma pessoa direto no banco.",
          "Vê as listas (CPF mascarado), sem \"Desativar\" nem "
          "\"Reativar\"; o banco recusa.",
@@ -533,7 +533,7 @@ CASOS = [
           "test_dados.TestPessoas."
           "test_excluir_pessoa_com_visita_ou_por_porteiro_e_recusado"]),
     caso("CT-51", ["RN12"], NEGATIVO, "Porteiro tenta reativar",
-         "Logado como porteiro: em Pessoas › Desativadas, escolher a pessoa "
+         "Logado como porteiro: em Pessoas › Pessoas desativadas, escolher a pessoa "
          "e tentar Reativar (pela lista ou pela ficha); ou reativar direto "
          "no banco.",
          "\"Somente o administrador desativa ou reativa\"; a pessoa continua "

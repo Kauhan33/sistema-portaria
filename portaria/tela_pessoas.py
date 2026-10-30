@@ -6,7 +6,7 @@ desativação, aqui dentro):
   banco.buscar_pessoas), ordenada pela coluna clicada no cabeçalho (1º
   clique crescente, 2º decrescente; abre ordenada pela situação: no campus,
   fora, e depois pelo nome);
-- Desativadas: as pessoas (CPFs) desativadas — com o cadastro ou "(sem
+- Pessoas desativadas: as pessoas (CPFs) desativadas — com o cadastro ou "(sem
   cadastro)" —, o motivo, quando e quem desativou; "Mostrar reativadas"
   traz também as que já voltaram;
 - Veículos desativados: as placas desativadas, com o dono (quem tem a placa
@@ -21,7 +21,7 @@ e tipo SEM registrar entrada, com a mesma validação e os mesmos limites da
 entrada; CPF já cadastrado é recusado e abre a ficha que já existe; CPF
 desativado avisa (pode cadastrar, mas continua sem entrar).
 
-À direita (Ativas e Desativadas), a ficha da pessoa escolhida: nome, CPF,
+À direita (Ativas e Pessoas desativadas), a ficha da pessoa escolhida: nome, CPF,
 celular e tipo, placa desenhada (Mercosul ou antiga), número de visitas,
 faixa de situação, os botões (sempre à vista, no pé da ficha) Registrar
 entrada e Editar (o mesmo diálogo da Nova pessoa, com o CPF fixo:
@@ -62,7 +62,7 @@ from .validacao import (DESATIVADO, MAXIMO_BUSCA, MAXIMO_MOTIVO, MAXIMO_NOME,
 from .veiculos import (DONO_PRECISA_ESTAR, pode_cadastrar_autorizado,
                        validar_autorizado, validar_nova_validade)
 
-ABAS = ("Ativas", "Desativadas", "Veículos desativados")
+ABAS = ("Ativas", "Pessoas desativadas", "Veículos desativados")
 COLUNAS = [("nome", "Nome", 160, "w"), ("cpf", "CPF", 112, "w"),
            ("celular", "Celular", 115, "w"), ("placa", "Placa", 80, "w"),
            ("tipo", "Tipo", 110, "w"), ("visitas", "Visitas", 66, "center"),
@@ -85,7 +85,7 @@ SEM_VEICULO = ("Sem veículo cadastrado. A lista de quem pode retirar vale "
 LIMITE_VISITAS = 200
 SEM_VISITAS = "Nenhuma visita registrada."
 
-# Desativadas (CPF) e Veículos desativados (placa): colunas de cada lista.
+# Pessoas desativadas (CPF) e Veículos desativados (placa): colunas de cada lista.
 # Com a ficha ao lado, a de pessoas mostra nome, CPF e motivo; com largura
 # sobrando (tela grande), também quando e quem desativou.
 COLUNAS_DESATIVACAO = {
@@ -223,7 +223,7 @@ class AbaPessoas:
     # Subabas
     # --------------------------------------------------------------
     def mostrar_aba(self, nome):
-        """Ativas e Desativadas: lista + ficha; Veículos desativados: a
+        """Ativas e Pessoas desativadas: lista + ficha; Veículos desativados: a
         lista com a largura toda."""
         self.aba_atual = nome
         cartoes = {ABAS[0]: self.cartao_ativas,
@@ -250,7 +250,7 @@ class AbaPessoas:
                 aba, f"{aba} ({n[chave]})" if n[chave] else aba)
 
     def mostrar_desativacao(self, tipo, valor):
-        """Abre Desativadas (CPF) ou Veículos desativados (placa) com a
+        """Abre Pessoas desativadas (CPF) ou Veículos desativados (placa) com a
         desativação em vigor de `valor` selecionada."""
         self.seletor.selecionar(ABAS[1] if tipo == "cpf" else ABAS[2])
         lista = self.desativadas if tipo == "cpf" else self.veiculos_desativados
@@ -853,7 +853,7 @@ class AbaPessoas:
 
     def abrir_ficha(self, pessoa, aviso=None):
         """Mostra a ficha de `pessoa` na subaba certa (Ativas, ou
-        Desativadas se o CPF estiver desativado), com um aviso opcional
+        Pessoas desativadas se o CPF estiver desativado), com um aviso opcional
         (tipo, texto) na faixa."""
         self._ler_desativacoes()
         if pessoa["cpf"] in self.desativacoes:
@@ -1011,7 +1011,7 @@ class AbaPessoas:
 
 
 class ListaDesativacoes:
-    """Subaba Desativadas (tipo "cpf") ou Veículos desativados ("placa"):
+    """Subaba Pessoas desativadas (tipo "cpf") ou Veículos desativados ("placa"):
     a lista, "Mostrar reativadas" e, para o administrador, Desativar e
     Reativar. Selecionar uma pessoa abre a ficha dela ao lado."""
 

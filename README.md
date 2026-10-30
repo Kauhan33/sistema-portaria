@@ -187,7 +187,7 @@ As telas `v24_*` (linguagem de comandos) são da versão atual. As `v23_*` e
 as anteriores mostram recursos que continuam iguais, mas no topo da Entrada e
 saída ainda aparece a "Saída rápida", que na 2.4 virou o campo Comando (e nas
 anteriores à 2.3 a barra lateral ainda tem a página Bloqueios, hoje Pessoas ›
-Desativadas).
+Pessoas desativadas).
 
 | | |
 |---|---|
@@ -206,7 +206,7 @@ Desativadas).
 | ![Entrada e saída 2.3](docs/design/final/v23_entrada_admin_claro.png) | ![Placa antiga no tema escuro](docs/design/final/v23_entrada_porteiro_escuro.png) |
 | **Entrada e saída (2.3)** — o Movimento sobe, com as subabas embaixo do título | **Placa antiga** (NEY-4829) no tema escuro, visão do porteiro |
 | ![Pessoas: ativas](docs/design/final/v23_pessoas_ativas_claro.png) | ![Pessoas: desativadas](docs/design/final/v23_pessoas_desativadas_claro.png) |
-| **Pessoas › Ativas** — ficha com Editar, Desativar e Excluir | **Pessoas › Desativadas** — motivo, quando e quem; "(sem cadastro)" |
+| **Pessoas › Ativas** — ficha com Editar, Desativar e Excluir | **Pessoas › Pessoas desativadas** — motivo, quando e quem; "(sem cadastro)" |
 | ![Veículos desativados](docs/design/final/v23_pessoas_veiculos_desativados_claro.png) | ![Nova pessoa](docs/design/final/v23_nova_pessoa_claro.png) |
 | **Pessoas › Veículos desativados** — placas que não entram | **Nova pessoa** — cadastro sem entrada |
 | ![Editar usuário](docs/design/final/v23_usuarios_editar_claro.png) | ![Editar feriado](docs/design/final/v23_config_feriados_claro_1366x670.png) |
@@ -305,7 +305,7 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     cadastrada (nome, celular, placa e tipo se preenchem sozinhos, só nos campos
     vazios), está no campus (com o atalho "Registrar saída") ou está
     **desativada** (a entrada será recusada; atalho "Ver desativação", que
-    abre Pessoas › Desativadas);
+    abre Pessoas › Pessoas desativadas);
   - à direita, a **placa desenhada** acompanha a digitação — Mercosul
     (branca, faixa azul "BRASIL") ou **antiga** (cinza, moldura escura,
     NEY-4829) — e fica vermelha se o veículo estiver desativado; embaixo, o
@@ -403,7 +403,7 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     pela coluna clicada** no cabeçalho (1º clique crescente, 2º decrescente,
     com ▲ ou ▼; datas e números na ordem certa; abre ordenada pela situação
     e depois pelo nome);
-  - **Desativadas**: as pessoas (CPFs) que não entram, com o motivo, quando
+  - **Pessoas desativadas**: as pessoas (CPFs) que não entram, com o motivo, quando
     e quem desativou — também o CPF desativado que nunca foi cadastrado,
     como "(sem cadastro)"; **Mostrar reativadas** traz as que já voltaram;
   - **Veículos desativados**: as placas que não entram, com o dono, o
@@ -724,7 +724,7 @@ danificado):
 | `portaria/tela_comando.py` | Campo Comando: realce, Tab, console e modo didático (2.4) |
 | `portaria/linguagem/` | A linguagem de comandos: `lexico.py`, `gramatica.py`, `sintatico.py`, `simbolos.py`, `semantico.py`, `executor.py`, `interpretador.py`, `erros.py` |
 | `docs/GRAMATICA_DA_LINGUAGEM.md` | A gramática da linguagem (tokens, EBNF, checagens, erros por fase) |
-| `portaria/tela_pessoas.py` | Pessoas: Ativas, Desativadas e Veículos desativados, ficha, Nova pessoa e Editar |
+| `portaria/tela_pessoas.py` | Pessoas: Ativas, Pessoas desativadas e Veículos desativados, ficha, Nova pessoa e Editar |
 | `portaria/tela_dashboard.py` | Painel e exportação; `graficos.py` desenha as barras |
 | `portaria/tela_usuarios.py` | Usuários, atividade e o relatório de exceções (só administrador) |
 | `portaria/tela_edicao.py` | Janela "Corrigir registro" com o histórico do registro |

@@ -90,7 +90,7 @@ class BaseInterface(unittest.TestCase):
         # erro dentro de um callback do Tk (clique, <Configure>, after...):
         # o Tk só imprime e segue, e o teste passaria assim mesmo. Aqui ele
         # é guardado e o teste falha no fim (foi assim que um RecursionError
-        # ao abrir Pessoas › Desativadas passou despercebido na 2.3 e 2.4)
+        # ao abrir Pessoas › Pessoas desativadas passou despercebido na 2.3 e 2.4)
         self.erros_tk = []
         self.raiz.report_callback_exception = (
             lambda tipo, erro, rastro: self.erros_tk.append(erro))
@@ -1760,7 +1760,7 @@ class TestNovaPessoa(BaseInterface):
         self.msg.askyesno.return_value = True
         self.assertTrue(dialogo.salvar())
         self.assertIsNotNone(self.banco.buscar_pessoa("52998224725"))
-        self.assertEqual(self.aba.seletor.ativa, "Desativadas")   # continua
+        self.assertEqual(self.aba.seletor.ativa, "Pessoas desativadas")   # continua
         self.assertEqual(self.aba.faixa.tipo, "sucesso")
 
     def test_banco_recusa_cpf_repetido_e_dado_invalido(self):
@@ -2482,7 +2482,7 @@ class TestDesativacaoNoCadastro(BaseInterface):
         self.app.tela_cadastro.aviso_pessoa.comando()     # clique no link
         pessoas = self.app.tela_pessoas
         self.assertEqual(self.app.abas.select(), str(self.app.aba_pessoas))
-        self.assertEqual(pessoas.seletor.ativa, "Desativadas")
+        self.assertEqual(pessoas.seletor.ativa, "Pessoas desativadas")
         selecao = pessoas.desativadas.tabela.selection()
         self.assertEqual(len(selecao), 1)
         self.assertEqual(pessoas.selecionada["cpf"], "11144477735")
@@ -2518,18 +2518,18 @@ class TestDesativacaoNoCadastro(BaseInterface):
         pessoas.atualizar()
         id_ = str(self.banco.buscar_pessoa("11144477735")["id"])
         self.assertFalse(pessoas.tabela.exists(id_))
-        pessoas.seletor.selecionar("Desativadas")
+        pessoas.seletor.selecionar("Pessoas desativadas")
         lista = pessoas.desativadas
         linha = lista.tabela.item(lista.tabela.get_children()[0])
         self.assertEqual(linha["text"], "Desativada")
         self.assertEqual(linha["values"][:3],
                          ["Beto Rocha", "***.444.777-**", "Ameaçou um aluno"])
-        self.assertEqual(pessoas.seletor.itens["Desativadas"][0].cget("text"),
-                         "Desativadas (1)")
+        self.assertEqual(pessoas.seletor.itens["Pessoas desativadas"][0].cget("text"),
+                         "Pessoas desativadas (1)")
 
     def test_porteiro_ve_as_listas_mas_nao_desativa_nem_reativa(self):
         pessoas = self.app.tela_pessoas
-        for lista, aba in ((pessoas.desativadas, "Desativadas"),
+        for lista, aba in ((pessoas.desativadas, "Pessoas desativadas"),
                            (pessoas.veiculos_desativados,
                             "Veículos desativados")):
             with self.subTest(aba=aba):
@@ -2551,7 +2551,7 @@ class TestDesativacaoNoCadastro(BaseInterface):
 
     def test_porteiro_pela_ficha_tambem_nao_reativa(self):
         pessoas = self.app.tela_pessoas
-        pessoas.seletor.selecionar("Desativadas")
+        pessoas.seletor.selecionar("Pessoas desativadas")
         desativacao = self.banco.listar_desativacoes(tipo="cpf")[0]
         self.assertFalse(pessoas.reativar(desativacao))
         self.assertIn("Somente o administrador",
@@ -2570,7 +2570,7 @@ class TestAbaDesativadas(BaseInterface):
 
     def preencher(self, tipo, valor, motivo):
         """Desativar CPF / Desativar placa, pela lista."""
-        self.aba.seletor.selecionar("Desativadas" if tipo == "cpf"
+        self.aba.seletor.selecionar("Pessoas desativadas" if tipo == "cpf"
                                     else "Veículos desativados")
         dialogo = self.lista(tipo).desativar()
         dialogo.valor.insert(0, valor)
@@ -2583,7 +2583,7 @@ class TestAbaDesativadas(BaseInterface):
         return ""
 
     def test_abrir_a_aba_nao_entra_em_recursao(self):
-        """Regressão (2.4): clicar em Desativadas ou Veículos desativados
+        """Regressão (2.4): clicar em Pessoas desativadas ou Veículos desativados
         derrubava o programa (RecursionError). O Tk devolve "show" como
         tupla, a comparação com o texto nunca batia e cada ajuste gerava
         outro <Configure>. Agora o segundo ajuste não muda nada."""
@@ -2593,7 +2593,7 @@ class TestAbaDesativadas(BaseInterface):
                     lista = self.lista(tipo)
                     lista.ver_reativadas.set(reativadas)
                     self.aba.seletor.selecionar(
-                        "Desativadas" if tipo == "cpf"
+                        "Pessoas desativadas" if tipo == "cpf"
                         else "Veículos desativados")
                     lista.atualizar()
                     lista.tabela.event_generate("<Configure>")
@@ -2653,8 +2653,8 @@ class TestAbaDesativadas(BaseInterface):
         self.assertIsNone(dialogo.valor)           # o CPF vem da ficha
         dialogo.motivo.insert(0, "Ameaçou um aluno")
         self.assertTrue(dialogo.salvar())
-        # foi para Desativadas, com a ficha dela e o Reativar
-        self.assertEqual(self.aba.seletor.ativa, "Desativadas")
+        # foi para Pessoas desativadas, com a ficha dela e o Reativar
+        self.assertEqual(self.aba.seletor.ativa, "Pessoas desativadas")
         self.assertEqual(self.aba.selecionada["cpf"], "11144477735")
         self.assertEqual(self.aba.faixa.tipo, "erro")
         self.assertEqual(self.aba.btn_desativar.cget("text"), "Reativar")

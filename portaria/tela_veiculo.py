@@ -116,8 +116,10 @@ def vai_entrar_de_carro(app, nome, placa, veio_de_carro, outras=()):
                                    *((o, o) for o in outras))]
         return app.perguntar(
             _perguntar, app, f"{primeiro} vai entrar de carro?",
-            f"{nome} tem {len(carros)} veículos cadastrados. Escolha com "
-            "qual vai entrar; a pé, a visita fica sem placa.", placa,
+            # sem contar: os carros que já estão no estacionamento não
+            # aparecem aqui, e "tem 4" para quem tem 5 confundia
+            f"{nome} tem mais de um veículo cadastrado. Escolha com qual vai "
+            "entrar; a pé, a visita fica sem placa.", placa,
             [("A pé", A_PE, variante(A_PE)),
              ("Com outro carro", OUTRO_CARRO, "fantasma")],
             padrao, 520, carros)

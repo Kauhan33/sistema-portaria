@@ -360,10 +360,11 @@ Sem mudança de esquema (banco v12).
   depois de aspas sem fechamento; `buscar` com período antigo; filtro da
   Atividade; ficha com mais de 3 carros; texto do "Vai entrar de carro?".
 - Lista de Pessoas 25 vezes mais rápida com 20 mil pessoas.
-- **Para o aluno decidir:** corrigir a placa de uma visita (erro de
-  digitação) deixa a placa errada entre os carros da pessoa (sai em
-  Editar, pelo ×), e ela aparece na pergunta "Vai entrar de carro?".
-- 1005 testes automatizados; casos de teste CT-01 a CT-88.
+- Decisão do aluno: corrigir a placa de uma visita (erro de digitação)
+  tira a placa antiga dos carros da pessoa, se nenhuma outra visita dela
+  usou essa placa (antes ela ficava no cadastro e aparecia em "Vai entrar
+  de carro?").
+- 1010 testes automatizados; casos de teste CT-01 a CT-89.
 
 ## 4. Rascunho de requisitos para o Word
 
@@ -552,7 +553,9 @@ preenche na entrada); a mesma placa pode ser de mais de uma pessoa (o carro da
 família); quem vem com um carro que não estava no cadastro tem a placa guardada
 sozinha; tirar uma placa do cadastro tira também quem podia retirar aquele carro
 (RN35, remoção lógica); "Vai entrar de carro?" oferece cada carro que não está no
-estacionamento, e o carro escolhido passa pelas mesmas checagens (RN12, RN26).
+estacionamento, e o carro escolhido passa pelas mesmas checagens (RN12, RN26); na
+correção de uma visita, a placa antiga sai dos carros da pessoa se nenhuma outra
+visita dela usou essa placa (2.5.1).
 
 ## 5. Pendências registradas na revisão final (para a versão 2.1+)
 

@@ -1045,6 +1045,26 @@ CASOS = [
         ["test_linguagem_fuzz.TestFuzzDaLinguagem.test_linhas_aleatorias",
          "test_linguagem.TestLexico."
          "test_cpf_depois_de_aspas_sem_fechamento_e_mascarado"]),
+    caso("CT-89", ["RF09", "RN47", "RN35"], POSITIVO,
+         "Corrigir a placa digitada errado tira a placa dos carros",
+         "Ana entra com ABC1D28 (digitado errado; o carro é o ABC1D23) e a "
+         "visita é corrigida. Outra visita com NEY4829 é corrigida, mas uma "
+         "visita anterior também usou NEY4829. Uma visita do CPF errado é "
+         "passada para o CPF certo.",
+         "ABC1D28 sai dos carros de Ana (e de quem podia retirá-lo) e não "
+         "aparece mais em \"Vai entrar de carro?\"; NEY4829 fica, porque "
+         "outra visita a usou; a placa sai também da pessoa do CPF errado; "
+         "se era a principal, a principal vira a do carro mais recente; o "
+         "histórico registra.",
+         ["test_placas.TestCorrecaoDaPlaca."
+          "test_placa_digitada_errado_sai_dos_carros",
+          "test_placas.TestCorrecaoDaPlaca.test_placa_usada_em_outra_visita_fica",
+          "test_placas.TestCorrecaoDaPlaca."
+          "test_principal_tirada_passa_para_a_da_visita_mais_recente",
+          "test_placas.TestCorrecaoDaPlaca."
+          "test_cpf_trocado_tira_a_placa_da_pessoa_errada",
+          "test_placas.TestCorrecaoDaPlaca."
+          "test_quem_podia_retirar_o_carro_errado_sai_da_lista"]),
 ]
 
 

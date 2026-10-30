@@ -128,7 +128,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-1005 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
+1010 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
 comandos** (uma classe por fase: léxico, gramática LL(1), sintático,
 semântico e a execução comparada com o formulário, além do campo, do console
 e do modo didático), validações, regras de
@@ -784,11 +784,14 @@ no banco):
   Atividade só olhava os 200 eventos mais recentes; com mais de 3 carros
   a linha Carro da ficha não cabia (agora é uma lista); "Vai entrar de
   carro?" contava errado os carros;
+- **corrigir a placa** digitada errado numa visita tira a placa antiga dos
+  carros da pessoa, se nenhuma outra visita dela usou essa placa (antes
+  ela ficava no cadastro e aparecia em "Vai entrar de carro?");
 - **mais rápido**: a lista de Pessoas num banco de 2 anos (20 mil pessoas)
   caiu de 0,3 s para 12 ms;
 - a exportação CSV também protege textos que começam com TAB ou retorno de
   carro (fórmula do Excel);
-- casos de teste CT-01 a CT-88 e 1005 testes automatizados.
+- casos de teste CT-01 a CT-89 e 1010 testes automatizados.
 
 **2.5** (30/10/2026) — pessoas com mais de um carro (banco v12, com backup
 antes; nada se perde):

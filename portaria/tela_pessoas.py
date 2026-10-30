@@ -58,7 +58,8 @@ from .validacao import (DESATIVADO, MAXIMO_BUSCA, MAXIMO_MOTIVO, MAXIMO_NOME,
                         O_QUE, TIPOS_ACESSO, converter_data, cpf_valido,
                         formatar_celular, formatar_desativacao,
                         formatar_placa, normalizar, normalizar_desativacao,
-                        so_digitos, validar_campos, validar_desativacao)
+                        so_digitos, validar_campos, validar_desativacao,
+                        validar_placas, MAXIMO_PLACAS_PESSOA)
 from .veiculos import (DONO_PRECISA_ESTAR, pode_cadastrar_autorizado,
                        validar_autorizado, validar_nova_validade)
 
@@ -156,6 +157,15 @@ def descrever_desativacao(d):
     return texto
 
 
+def texto_das_placas(p):
+    """Coluna Placa da lista: a principal e quantas mais a pessoa tem
+    ("ABC1D23 +1", RN47); "—" sem veículo."""
+    if not p["placas"]:
+        return "—"
+    extra = len(p["placas"]) - 1
+    return formatar_placa(p["placas"][0]) + (f" +{extra}" if extra else "")
+
+
 class AbaPessoas:
     def __init__(self, aba, app):
         self.aba = aba
@@ -165,6 +175,7 @@ class AbaPessoas:
         self.desativacoes = {}        # cpf -> desativação em vigor
         self.placas_desativadas = {}  # placa -> desativação em vigor
         self.selecionada = None       # pessoa da ficha
+        self.placa_da_ficha = ""      # o carro escolhido na ficha (RN47)
         self.desativacao_da_ficha = None   # CPF sem cadastro na ficha
         self.visitas = []             # visitas da pessoa (mais recente primeiro)
         self.dialogo = None
@@ -436,6 +447,12 @@ class AbaPessoas:
         e (administrador) desativar ou reativar o veículo."""
         fundo = COR["superficie"]
         secao = tk.Frame(c, bg=fundo)
+        # RN47: com mais de um carro, a pessoa escolhe de qual se fala
+        # (a placa desenhada no alto e a lista abaixo seguem a escolha)
+        self.linha_carros = tk.Frame(secao, bg=fundo)
+        tk.Label(self.linha_carros, text="Carro", font=FONTE["dica"], bg=fundo,
+                 fg=COR["texto_3"]).pack(side="left", padx=(0, px(6)))
+        self.chips_carros = {}
         self.cab_veiculo = cab = tk.Frame(secao, bg=fundo)
         cab.pack(fill="x")
         # desativar a placa (RN12): só o administrador, um link no título
@@ -480,8 +497,9 @@ class AbaPessoas:
 
     def mostrar_autorizados(self, pessoa):
         """Lista "Quem pode retirar" da placa da pessoa e o estado dos
-        botões (o porteiro só adiciona com o dono no campus)."""
-        placa = pessoa["placa"]
+        botões (o porteiro só adiciona com o dono no campus). A placa é a
+        escolhida em "Carro" (RN47); sem escolha, a principal."""
+        placa = self.placa_da_ficha
         self.autorizados = []
         self.tabela_autorizados.delete(*self.tabela_autorizados.get_children())
         self._mostrar_desativacao_do_veiculo(placa)
@@ -570,7 +588,7 @@ class AbaPessoas:
         if not ok:
             mensagens.aviso("Quem pode retirar", motivo)
             return None
-        self.dialogo = DialogoAutorizado(self, p)
+        self.dialogo = DialogoAutorizado(self, dict(p, placa=self.placa_da_ficha))
         return self.dialogo
 
     def editar_validade(self):
@@ -690,7 +708,7 @@ class AbaPessoas:
             _, situacao, texto, cor = self._situacao_da_pessoa(p)
             inserir_linha(self.tabela, i, (
                 p["nome"], self.app.exibir_cpf(p["cpf"]),
-                formatar_celular(p["celular"]), formatar_placa(p["placa"]) or "—",
+                formatar_celular(p["celular"]), texto_das_placas(p),
                 p["tipo"], p["visitas"], p["ultima_visita"] or "—", situacao),
                 iid=str(p["id"]), situacao=texto, cor=cor)
         if selecao and self.tabela.exists(selecao[0]):
@@ -713,6 +731,8 @@ class AbaPessoas:
 
     def mostrar_ficha(self, p):
         """Ficha da pessoa `p` (de banco.buscar_pessoa / buscar_pessoas)."""
+        mesma = (self.selecionada is not None
+                 and self.selecionada["id"] == p["id"])
         self.selecionada = p
         self.desativacao_da_ficha = None
         self.vazio.place_forget()
@@ -736,9 +756,51 @@ class AbaPessoas:
                 *(("Reativar", "secundario") if desativacao
                   else ("Desativar", "perigo")))
         self.btn_entrada.definir_ativo(desativacao is None)
+        if not mesma or self.placa_da_ficha not in p["placas"]:
+            self.placa_da_ficha = p["placa"] or next(iter(p["placas"]), "")
+        self._mostrar_carros(p)
         self._mostrar_placa()
         self.mostrar_visitas(p)
         self.mostrar_autorizados(p)
+
+    def _mostrar_carros(self, p):
+        """A linha "Carro" da seção Veículo: um botão por placa (RN47),
+        o escolhido destacado e o desativado em vermelho. Com um carro só
+        (ou nenhum), a linha some."""
+        for chip in self.chips_carros.values():
+            chip.destroy()
+        self.chips_carros = {}
+        if len(p["placas"]) < 2:
+            self.linha_carros.pack_forget()
+            return
+        fundo = COR["superficie"]
+        for placa in p["placas"]:
+            escolhida = placa == self.placa_da_ficha
+            chip = tk.Label(
+                self.linha_carros, text=formatar_placa(placa),
+                font=FONTE["rotulo"] if escolhida else FONTE["corpo"],
+                bg=COR["selecao"] if escolhida else fundo,
+                fg=(COR["erro"] if placa in self.placas_desativadas
+                    else COR["texto"] if escolhida else COR["texto_2"]),
+                padx=px(8), pady=px(2), cursor="hand2", takefocus=1,
+                highlightthickness=1,
+                highlightbackground=COR["foco"] if escolhida else COR["borda"],
+                highlightcolor=COR["foco"])
+            chip.pack(side="left", padx=(0, px(6)))
+            for evento in ("<Button-1>", "<Return>", "<space>"):
+                chip.bind(evento, lambda e, pl=placa: self.escolher_carro(pl))
+            self.chips_carros[placa] = chip
+        self.linha_carros.pack(fill="x", pady=(0, px(8)),
+                               before=self.cab_veiculo)
+
+    def escolher_carro(self, placa):
+        """Ficha › Veículo › Carro: passa a falar desse carro."""
+        if self.selecionada is None or placa not in self.selecionada["placas"]:
+            return
+        self.placa_da_ficha = placa
+        self._mostrar_carros(self.selecionada)
+        self._mostrar_placa()
+        self.mostrar_autorizados(self.selecionada)
 
     def mostrar_ficha_sem_cadastro(self, desativacao):
         """CPF desativado sem cadastro: CPF, desativação e Reativar."""
@@ -826,7 +888,7 @@ class AbaPessoas:
         self.faixa.pack(fill="x", pady=(px(10), 0), before=self.seletor_ficha)
 
     def _mostrar_placa(self):
-        placa = self.selecionada["placa"] if self.selecionada else ""
+        placa = self.placa_da_ficha if self.selecionada else ""
         self.desenho_placa.mostrar(placa,
                                    bloqueada=placa in self.placas_desativadas)
 
@@ -947,7 +1009,7 @@ class AbaPessoas:
         """Ficha › Veículo › Desativar (ou Reativar) veículo."""
         if not self._exigir_selecao() or not self._exigir_admin():
             return None
-        placa = self.selecionada["placa"]
+        placa = self.placa_da_ficha
         if not placa:
             return None
         desativacao = self.placas_desativadas.get(placa)
@@ -1172,8 +1234,10 @@ class ListaDesativacoes:
 
 class DialogoPessoa(Dialogo):
     """
-    Nova pessoa (CPF, nome, celular, placa opcional e tipo) ou Editar
-    pessoa (o CPF não muda). Mesma validação e mesmos limites da entrada
+    Nova pessoa (CPF, nome, celular, placas opcionais e tipo) ou Editar
+    pessoa (o CPF não muda). Placas (RN47): digita uma e Enter (ou
+    "Adicionar") para pôr outra; cada uma aparece embaixo com um × para
+    tirar. A primeira é a principal (a que o CPF preenche na entrada). Mesma validação e mesmos limites da entrada
     (validacao.validar_campos; o banco confere de novo). Cadastrar NÃO
     registra entrada. CPF já cadastrado: recusa e abre a ficha que já
     existe. CPF desativado: avisa já na digitação e pede confirmação.
@@ -1206,8 +1270,16 @@ class DialogoPessoa(Dialogo):
                           maximo=MAXIMO_NOME).entrada
         self.celular = campo("Celular com DDD", 2, 0, apoio="só números",
                              numeros=11).entrada
-        self.caixa_placa = campo("Placa", 2, 1, apoio="opcional",
-                                 placa=True).entrada
+        c = campo("Placas", 2, 1, apoio="Enter adiciona", placa=True)
+        self.caixa_placa = c.entrada
+        self.caixa_placa.bind("<Return>", self.adicionar_placa)
+        self.caixa_placa.bind("<KP_Enter>", self.adicionar_placa)
+        # para quem usa o mouse: "Adicionar" na linha do rótulo
+        link(c.master.winfo_children()[0], "Adicionar",
+             self.adicionar_placa).pack(side="right")
+        self.placas = list(pessoa["placas"]) if pessoa else []
+        self.linha_placas = tk.Frame(form, bg=COR["superficie"])
+        self._desenhar_placas()
         self.faixa = Aviso(form)
         if nova:
             self.var_cpf.trace_add("write", lambda *a: self._ao_digitar_cpf())
@@ -1219,7 +1291,6 @@ class DialogoPessoa(Dialogo):
             self.cpf.config(state="disabled")
             self.nome.insert(0, pessoa["nome"])
             self.celular.insert(0, pessoa["celular"])
-            self.caixa_placa.insert(0, pessoa["placa"])
             self.tipo.set(pessoa["tipo"])
         self.adicionar_botao("Cadastrar" if nova else "Salvar alterações",
                              self.salvar, "primario")
@@ -1228,7 +1299,62 @@ class DialogoPessoa(Dialogo):
 
     def _mostrar_faixa(self, tipo, texto):
         self.faixa.mostrar(tipo, texto)
-        self.faixa.grid(row=3, column=0, columnspan=2, sticky="ew")
+        self.faixa.grid(row=4, column=0, columnspan=2, sticky="ew")
+
+    def _placas_digitadas(self):
+        """As placas da lista mais a que está no campo (sem Enter)."""
+        return self.placas + [self.caixa_placa.get()]
+
+    def adicionar_placa(self, event=None):
+        """Enter (ou "Adicionar") no campo Placas: a placa vai para a
+        lista e o campo fica livre para a próxima."""
+        if not self.caixa_placa.get().strip():
+            return "break"
+        ok, msg, lista = validar_placas(self._placas_digitadas())
+        if not ok:
+            self._mostrar_faixa("erro", msg)
+            return "break"
+        self.placas = lista
+        self.caixa_placa.delete(0, tk.END)
+        self.faixa.grid_forget()
+        self._desenhar_placas()
+        return "break"
+
+    def tirar_placa(self, placa):
+        if placa in self.placas:
+            self.placas.remove(placa)
+            self._desenhar_placas()
+
+    def _desenhar_placas(self):
+        """Uma etiqueta por placa ("ABC1D23 ×"); a primeira é a principal."""
+        for w in self.linha_placas.winfo_children():
+            w.destroy()
+        if not self.placas:
+            self.linha_placas.grid_forget()
+            return
+        fundo = COR["superficie"]
+        for i, placa in enumerate(self.placas):
+            etiqueta = tk.Frame(self.linha_placas, bg=COR["selecao"],
+                                highlightthickness=1,
+                                highlightbackground=COR["borda"])
+            etiqueta.pack(side="left", padx=(0, px(6)))
+            tk.Label(etiqueta, text=formatar_placa(placa),
+                     font=FONTE["rotulo"] if i == 0 else FONTE["corpo"],
+                     bg=COR["selecao"], fg=COR["texto"]).pack(
+                side="left", padx=(px(8), px(2)), pady=px(2))
+            tirar = tk.Label(etiqueta, text="×", font=FONTE["rotulo"],
+                             bg=COR["selecao"], fg=COR["texto_2"],
+                             cursor="hand2", takefocus=1)
+            tirar.pack(side="left", padx=(0, px(6)))
+            for evento in ("<Button-1>", "<Return>", "<space>"):
+                tirar.bind(evento, lambda e, p=placa: (self.tirar_placa(p),
+                                                       "break")[1])
+        if len(self.placas) > 1:
+            tk.Label(self.linha_placas, text="a 1ª é a principal",
+                     font=FONTE["dica"], bg=fundo,
+                     fg=COR["texto_3"]).pack(side="left")
+        self.linha_placas.grid(row=3, column=0, columnspan=2, sticky="w",
+                               pady=(0, px(14)))
 
     def _desativacao(self, cpf):
         app = self.pagina.app
@@ -1263,15 +1389,21 @@ class DialogoPessoa(Dialogo):
         """Grava; devolve True se gravou."""
         app = self.pagina.app
         cpf = self.pessoa["cpf"] if self.pessoa else self.cpf.get()
+        ok, msg, placas = validar_placas(self._placas_digitadas(), max(
+            MAXIMO_PLACAS_PESSOA, len(self.pessoa["placas"]) if self.pessoa
+            else 0))
+        if not ok:
+            self._mostrar_faixa("erro", msg)
+            return False
         dados = normalizar(self.nome.get(), cpf, self.celular.get(),
-                           self.caixa_placa.get(), self.tipo.get(), "", "")
+                           placas[0] if placas else "", self.tipo.get(), "", "")
         ok, msg = validar_campos(dados)
         if not ok:
             self._mostrar_faixa("erro", msg)
             return False
         if self.pessoa is not None:
             ok, _ = app.tentar(app.banco.atualizar_pessoa, self.pessoa["id"],
-                               dados["nome"], dados["celular"], dados["placa"],
+                               dados["nome"], dados["celular"], placas,
                                dados["tipo"], autor=app.autor)
             if not ok:
                 return False
@@ -1297,7 +1429,7 @@ class DialogoPessoa(Dialogo):
                 "entrada continua recusada."):
             return False
         ok, _ = app.tentar(app.banco.cadastrar_pessoa, dados["cpf"],
-                           dados["nome"], dados["celular"], dados["placa"],
+                           dados["nome"], dados["celular"], placas,
                            dados["tipo"], app.autor)
         if not ok:
             return False
@@ -1471,7 +1603,7 @@ class DialogoAutorizado(Dialogo):
             return
         ok, _ = app.tentar(app.banco.adicionar_autorizado, dados["dono_cpf"],
                            dados["cpf"], dados["nome"], dados["valido_ate"],
-                           autor=app.autor)
+                           autor=app.autor, placa=self.dono["placa"])
         if not ok:
             return
         self.fechar()

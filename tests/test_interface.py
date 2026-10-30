@@ -1546,7 +1546,8 @@ class TestAbaPessoas(BaseInterface):
         self.selecionar(self.beto)
         dialogo = self.aba.editar()
         self.assertEqual(dialogo.nome.get(), "Beto Rocha")
-        self.assertEqual(dialogo.caixa_placa.get(), "QWE1234")
+        self.assertEqual(dialogo.placas, ["QWE1234"])     # RN47: na lista
+        self.assertEqual(dialogo.caixa_placa.get(), "")    # livre para outra
         self.assertEqual(dialogo.cpf.cget("state"), "disabled")
         self.assertEqual(dialogo.cpf.get(), "111.444.777-35")
         self.assertEqual(dialogo.janela.title(), "Editar pessoa")
@@ -1603,6 +1604,99 @@ class TestAbaPessoas(BaseInterface):
     def test_acao_sem_selecao_avisa(self):
         self.assertIsNone(self.aba.editar())
         self.assertIn("Selecione", self.msg.showwarning.call_args[0][1])
+
+
+class TestVariasPlacas(TestAbaPessoas):
+    """RN47 (2.5): Nova pessoa e Editar com mais de uma placa; a ficha
+    mostra os carros e a lista de quem pode retirar segue o escolhido."""
+
+    def editar_com(self, *placas):
+        self.selecionar(self.beto)
+        dialogo = self.aba.editar()
+        for placa in placas:
+            dialogo.caixa_placa.insert(0, placa)
+            dialogo.adicionar_placa()
+        return dialogo
+
+    def test_enter_no_campo_adiciona_e_o_x_tira(self):
+        dialogo = self.editar_com("NEY4829", "abc1d23")
+        self.assertEqual(dialogo.placas, ["QWE1234", "NEY4829", "ABC1D23"])
+        # o Enter do campo adiciona (não salva o diálogo)
+        self.assertIn("adicionar_placa", dialogo.caixa_placa.bind("<Return>"))
+        self.assertEqual(dialogo.caixa_placa.get(), "")
+        self.assertTrue(dialogo.janela.winfo_exists())      # Enter não salvou
+        dialogo.tirar_placa("QWE1234")
+        self.assertEqual(dialogo.placas, ["NEY4829", "ABC1D23"])
+        self.assertTrue(dialogo.salvar())
+        p = self.banco.buscar_pessoa("11144477735")
+        self.assertEqual(p["placas"], ["NEY4829", "ABC1D23"])
+        self.assertEqual(p["placa"], "NEY4829")              # a 1ª é a principal
+
+    def test_placa_invalida_ou_repetida(self):
+        dialogo = self.editar_com("QWE1234")                 # repetida: ignora
+        self.assertEqual(dialogo.placas, ["QWE1234"])
+        dialogo.caixa_placa.insert(0, "AB12")
+        dialogo.adicionar_placa()
+        self.assertIn("Placa inválida", dialogo.faixa.lbl.cget("text"))
+        self.assertEqual(dialogo.placas, ["QWE1234"])
+        dialogo.fechar()
+
+    def test_placa_digitada_sem_enter_tambem_entra_ao_salvar(self):
+        self.selecionar(self.beto)
+        dialogo = self.aba.editar()
+        dialogo.caixa_placa.insert(0, "NEY4829")
+        self.assertTrue(dialogo.salvar())
+        self.assertEqual(self.banco.buscar_pessoa("11144477735")["placas"],
+                         ["QWE1234", "NEY4829"])
+
+    def test_nova_pessoa_com_duas_placas(self):
+        dialogo = self.aba.nova_pessoa()
+        dialogo.cpf.insert(0, "39053344705")
+        dialogo.nome.insert(0, "Carla Nogueira")
+        dialogo.celular.insert(0, "31988887777")
+        dialogo.tipo.set("Professor")
+        for placa in ("BRA2E19", "NEY4829"):
+            dialogo.caixa_placa.insert(0, placa)
+            dialogo.adicionar_placa()
+        self.assertTrue(dialogo.salvar())
+        self.assertEqual(self.banco.buscar_pessoa("39053344705")["placas"],
+                         ["BRA2E19", "NEY4829"])
+
+    def test_ficha_lista_e_escolha_do_carro(self):
+        self.editar_com("NEY4829").salvar()
+        self.aba.atualizar()
+        self.assertEqual(self.valores(self.beto)[3], "QWE-1234 +1")
+        self.selecionar(self.beto)
+        self.assertEqual(list(self.aba.chips_carros), ["QWE1234", "NEY4829"])
+        self.assertTrue(self.aba.linha_carros.winfo_manager())
+        self.assertEqual(self.aba.desenho_placa.texto, "QWE1234")
+        self.aba.escolher_carro("NEY4829")
+        self.assertEqual(self.aba.desenho_placa.texto, "NEY4829")
+        self.assertIn("NEY-4829", self.aba.lbl_veiculo.cget("text"))
+        # quem pode retirar: vale para o carro escolhido
+        dialogo = self.aba.adicionar_autorizado()
+        dialogo.cpf.insert(0, "52998224725")
+        dialogo.salvar()
+        self.assertEqual(len(self.banco.listar_autorizados("NEY4829")), 1)
+        self.assertEqual(self.banco.listar_autorizados("QWE1234"), [])
+        # outra pessoa e de volta: abre de novo na principal
+        self.selecionar(self.ana)
+        self.assertFalse(self.aba.linha_carros.winfo_manager())  # a pé
+        self.selecionar(self.beto)
+        self.assertEqual(self.aba.desenho_placa.texto, "QWE1234")
+
+    def test_desativar_o_carro_escolhido(self):
+        self.editar_com("NEY4829").salvar()
+        self.selecionar(self.beto)
+        self.aba.escolher_carro("NEY4829")
+        dialogo = self.aba.desativar_veiculo()
+        self.assertEqual(dialogo.valor_fixo, "NEY4829")
+        dialogo.motivo.insert(0, "Carro vendido, não é mais dela")
+        dialogo.salvar()
+        self.assertEqual([d["valor"] for d in self.banco.listar_desativacoes()],
+                         ["NEY4829"])
+        self.assertEqual(self.aba.chips_carros["NEY4829"].cget("fg"),
+                         estilo.COR["erro"])           # em vermelho na ficha
 
 
 class TestExcluirPessoa(BaseInterface):

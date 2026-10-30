@@ -873,6 +873,14 @@ class AbaCadastro:
                                       ao_outro_carro)
         if placa is None:
             return None
+        if placa != registro["placa"]:
+            # escolheu outro carro do cadastro (RN47): ele pode estar
+            # desativado (RN12)
+            ok, msg = checar_desativacao(dict(registro, placa=placa), ativas)
+            if not ok:
+                self.registrar_recusa(dict(registro, placa=placa))
+                mensagens.erro("Acesso negado", msg)
+                return None
         registro["placa"] = placa
         if registro["placa"] and not registro["saida"]:
             estadia = self._carro_no_estacionamento(registro["placa"])
@@ -1005,14 +1013,27 @@ class AbaCadastro:
         if not sugerida or registro["placa"] != sugerida:
             return registro["placa"]
         resposta = vai_entrar_de_carro(self.app, registro["nome"], sugerida,
-                                       self._ultima_visita_de_carro(pessoa_id))
+                                       self._ultima_visita_de_carro(pessoa_id),
+                                       self._outros_carros(pessoa_id, sugerida))
         if resposta == OUTRO_CARRO:
             if ao_outro_carro is not None:
                 ao_outro_carro()
             return None
         if resposta is None:
             return None
+        if resposta not in (COM_CARRO, A_PE):
+            return resposta                 # um dos outros carros (RN47)
         return sugerida if resposta == COM_CARRO else ""
+
+    def _outros_carros(self, pessoa_id, sugerida):
+        """RN47: os outros carros do cadastro que não estão no
+        estacionamento (o que está lá não entra de novo)."""
+        if pessoa_id is None:
+            return []
+        ok, placas = self.app.tentar(self.app.banco.placas_da_pessoa,
+                                     pessoa_id)
+        return [p for p in (placas if ok else [])
+                if p != sugerida and self._carro_no_estacionamento(p) is None]
 
     def _digitar_outro_carro(self):
         """"Com outro carro" no formulário: o campo Placa fica vazio e com
@@ -1239,8 +1260,12 @@ class AbaCadastro:
                 fg=COR["alerta"])
             self.lbl_placa_status.pack_configure(pady=(px(6), 0))
         else:
-            self.lbl_dica_placa.config(text=DICA_PLACA, fg=COR["texto_3"],
-                                       font=FONTE["dica"])
+            # RN47: a placa que o CPF preencheu e a pessoa tem outros carros
+            carros = len((self._auto or {}).get("placas", ()))
+            self.lbl_dica_placa.config(
+                text=(f"{carros} carros no cadastro"
+                      if carros > 1 and placa and self._placa_sugerida()
+                      else DICA_PLACA), fg=COR["texto_3"], font=FONTE["dica"])
             self.lbl_placa_status.config(text="")
             self.lbl_placa_status.pack_configure(pady=0)
 
@@ -1253,7 +1278,8 @@ class AbaCadastro:
                 self._escrever(campo, pessoa[chave])
                 preenchidos[chave] = campo.get()
         self._auto = {"cpf": pessoa["cpf"], "pessoa_id": pessoa["id"],
-                      "campos": preenchidos}
+                      "campos": preenchidos, "placas": pessoa["placas"]}
+        self._ao_digitar_placa()
 
     def _desfazer_preenchimento(self):
         """CPF trocado: apaga o que foi preenchido sozinho e não foi mexido."""

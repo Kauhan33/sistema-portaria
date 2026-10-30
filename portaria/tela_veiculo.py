@@ -31,7 +31,7 @@ tela abre a pergunta por app.perguntar: se a sessão acabar com ela
 aberta, a resposta é None e nada é gravado.
 """
 
-from .componentes import Dialogo, Placa
+from .componentes import Botao, Dialogo, Placa
 from .dados import VEICULO_SEM_DONO
 from .estilo import px
 from .tela_autorizacao import autorizar_excecao
@@ -48,10 +48,12 @@ ENTRAR, ENTRAR_COM_SENHA, JA_SAIU = "entrar", "entrar_com_senha", "ja_saiu"
 
 class JanelaVeiculo(Dialogo):
     def __init__(self, app, titulo, subtitulo, placa, opcoes, padrao=None,
-                 largura=460):
+                 largura=460, no_miolo=()):
         """opcoes: [(texto do botão, valor, variante)], da direita para a
         esquerda. `padrao`: o valor do Enter (sem ele, o da 1ª opção).
-        `resultado` fica com o valor escolhido (None = cancelou)."""
+        `no_miolo`: mais opções, uma embaixo da outra sob a placa (um
+        botão por carro, RN47). `resultado` fica com o valor escolhido
+        (None = cancelou)."""
         self.app = app
         self.resultado = None
         self.opcoes = opcoes
@@ -61,6 +63,11 @@ class JanelaVeiculo(Dialogo):
         self.desenho = Placa(self.miolo, largura=190)
         self.desenho.pack(anchor="w", pady=(0, px(4)))
         self.desenho.mostrar(placa)
+        for texto, valor, variante in no_miolo:
+            Botao(self.miolo, texto, lambda v=valor: self.escolher(v),
+                  variante).pack(fill="x", pady=(px(6), 0))
+        self.no_miolo = no_miolo
+        self.valores = [v for _, v, _ in (*no_miolo, *opcoes)]
         for texto, valor, variante in opcoes:
             self.adicionar_botao(texto, lambda v=valor: self.escolher(v), variante)
         self.adicionar_botao("Cancelar", self.fechar)
@@ -76,9 +83,9 @@ class JanelaVeiculo(Dialogo):
 
 
 def _perguntar(app, titulo, subtitulo, placa, opcoes, padrao=None,
-               largura=460):
+               largura=460, no_miolo=()):
     dialogo = JanelaVeiculo(app, titulo, subtitulo, placa, opcoes, padrao,
-                            largura)
+                            largura, no_miolo)
     dialogo.esperar()
     if dialogo.janela.winfo_exists():
         dialogo.fechar()
@@ -92,15 +99,28 @@ def _desde(app, estadia):
     return entrada[-5:] if entrada.startswith(hoje) else entrada
 
 
-def vai_entrar_de_carro(app, nome, placa, veio_de_carro):
+def vai_entrar_de_carro(app, nome, placa, veio_de_carro, outras=()):
     """RN34: COM_CARRO, A_PE, OUTRO_CARRO ou None (cancelou).
-    veio_de_carro: a última visita foi de carro (destaca "De carro")."""
+    veio_de_carro: a última visita foi de carro (destaca "De carro").
+    `outras` (RN47): os outros carros do cadastro; escolhendo um deles,
+    devolve a placa dele."""
     primeiro = nome.split()[0] if nome.split() else "A pessoa"
     padrao = COM_CARRO if veio_de_carro else A_PE
 
     def variante(valor):
         return "primario" if valor == padrao else "secundario"
 
+    if outras:
+        carros = [(f"De carro — {formatar_placa(p)}", valor, variante(valor))
+                  for p, valor in ((placa, COM_CARRO),
+                                   *((o, o) for o in outras))]
+        return app.perguntar(
+            _perguntar, app, f"{primeiro} vai entrar de carro?",
+            f"{nome} tem {len(carros)} veículos cadastrados. Escolha com "
+            "qual vai entrar; a pé, a visita fica sem placa.", placa,
+            [("A pé", A_PE, variante(A_PE)),
+             ("Com outro carro", OUTRO_CARRO, "fantasma")],
+            padrao, 520, carros)
     return app.perguntar(
         _perguntar, app, f"{primeiro} vai entrar de carro?",
         f"{nome} tem o veículo {formatar_placa(placa)} cadastrado. De carro, "

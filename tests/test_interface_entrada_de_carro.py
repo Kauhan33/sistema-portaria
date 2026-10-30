@@ -29,7 +29,8 @@ class TestEntradaDeCarroOuAPe(BaseInterface):
         """Responde a pergunta e guarda o título, o botão do Enter e a
         variante de cada botão."""
         def responder(dialogo):
-            botoes = {texto: variante for texto, _, variante in dialogo.opcoes}
+            botoes = {texto: variante for texto, _, variante in
+                      (*dialogo.no_miolo, *dialogo.opcoes)}
             self.vistos.append((dialogo.janela.title(), dialogo.padrao, botoes))
             if valor == "enter":
                 dialogo.escolher(dialogo.padrao)
@@ -155,3 +156,66 @@ class TestEntradaDeCarroOuAPe(BaseInterface):
         self.entrar_pelo_cpf()
         self.assertEqual(len(self.no_banco()), 1)
         self.assertIn("Acesso negado", self.msg.showerror.call_args[0][0])
+
+
+# ----------------------------------------------------------------------
+# RN47 (2.5): quem tem mais de um carro escolhe com qual entra
+# ----------------------------------------------------------------------
+class TestEntradaComVariosCarros(TestEntradaDeCarroOuAPe):
+    def setUp(self):
+        super().setUp()
+        beto = self.banco.buscar_pessoa(BETO)
+        self.banco.atualizar_pessoa(beto["id"], beto["nome"], beto["celular"],
+                                    ["QWE1234", "NEY4829"], beto["tipo"],
+                                    autor="paulo")
+
+    def test_um_botao_por_carro_e_entra_com_o_escolhido(self):
+        self.responder("NEY4829")
+        self.entrar_pelo_cpf()
+        _, padrao, _ = self.vistos[0]
+        self.assertEqual(padrao, COM_CARRO)       # a última visita foi de QWE
+        self.assertEqual(self.ultima()["placa"], "NEY4829")
+        self.assertEqual(self.banco.estadia_aberta(placa="NEY4829")["cpf"], BETO)
+        self.assertIsNone(self.banco.estadia_aberta(placa="QWE1234"))
+        # passa a ser a principal (o carro da última visita)
+        self.assertEqual(self.banco.buscar_pessoa(BETO)["placa"], "NEY4829")
+
+    def test_os_botoes_dos_carros_ficam_no_miolo(self):
+        def olhar(dialogo):
+            self.valores = dialogo.valores
+            dialogo.escolher(COM_CARRO)
+        self.responder_veiculo = olhar
+        self.entrar_pelo_cpf()
+        self.assertEqual(self.valores[:2], [COM_CARRO, "NEY4829"])
+        self.assertEqual(self.ultima()["placa"], "QWE1234")
+
+    def test_carro_que_ja_esta_no_estacionamento_nao_aparece(self):
+        self.banco.inserir({"nome": "Carla Nogueira", "cpf": "39053344705",
+                            "celular": "31987654321", "placa": "NEY4829",
+                            "tipo": "Professor",
+                            "entrada": (AGORA - timedelta(hours=1))
+                            .strftime("%d/%m/%Y %H:%M"), "saida": ""})
+
+        def olhar(dialogo):
+            self.valores = dialogo.valores
+            dialogo.escolher(A_PE)
+        self.responder_veiculo = olhar
+        self.entrar_pelo_cpf()
+        self.assertNotIn("NEY4829", self.valores)
+
+    def test_carro_desativado_escolhido_e_recusado(self):
+        self.banco.desativar("placa", "NEY4829", "Carro com restrição",
+                             "ana.admin")
+        self.responder("NEY4829")
+        self.entrar_pelo_cpf()
+        self.assertEqual(len(self.no_banco()), 1)
+        self.assertEqual(self.msg.showerror.call_args[0][0], "Acesso negado")
+
+    def test_dica_do_campo_placa_conta_os_carros(self):
+        self.app.limpar()
+        self.app.cpf.insert(0, BETO)
+        self.assertEqual(self.app.var_placa.get(), "QWE1234")
+        self.assertEqual(self.tela.lbl_dica_placa.cget("text"),
+                         "2 carros no cadastro")
+        self.app.var_placa.set("XYZ9A87")             # digitou outra
+        self.assertNotIn("carros", self.tela.lbl_dica_placa.cget("text"))

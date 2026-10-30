@@ -2043,16 +2043,25 @@ class Banco:
     @classmethod
     def _reabrir_estadias(cls, con, condicao, valor, saida, autor):
         """Volta para o estacionamento as estadias da condição que saíram
-        em `saida`, se a placa não tiver entrado de novo nesse meio-tempo."""
+        em `saida`, se a placa não tiver entrado de novo nesse meio-tempo.
+        Se a placa da visita que trouxe o carro foi corrigida depois da
+        saída, volta o carro da placa corrigida (era erro de digitação); se
+        a visita ficou sem placa, nenhum carro volta."""
         reabertas = 0
         for id_, placa, registro_id in con.execute(
                 "SELECT id, placa, registro_id FROM estadias_veiculo "
                 f"WHERE {condicao} AND saida = ?", (valor, saida)).fetchall():
+            visita = con.execute("SELECT placa FROM registros WHERE id = ?",
+                                 (registro_id,)).fetchone()
+            if visita is not None and visita[0] != placa:
+                if not visita[0]:
+                    continue
+                placa = visita[0]
             cursor = con.execute(
                 "UPDATE estadias_veiculo SET saida = '', autor_saida = '', "
-                "registro_saida_id = NULL WHERE id = ? AND NOT EXISTS (SELECT 1 "
-                "FROM estadias_veiculo o WHERE o.placa = ? AND o.saida = '')",
-                (id_, placa))
+                "registro_saida_id = NULL, placa = ? WHERE id = ? AND NOT "
+                "EXISTS (SELECT 1 FROM estadias_veiculo o WHERE o.placa = ? "
+                "AND o.saida = '')", (placa, id_, placa))
             if cursor.rowcount:
                 reabertas += 1
                 cls._evento(con, autor, "Saída de veículo desfeita",
@@ -2661,7 +2670,10 @@ class Banco:
             linhas = con.execute(
                 SELECT_PESSOAS + " WHERE p.id IN (SELECT id FROM pessoas "
                 f"{where} ORDER BY NOT EXISTS (SELECT 1 FROM registros d "
-                "WHERE d.pessoa_id = pessoas.id AND d.saida = ''), "
+                # pelo CPF: usa o índice de "uma visita aberta por CPF"
+                # (pelo pessoa_id varria as visitas abertas para cada
+                # pessoa: 0,3 s com 20 mil pessoas)
+                "WHERE d.cpf = pessoas.cpf AND d.saida = ''), "
                 "nome COLLATE NOCASE LIMIT ?) "
                 "GROUP BY p.id ORDER BY p.nome COLLATE NOCASE",
                 (*params, int(limite))).fetchall()

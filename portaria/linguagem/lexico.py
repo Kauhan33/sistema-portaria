@@ -321,7 +321,8 @@ def mascarar_lexema(lexema):
 
 def eh_celular(tokens, i):
     """O NUMERO da posição i vem depois de "cel" (é celular, não CPF)?"""
-    return (i > 0 and tokens[i - 1].tipo == PALAVRA_CHAVE
+    return (i > 0 and tokens[i].tipo == NUMERO
+            and tokens[i - 1].tipo == PALAVRA_CHAVE
             and tokens[i - 1].valor == "cel")
 
 
@@ -331,9 +332,25 @@ def mascarar_linha(texto, tokens=None):
     if tokens is None:
         tokens, _ = tokenizar(texto)
     letras = list(texto)
+    coberto = [False] * len(texto)
     for i, t in enumerate(tokens):
-        if t.tipo == FIM or eh_celular(tokens, i):
+        if t.tipo == FIM:
+            continue
+        coberto[t.coluna - 1:t.fim - 1] = [True] * (t.fim - t.coluna)
+        if eh_celular(tokens, i):
             continue
         novo = mascarar_lexema(t.lexema)
         letras[t.coluna - 1:t.fim - 1] = novo
+    # o que não virou token (ex.: depois de umas aspas sem fechamento)
+    # também é mascarado: o porteiro nunca vê o CPF inteiro (RN14)
+    i = 0
+    while i < len(letras):
+        if coberto[i]:
+            i += 1
+            continue
+        j = i
+        while j < len(letras) and not coberto[j]:
+            j += 1
+        letras[i:j] = mascarar_lexema("".join(letras[i:j]))
+        i = j
     return "".join(letras)

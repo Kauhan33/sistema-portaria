@@ -1700,6 +1700,29 @@ class TestVariasPlacas(TestAbaPessoas):
         self.selecionar(self.beto)
         self.assertEqual(self.aba.desenho_placa.texto, "QWE1234")
 
+    def test_cinco_carros_viram_uma_lista(self):
+        """Revisão 2.5.1: com 5 carros os botões não cabiam na ficha (o 4º
+        saía cortado e o 5º sumia); com mais de 3, a linha Carro é uma
+        lista, e o carro desativado aparece marcado nela."""
+        self.banco.desativar("placa", "NEY4829", "Furto informado", "ana.admin")
+        self.editar_com("NEY4829", "ABC1D23", "BRA2E19", "JKL9D88").salvar()
+        self.aba.atualizar()
+        self.selecionar(self.beto)
+        self.assertEqual(self.aba.chips_carros, {})
+        lista = self.aba.lista_carros
+        self.assertEqual(list(lista.entrada["values"]),
+                         ["QWE-1234", "ABC1D23", "BRA2E19", "JKL9D88",
+                          "NEY-4829 (desativado)"])   # a principal primeiro
+        self.assertEqual(lista.var.get(), "QWE-1234")
+        lista.var.set("JKL9D88")
+        lista.entrada.event_generate("<<ComboboxSelected>>")
+        self.assertEqual(self.aba.desenho_placa.texto, "JKL9D88")
+        self.assertIn("JKL9D88", self.aba.lbl_veiculo.cget("text"))
+        self.assertEqual(self.aba.lista_carros.var.get(), "JKL9D88")
+        # outra pessoa com dois carros volta aos botões
+        self.selecionar(self.ana)
+        self.assertIsNone(self.aba.lista_carros)
+
     def test_desativar_o_carro_escolhido(self):
         self.editar_com("NEY4829").salvar()
         self.selecionar(self.beto)

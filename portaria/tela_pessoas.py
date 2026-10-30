@@ -75,6 +75,7 @@ LIMITE_BUSCA = 200
 SEM_SELECAO = "Escolha uma pessoa na lista para ver a ficha."
 SEM_CADASTRO = "(sem cadastro)"
 SECOES_FICHA = ("Visitas", "Veículo")
+CARROS_EM_BOTOES = 3     # RN47: mais carros que isso viram uma lista na ficha
 # Abaixo desta altura (px lógicos) a página fica compacta: no notebook
 # 1366x670 a página tem uns 536
 ALTURA_CONFORTAVEL = 700
@@ -452,6 +453,7 @@ class AbaPessoas:
         tk.Label(self.linha_carros, text="Carro", font=FONTE["dica"], bg=fundo,
                  fg=COR["texto_3"]).pack(side="left", padx=(0, px(6)))
         self.chips_carros = {}
+        self.lista_carros = None
         self.cab_veiculo = cab = tk.Frame(secao, bg=fundo)
         cab.pack(fill="x")
         # desativar a placa (RN12): só o administrador, um link no título
@@ -765,15 +767,43 @@ class AbaPessoas:
     def _mostrar_carros(self, p):
         """A linha "Carro" da seção Veículo: um botão por placa (RN47),
         o escolhido destacado e o desativado em vermelho. Com um carro só
-        (ou nenhum), a linha some."""
+        (ou nenhum), a linha some. Com mais de CARROS_EM_BOTOES, os botões
+        não cabem na largura da ficha: vira uma lista (a linha continua
+        uma só, também no notebook)."""
         for chip in self.chips_carros.values():
             chip.destroy()
         self.chips_carros = {}
+        if self.lista_carros is not None:
+            self.lista_carros.destroy()
+            self.lbl_quantos_carros.destroy()
+            self.lista_carros = None
         if len(p["placas"]) < 2:
             self.linha_carros.pack_forget()
             self._altura_autorizados()
             return
         fundo = COR["superficie"]
+        if len(p["placas"]) > CARROS_EM_BOTOES:
+            rotulos = {(formatar_placa(placa) + (" (desativado)" if placa in
+                        self.placas_desativadas else "")): placa
+                       for placa in p["placas"]}
+            self.lista_carros = Campo(self.linha_carros, fundo_pai=fundo,
+                                      opcoes=list(rotulos), largura=200)
+            self.lista_carros.pack(side="left")
+            escolhida = next(r for r, pl in rotulos.items()
+                             if pl == self.placa_da_ficha)
+            self.lista_carros.var.set(escolhida)
+            self.lista_carros.entrada.bind(
+                "<<ComboboxSelected>>", lambda e: self.escolher_carro(
+                    rotulos[self.lista_carros.var.get()]))
+            self.lbl_quantos_carros = tk.Label(
+                self.linha_carros, text=f"{len(p['placas'])} carros",
+                font=FONTE["dica"], bg=fundo, fg=COR["texto_3"])
+            self.lbl_quantos_carros.pack(side="left", padx=(px(8), 0))
+            self.linha_carros.pack(fill="x", pady=(0, px(4 if self.compacta
+                                                        else 8)),
+                                   before=self.cab_veiculo)
+            self._altura_autorizados()
+            return
         for placa in p["placas"]:
             escolhida = placa == self.placa_da_ficha
             chip = tk.Label(

@@ -1318,10 +1318,25 @@ class TestAbaUsuarios(BaseInterface):
         self.cadastrar_um()
         self.aba.atualizar()
         self.aba.busca.insert(0, "cadastro de")
-        self.aba._mostrar_eventos()
+        self.aba.atualizar_eventos()
         acoes = {self.aba.historico.item(i)["values"][2]
                  for i in self.aba.historico.get_children()}
         self.assertEqual(acoes, {"Cadastro de entrada"})
+
+    def test_filtro_da_atividade_acha_evento_antigo(self):
+        """Revisão 2.5.1: o filtro olhava só os 200 eventos mais recentes;
+        com mais que isso depois, um evento antigo nunca aparecia."""
+        self.cadastrar_um()
+        for i in range(210):
+            self.banco.registrar_evento("ana.admin", "Teste de volume", f"#{i}")
+        self.aba.atualizar()
+        self.aba.busca.insert(0, "cadastro de")
+        self.aba.atualizar_eventos()
+        acoes = [self.aba.historico.item(i)["values"][2]
+                 for i in self.aba.historico.get_children()]
+        self.assertEqual(acoes, ["Cadastro de entrada"])
+        # e a busca roda depois da pausa na digitação (EsperaDigitacao)
+        self.assertIs(self.aba.espera_busca.entrada, self.aba.busca)
 
     def test_admin_nao_desativa_a_si_mesmo(self):
         self.aba.tabela.selection_set(self.linha_de("ana.admin"))

@@ -17,7 +17,7 @@ from datetime import datetime
 
 from . import backup, excecoes, mensagens
 from .componentes import (Aviso, Botao, Cabecalho, Campo, Cartao, Dialogo,
-                          Seletor, campo_rotulado, inserir_linha, plural,
+                          EsperaDigitacao, Seletor, campo_rotulado, inserir_linha, plural,
                           preencher_eventos, tabela, tabela_eventos,
                           titulo_cartao)
 from .estilo import COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, px
@@ -108,7 +108,9 @@ class AbaUsuarios:
                       maximo=MAXIMO_BUSCA)
         campo.pack(side="left", padx=(px(16), 0))
         self.busca = campo.entrada
-        self.busca.bind("<KeyRelease>", lambda e: self._mostrar_eventos())
+        # o filtro vai ao banco (o histórico inteiro), depois de uma pausa
+        # na digitação, como as outras buscas
+        self.espera_busca = EsperaDigitacao(self.busca, self.atualizar_eventos)
         quadro, self.historico = tabela_eventos(m, (150, 110, 190, 420), altura=6)
         quadro.pack(fill="both", expand=True, padx=px(12))
 
@@ -257,20 +259,19 @@ class AbaUsuarios:
             self.lbl_total.config(text=plural(ativos, "conta ativa", "contas ativas")
                                   + (f"  ·  {plural(inativas, 'desativada', 'desativadas')}"
                                      if inativas else ""))
-        ok, eventos = self.app.tentar(self.app.banco.listar_eventos)
-        if ok:
-            self.eventos = eventos
-            self._mostrar_eventos()
+        self.atualizar_eventos()
         self._ao_selecionar()
         if self.seletor.ativa == SECOES[1]:
             self.atualizar_excecoes()
 
-    def _mostrar_eventos(self):
-        texto = self.busca.get().strip().lower()
-        preencher_eventos(self.historico, [
-            e for e in self.eventos
-            if not texto or texto in f"{e['usuario']} {e['acao']} "
-                                     f"{e['detalhe']}".lower()])
+    def atualizar_eventos(self):
+        """Atividade: os eventos mais recentes, ou os que têm o texto do
+        filtro (procurados no histórico inteiro)."""
+        ok, eventos = self.app.tentar(self.app.banco.listar_eventos,
+                                      texto=self.busca.get())
+        if ok:
+            self.eventos = eventos
+            preencher_eventos(self.historico, eventos)
 
     def _ao_selecionar(self):
         """O botão diz o que vai fazer com a conta selecionada."""

@@ -3166,12 +3166,19 @@ class Banco:
             eventos.append(evento)
         return eventos
 
-    def listar_eventos(self, limite=200):
-        """Últimos eventos, do mais recente para o mais antigo."""
+    def listar_eventos(self, limite=200, texto=""):
+        """Últimos eventos, do mais recente para o mais antigo. `texto`
+        (Usuários › Atividade) filtra por usuário, ação ou detalhe no
+        próprio SQL, no histórico inteiro: antes o filtro olhava só os
+        `limite` mais recentes e um evento antigo nunca aparecia."""
+        texto = (texto or "").strip().lower()[:MAXIMO_BUSCA]
+        filtro = ("WHERE instr(minusculo(usuario || ' ' || acao || ' ' || "
+                  "detalhe), ?) > 0 " if texto else "")
         with self._conexao() as con:
             linhas = con.execute("SELECT momento, usuario, acao, detalhe "
-                                 "FROM auditoria ORDER BY id DESC LIMIT ?",
-                                 (limite,)).fetchall()
+                                 f"FROM auditoria {filtro}ORDER BY id DESC "
+                                 "LIMIT ?", ((texto,) if texto else ())
+                                 + (limite,)).fetchall()
         return [self._formatar_evento(linha) for linha in linhas]
 
     # --------------------------------------------------------------

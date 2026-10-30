@@ -221,8 +221,7 @@ class AbaPessoas:
         self.seletor_ficha.pack_configure(
             pady=(px(8), px(6)) if compacta else (px(12), px(10)))
         self.faixa.definir_respiro(4 if compacta else 7)
-        # na tela baixa a lista de quem pode retirar mostra 2 linhas
-        self.tabela_autorizados.configure(height=2 if compacta else 3)
+        self._altura_autorizados()
         self.botoes_veiculo.pack_configure(pady=(px(6 if compacta else 10), 0))
         if compacta:
             self.lbl_veiculo_dica.pack_forget()
@@ -772,6 +771,7 @@ class AbaPessoas:
         self.chips_carros = {}
         if len(p["placas"]) < 2:
             self.linha_carros.pack_forget()
+            self._altura_autorizados()
             return
         fundo = COR["superficie"]
         for placa in p["placas"]:
@@ -790,8 +790,18 @@ class AbaPessoas:
             for evento in ("<Button-1>", "<Return>", "<space>"):
                 chip.bind(evento, lambda e, pl=placa: self.escolher_carro(pl))
             self.chips_carros[placa] = chip
-        self.linha_carros.pack(fill="x", pady=(0, px(8)),
+        self.linha_carros.pack(fill="x", pady=(0, px(4 if self.compacta
+                                                    else 8)),
                                before=self.cab_veiculo)
+        self._altura_autorizados()
+
+    def _altura_autorizados(self):
+        """Linhas da lista de quem pode retirar: 3; na tela baixa, 2; na
+        tela baixa com a linha Carro (RN47), 1 — os botões continuam à
+        vista no notebook 1366x670."""
+        com_carros = bool(self.linha_carros.winfo_manager())
+        self.tabela_autorizados.configure(
+            height=(1 if com_carros else 2) if self.compacta else 3)
 
     def escolher_carro(self, placa):
         """Ficha › Veículo › Carro: passa a falar desse carro."""

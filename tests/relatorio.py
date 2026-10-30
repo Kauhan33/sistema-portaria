@@ -801,6 +801,128 @@ CASOS = [
          "test_interface_comando.TestExecucaoIgualAoFormulario."
          "test_cadastrar_atualiza_a_pagina_pessoas",
          "test_linguagem.TestSemantico.test_crud_da_pessoa"]),
+    caso_da_linguagem(
+        "CT-69", "Semântico", ["RF33", "RN47"], POSITIVO,
+        "Vários carros no cadastrar e no editar",
+        "cadastrar 123.456.789-09 visitante nome \"Rui Lima\" cel "
+        "31987651234 placa NEY4829 placa ABC1D23; depois \"editar ... placa "
+        "NEY4829 sem placa QWE1E34\".",
+        "O cadastro fica com os dois carros (NEY4829 é a principal); o "
+        "editar inclui um carro e tira outro, e a principal continua a "
+        "mesma enquanto não for tirada.",
+        ["test_linguagem.TestSemantico."
+         "test_varias_placas_no_cadastrar_e_no_editar"]),
+    caso_da_linguagem(
+        "CT-70", "Semântico", ["RN47"], NEGATIVO,
+        "Carro que não é da pessoa, incluído e tirado juntos, mais de 5",
+        "\"editar ... sem placa NEY4829\" (não está no cadastro); \"placa "
+        "NEY4829 sem placa NEY4829\"; cadastrar com 6 placas; \"sem NEY4829\" "
+        "(falta a palavra placa).",
+        "Erro semântico com a regra RN47 e o ^ no carro (\"não está no "
+        "cadastro\", \"incluído e tirado\", \"No máximo 5 placas\"); o "
+        "último é erro sintático: esperado \"placa\". Nada é gravado.",
+        ["test_linguagem.TestSemantico.test_varias_placas_erros"]),
+    caso_da_linguagem(
+        "CT-71", "Execução", ["RF33", "RN46", "RN47"], POSITIVO,
+        "Vários carros pela linguagem = pelo formulário",
+        "Num banco, Nova pessoa com dois carros e Editar trocando um deles; "
+        "no outro, os mesmos passos por cadastrar e editar; depois "
+        "\"situacao\".",
+        "Os dois bancos ficam iguais (pessoas, carros e histórico) e o "
+        "situacao mostra \"2 carros no cadastro: ABC1D23, QWE1E34\".",
+        ["test_interface_comando.TestExecucaoIgualAoFormulario."
+         "test_varias_placas_igual_ao_formulario"]),
+
+    # --- Versão 2.5: pessoas com mais de um carro ------------------------
+    caso("CT-72", ["RF27", "RF33", "RN47"], POSITIVO,
+         "Cadastrar pessoa com mais de uma placa",
+         "Pessoas › Nova pessoa: CPF, nome, celular e tipo; no campo Placas, "
+         "BRA2E19 + Enter e NEY4829 + Enter; Cadastrar.",
+         "As duas placas aparecem embaixo do campo e ficam no cadastro (a 1ª "
+         "é a principal); a lista mostra \"BRA2E19 +1\" e a ficha tem a "
+         "linha Carro com as duas.",
+         ["test_interface.TestVariasPlacas.test_nova_pessoa_com_duas_placas",
+          "test_interface.TestVariasPlacas."
+          "test_ficha_lista_e_escolha_do_carro",
+          "test_placas.TestPlacasNoBanco."
+          "test_cadastro_com_varias_placas_principal_primeiro",
+          "test_placas.TestPlacasNoBanco."
+          "test_a_mesma_placa_pode_ser_de_duas_pessoas"]),
+    caso("CT-73", ["RN47", "RN33"], NEGATIVO,
+         "Placa inválida, repetida ou mais de 5",
+         "No campo Placas: AB12 + Enter; a placa que já está na lista; e "
+         "seis placas no cadastro (direto no banco).",
+         "\"Placa inválida: AB12\" na faixa do diálogo; a repetida é "
+         "ignorada; a sexta é recusada (\"No máximo 5 placas por "
+         "pessoa\"). Nada é gravado.",
+         ["test_interface.TestVariasPlacas.test_placa_invalida_ou_repetida",
+          "test_placas.TestValidarPlacas.test_no_maximo_cinco",
+          "test_placas.TestValidarPlacas."
+          "test_placa_invalida_e_nomeada_na_mensagem",
+          "test_placas.TestPlacasNoBanco."
+          "test_cadastro_recusa_placa_invalida_e_passar_do_maximo"]),
+    caso("CT-74", ["RF28", "RN47", "RN35"], POSITIVO,
+         "Editar: incluir e tirar carros",
+         "Editar a pessoa com QWE1234: incluir NEY4829 e ABC1D23, tirar "
+         "QWE1234 pelo ×, salvar. Num carro com alguém na lista de quem "
+         "pode retirar, tirar esse carro do cadastro.",
+         "O cadastro fica com NEY4829 (principal) e ABC1D23; o histórico "
+         "registra as placas incluídas e tiradas; quem podia retirar o carro "
+         "tirado sai da lista.",
+         ["test_interface.TestVariasPlacas."
+          "test_enter_no_campo_adiciona_e_o_x_tira",
+          "test_placas.TestPlacasNoBanco.test_editar_inclui_e_tira_placas",
+          "test_placas.TestPlacasNoBanco."
+          "test_tirar_a_placa_remove_quem_podia_retirar_aquele_carro"]),
+    caso("CT-75", ["RN34", "RN47", "RN12"], POSITIVO,
+         "Entrada de quem tem dois carros: escolhe com qual",
+         "Beto tem QWE1234 e NEY4829. O porteiro digita o CPF dele e "
+         "Registrar entrada; na pergunta, escolhe NEY4829.",
+         "O campo Placa avisa \"2 carros no cadastro\"; a pergunta tem um "
+         "botão por carro (o que já está no estacionamento não aparece); a "
+         "visita e a estadia ficam com NEY4829. Carro desativado escolhido: "
+         "\"Acesso negado\".",
+         ["test_interface_entrada_de_carro.TestEntradaComVariosCarros."
+          "test_um_botao_por_carro_e_entra_com_o_escolhido",
+          "test_interface_entrada_de_carro.TestEntradaComVariosCarros."
+          "test_carro_que_ja_esta_no_estacionamento_nao_aparece",
+          "test_interface_entrada_de_carro.TestEntradaComVariosCarros."
+          "test_carro_desativado_escolhido_e_recusado",
+          "test_interface_entrada_de_carro.TestEntradaComVariosCarros."
+          "test_dica_do_campo_placa_conta_os_carros",
+          "test_placas.TestPlacasNoBanco."
+          "test_visita_com_outro_carro_guarda_a_placa"]),
+    caso("CT-76", ["RN47", "RN35", "RN12"], POSITIVO,
+         "Ficha: escolher o carro de que se fala",
+         "Na ficha de quem tem dois carros, clicar no segundo na linha "
+         "Carro; adicionar alguém em Quem pode retirar; Desativar placa.",
+         "A placa desenhada muda; a pessoa adicionada vale só para aquele "
+         "carro; o carro desativado fica em vermelho na linha Carro.",
+         ["test_interface.TestVariasPlacas."
+          "test_ficha_lista_e_escolha_do_carro",
+          "test_interface.TestVariasPlacas.test_desativar_o_carro_escolhido",
+          "test_placas.TestPlacasNoBanco."
+          "test_autorizado_so_para_um_carro_da_pessoa"]),
+    caso("CT-77", ["RN47"], POSITIVO,
+         "Banco da 2.4 atualizado para a 2.5",
+         "Abrir com a 2.5 um banco da 2.4 (esquema v11) com visitas de "
+         "carros diferentes da mesma pessoa.",
+         "O banco vira v12 com backup antes; nada se perde; o cadastro de "
+         "cada pessoa passa a ter a placa principal e as placas das visitas.",
+         ["test_placas.TestMigracaoV11ParaV12."
+          "test_v11_vira_v12_com_as_placas_das_visitas",
+          "test_placas.TestMigracaoV11ParaV12.test_migrar_de_novo_nao_duplica"]),
+    caso("CT-78", ["RF10", "RNF01"], POSITIVO,
+         "Abrir Pessoas desativadas e Veículos desativados",
+         "Clicar nas subabas Pessoas desativadas e Veículos desativados, com "
+         "e sem \"Mostrar reativadas\".",
+         "As listas abrem e o programa continua aberto (na 2.4 ele fechava "
+         "com \"maximum recursion depth exceeded\"); um erro inesperado "
+         "numa tela mostra o aviso sem fechar o programa.",
+         ["test_interface.TestAbaDesativadas."
+          "test_abrir_a_aba_nao_entra_em_recursao",
+          "test_interface.TestAbertura."
+          "test_erro_inesperado_com_a_pilha_cheia_nao_derruba"]),
 ]
 
 

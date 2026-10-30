@@ -212,6 +212,22 @@ class TestLexico(unittest.TestCase):
         self.assertEqual(lexico.mascarar_lexema("Cel 31987651234"),
                          "Cel 31987651234")
 
+    def test_cpf_depois_de_aspas_sem_fechamento_e_mascarado(self):
+        """Revisão 2.5.1 (achado pelo fuzz): depois de umas aspas sem
+        fechamento não há token, e o CPF ia inteiro para a linha que o
+        console repete ao porteiro; o texto depois de "cel" que não é um
+        número também é mascarado (só o NUMERO é o celular)."""
+        for linha, esperado in (
+                ('entrada "Ana 52998224725', 'entrada "Ana ***982247**'),
+                ('39053344705 cel "sem fim 86288366757',
+                 '***533447** cel "sem fim ***883667**'),
+                ("entrada 52998224725 cel 31987651234",
+                 "entrada ***982247** cel 31987651234")):
+            with self.subTest(linha=linha):
+                mascarada = mascarar_linha(linha)
+                self.assertEqual(mascarada, esperado)
+                self.assertEqual(len(mascarada), len(linha))
+
 
 # ----------------------------------------------------------------------
 # Gramática

@@ -97,7 +97,7 @@ class TestFuzzDaLinguagem(BaseBanco):
                         + [c.descricao + " " + c.detalhe for c in a.checagens])
                     # o número logo depois de "cel" é o celular, que o
                     # porteiro digitou e vê (não é CPF)
-                    tela = re.sub(r"(?i)\bcel \d+", "cel #", tela)
+                    tela = re.sub(r"(?i)\bcel\s+\d+", "cel #", tela)
                     for cpf in inteiros:
                         self.assertNotIn(cpf, tela, f"porteiro viu {cpf}: "
                                                     f"{texto!r}")

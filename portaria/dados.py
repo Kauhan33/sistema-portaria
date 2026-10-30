@@ -1232,16 +1232,31 @@ class Banco:
                 (inicio, fim, inicio, fim, inicio, fim, inicio)).fetchall()
         return [_registro(linha) for linha in linhas]
 
-    def buscar_registros(self, texto, limite=200, so_cpf_completo=False):
+    def buscar_registros(self, texto, limite=200, so_cpf_completo=False,
+                         desde=None, ate=None, tipo=None):
         """
         Busca no histórico inteiro com o mesmo critério de consultas.filtrar
         (nome, tipo, placa; CPF e celular pelos dígitos), da visita mais
         recente para a mais antiga, no máximo `limite`. Texto vazio = as
         mais recentes. so_cpf_completo: ver _condicao_busca (porteiro).
+        `desde`/`ate` (date, inclusive) e `tipo` filtram no próprio SQL,
+        antes do limite: senão um período antigo nunca aparecia quando o
+        termo tinha mais de `limite` visitas recentes (o "buscar ... de
+        DATA ate DATA" da linguagem respondia "Nada encontrado").
         """
         condicao, params = _condicao_busca(
             texto, "registros", COLUNAS_BUSCA, so_cpf_completo)
-        where = f"WHERE {condicao}" if condicao else ""
+        partes = [condicao] if condicao else []
+        if desde is not None:
+            partes.append("entrada >= ?")
+            params = [*params, _dia_iso(desde)]
+        if ate is not None:
+            partes.append("entrada < ?")
+            params = [*params, _dia_iso(ate + timedelta(days=1))]
+        if tipo:
+            partes.append("tipo = ?")
+            params = [*params, tipo]
+        where = f"WHERE {' AND '.join(partes)}" if partes else ""
         with self._conexao() as con:
             linhas = con.execute(
                 f"SELECT {COLUNAS_REGISTRO} FROM registros {where} "

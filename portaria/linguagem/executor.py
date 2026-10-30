@@ -217,7 +217,8 @@ class Executor:
         app = self.app
         ok, registros = app.tentar(app.banco.buscar_registros, texto,
                                    LIMITE_BUSCA,
-                                   so_cpf_completo=not eh_admin(app.usuario))
+                                   so_cpf_completo=not eh_admin(app.usuario),
+                                   desde=inicio, ate=fim, tipo=tipo)
         if not ok:
             return Resposta(ERRO, "A busca não foi feita.")
         return resultado_da_busca(registros, texto, tipo, inicio, fim,

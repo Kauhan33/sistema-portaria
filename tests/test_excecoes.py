@@ -138,11 +138,12 @@ class TestExcecoesNoBanco(unittest.TestCase):
                                                "ana")
         self.assertEqual(quantas, 1)
         with open(caminho, encoding="utf-8-sig") as f:
-            linhas = list(csv.reader(f, delimiter=";"))
+            texto = f.read()
+        linhas = list(csv.reader(texto.splitlines(), delimiter=";"))
         self.assertEqual(linhas[0], backup.CABECALHO_EXCECOES)
         self.assertEqual(linhas[1][1], "Mais de 24 h")
         self.assertIn("***.982.247-**", linhas[1][2])
-        self.assertNotIn("52998224725", open(caminho, encoding="utf-8-sig").read())
+        self.assertNotIn("52998224725", texto)
         self.assertIn("Exportação de exceções",
                       [e["acao"] for e in self.banco.listar_eventos()])
         with self.assertRaises(dados.ErroDados):

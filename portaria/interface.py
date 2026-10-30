@@ -229,7 +229,16 @@ class AppPortaria:
 
     def _erro_inesperado(self, tipo, erro, rastro):
         """Erro de programação numa ação da tela: o detalhe vai para o log
-        (portaria.log), o usuário vê uma mensagem simples."""
+        (portaria.log), o usuário vê uma mensagem simples. Se nem isso der
+        certo agora (RecursionError: a pilha está quase cheia), tenta de
+        novo com a pilha vazia, em vez de derrubar o programa."""
+        try:
+            self._avisar_erro_inesperado(tipo, erro, rastro)
+        except Exception:
+            self.janela.after_idle(self._avisar_erro_inesperado,
+                                   tipo, erro, rastro)
+
+    def _avisar_erro_inesperado(self, tipo, erro, rastro):
         dados.log.error("Erro inesperado na tela", exc_info=(tipo, erro, rastro))
         mensagens.erro("Erro inesperado",
                        "Algo deu errado nesta ação e ela não foi concluída.\n"

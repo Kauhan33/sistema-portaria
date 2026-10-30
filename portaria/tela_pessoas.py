@@ -1070,12 +1070,21 @@ class ListaDesativacoes:
         """Colunas conforme a largura; a coluna Situação (bolinha) só
         aparece com as reativadas na lista (sem elas, todas estão
         desativadas)."""
+        if getattr(self, "_ajustando", False):
+            return      # o <Configure> gerado abaixo chama de novo: já basta
         visiveis = self._visiveis(self.tabela.winfo_width())
         mostrar = "tree headings" if self.ver_reativadas.get() else "headings"
+        # o Tk devolve "show" como tupla de objetos (não como texto): compara
+        # palavra por palavra, senão nunca fica igual e o ajuste não para
+        atual = " ".join(str(p) for p in self.tabela["show"])
         if (tuple(self.tabela["displaycolumns"]) != visiveis
-                or str(self.tabela["show"]) != mostrar):
-            self.tabela.configure(displaycolumns=visiveis, show=mostrar)
-            self.tabela.event_generate("<Configure>")   # encaixa as larguras
+                or atual != mostrar):
+            self._ajustando = True
+            try:
+                self.tabela.configure(displaycolumns=visiveis, show=mostrar)
+                self.tabela.event_generate("<Configure>")   # encaixa larguras
+            finally:
+                self._ajustando = False
 
     def atualizar(self):
         ok, linhas = self.app.tentar(self.app.banco.listar_desativacoes,

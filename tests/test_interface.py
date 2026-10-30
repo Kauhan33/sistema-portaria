@@ -76,12 +76,25 @@ class BaseInterface(unittest.TestCase):
     def tearDownClass(cls):
         cls.raiz.destroy()
 
+    def _sem_erro_no_tk(self):
+        if self.erros_tk:
+            self.fail(f"erro num callback do Tk: {self.erros_tk[0]!r} "
+                      f"({len(self.erros_tk)} no total)")
+
     def nova_janela(self):
         janela = tk.Toplevel(self.raiz)
         janela.withdraw()
         return janela
 
     def setUp(self):
+        # erro dentro de um callback do Tk (clique, <Configure>, after...):
+        # o Tk só imprime e segue, e o teste passaria assim mesmo. Aqui ele
+        # é guardado e o teste falha no fim (foi assim que um RecursionError
+        # ao abrir Pessoas › Desativadas passou despercebido na 2.3 e 2.4)
+        self.erros_tk = []
+        self.raiz.report_callback_exception = (
+            lambda tipo, erro, rastro: self.erros_tk.append(erro))
+        self.addCleanup(self._sem_erro_no_tk)
         self.janela = self.nova_janela()
         self.pasta = tempfile.TemporaryDirectory()
         self.caminho_db = os.path.join(self.pasta.name, "portaria.db")
@@ -1239,6 +1252,19 @@ class TestAbertura(BaseInterface):
         self.assertEqual(titulo, "Erro inesperado")
         self.assertNotIn("ZeroDivision", texto)
         self.assertIn("ZeroDivisionError", "\n".join(log.output))
+
+    def test_erro_inesperado_com_a_pilha_cheia_nao_derruba(self):
+        """Se nem o log consegue rodar (RecursionError com a pilha quase
+        cheia), o aviso fica para depois, com a pilha vazia; o programa
+        não fecha."""
+        erro = RecursionError("maximum recursion depth exceeded")
+        with mock.patch("portaria.dados.log.error",
+                        side_effect=[RecursionError(), None]) as registrar:
+            self.janela.report_callback_exception(RecursionError, erro, None)
+            self.msg.showerror.assert_not_called()
+            self.janela.update()
+        self.assertEqual(registrar.call_count, 2)
+        self.assertEqual(self.msg.showerror.call_args[0][0], "Erro inesperado")
 
 
 class TestAbaUsuarios(BaseInterface):
@@ -2555,6 +2581,27 @@ class TestAbaDesativadas(BaseInterface):
             dialogo.fechar()
             return texto
         return ""
+
+    def test_abrir_a_aba_nao_entra_em_recursao(self):
+        """Regressão (2.4): clicar em Desativadas ou Veículos desativados
+        derrubava o programa (RecursionError). O Tk devolve "show" como
+        tupla, a comparação com o texto nunca batia e cada ajuste gerava
+        outro <Configure>. Agora o segundo ajuste não muda nada."""
+        for tipo in ("cpf", "placa"):
+            for reativadas in (False, True):
+                with self.subTest(tipo=tipo, reativadas=reativadas):
+                    lista = self.lista(tipo)
+                    lista.ver_reativadas.set(reativadas)
+                    self.aba.seletor.selecionar(
+                        "Desativadas" if tipo == "cpf"
+                        else "Veículos desativados")
+                    lista.atualizar()
+                    lista.tabela.event_generate("<Configure>")
+                    with mock.patch.object(lista.tabela, "configure",
+                                           wraps=lista.tabela.configure) as c:
+                        lista._ajustar_colunas()
+                        lista.tabela.event_generate("<Configure>")
+                    c.assert_not_called()
 
     def test_admin_desativa_cpf_sem_cadastro(self):
         self.assertEqual(self.preencher("cpf", "11144477735",

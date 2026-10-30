@@ -448,6 +448,10 @@ class AbaCadastro:
                                   bg=COR["superficie"], fg=COR["sucesso"],
                                   justify="left", anchor="w")
         self.lbl_aviso.pack(side="left")
+        # a janela fechou (ou o usuário saiu) com o aviso ainda na tela: o
+        # "esconder" agendado não roda mais sobre um rótulo que não existe
+        self.lbl_aviso.bind("<Destroy>", lambda e: self._cancelar_aviso(),
+                            add="+")
         self.btn_desfazer = link(aviso, "Desfazer", self.desfazer_saida)
 
         self.quadro_pessoas, self.tabela = tabela(
@@ -1660,6 +1664,14 @@ class AbaCadastro:
             self._mostrar_status_no_rodape()
         self._timer_aviso = self.aba.after(SEGUNDOS_PARA_DESFAZER * 1000,
                                            self._esconder_aviso)
+
+    def _cancelar_aviso(self):
+        if self._timer_aviso:
+            try:
+                self.aba.after_cancel(self._timer_aviso)
+            except tk.TclError:
+                pass
+            self._timer_aviso = None
 
     def _esconder_aviso(self):
         self._timer_aviso = None

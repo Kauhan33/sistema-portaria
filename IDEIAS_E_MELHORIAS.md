@@ -324,7 +324,7 @@ mudança de esquema (banco v11).
 - Privacidade: para o porteiro, toda resposta, o console e o modo didático
   mostram o CPF mascarado; o texto dos comandos não vai para o log nem para
   o banco.
-- 920 testes automatizados; casos de teste CT-01 a CT-68.
+- 922 testes automatizados; casos de teste CT-01 a CT-68.
 - Ideias para depois: lote de comandos (E3), busca traduzida para SQL (E6),
   as opções `visita` e `cracha` com o visitante completo (A1, 2.5), "sem
   placa" no `editar`, histórico das linhas digitadas (seta para cima) só

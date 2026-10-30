@@ -162,3 +162,12 @@ class TestExportarCsv(BaseBackup):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCelulaDoCsv(unittest.TestCase):
+    def test_textos_que_o_excel_leria_como_formula(self):
+        """CSV injection (OWASP): =, +, -, @, TAB e CR no começo."""
+        for perigoso in ("=1+1", "+5", "-2", "@SUM(A1)", "\t=1", "\r=1"):
+            self.assertEqual(backup._celula(perigoso), "'" + perigoso)
+        for normal in ("Ana Souza", "52998224725", "", 0, "a=b"):
+            self.assertEqual(backup._celula(normal), str(normal))

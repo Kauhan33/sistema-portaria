@@ -105,9 +105,11 @@ def backup_diario(caminho_banco, pasta=None, manter=MANTER_BACKUPS, hoje=None):
 
 
 def _celula(valor):
-    """Evita que o Excel interprete um texto como fórmula (=, +, -, @)."""
+    """Evita que o Excel interprete um texto como fórmula (=, +, -, @ e,
+    como recomenda a OWASP, TAB e retorno de carro no começo)."""
     texto = str(valor)
-    return "'" + texto if texto[:1] in ("=", "+", "-", "@") else texto
+    return ("'" + texto if texto[:1] in ("=", "+", "-", "@", "\t", "\r")
+            else texto)
 
 
 def exportar_csv(banco, caminho_csv, desde, ate, autor):

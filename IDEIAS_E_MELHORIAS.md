@@ -345,6 +345,7 @@ backup antes; nada se perde).
   essa subaba não fecha mais o programa (RecursionError do ajuste das
   colunas, versão 2.4.1 que não chegou a ser publicada); os testes de tela
   falham quando um callback do Tk dá erro.
+- 974 testes automatizados; casos de teste CT-01 a CT-78.
 
 ## 4. Rascunho de requisitos para o Word
 

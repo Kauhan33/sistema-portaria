@@ -128,13 +128,14 @@ logado e ativo.
 python -m unittest -v
 ```
 
-922 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
+974 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
 comandos** (uma classe por fase: léxico, gramática LL(1), sintático,
 semântico e a execução comparada com o formulário, além do campo, do console
 e do modo didático), validações, regras de
 negócio, login, senhas, permissões, cadastro de pessoas e preenchimento
 automático, saída rápida e desfazer, correção de registros, **desativação de
-pessoa e de veículo**, **Nova pessoa, Editar e Excluir pessoa**, editar
+pessoa e de veículo**, **Nova pessoa, Editar e Excluir pessoa**, os
+**vários carros de uma pessoa** e a migração do banco v11 para o v12, editar
 usuário, feriado, evento e a validade de quem pode retirar o carro, o
 desenho da **placa antiga** e o layout do Movimento,
 **regras de horário** (cada categoria dentro e fora da janela, ninguém entra
@@ -183,14 +184,21 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 ## Galeria
 
-As telas `v24_*` (linguagem de comandos) são da versão atual. As `v23_*` e
-as anteriores mostram recursos que continuam iguais, mas no topo da Entrada e
-saída ainda aparece a "Saída rápida", que na 2.4 virou o campo Comando (e nas
-anteriores à 2.3 a barra lateral ainda tem a página Bloqueios, hoje Pessoas ›
-Pessoas desativadas).
+As telas `v25_*` (pessoas com mais de um carro) e `v24_*` (linguagem de
+comandos) são da versão atual. As `v23_*` e as anteriores mostram recursos
+que continuam iguais, mas a subaba "Pessoas desativadas" ainda se chama
+"Desativadas", no topo da Entrada e saída ainda aparece a "Saída rápida", que
+na 2.4 virou o campo Comando (e nas anteriores à 2.3 a barra lateral ainda tem
+a página Bloqueios).
 
 | | |
 |---|---|
+| ![Ficha com dois carros](docs/design/final/v25_ficha_carros_claro.png) | ![Editar com várias placas](docs/design/final/v25_editar_placas_claro.png) |
+| **Ficha › Veículo (2.5)** — a linha **Carro** escolhe de qual carro se fala | **Editar pessoa** — o campo **Placas**: Enter ou "Adicionar" põe mais uma, o × tira |
+| ![Vai entrar de carro? com dois carros](docs/design/final/v25_entrada_dois_carros_claro.png) | ![Carro desativado na ficha](docs/design/final/v25_ficha_carro_desativado_escuro.png) |
+| **"Vai entrar de carro?"** — um botão por carro do cadastro | O carro **desativado** em vermelho na linha Carro (tema escuro) |
+| ![Pessoas desativadas](docs/design/final/v25_pessoas_desativadas_claro_1366x670.png) | ![Comandos com vários carros](docs/design/final/v25_comando_placas_escuro.png) |
+| A subaba **Pessoas desativadas** (antes "Desativadas") | `cadastrar ... placa A placa B`, `situacao` e `editar ... sem placa` |
 | ![Comando com sucesso](docs/design/final/v24_comando_sucesso_claro.png) | ![Realce e Tab](docs/design/final/v24_realce_autocompletar_claro.png) |
 | **Campo Comando (2.4)** — a resposta numa linha e o console com as últimas | **Realce e Tab** — cada token com a sua cor; o nome vira o CPF; "15:0" em vermelho |
 | ![Erro léxico](docs/design/final/v24_erro_lexico_claro_1366x670.png) | ![Erro sintático](docs/design/final/v24_erro_sintatico_claro_1366x670.png) |
@@ -378,6 +386,10 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     entrar de carro?"** com a placa desenhada — *De carro — ABC-1234* (abre a
     estadia), *A pé* (sem placa) ou *Com outro carro* (volta ao campo Placa).
     O Enter escolhe *De carro* se a última visita foi de carro, senão *A pé*.
+    Quem tem **mais de um carro** (RN47) vê um botão *De carro* para cada
+    placa do cadastro (os que já estão no estacionamento não aparecem), e o
+    campo Placa avisa "2 carros no cadastro". Vir com um carro que não estava
+    no cadastro guarda a placa nele.
     Não pergunta se a placa foi digitada ou apagada à mão, se o carro já está
     no estacionamento ou se a pessoa não tem placa cadastrada. Vale também
     para quem vem da página Pessoas ("Registrar entrada");
@@ -412,10 +424,12 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
   lista, "Desativar CPF" / "Desativar placa", ou pela ficha) e **reativa**;
   o porteiro vê as listas (CPF mascarado). Reativar não apaga: guarda quem
   reativou e quando. **Nova pessoa** (no cabeçalho) cadastra CPF, nome,
-  celular, placa (opcional) e tipo **sem registrar entrada**, com a mesma
+  celular, **placas** (opcionais, até 5: Enter ou "Adicionar" põe mais uma
+  e o × tira; a 1ª é a principal) e tipo **sem registrar entrada**, com a mesma
   validação da entrada; CPF já cadastrado é recusado e abre a ficha; CPF
   desativado avisa. A **ficha** da pessoa escolhida mostra nome, CPF,
-  celular e tipo, a placa, as visitas e a situação; no pé, **Registrar
+  celular e tipo, a placa, as visitas e a situação (na lista, a coluna
+  Placa mostra a principal e quantas mais: "ABC1D23 +1"); no pé, **Registrar
   entrada** (abre a Entrada e saída já preenchida), **Editar** (o mesmo
   diálogo da Nova pessoa, com o CPF fixo) e, para o administrador,
   **Desativar** / Reativar e **Excluir** (só quem nunca teve visita; com
@@ -425,7 +439,9 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
   época quando eram outros) e **Veículo** ("Quem pode retirar" o carro da
   placa dela, com validade opcional; Adicionar e Validade — o porteiro só
   com o dono no campus — e Remover; e, para o administrador, "Desativar
-  placa").
+  placa"). Quem tem mais de um carro (RN47) tem a linha **Carro**, um botão
+  por placa: a placa desenhada, a lista de quem pode retirar e o Desativar
+  placa passam a falar do carro escolhido (o desativado fica em vermelho).
 - **Painel**: no campus agora, entradas de hoje, permanência média,
   **veículos no estacionamento** (com os pendentes, ou o total de visitas com
   veículo, logo abaixo) e **tempo excedido** (com as saídas pendentes logo
@@ -541,7 +557,7 @@ Regras e segurança:
 - O `registros_portaria.json` da versão 1 é importado com as mesmas regras do
   cadastro: o que não passa é ignorado, com os motivos no aviso, e a
   importação fica no histórico.
-- A versão do banco fica também na tabela `meta` (banco v11): se um programa
+- A versão do banco fica também na tabela `meta` (banco v12): se um programa
   antigo abrir o banco e rebaixar a versão, o programa novo atualiza de novo
   (com backup) e avisa o administrador; um banco de versão mais nova é
   recusado. O programa antigo já distribuído (versões 5 e 6) não confere a
@@ -579,8 +595,8 @@ buscar maria visitante semana
 | `entrada` | `entrada 529.982.247-25 aluno placa ABC1D23` | Registra a entrada | todos |
 | `saida` | `saida 52998224725` · `saida placa ABC1D23` · `saida 52998224725 sem carro` | Saída da pessoa ou do carro (`placa X`: com qual carro; `as 14:05`: horário de hoje que já passou) | todos |
 | *(implícito)* | `52998224725` · `ABC1D23` | Só o CPF ou só a placa = `saida` (a antiga Saída rápida) | todos |
-| `cadastrar` | `cadastrar 111.444.777-35 visitante nome "Bruno Almeida" cel 31987651234` | Nova pessoa, sem entrada (RN41) | todos |
-| `editar` | `editar 11144477735 cel 31999990000 tipo professor` | Muda nome, celular, placa ou tipo | todos |
+| `cadastrar` | `cadastrar 111.444.777-35 visitante nome "Bruno Almeida" cel 31987651234 [placa ABC1D23 placa NEY4829]` | Nova pessoa, sem entrada (RN41); um `placa` por carro (RN47) | todos |
+| `editar` | `editar 11144477735 cel 31999990000 tipo professor` · `editar 11144477735 placa NEY4829 sem placa ABC1D23` | Muda nome, celular ou tipo; `placa X` inclui um carro e `sem placa X` tira (RN47) | todos |
 | `excluir` | `excluir 11144477735` | Exclui quem nunca teve visita (RN42) | admin |
 | `desativar` | `desativar 11144477735 motivo "agressão ao porteiro"` | Pessoa ou veículo não entra (RN12) | admin |
 | `reativar` | `reativar placa ABC1D23` | Encerra a desativação | admin |
@@ -751,16 +767,29 @@ danificado):
 
 ## Versões
 
-**2.4.1** (29/10/2026) — correção (sem mudança no banco):
+**2.5** (30/10/2026) — pessoas com mais de um carro (banco v12, com backup
+antes; nada se perde):
 
-- clicar em **Pessoas › Desativadas** ou **Veículos desativados** fechava o
-  programa (RecursionError): o ajuste das colunas comparava a opção `show`
-  da tabela (que o Tk devolve como tupla) com um texto, nunca achava igual
-  e se chamava sem parar; agora compara palavra por palavra e não reentra;
-- um erro inesperado numa tela não derruba mais o programa, mesmo com a
-  pilha cheia: o aviso e o log ficam para logo depois;
-- os testes de tela agora falham quando um callback do Tk dá erro (antes o
-  Tk só imprimia e o teste passava); 922 testes automatizados.
+- **várias placas por pessoa** (RF33, RN47): até 5 no cadastro; a 1ª é a
+  principal (a que o CPF preenche na entrada). A atualização do banco traz
+  a placa do cadastro e as placas com que cada pessoa já veio;
+- **Nova pessoa e Editar**: o campo **Placas** (Enter ou "Adicionar" põe
+  mais uma, o × tira); tirar um carro tira também quem podia retirá-lo;
+- **ficha**: a linha **Carro** escolhe de qual carro se fala ("Quem pode
+  retirar" e "Desativar placa" seguem a escolha); a lista mostra "ABC1D23 +1";
+- **entrada**: "Vai entrar de carro?" tem um botão por carro; vir com um
+  carro novo guarda a placa no cadastro;
+- **linguagem**: `cadastrar ... placa A placa B` e `editar CPF placa X sem
+  placa Y` (a gramática continua LL(1)); `situacao` lista os carros;
+- a subaba **Desativadas** passou a se chamar **Pessoas desativadas**;
+- **correção**: abrir essa subaba (ou Veículos desativados) fechava o
+  programa com "maximum recursion depth exceeded" — o ajuste das colunas
+  comparava a opção `show` da tabela (uma tupla no Tk) com um texto e se
+  chamava sem parar. Um erro inesperado numa tela também não derruba mais o
+  programa, e os testes de tela agora falham quando um callback do Tk dá
+  erro (antes o Tk só imprimia e o teste passava);
+- casos de teste CT-01 a CT-78 e 974 testes automatizados; prints
+  `docs/design/final/v25_*`.
 
 **2.4** (29/10/2026) — Compiladores: a linguagem de comandos (sem mudança
 no banco):

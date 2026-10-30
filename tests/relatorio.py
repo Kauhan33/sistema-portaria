@@ -923,6 +923,128 @@ CASOS = [
           "test_abrir_a_aba_nao_entra_em_recursao",
           "test_interface.TestAbertura."
           "test_erro_inesperado_com_a_pilha_cheia_nao_derruba"]),
+
+    # --- Revisão 2.5.1: testes por ataque (aleatórios, fuzz, concorrência)
+    caso("CT-79", ["RN25", "RN47", "RF09"], POSITIVO,
+         "Desfazer a saída depois de corrigir a placa",
+         "A visita entra com o carro BRA2E19 e sai com ele; a placa da "
+         "visita é corrigida para RST4A56 (ou apagada); a saída é desfeita.",
+         "Volta ao estacionamento o carro da placa corrigida (ou nenhum, se "
+         "a visita ficou sem placa). Antes, voltava o BRA2E19 ligado a uma "
+         "visita que diz RST4A56 (achado pelas sequências aleatórias).",
+         ["test_aleatorio.TestCasosAchados."
+          "test_desfazer_saida_depois_de_corrigir_a_placa",
+          "test_aleatorio.TestCasosAchados."
+          "test_desfazer_saida_depois_de_apagar_a_placa"]),
+    caso("CT-80", ["RN05", "RN25", "RN47"], POSITIVO,
+         "Sequências aleatórias: as regras nunca quebram",
+         "750 operações sorteadas (entradas, saídas, desfazer, correções, "
+         "exclusões, carros, desativações, cadastro com várias placas, quem "
+         "pode retirar, Encerrar o dia), conferindo tudo depois de cada uma. "
+         "Na revisão rodaram também 32 sementes de 1.500 passos (48 mil "
+         "operações).",
+         "Nenhuma regra quebra: um CPF com no máximo uma visita aberta, uma "
+         "placa com no máximo uma estadia aberta, a placa principal entre os "
+         "carros da pessoa, o histórico só cresce, contadores certos, banco "
+         "íntegro; recusa é sempre a mensagem para o usuário (ErroDados).",
+         ["test_aleatorio.TestSequenciasAleatorias."
+          "test_invariantes_em_sequencias_aleatorias"]),
+    caso("CT-81", ["RN05", "RN25", "RN11"], POSITIVO,
+         "Duas estações no mesmo banco ao mesmo tempo",
+         "Threads com o banco aberto no mesmo arquivo: a mesma pessoa "
+         "entrando nas duas, a mesma saída, o mesmo carro, 8 estações "
+         "gravando 15 entradas cada, a correção de uma visita que a outra "
+         "estação mudou e o mesmo cadastro com placas nas duas.",
+         "Uma estação ganha e a outra recebe a mensagem (ou nada a fazer); "
+         "nenhuma entrada se perde, nada fica duplicado e nunca aparece um "
+         "erro do SQLite.",
+         ["test_duas_estacoes.TestDuasEstacoes.test_mesma_pessoa_entrando_nas_duas",
+          "test_duas_estacoes.TestDuasEstacoes.test_mesma_saida_nas_duas",
+          "test_duas_estacoes.TestDuasEstacoes."
+          "test_mesmo_carro_entrando_com_duas_pessoas",
+          "test_duas_estacoes.TestDuasEstacoes."
+          "test_muitas_entradas_juntas_nenhuma_se_perde",
+          "test_duas_estacoes.TestDuasEstacoes."
+          "test_correcao_com_a_visita_mudada_pela_outra",
+          "test_duas_estacoes.TestDuasEstacoes."
+          "test_cadastro_com_placas_ao_mesmo_tempo"]),
+    caso("CT-82", ["RN33"], NEGATIVO,
+         "Textos estranhos nas validações",
+         "Milhares de textos sorteados (acentos, emoji, controle, números "
+         "enormes, SQL, datas impossíveis como 31/04 e 29/02/2025) em todos "
+         "os campos: visita, placas, desativação, horários, feriados, "
+         "eventos, vagas, validade, senha e login.",
+         "Cada função responde \"pode\" ou \"não pode\" com a mensagem; "
+         "nenhuma exceção.",
+         ["test_entradas_estranhas.TestEntradasEstranhas.test_visita",
+          "test_entradas_estranhas.TestEntradasEstranhas.test_campos_soltos",
+          "test_entradas_estranhas.TestEntradasEstranhas."
+          "test_configuracoes_e_regras",
+          "test_entradas_estranhas.TestEntradasEstranhas.test_contas"]),
+    caso("CT-83", ["RF03", "RF11"], POSITIVO,
+         "Atividade: o filtro acha evento antigo",
+         "Usuários › Atividade com mais de 200 eventos depois de um "
+         "\"Cadastro de entrada\"; filtrar por \"cadastro de\".",
+         "O evento antigo aparece (o filtro procura no histórico inteiro, no "
+         "banco, depois da pausa na digitação). Antes, só os 200 mais "
+         "recentes eram filtrados.",
+         ["test_interface.TestAbaUsuarios."
+          "test_filtro_da_atividade_acha_evento_antigo",
+          "test_interface.TestAbaUsuarios.test_filtro_da_atividade"]),
+    caso("CT-84", ["RF33", "RN47"], POSITIVO,
+         "Ficha com 5 carros",
+         "Na ficha de quem tem 5 carros (um deles desativado), escolher o "
+         "último na linha Carro.",
+         "Com mais de 3 carros a linha Carro é uma lista (os botões não "
+         "cabiam: o 4º saía cortado e o 5º sumia); o desativado aparece "
+         "marcado; a placa desenhada e a lista de quem pode retirar seguem "
+         "a escolha.",
+         ["test_interface.TestVariasPlacas.test_cinco_carros_viram_uma_lista"]),
+    caso("CT-85", ["RNF03"], POSITIVO,
+         "Lista de Pessoas e buscar com período no histórico grande",
+         "Banco com 2 anos (146 mil visitas, 20 mil pessoas): abrir Pessoas "
+         "sem busca; buscar com período.",
+         "As consultas usam os índices (uma visita aberta por CPF; a "
+         "entrada): a lista de Pessoas caiu de 0,3 s para 12 ms.",
+         ["test_desempenho.TestPlanoDasConsultas."
+          "test_pessoas_no_campus_primeiro_usa_o_indice_de_visita_aberta",
+          "test_desempenho.TestPlanoDasConsultas."
+          "test_buscar_com_periodo_usa_o_indice_da_entrada"]),
+    caso("CT-86", ["RN33", "RNF05"], NEGATIVO,
+         "Exportação CSV sem fórmula do Excel",
+         "Exportar textos que começam com =, +, -, @, TAB ou retorno de carro.",
+         "A célula recebe um apóstrofo na frente: o Excel mostra o texto e "
+         "não executa a fórmula (CSV injection, OWASP).",
+         ["test_backup.TestCelulaDoCsv."
+          "test_textos_que_o_excel_leria_como_formula"]),
+    caso_da_linguagem(
+        "CT-87", "Execução", ["RF03", "RN46"], POSITIVO,
+        "buscar com período num histórico grande",
+        "Ana tem 210 visitas recentes e 3 em janeiro de 2025: \"buscar ana "
+        "de 01/01/2025 ate 31/01/2025\". Também: hoje, ontem, semana, mes.",
+        "\"3 visitas encontradas\" (o período e o tipo vão para o SQL antes "
+        "do limite de 200; antes respondia \"Nada encontrado\"); semana = 7 "
+        "dias e mes = 30 dias, contando hoje.",
+        ["test_linguagem_caminhos.TestBuscarPelaTela."
+         "test_buscar_periodo_antigo_com_historico_grande",
+         "test_linguagem_caminhos.TestBuscarNoBanco."
+         "test_periodo_e_tipo_vao_para_o_sql_antes_do_limite",
+         "test_linguagem_caminhos.TestCaminhosDoSemantico."
+         "test_periodos_do_buscar"]),
+    caso_da_linguagem(
+        "CT-88", "Léxico", ["RN14", "RN46"], NEGATIVO,
+        "Fuzz: linhas aleatórias e a privacidade do porteiro",
+        "1.500 linhas sorteadas (palavras da linguagem misturadas, CPFs, "
+        "placas, datas, aspas sem fechamento, símbolos, emoji, linhas "
+        "cortadas) nas três fases, como administrador e como porteiro; "
+        "\"entrada \\\"Ana 52998224725\" como porteiro.",
+        "A análise nunca levanta exceção, para numa fase com o ^ dentro da "
+        "linha e não grava nada; o porteiro nunca vê um CPF inteiro (antes, "
+        "depois de aspas sem fechamento, o CPF aparecia na linha repetida "
+        "pelo console).",
+        ["test_linguagem_fuzz.TestFuzzDaLinguagem.test_linhas_aleatorias",
+         "test_linguagem.TestLexico."
+         "test_cpf_depois_de_aspas_sem_fechamento_e_mascarado"]),
 ]
 
 

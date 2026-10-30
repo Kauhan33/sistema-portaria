@@ -44,6 +44,7 @@ não se repete abaixo):
 | **2.3** ✅ | Pessoas, desativação e CRUD | P1, P2, P3, P4, P5, P6 | v11 (sem mudança) | ~2 dias |
 | **2.4** ✅ | Compiladores: linha de comando | E1, E2, E4, F1 | v11 (sem mudança) | ~6 dias |
 | **2.5** ✅ | Pessoas com mais de um carro | P7, P8 | v12 | ~1 dia |
+| **2.5.1** ✅ | Revisão geral com testes por ataque | F3 | v12 (sem mudança) | ~1 dia |
 | **2.6** | Visitante e operação da guarita | A1, A4, A3, A2, A6, A5 (opcional) | v13 | ~6 dias |
 | **2.7** | Dados, relatórios e apresentação | F2, D3, C1, C2, C3 | v13 (sem mudança) | ~5 dias |
 | **2.8** | LGPD e segurança | B1, B2, B8, N09, S02 | v14 | ~4 dias |

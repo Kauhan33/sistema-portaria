@@ -347,6 +347,24 @@ backup antes; nada se perde).
   falham quando um callback do Tk dá erro.
 - 974 testes automatizados; casos de teste CT-01 a CT-78.
 
+### Versão 2.5.1 — Revisão geral com testes por ataque (30/10/2026) ✅
+Sem mudança de esquema (banco v12).
+- Testes novos: `tests/test_aleatorio.py` (sequências aleatórias com as
+  invariantes), `tests/test_linguagem_fuzz.py`, `tests/test_duas_estacoes.py`,
+  `tests/test_entradas_estranhas.py`, `tests/test_desempenho.py` (plano das
+  consultas) e `tests/test_linguagem_caminhos.py` (o que a cobertura mostrou
+  sem teste). Fora da suíte, na revisão: 48 mil operações aleatórias, 20
+  mil linhas de fuzz, 30 mil ações de "macaco" na janela visível e o
+  banco de 2 anos (146 mil visitas) para medir o tempo.
+- Corrigidos: desfazer a saída depois de corrigir a placa; CPF do porteiro
+  depois de aspas sem fechamento; `buscar` com período antigo; filtro da
+  Atividade; ficha com mais de 3 carros; texto do "Vai entrar de carro?".
+- Lista de Pessoas 25 vezes mais rápida com 20 mil pessoas.
+- **Para o aluno decidir:** corrigir a placa de uma visita (erro de
+  digitação) deixa a placa errada entre os carros da pessoa (sai em
+  Editar, pelo ×), e ela aparece na pergunta "Vai entrar de carro?".
+- 1005 testes automatizados; casos de teste CT-01 a CT-88.
+
 ## 4. Rascunho de requisitos para o Word
 
 **RF**: RF01 cadastrar entrada · RF02 registrar saída (botão, duplo clique,

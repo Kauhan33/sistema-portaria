@@ -128,7 +128,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-974 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
+1005 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
 comandos** (uma classe por fase: léxico, gramática LL(1), sintático,
 semântico e a execução comparada com o formulário, além do campo, do console
 e do modo didático), validações, regras de
@@ -766,6 +766,29 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**2.5.1** (30/10/2026) — revisão geral com testes por ataque (sem mudança
+no banco):
+
+- **testes novos**: sequências aleatórias de operações no banco conferindo as
+  regras depois de cada uma (na revisão, 48 mil operações), fuzz da
+  linguagem (20 mil linhas, admin e porteiro), duas estações gravando ao
+  mesmo tempo, textos estranhos em todas as validações, um "macaco" que
+  clicou e digitou 30 mil vezes na janela de verdade e a medição de
+  cobertura (todos os módulos entre 83% e 100% das linhas);
+- **corrigido**: desfazer a saída depois de corrigir a placa da visita
+  voltava o carro da placa antiga ao estacionamento; o porteiro via o CPF
+  inteiro na linha repetida pelo console depois de umas aspas sem
+  fechamento; `buscar ... de DATA ate DATA` respondia "Nada encontrado"
+  quando o termo tinha mais de 200 visitas mais novas; o filtro da
+  Atividade só olhava os 200 eventos mais recentes; com mais de 3 carros
+  a linha Carro da ficha não cabia (agora é uma lista); "Vai entrar de
+  carro?" contava errado os carros;
+- **mais rápido**: a lista de Pessoas num banco de 2 anos (20 mil pessoas)
+  caiu de 0,3 s para 12 ms;
+- a exportação CSV também protege textos que começam com TAB ou retorno de
+  carro (fórmula do Excel);
+- casos de teste CT-01 a CT-88 e 1005 testes automatizados.
 
 **2.5** (30/10/2026) — pessoas com mais de um carro (banco v12, com backup
 antes; nada se perde):

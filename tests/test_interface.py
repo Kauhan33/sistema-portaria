@@ -1723,6 +1723,19 @@ class TestVariasPlacas(TestAbaPessoas):
         self.selecionar(self.ana)
         self.assertIsNone(self.aba.lista_carros)
 
+    def test_botoes_do_veiculo_nao_ficam_espremidos(self):
+        """2.5.2: com a faixa de pessoa desativada, os botões Adicionar,
+        Validade e Remover saíam espremidos e sem rolagem. Agora eles vêm
+        antes da lista na ordem do pack (no pé da seção) e é a lista, que
+        tem rolagem, quem encolhe."""
+        self.selecionar(self.beto)
+        self.aba.seletor_ficha.selecionar("Veículo")
+        ordem = self.aba.botoes_veiculo.master.pack_slaves()
+        self.assertLess(ordem.index(self.aba.botoes_veiculo),
+                        ordem.index(self.aba.quadro_autorizados))
+        self.assertEqual(self.aba.botoes_veiculo.pack_info()["side"], "bottom")
+        self.assertEqual(self.aba.quadro_autorizados.pack_info()["expand"], 1)
+
     def test_desativar_o_carro_escolhido(self):
         self.editar_com("NEY4829").salvar()
         self.selecionar(self.beto)

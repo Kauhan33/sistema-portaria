@@ -521,13 +521,17 @@ class AbaPessoas:
         else:
             self.lbl_veiculo_dica.pack(fill="x", pady=(px(2), px(8)),
                                        after=self.cab_veiculo)
+        # a lista é quem encolhe quando falta altura (ela tem rolagem): os
+        # botões vão para o pé da seção ANTES dela na ordem do pack, e
+        # ficam sempre inteiros (com a faixa de pessoa desativada, eles
+        # saíam espremidos e sem como rolar até eles)
         self.quadro_autorizados.pack(
-            fill="x", pady=(px(4), 0),
+            fill="both", expand=True, pady=(px(4), 0),
             after=self.lbl_veiculo_dica if not self.compacta
             else self.cab_veiculo)
-        self.botoes_veiculo.pack(fill="x", pady=(px(6 if self.compacta else 10),
-                                                 0),
-                                 after=self.quadro_autorizados)
+        self.botoes_veiculo.pack(side="bottom", fill="x",
+                                 pady=(px(6 if self.compacta else 10), 0),
+                                 before=self.quadro_autorizados)
         ok, lista = self.app.tentar(self.app.banco.listar_autorizados, placa)
         if ok:
             self.autorizados = lista
@@ -554,8 +558,8 @@ class AbaPessoas:
             self.lbl_dono_fora.config(text="O dono precisa estar no campus "
                                            "para o porteiro adicionar ou "
                                            "mudar a validade.")
-            self.lbl_dono_fora.pack(fill="x", pady=(px(6), 0),
-                                    after=self.botoes_veiculo)
+            self.lbl_dono_fora.pack(side="bottom", fill="x", pady=(px(6), 0),
+                                    before=self.botoes_veiculo)
         self.btn_remover_autorizado.definir_ativo(bool(self.autorizados))
 
     def _mostrar_desativacao_do_veiculo(self, placa):

@@ -128,7 +128,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-1010 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
+1011 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
 comandos** (uma classe por fase: léxico, gramática LL(1), sintático,
 semântico e a execução comparada com o formulário, além do campo, do console
 e do modo didático), validações, regras de
@@ -766,6 +766,12 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**2.5.2** (30/10/2026) — correção (sem mudança no banco): na ficha de uma
+pessoa desativada (subaba Pessoas desativadas), a seção Veículo saía
+espremida e os botões Adicionar, Validade e Remover ficavam cortados, sem
+como rolar até eles. Agora os botões ficam inteiros no pé da seção e a
+lista de quem pode retirar, que tem rolagem, é quem encolhe; 1011 testes.
 
 **2.5.1** (30/10/2026) — revisão geral com testes por ataque (sem mudança
 no banco):

@@ -1654,6 +1654,10 @@ class Banco:
             self._atualizar_pessoa_se_recente(con, pessoa, id_registro, novo)
             self._sincronizar_estadia(con, id_registro, novo, linha[4],
                                       pessoa, autor)
+            if linha[4] and (linha[4] != novo["placa"]
+                             or pessoa != pessoa_antiga):
+                self._tirar_placa_se_nao_usada(con, pessoa_antiga, linha[4],
+                                               autor, id_registro)
             if pessoa_antiga is not None and pessoa_antiga != pessoa:
                 con.execute("DELETE FROM pessoas WHERE id = ? AND NOT EXISTS "
                             "(SELECT 1 FROM registros WHERE pessoa_id = ?)",
@@ -1668,6 +1672,50 @@ class Banco:
                 self._registrar_veiculo_sem_dono(
                     con, autorizacao_veiculo, autor,
                     f"Correção da visita #{id_registro}: {texto}", id_registro)
+
+    def _tirar_placa_se_nao_usada(self, con, pessoa, placa, autor, id_registro):
+        """
+        RN47 (2.5.1, decisão do aluno): a correção trocou a placa da visita
+        (erro de digitação) ou passou a visita para outro CPF. A placa
+        antiga sai dos carros da pessoa se nenhuma outra visita dela usou
+        essa placa — senão a placa digitada errado ficava no cadastro e
+        aparecia em "Vai entrar de carro?". Se era a principal, a principal
+        passa a ser a do carro da visita mais recente (ou a 1ª que sobrou);
+        quem podia retirar esse carro sai da lista (remoção lógica).
+        """
+        if pessoa is None or con.execute(
+                "SELECT 1 FROM registros WHERE pessoa_id = ? AND placa = ? "
+                "AND id <> ?", (pessoa, placa, id_registro)).fetchone():
+            return
+        if not con.execute("DELETE FROM placas_pessoa WHERE pessoa_id = ? AND "
+                           "placa = ?", (pessoa, placa)).rowcount:
+            return
+        linha = con.execute("SELECT cpf, nome, placa FROM pessoas WHERE id = ?",
+                            (pessoa,)).fetchone()
+        if linha is None:
+            return
+        cpf, nome, principal = linha
+        if principal == placa:
+            outra = con.execute(
+                "SELECT r.placa FROM registros r JOIN placas_pessoa v ON "
+                "v.pessoa_id = r.pessoa_id AND v.placa = r.placa WHERE "
+                "r.pessoa_id = ? ORDER BY r.entrada DESC, r.id DESC LIMIT 1",
+                (pessoa,)).fetchone() or con.execute(
+                "SELECT placa FROM placas_pessoa WHERE pessoa_id = ? "
+                "ORDER BY placa LIMIT 1", (pessoa,)).fetchone()
+            con.execute("UPDATE pessoas SET placa = ? WHERE id = ?",
+                        (outra[0] if outra else "", pessoa))
+        agora = self.relogio().strftime(FORMATO_ISO)
+        removidos = con.execute(
+            "UPDATE autorizados_veiculo SET ativo = 0, removido_em = ?, "
+            "removido_por = ? WHERE dono_cpf = ? AND placa = ? AND ativo = 1",
+            (agora, autor, cpf, placa)).rowcount
+        self._evento(con, autor, "Dados de pessoa alterados",
+                     f"{nome} (pessoa #{pessoa}): placa {formatar_placa(placa)} "
+                     f"tirada dos carros na correção da visita #{id_registro} "
+                     "(nenhuma outra visita usou essa placa)"
+                     + (f"; {removidos} autorizado(s) a retirar o carro "
+                        "removido(s)" if removidos else ""), id_registro)
 
     def veiculo_sem_dono_na_correcao(self, id_registro, novo):
         """Textos do que a correção faria com um carro sem o dono (a tela

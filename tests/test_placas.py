@@ -181,3 +181,76 @@ class TestMigracaoV11ParaV12(BaseRegras):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCorrecaoDaPlaca(BaseRegras):
+    """Revisão 2.5.1 (decisão do aluno): a placa digitada errado e
+    corrigida sai dos carros da pessoa se nenhuma outra visita a usou."""
+
+    def visita(self, placa, entrada, saida="", cpf=ANA):
+        return self.banco.inserir(
+            registro(cpf=cpf, nome="Ana Souza", placa=placa, entrada=entrada,
+                     saida=saida), autor="paulo")
+
+    def corrigir(self, i, **mudancas):
+        original = self.banco.buscar(i)
+        self.banco.editar(i, dict(original, **mudancas), ["corrigido"], "ana",
+                          original=original)
+
+    def test_placa_digitada_errado_sai_dos_carros(self):
+        self.cadastrar_ana(["ABC1D23"])
+        i = self.visita("ABC1D28", "19/10/2026 08:00")       # erro de digitação
+        self.assertEqual(self.banco.buscar_pessoa(ANA)["placas"],
+                         ["ABC1D28", "ABC1D23"])
+        self.corrigir(i, placa="ABC1D23")
+        p = self.banco.buscar_pessoa(ANA)
+        self.assertEqual(p["placas"], ["ABC1D23"])
+        self.assertEqual(p["placa"], "ABC1D23")
+        self.assertIn("ABC1D28 tirada dos carros",
+                      self.banco.listar_eventos()[1]["detalhe"]
+                      + self.banco.listar_eventos()[0]["detalhe"])
+
+    def test_placa_usada_em_outra_visita_fica(self):
+        self.cadastrar_ana([])
+        self.visita("NEY4829", "16/10/2026 08:00", "16/10/2026 12:00")
+        i = self.visita("NEY4829", "19/10/2026 08:00")
+        self.corrigir(i, placa="QWE1E34")
+        self.assertEqual(sorted(self.banco.buscar_pessoa(ANA)["placas"]),
+                         ["NEY4829", "QWE1E34"])
+
+    def test_principal_tirada_passa_para_a_da_visita_mais_recente(self):
+        """A visita corrigida é antiga: a principal era a placa errada?
+        Não — mas se for, a principal vira a do carro mais recente."""
+        self.cadastrar_ana(["NEY4829"])
+        antiga = self.visita("XYZ9A88", "16/10/2026 08:00", "16/10/2026 12:00")
+        self.visita("", "19/10/2026 08:00")                  # a pé, depois
+        # a principal ficou XYZ9A88 (a última visita de carro)
+        self.assertEqual(self.banco.buscar_pessoa(ANA)["placa"], "XYZ9A88")
+        self.corrigir(antiga, placa="NEY4829")
+        p = self.banco.buscar_pessoa(ANA)
+        self.assertEqual((p["placa"], p["placas"]), ("NEY4829", ["NEY4829"]))
+
+    def test_cpf_trocado_tira_a_placa_da_pessoa_errada(self):
+        """A visita era de outro CPF (digitado errado): a placa sai dos
+        carros da pessoa errada e vai para a certa."""
+        self.cadastrar_ana([])
+        # Beto já veio a pé (sem visitas, o cadastro dele sairia junto)
+        self.visita("", "16/10/2026 08:00", "16/10/2026 09:00", cpf=BETO)
+        i = self.visita("NEY4829", "19/10/2026 08:00", cpf=BETO)
+        self.assertEqual(self.banco.buscar_pessoa(BETO)["placas"], ["NEY4829"])
+        self.corrigir(i, cpf=ANA)
+        self.assertEqual(self.banco.buscar_pessoa(BETO)["placas"], [])
+        self.assertEqual(self.banco.buscar_pessoa(BETO)["placa"], "")
+        self.assertEqual(self.banco.buscar_pessoa(ANA)["placas"], ["NEY4829"])
+
+    def test_quem_podia_retirar_o_carro_errado_sai_da_lista(self):
+        self.cadastrar_ana([])
+        i = self.visita("ABC1D28", "19/10/2026 08:00")
+        self.banco.adicionar_autorizado(ANA, BETO, "Beto Rocha", None, "ana",
+                                        placa="ABC1D28")
+        self.corrigir(i, placa="ABC1D23")
+        self.assertEqual(self.banco.listar_autorizados("ABC1D28"), [])
+
+    def cadastrar_ana(self, placas):
+        self.banco.cadastrar_pessoa(ANA, "Ana Souza", "31987654321", placas,
+                                    "Aluno", "ana")

@@ -33,9 +33,10 @@ from datetime import datetime, timedelta
 
 from .. import horarios
 from ..usuarios import eh_admin, pode_excluir_pessoa, pode_gerenciar_desativacoes
-from ..validacao import (FORMATO, checar_desativacao, checar_saida,
-                         cpf_valido, formatar_placa, normalizar,
-                         validar, validar_campos, validar_desativacao)
+from ..validacao import (FORMATO, MAXIMO_PLACAS_PESSOA, checar_desativacao,
+                         checar_saida, cpf_valido, formatar_placa, normalizar,
+                         validar, validar_campos, validar_desativacao,
+                         validar_placas)
 from ..veiculos import esta_lotado, regra_lotado
 from .erros import SEMANTICO, ErroDeAnalise
 from .lexico import PALAVRA_DO_TIPO
@@ -459,12 +460,15 @@ class AnalisadorSemantico:
                      f"para mudar os dados: editar {self._texto_cpf(cpf)} "
                      "cel ...")
         valores = {o.nome: o.valor.valor for o in no.opcoes}
+        placas = self._placas(
+            [o for o in no.opcoes if o.nome == "placa"], [])
         dados = normalizar(valores.get("nome", ""), cpf,
-                           valores.get("cel", ""), valores.get("placa", ""),
+                           valores.get("cel", ""), placas[0] if placas else "",
                            no.tipo.valor, "", "")
         ok, msg = validar_campos(dados)
         self._exigir(ok, "Nome, celular e placa válidos (validar_campos)",
                      "RN01, RN06, RN33", self._uma_linha(msg))
+        dados["placas"] = placas
         desativada = self.s.desativacao("cpf", cpf)
         confirmar = ""
         if desativada:
@@ -476,25 +480,55 @@ class AnalisadorSemantico:
                          "desativada e a entrada continua recusada.")
         return Plano("cadastrar", {"dados": dados, "confirmar": confirmar})
 
+    def _placas(self, incluir, tirar, atuais=()):
+        """RN47: a lista de carros depois do comando (as atuais, menos as
+        tiradas, mais as incluídas), conferida como no formulário."""
+        atuais = list(atuais)
+        for o in tirar:
+            placa = o.valor.valor
+            self._exigir(placa not in [i.valor.valor for i in incluir],
+                         '"placa" e "sem placa" juntos', "variável única",
+                         f"o carro {formatar_placa(placa)} foi incluído e "
+                         "tirado no mesmo comando.", o)
+            self._exigir(placa in atuais, "Placa no cadastro", "RN47",
+                         f"o carro {formatar_placa(placa)} não está no "
+                         "cadastro: não há o que tirar.", o)
+        tiradas = {o.valor.valor for o in tirar}
+        lista = [p for p in atuais if p not in tiradas]
+        lista += [o.valor.valor for o in incluir]
+        ok, msg, placas = validar_placas(
+            lista, max(MAXIMO_PLACAS_PESSOA, len(atuais)))
+        self._exigir(ok, f"Até {MAXIMO_PLACAS_PESSOA} carros, cada placa "
+                         "válida", "RN47", self._uma_linha(msg),
+                     (incluir or tirar or [None])[-1])
+        return placas
+
     def _editar(self, no):
         self._usuario()
-        campos = self._opcoes_unicas(no.campos, ())
+        carros = [o for o in no.campos if o.nome in ("placa", "sem placa")]
+        campos = self._opcoes_unicas(
+            [o for o in no.campos if o not in carros], ())
         cpf = self._cpf(no.cpf)
         pessoa = self.s.pessoa(cpf)
         self._exigir(pessoa is not None, "Pessoa cadastrada", "RF28",
                      f"o CPF {self._texto_cpf(cpf)} não está cadastrado.",
                      no.cpf, 'para cadastrar: cadastrar CPF tipo nome "..." '
                              "cel ...")
-        novo = {k: pessoa[k] for k in ("nome", "celular", "placa", "tipo")}
-        chaves = {"nome": "nome", "cel": "celular", "placa": "placa",
-                  "tipo": "tipo"}
+        novo = {k: pessoa[k] for k in ("nome", "celular", "tipo")}
+        chaves = {"nome": "nome", "cel": "celular", "tipo": "tipo"}
         for nome, opcao in campos.items():
             novo[chaves[nome]] = opcao.valor.valor
-        dados = normalizar(novo["nome"], cpf, novo["celular"], novo["placa"],
-                           novo["tipo"], "", "")
+        placas = self._placas(
+            [o for o in carros if o.nome == "placa"],
+            [o for o in carros if o.nome == "sem placa"], pessoa["placas"])
+        dados = normalizar(novo["nome"], cpf, novo["celular"],
+                           placas[0] if placas else "", novo["tipo"], "", "")
         mudou = [rotulo for chave, rotulo in (
-            ("nome", "nome"), ("celular", "celular"), ("placa", "placa"),
-            ("tipo", "tipo")) if dados[chave] != pessoa[chave]]
+            ("nome", "nome"), ("celular", "celular"), ("tipo", "tipo"))
+            if dados[chave] != pessoa[chave]]
+        if placas != pessoa["placas"]:
+            mudou.append("carros")
+        dados["placas"] = placas
         self._exigir(bool(mudou), "Algo muda no cadastro", "RF28",
                      f"o cadastro de {pessoa['nome']} já tem esses dados: "
                      "nada muda.")

@@ -17,7 +17,7 @@ As ideias estão agrupadas em versões. Cada versão é entregável sozinha.
 - **Esquema:** a versão do banco depois da entrega. Hoje o banco está na v10.
   Toda migração é atômica (`PRAGMA user_version`) e faz um backup antes.
 - **RN nova:** a numeração continua a partir da RN35 (na 2.3 foram da RN41
-  à RN45; na 2.4, a RN46; a próxima livre é a RN47).
+  à RN45; na 2.4, a RN46; na 2.5, a RN47; a próxima livre é a RN48).
 
 **O que todo item precisa ter para ser considerado pronto** (vale para todos e
 não se repete abaixo):
@@ -43,9 +43,10 @@ não se repete abaixo):
 | **2.2** ✅ | Veículo e acesso do administrador | V0, V1, V2, V3, B3, S07, B4, V4, V5 | v11 | ~5 dias |
 | **2.3** ✅ | Pessoas, desativação e CRUD | P1, P2, P3, P4, P5, P6 | v11 (sem mudança) | ~2 dias |
 | **2.4** ✅ | Compiladores: linha de comando | E1, E2, E4, F1 | v11 (sem mudança) | ~6 dias |
-| **2.5** | Visitante e operação da guarita | A1, A4, A3, A2, A6, A5 (opcional) | v12 | ~6 dias |
-| **2.6** | Dados, relatórios e apresentação | F2, D3, C1, C2, C3 | v12 (sem mudança) | ~5 dias |
-| **2.7** | LGPD e segurança | B1, B2, B8, N09, S02 | v13 | ~4 dias |
+| **2.5** ✅ | Pessoas com mais de um carro | P7, P8 | v12 | ~1 dia |
+| **2.6** | Visitante e operação da guarita | A1, A4, A3, A2, A6, A5 (opcional) | v13 | ~6 dias |
+| **2.7** | Dados, relatórios e apresentação | F2, D3, C1, C2, C3 | v13 (sem mudança) | ~5 dias |
+| **2.8** | LGPD e segurança | B1, B2, B8, N09, S02 | v14 | ~4 dias |
 | Extras | Se sobrar tempo | E3, E6, D1, D2, E5 | — | — |
 | Contínuo | Qualidade e entrega | F3, limpeza de código, Word da entrega | — | — |
 
@@ -58,8 +59,11 @@ não se repete abaixo):
   desativação dentro de Pessoas, com "Nova pessoa", Editar e Excluir.
 - **2.4** (feita em 29/10/2026) é o diferencial da disciplina: a linha de
   comando com léxico, sintático, semântico e o modo didático.
-- **2.5 a 2.7** podem ser feitas na ordem que a professora valorizar mais.
-  Para a apresentação, a 2.6 (modo treinamento e Painel) dá o maior efeito.
+- **2.5** (feita em 30/10/2026) atende ao pedido do aluno: cadastrar e ver
+  mais de uma placa por pessoa; a subaba "Desativadas" virou "Pessoas
+  desativadas"; e corrige o fechamento do programa ao abrir essa subaba.
+- **2.6 a 2.8** podem ser feitas na ordem que a professora valorizar mais.
+  Para a apresentação, a 2.7 (modo treinamento e Painel) dá o maior efeito.
 
 ---
 
@@ -209,7 +213,7 @@ V2, V3, B4, V4, com uma migração só para a v11.
   - **Colunas:** quando, tipo, pessoa (CPF mascarado), quem autorizou, quem
     operava e justificativa.
   - **Saídas:** "Exportar CSV" (mesmo padrão do Painel) e "Imprimir", que fica
-    pronto na 2.6 com o C2.
+    pronto na 2.7 com o C2.
 - **Base:** eventos da tabela `auditoria`. As ações já gravadas são
   "Exceção autorizada", "Veículo saiu sem o dono", "Saída automática
   (encerramento)" e "Saída automática (atualização)". Para facilitar o filtro,
@@ -381,25 +385,59 @@ que o formulário monta e passa pelas **mesmas** funções: `validacao`,
 
 ### O que ficou para depois
 - Lote de comandos (E3), busca traduzida para SQL (E6), voz (E5).
-- `visita` e `cracha` (com o A1, versão 2.5); "sem placa" no `editar`;
+- `visita` e `cracha` (com o A1, versão 2.6); "sem placa" no `editar` (feito na 2.5);
   corrigir e excluir visita, usuários e configurações pela linguagem.
 
 ---
 
-## Versão 2.5 — Visitante e operação da guarita (esquema v12)
+## Versão 2.5 — Pessoas com mais de um carro (esquema v12) ✅
 
-### A1. Visitante completo: anfitrião, setor, motivo e crachá · M · RN47
+Pedido do aluno depois do teste da 2.4 (30/10/2026).
+
+### P7. Mais de uma placa por pessoa · M · RN47, RF33 ✅
+- **Banco (v12):** tabela `placas_pessoa (pessoa_id, placa)`. A migração
+  traz a placa do cadastro e as placas com que cada pessoa já veio nas
+  visitas (com backup antes, como toda migração). `pessoas.placa` continua
+  sendo a **principal**, a que o CPF preenche na entrada.
+- **Regra (RN47):** até 5 placas por pessoa, cada uma no formato antigo ou
+  Mercosul, sem repetir; a mesma placa pode ser de mais de uma pessoa (o
+  carro da família). Quem vem com um carro que não estava no cadastro tem a
+  placa guardada sozinha. Tirar uma placa do cadastro tira também quem
+  podia retirar aquele carro (RN35, remoção lógica).
+- **Nova pessoa e Editar:** o campo **Placas** (Enter ou "Adicionar" põe
+  mais uma; o × tira; a 1ª é a principal).
+- **Ficha:** com mais de um carro, a linha **Carro** da seção Veículo
+  escolhe de qual carro se fala (a placa desenhada, "Quem pode retirar" e
+  "Desativar placa" seguem a escolha). A lista mostra "ABC1D23 +1".
+- **Entrada:** "Vai entrar de carro?" tem um botão por carro (os que já
+  estão no estacionamento não aparecem); o campo Placa avisa "2 carros no
+  cadastro".
+- **Linguagem:** `cadastrar ... placa A placa B` e `editar CPF placa X
+  sem placa Y` (a gramática continua LL(1)); `situacao` lista os carros.
+
+### P8. "Pessoas desativadas" e a correção da 2.4.1 · P ✅
+- A subaba **Desativadas** passou a se chamar **Pessoas desativadas**.
+- Abrir essa subaba (ou Veículos desativados) fechava o programa com
+  RecursionError: o ajuste das colunas comparava a opção `show` da tabela
+  (uma tupla no Tk) com um texto, e cada ajuste gerava outro
+  `<Configure>`. Corrigido; os testes de tela agora falham quando um
+  callback do Tk dá erro, e um erro inesperado com a pilha cheia não
+  derruba mais o programa.
+
+## Versão 2.6 — Visitante e operação da guarita (esquema v13)
+
+### A1. Visitante completo: anfitrião, setor, motivo e crachá · M · RN48
 - Para Visitante, Prestador e Entregador, aparece uma linha extra no
   formulário:
   - **Vai até:** nome ou setor, com sugestões; até 60 caracteres;
   - **Motivo:** reunião, entrega, manutenção, evento ou outro;
   - **Crachá:** sugere o primeiro número livre, de 1 a 50 (faixa ajustável em
     Configurações).
-- **Regra (RN47):**
+- **Regra (RN48):**
   - um crachá não fica com duas pessoas ao mesmo tempo;
   - na saída, o sistema pergunta "Devolveu o crachá 07?";
   - os crachás não devolvidos aparecem numa faixa.
-- **Banco (v12):** colunas opcionais `anfitriao`, `motivo` e `cracha` em
+- **Banco (v13):** colunas opcionais `anfitriao`, `motivo` e `cracha` em
   `registros`; `parametros.crachas` com a faixa de números.
 
 ### A4. Lista de evacuação · P
@@ -413,7 +451,7 @@ que o formulário monta e passa pelas **mesmas** funções: `validacao`,
   uma pessoa ou placa ligada.
 - Ao **Sair**, aparece o "Resumo do turno" com um "Recado para o próximo
   turno". O recado fica num cartão até alguém marcar "Lido".
-- **Banco (v12):** tabelas `ocorrencias` e `recados_turno`. CPF digitado no
+- **Banco (v13):** tabelas `ocorrencias` e `recados_turno`. CPF digitado no
   texto é mascarado.
 
 ### A2. Visitantes esperados · M (depois do A1)
@@ -421,7 +459,7 @@ que o formulário monta e passa pelas **mesmas** funções: `validacao`,
   quiser, uma **autorização antecipada** de horário, válida só naquela data.
 - A faixa mostra "3 esperados hoje".
 - Ao digitar o CPF de um esperado, os campos do A1 já vêm preenchidos.
-- **Banco (v12):** tabela `esperados`. O banco confere a autorização
+- **Banco (v13):** tabela `esperados`. O banco confere a autorização
   antecipada.
 
 ### A6. Passe temporário e "liberar uma vez" · M
@@ -430,7 +468,7 @@ que o formulário monta e passa pelas **mesmas** funções: `validacao`,
   - liberação de um bloqueio uma única vez.
 - O motor de exceções de `horarios.py` aceita o passe. A liberação única some
   depois do uso.
-- **Banco (v12):** tabela `passes`.
+- **Banco (v13):** tabela `passes`.
 
 ### A5. Encomendas (opcional) · M
 - Página **Encomendas**: registrar, ver "Aguardando retirada" e
@@ -438,7 +476,7 @@ que o formulário monta e passa pelas **mesmas** funções: `validacao`,
 
 ---
 
-## Versão 2.6 — Dados, relatórios e apresentação (sem mudança de esquema)
+## Versão 2.7 — Dados, relatórios e apresentação (sem mudança de esquema)
 
 ### F2. Gerador de dados fictícios · P/M
 - `python -m portaria.demo --meses 3 --banco demo.db`. Usa semente fixa e
@@ -476,9 +514,9 @@ que o formulário monta e passa pelas **mesmas** funções: `validacao`,
 
 ---
 
-## Versão 2.7 — LGPD e segurança (esquema v13)
+## Versão 2.8 — LGPD e segurança (esquema v14)
 
-### B1. Retenção, anonimização e relatório do titular · M · RN48
+### B1. Retenção, anonimização e relatório do titular · M · RN49
 - **Retenção:** em Configurações › Privacidade, "Guardar visitas identificadas
   por 12 meses". Depois disso, nome, CPF, celular e placa viram "Anonimizado",
   e a contagem do Painel continua igual.
@@ -542,4 +580,4 @@ que o formulário monta e passa pelas **mesmas** funções: `validacao`,
 | A1 | Faixa dos crachás | **1 a 50**, ajustável em Configurações. |
 | A1 | Motivos da visita | Reunião, entrega, manutenção, evento, outro. Não foi perguntado: ficou o padrão. |
 | B1 | Retenção das visitas identificadas | **12 meses.** |
-| Ordem | O que vem depois da 2.2 | **2.3 Pessoas, desativação e CRUD** (pedido do aluno e da professora, 29/10/2026), depois **2.4 Compiladores**, a 2.5, a 2.6 e a 2.7. |
+| Ordem | O que vem depois da 2.2 | **2.3 Pessoas, desativação e CRUD** (pedido do aluno e da professora, 29/10/2026), depois **2.4 Compiladores**, a **2.5 Pessoas com mais de um carro** (pedido do aluno, 30/10/2026), a 2.6, a 2.7 e a 2.8. |

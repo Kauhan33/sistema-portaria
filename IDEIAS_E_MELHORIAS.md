@@ -324,11 +324,27 @@ mudança de esquema (banco v11).
 - Privacidade: para o porteiro, toda resposta, o console e o modo didático
   mostram o CPF mascarado; o texto dos comandos não vai para o log nem para
   o banco.
-- 922 testes automatizados; casos de teste CT-01 a CT-68.
+- 920 testes automatizados; casos de teste CT-01 a CT-68.
 - Ideias para depois: lote de comandos (E3), busca traduzida para SQL (E6),
-  as opções `visita` e `cracha` com o visitante completo (A1, 2.5), "sem
-  placa" no `editar`, histórico das linhas digitadas (seta para cima) só
-  na memória.
+  as opções `visita` e `cracha` com o visitante completo (A1, 2.6), "sem
+  placa" no `editar` (feito na 2.5), histórico das linhas digitadas (seta
+  para cima) só na memória.
+
+### Versão 2.5 — Pessoas com mais de um carro (30/10/2026) ✅
+Pedido do aluno depois do teste da 2.4. Esquema do banco v12 (migração com
+backup antes; nada se perde).
+- ✅ **P7 / RF33 / RN47** — uma pessoa pode ter até 5 placas no cadastro
+  (tabela `placas_pessoa`; a migração traz a placa do cadastro e as das
+  visitas). Nova pessoa e Editar têm o campo **Placas** (Enter ou
+  "Adicionar"; × tira); a ficha tem a linha **Carro** para escolher de qual
+  carro se fala ("Quem pode retirar" e "Desativar placa" seguem a escolha);
+  a lista mostra "ABC1D23 +1"; "Vai entrar de carro?" tem um botão por
+  carro. Linguagem: `cadastrar ... placa A placa B` e `editar CPF placa X
+  sem placa Y`.
+- ✅ **P8** — a subaba "Desativadas" virou **"Pessoas desativadas"**; abrir
+  essa subaba não fecha mais o programa (RecursionError do ajuste das
+  colunas, versão 2.4.1 que não chegou a ser publicada); os testes de tela
+  falham quando um callback do Tk dá erro.
 
 ## 4. Rascunho de requisitos para o Word
 
@@ -355,7 +371,8 @@ pessoa") (2.3) · RF28 editar e excluir o cadastro de uma pessoa (2.3) · RF29
 editar o nome e o perfil de um usuário (2.3) · RF30 editar feriado e evento
 (2.3) · RF31 editar a validade de quem pode retirar o veículo (2.3) · RF32 modo
 didático: mostrar as fases da análise do comando (tokens, árvore, tabela de
-símbolos e checagens) (2.4).
+símbolos e checagens) (2.4) · RF33 cadastrar e ver mais de uma placa por
+pessoa (2.5).
 
 **RNF**: RNF01 interface simples com botões identificados · RNF02 senha oculta e
 armazenada com hash · RNF03 tela principal e busca respondem na hora mesmo com
@@ -508,6 +525,15 @@ semântica (e no banco); para o porteiro, toda resposta, o console e o modo did�
 mostram o CPF mascarado (RN14), mesmo que ele tenha digitado o número inteiro; o texto
 dos comandos não é gravado no log nem no banco (o histórico recebe só os eventos
 normais); a linha tem no máximo 200 caracteres (RN33).
+
+Nova na 2.5 (pessoas com mais de um carro):
+RN47 VÁRIOS CARROS POR PESSOA: o cadastro guarda até 5 placas por pessoa, cada uma
+no formato antigo ou Mercosul e sem repetir; a primeira é a principal (a que o CPF
+preenche na entrada); a mesma placa pode ser de mais de uma pessoa (o carro da
+família); quem vem com um carro que não estava no cadastro tem a placa guardada
+sozinha; tirar uma placa do cadastro tira também quem podia retirar aquele carro
+(RN35, remoção lógica); "Vai entrar de carro?" oferece cada carro que não está no
+estacionamento, e o carro escolhido passa pelas mesmas checagens (RN12, RN26).
 
 ## 5. Pendências registradas na revisão final (para a versão 2.1+)
 

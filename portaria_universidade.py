@@ -115,11 +115,11 @@ if __name__ == "__main__":
 # 3) VERIFICAÇÃO SEMÂNTICA
 #    "entrada 39053344705" é léxica e sintaticamente correta, mas não faz
 #    sentido se a pessoa já está no campus (RN05). O semântico recusa em
-#    portaria/linguagem/semantico.py, linha 238:
+#    portaria/linguagem/semantico.py, linha 239:
 #        self._exigir(False, "Não está no campus", "RN05",
 #    e, com o registro montado como o formulário monta, chama a MESMA
 #    validação do formulário (regra de ouro: nada de regra duplicada) em
-#    portaria/linguagem/semantico.py, linha 259:
+#    portaria/linguagem/semantico.py, linha 260:
 #        ok, msg = validar(registro, self.s.visitas(cpf), self.agora)
 #    Outras checagens com a regra de cada uma: CPF com os dígitos
 #    verificadores (RN06), pessoa ou placa desativada (RN12), opção dada

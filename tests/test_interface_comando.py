@@ -40,6 +40,8 @@ def fotografia(caminho):
             "desativacoes": "SELECT tipo, valor, motivo, ativo FROM bloqueios "
                             "ORDER BY id",
             "historico": "SELECT usuario, acao FROM auditoria ORDER BY id",
+            "placas": "SELECT p.cpf, v.placa FROM placas_pessoa v JOIN "
+                      "pessoas p ON p.id = v.pessoa_id ORDER BY p.cpf, v.placa",
         }
         return {nome: con.execute(sql).fetchall()
                 for nome, sql in consultas.items()}
@@ -520,6 +522,37 @@ class TestExecucaoIgualAoFormulario(BaseComando):
             self.comando(texto, self.app2)
             self.assertNotIn("[", self.resposta(self.app2), texto)
         self.comparar()
+
+    def test_varias_placas_igual_ao_formulario(self):
+        """CT-71 | RN47 | positivo | cadastrar com dois carros e depois
+        trocar um deles: pelo comando = pelo diálogo de Pessoas; o
+        situacao mostra os carros do cadastro."""
+        self.preparar()
+        pessoas = self.app.tela_pessoas
+        d = pessoas.nova_pessoa()
+        d.cpf.insert(0, NOVO)
+        d.nome.insert(0, "Rui Lima")
+        d.celular.insert(0, "31987651234")
+        d.tipo.set("Visitante")
+        for placa in ("ABC1D23", "NEY4829"):
+            d.caixa_placa.insert(0, placa)
+            d.adicionar_placa()
+        self.assertTrue(d.salvar())
+        d = pessoas.editar()
+        d.tirar_placa("NEY4829")
+        d.caixa_placa.insert(0, "QWE1E34")
+        self.assertTrue(d.salvar())
+        for texto in (f'cadastrar {NOVO} visitante nome "Rui Lima" '
+                      "cel 31987651234 placa ABC1D23 placa NEY4829",
+                      f"editar {NOVO} sem placa NEY4829 placa QWE1E34"):
+            self.comando(texto, self.app2)
+            self.assertNotIn("[", self.resposta(self.app2), texto)
+        self.comparar()
+        self.assertEqual(self.banco2.buscar_pessoa(NOVO)["placas"],
+                         ["ABC1D23", "QWE1E34"])
+        self.comando(f"situacao {NOVO}", self.app2)
+        self.assertIn("2 carros no cadastro: ABC1D23, QWE1E34",
+                      self.app2.tela_cadastro.comando.console.conteudo())
 
     def test_cadastrar_atualiza_a_pagina_pessoas(self):
         pessoas = self.app.tela_pessoas

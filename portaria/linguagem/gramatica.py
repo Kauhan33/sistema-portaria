@@ -37,9 +37,12 @@ opcao_sai  = "placa" PLACA                 (* com qual carro, RN40 *)
            | "as" HORA ;
 implicito  = cpf | PLACA ;                 (* = saida *)
 
-cadastrar  = "cadastrar" cpf TIPO "nome" TEXTO "cel" NUMERO [ "placa" PLACA ] ;
+cadastrar  = "cadastrar" cpf TIPO "nome" TEXTO "cel" NUMERO
+             { "placa" PLACA } ;           (* até 5 carros, RN47 *)
 editar     = "editar" cpf campo { campo } ;
-campo      = "nome" TEXTO | "cel" NUMERO | "placa" PLACA | "tipo" TIPO ;
+campo      = "nome" TEXTO | "cel" NUMERO | "tipo" TIPO
+           | "placa" PLACA                 (* inclui o carro, RN47 *)
+           | "sem" "placa" PLACA ;         (* tira o carro do cadastro *)
 excluir    = "excluir" cpf ;
 
 desativar  = "desativar" alvo "motivo" TEXTO ;
@@ -63,7 +66,8 @@ EXEMPLOS = {
              "saida 52998224725 sem carro",
     "cadastrar": 'cadastrar 111.444.777-35 visitante nome "Bruno Almeida" '
                  'cel 31987651234',
-    "editar": "editar 11144477735 cel 31999990000 tipo professor",
+    "editar": "editar 11144477735 cel 31999990000 tipo professor · "
+              "editar 11144477735 placa NEY4829 sem placa ABC1D23",
     "excluir": "excluir 11144477735",
     "desativar": 'desativar 11144477735 motivo "agressão ao porteiro"',
     "reativar": "reativar 11144477735 · reativar placa ABC1D23",
@@ -78,7 +82,7 @@ FAZ = {
     "entrada": "Registra a entrada (Criar visita)",
     "saida": "Registra a saída da pessoa ou do carro",
     "cadastrar": "Nova pessoa, sem entrada (RN41)",
-    "editar": "Muda nome, celular, placa ou tipo do cadastro",
+    "editar": "Muda nome, celular ou tipo; inclui ou tira carros",
     "excluir": "Exclui o cadastro de quem nunca teve visita (RN42, admin)",
     "desativar": "Pessoa ou veículo desativado não entra (RN12, admin)",
     "reativar": "Encerra a desativação (RN12, admin)",

@@ -6,6 +6,11 @@
 - todos podem ligar o modo didático, que mostra o CPF mascarado;
 - "a pé" se escreve `sem carro`.
 
+**Versão 2.5:** uma pessoa pode ter mais de um carro (RN47). O `cadastrar`
+aceita um `placa` por carro e o `editar` ganhou `sem placa X`, que tira um
+carro do cadastro. A gramática continua LL(1): "sem" é a única opção do
+`editar` que começa com essa palavra.
+
 **Implementada na versão 2.4** (`portaria/linguagem/`): a seção 8 conta
 como ficou. Um teste confere que a EBNF da seção 3 é a mesma do código
 (`portaria/linguagem/gramatica.py`) e que ela é LL(1).
@@ -36,7 +41,7 @@ Excluir), além das consultas da guarita.
 | `saida` | `saida 52998224725` · `saida placa ABC1D23` · `saida 52998224725 sem carro` | Registra a saída da pessoa ou do carro | todos |
 | *(implícito)* | `52998224725` · `ABC1D23` | Só o CPF ou só a placa equivale a `saida`, como na Saída rápida de hoje | todos |
 | `cadastrar` | `cadastrar 111.444.777-35 visitante nome "Bruno Almeida" cel 31987651234` | Nova pessoa, sem entrada (RN41, o "Cadastrar" do enunciado) | todos |
-| `editar` | `editar 11144477735 cel 31999990000 tipo professor` | Muda nome, celular, placa ou tipo do cadastro | todos |
+| `editar` | `editar 11144477735 cel 31999990000 tipo professor` · `editar 11144477735 placa NEY4829 sem placa ABC1D23` | Muda nome, celular ou tipo; inclui (`placa`) ou tira (`sem placa`) carros (RN47, 2.5) | todos |
 | `excluir` | `excluir 11144477735` | Exclui o cadastro de quem nunca teve visita (RN42) | admin |
 | `desativar` | `desativar 11144477735 motivo "agressão ao porteiro"` · `desativar placa ABC1D23 motivo "..."` | Pessoa ou veículo desativado não entra (RN12) | admin |
 | `reativar` | `reativar 11144477735` · `reativar placa ABC1D23` | Encerra a desativação (RN12) | admin |
@@ -93,9 +98,12 @@ opcao_sai  = "placa" PLACA                 (* com qual carro, RN40 *)
            | "as" HORA ;
 implicito  = cpf | PLACA ;                 (* = saida *)
 
-cadastrar  = "cadastrar" cpf TIPO "nome" TEXTO "cel" NUMERO [ "placa" PLACA ] ;
+cadastrar  = "cadastrar" cpf TIPO "nome" TEXTO "cel" NUMERO
+             { "placa" PLACA } ;           (* até 5 carros, RN47 *)
 editar     = "editar" cpf campo { campo } ;
-campo      = "nome" TEXTO | "cel" NUMERO | "placa" PLACA | "tipo" TIPO ;
+campo      = "nome" TEXTO | "cel" NUMERO | "tipo" TIPO
+           | "placa" PLACA                 (* inclui o carro, RN47 *)
+           | "sem" "placa" PLACA ;         (* tira o carro do cadastro *)
 excluir    = "excluir" cpf ;
 
 desativar  = "desativar" alvo "motivo" TEXTO ;
@@ -205,8 +213,11 @@ dizer entrada? (Tab corrige)") e a dica.
   abre a pergunta "Vai entrar de carro?" (RN34); "Com outro carro" pede
   para escrever `placa`. Se o carro dela já está no estacionamento, a
   entrada é a pé, como no formulário.
-- `editar` muda nome, celular, placa e tipo; apagar a placa do cadastro
-  continua no formulário (a gramática não tem "sem placa" no `editar`).
+- `editar` muda nome, celular e tipo. Na 2.5 (RN47), `placa X` inclui o
+  carro X no cadastro (a principal continua a mesma) e `sem placa X` tira;
+  os dois podem se repetir no mesmo comando (`placa` e `sem placa` do mesmo
+  carro juntos é erro semântico). O `cadastrar` aceita um `placa` por
+  carro, até 5; a primeira é a principal.
 - Tipo diferente do cadastro é um **aviso**: o programa pergunta
   "Registrar como Prestador de serviço?" e, com Não, nada é gravado.
 - Excluir e reativar pedem a mesma confirmação dos diálogos de Pessoas.

@@ -36,7 +36,10 @@ class Opcao:
 
     @property
     def nome(self):
-        return "sem carro" if self.palavra.valor == "sem" else self.palavra.valor
+        # "sem carro" (entrada e saída) ou "sem placa" (editar, RN47)
+        if self.palavra.valor == "sem" and self.valores:
+            return "sem " + self.valores[0].valor
+        return self.palavra.valor
 
     @property
     def valor(self):
@@ -149,7 +152,7 @@ class ComandoAjuda(Comando):
 # ------------------------------------------------------------------
 OPCOES_ENTRADA = ("placa", "sem", "nome", "cel", "as", "em")
 OPCOES_SAIDA = ("placa", "sem", "as")
-CAMPOS = ("nome", "cel", "placa", "tipo")
+CAMPOS = ("nome", "cel", "placa", "tipo", "sem")
 LISTA_COMANDOS = "entrada, saida, buscar…"
 
 
@@ -340,7 +343,7 @@ class AnalisadorSintatico:
 
     def _cadastrar(self):
         """cadastrar = "cadastrar" cpf TIPO "nome" TEXTO "cel" NUMERO
-                       [ "placa" PLACA ] ;"""
+                       { "placa" PLACA } ;"""
         comando = self._avancar()
         ex = "Ex.: " + exemplo("cadastrar")
         cpf = self._cpf("cadastrar")
@@ -349,7 +352,7 @@ class AnalisadorSintatico:
                         [self._esperar(TEXTO, "nome", ex)]),
                   Opcao(self._palavra("cel", ex),
                         [self._esperar(NUMERO, "cel", ex)])]
-        if self._eh("placa"):
+        while self._eh("placa"):          # RN47: um "placa" por carro
             p = self._avancar()
             opcoes.append(Opcao(p, [self._esperar(PLACA, "placa")]))
         self.esperado = '"placa" ou o fim da linha'
@@ -362,17 +365,23 @@ class AnalisadorSintatico:
         campos = [self._campo()]
         while self._eh(*CAMPOS):
             campos.append(self._campo())
-        self.esperado = "o que muda (nome, cel, placa, tipo) ou o fim da linha"
+        self.esperado = ("o que muda (nome, cel, tipo, placa, sem placa) ou "
+                         "o fim da linha")
         return ComandoEditar(comando, cpf, campos)
 
     def _campo(self):
-        """campo = "nome" TEXTO | "cel" NUMERO | "placa" PLACA
-                 | "tipo" TIPO ;"""
+        """campo = "nome" TEXTO | "cel" NUMERO | "tipo" TIPO
+                 | "placa" PLACA | "sem" "placa" PLACA ;"""
         if not self._eh(*CAMPOS):
-            raise self._erro("esperado o que muda (nome, cel, placa ou "
-                             f"tipo); encontrado {descrever(self.atual)}.",
+            raise self._erro("esperado o que muda (nome, cel, tipo, placa ou "
+                             f"sem placa); encontrado {descrever(self.atual)}.",
                              "Ex.: " + exemplo("editar"))
         palavra = self._avancar()
+        if palavra.valor == "sem":        # tira um carro do cadastro (RN47)
+            dica = "para tirar um carro: sem placa ABC1D23."
+            chave = self._palavra("placa", dica)
+            return Opcao(palavra, [chave, self._esperar(PLACA, "sem placa",
+                                                        dica)])
         tipo = {"nome": TEXTO, "cel": NUMERO, "placa": PLACA,
                 "tipo": TIPO}[palavra.valor]
         dica = ('o nome vai entre aspas: nome "Bruno Almeida".'

@@ -129,7 +129,7 @@ class Executor:
                                            "CPF desativado", confirmar):
             return Resposta(CANCELADO, NADA_GRAVADO)
         ok, _ = app.tentar(app.banco.cadastrar_pessoa, dados["cpf"],
-                           dados["nome"], dados["celular"], dados["placa"],
+                           dados["nome"], dados["celular"], dados["placas"],
                            dados["tipo"], app.autor)
         if not ok:
             return Resposta(ERRO, NADA_GRAVADO)
@@ -141,7 +141,7 @@ class Executor:
     def _editar(self, pessoa, dados, mudou):
         app = self.app
         ok, _ = app.tentar(app.banco.atualizar_pessoa, pessoa["id"],
-                           dados["nome"], dados["celular"], dados["placa"],
+                           dados["nome"], dados["celular"], dados["placas"],
                            dados["tipo"], autor=app.autor)
         if not ok:
             return Resposta(ERRO, NADA_GRAVADO)
@@ -261,8 +261,13 @@ def situacao_da_pessoa(d, exibir_cpf, quando):
     for e in d["carros"]:
         linhas.append(f"Carro {formatar_placa(e['placa'])} no estacionamento "
                       f"desde {quando(e['entrada'])}")
-    if pessoa["placa"] and not d["carros"]:
-        linhas.append(f"Placa no cadastro: {formatar_placa(pessoa['placa'])}")
+    placas = pessoa.get("placas") or ([pessoa["placa"]] if pessoa["placa"]
+                                      else [])
+    if len(placas) > 1:                                         # RN47
+        linhas.append(f"{len(placas)} carros no cadastro: "
+                      + ", ".join(formatar_placa(p) for p in placas))
+    elif placas and not d["carros"]:
+        linhas.append(f"Placa no cadastro: {formatar_placa(placas[0])}")
     linhas.append(f"{pessoa['visitas']} visita(s) no histórico")
     if desativacao:
         linhas.append(f"DESATIVADA desde {desativacao['criado_em'][:10]}: "

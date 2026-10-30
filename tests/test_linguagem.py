@@ -579,6 +579,42 @@ class TestSemantico(BaseBanco):
         e = self.erro(f"reativar {BETO}")
         self.assertIn("não está desativado", e.mensagem)
 
+    def test_varias_placas_no_cadastrar_e_no_editar(self):
+        """CT-69 | RN47 | positivo | cadastrar com um "placa" por carro;
+        editar inclui ("placa") e tira ("sem placa") carros."""
+        a = self.analisar(f'cadastrar {NOVO} visitante nome "Rui Lima" '
+                          "cel 31987651234 placa NEY4829 placa abc1d23")
+        self.assertEqual(a.plano.dados["dados"]["placas"],
+                         ["NEY4829", "ABC1D23"])
+        self.assertEqual(a.plano.dados["dados"]["placa"], "NEY4829")
+        a = self.analisar(f"editar {BETO} placa NEY4829")
+        self.assertEqual(a.plano.dados["dados"]["placas"],
+                         ["QWE1E34", "NEY4829"])    # a principal continua
+        self.assertEqual(a.plano.dados["mudou"], ["carros"])
+        a = self.analisar(f"editar {BETO} placa NEY4829 sem placa QWE1E34")
+        self.assertEqual(a.plano.dados["dados"]["placas"], ["NEY4829"])
+        arvore = analisar_sintatico(analisar_lexico(
+            f"editar {BETO} sem placa QWE1E34"))
+        self.assertEqual(arvore.campos[0].nome, "sem placa")
+
+    def test_varias_placas_erros(self):
+        """CT-70 | RN47 | negativo | tirar um carro que não está no
+        cadastro, incluir e tirar o mesmo, passar de 5 carros e "sem"
+        sem "placa"."""
+        e = self.erro(f"editar {BETO} sem placa NEY4829")
+        self.assertEqual(e.regra, "RN47")
+        self.assertIn("não está no cadastro", e.mensagem)
+        e = self.erro(f"editar {BETO} placa NEY4829 sem placa NEY4829")
+        self.assertIn("incluído e tirado", e.mensagem)
+        seis = " ".join(f"placa ABC1D2{i}" for i in range(6))
+        e = self.erro(f'cadastrar {NOVO} visitante nome "Rui Lima" '
+                      f"cel 31987651234 {seis}")
+        self.assertEqual(e.regra, "RN47")
+        self.assertIn("No máximo 5 placas", e.mensagem)
+        with self.assertRaises(ErroDeAnalise) as erro:
+            analisar_sintatico(analisar_lexico(f"editar {BETO} sem NEY4829"))
+        self.assertIn('esperado "placa"', erro.exception.mensagem)
+
     def test_porteiro_ve_o_cpf_mascarado(self):
         """CT-59 | RN14 | positivo | para o porteiro, a linha, o erro e a
         tabela de símbolos mostram o CPF mascarado."""

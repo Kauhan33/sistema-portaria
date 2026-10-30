@@ -53,6 +53,7 @@ MAXIMO_HORA = 5              # hh:mm (e os minutos "-1440" das regras)
 MAXIMO_CPF = 11
 MAXIMO_CELULAR = 11
 MAXIMO_PLACA = 7
+MAXIMO_PLACAS_PESSOA = 5       # veículos no cadastro de uma pessoa (RN47, 2.5)
 MAXIMO_CODIGO = 9             # código de recuperação: K7QM-2F9X (RN38)
 MAXIMO_COMANDO = 200          # linha de comando (2.4): cabe o cadastro completo
 
@@ -102,6 +103,32 @@ def celular_valido(cel):
 
 def placa_valida(placa):
     return bool(REGEX_PLACA.match(placa))
+
+
+def normalizar_placa(texto):
+    """'abc-1d23 ' -> 'ABC1D23' (sem hífen, espaço nem minúscula)."""
+    return re.sub(r"[\s\-]", "", texto or "").upper()
+
+
+def validar_placas(placas, maximo=MAXIMO_PLACAS_PESSOA):
+    """
+    RN47 (2.5): as placas do cadastro de uma pessoa. Cada uma no formato
+    antigo ou Mercosul, sem repetir, no máximo `maximo`. Devolve
+    (ok, mensagem, placas normalizadas na ordem dada; a primeira é a
+    principal, a que o CPF preenche na entrada).
+    """
+    lista = []
+    for bruta in placas:
+        placa = normalizar_placa(bruta)
+        if not placa or placa in lista:
+            continue
+        if not placa_valida(placa):
+            return False, (f"Placa inválida: {bruta.strip()}.\nUse o formato "
+                           "antigo (ABC1234) ou o Mercosul (ABC1D23)."), []
+        lista.append(placa)
+    if len(lista) > maximo:
+        return False, f"No máximo {maximo} placas por pessoa.", []
+    return True, "", lista
 
 
 def converter_data(texto):

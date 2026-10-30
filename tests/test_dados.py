@@ -757,10 +757,22 @@ def agora_menos(**delta):
     return (datetime.now() - timedelta(**delta)).strftime(FORMATO)
 
 
+def rebaixar_para_v11(caminho):
+    """Deixa um banco como a versão 11 deixava (2.2 a 2.4): sem as placas
+    de cada pessoa (RN47, 2.5)."""
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        DROP TABLE IF EXISTS placas_pessoa;
+        UPDATE meta SET valor = 11 WHERE chave = 'versao_esquema';
+        PRAGMA user_version = 11;""")
+    con.close()
+
+
 def rebaixar_para_v10(caminho):
     """Deixa um banco como a versão 10 deixava (2.1): sem o que a 2.2
     criou (troca de senha, códigos de recuperação, autorizados a retirar o
     veículo e a lotação)."""
+    rebaixar_para_v11(caminho)
     con = sqlite3.connect(caminho)
     con.executescript("""
         DROP TABLE IF EXISTS codigos_recuperacao;
@@ -925,7 +937,8 @@ class TestIntegridade(BaseTemp):
         user_version, mas a tabela meta guarda a versão de verdade."""
         con = sqlite3.connect(self.caminho_db)
         con.execute("PRAGMA journal_mode = DELETE")
-        con.execute("UPDATE meta SET valor = 12 WHERE chave = 'versao_esquema'")
+        con.execute("UPDATE meta SET valor = ? WHERE chave = 'versao_esquema'",
+                    (dados.VERSAO_ESQUEMA + 1,))
         con.execute("PRAGMA user_version = 5")       # o programa antigo
         con.commit()
         con.close()
@@ -946,7 +959,7 @@ class TestIntegridade(BaseTemp):
                          dados.VERSAO_ESQUEMA)
         self.assertEqual(len(banco.listar_estacionamento()), 1)
         self.assertIn("versão ANTIGA do programa", banco.avisos[0])
-        self.assertIn("v11 → v5", banco.avisos[0])
+        self.assertIn(f"v{dados.VERSAO_ESQUEMA} → v5", banco.avisos[0])
         # a tolerância que o administrador mudou não volta ao padrão
         self.criar_equipe()
         regras = banco.ler_configuracao().regras

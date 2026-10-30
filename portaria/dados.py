@@ -119,7 +119,10 @@ FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
 #     bloquear_lotado)
 # (2.3: sem mudança de esquema — desativação, cadastro e exclusão de
 #  pessoa usam as tabelas que já existiam)
-VERSAO_ESQUEMA = 11
+# 12 (versão 2.5): placas_pessoa — uma pessoa pode ter vários veículos
+#     (RN47); pessoas.placa continua sendo a principal (a que o CPF
+#     preenche na entrada)
+VERSAO_ESQUEMA = 12
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
 REGISTRO_MUDOU = ("Este registro foi alterado em outra estação enquanto a "
@@ -217,7 +220,9 @@ WHERE registro_id IS NULL AND detalhe LIKE '#%'
 SELECT_PESSOAS = """
 SELECT p.id, p.cpf, p.nome, p.celular, p.placa, p.tipo,
        COUNT(r.id), MAX(r.entrada),
-       MAX(CASE WHEN r.saida = '' THEN r.entrada END)
+       MAX(CASE WHEN r.saida = '' THEN r.entrada END),
+       (SELECT group_concat(v.placa, ' ') FROM placas_pessoa v
+        WHERE v.pessoa_id = p.id)
 FROM pessoas p LEFT JOIN registros r ON r.pessoa_id = p.id
 """
 
@@ -873,10 +878,41 @@ def _passo_v11(banco, con, versao):
                     "ON CONFLICT (chave) DO NOTHING", (chave, valor))
 
 
+ESQUEMA_V12 = [
+    # RN47: os veículos de cada pessoa (a mesma placa pode ser de mais de
+    # uma pessoa: o carro da família)
+    f"""CREATE TABLE IF NOT EXISTS placas_pessoa (
+        pessoa_id INTEGER NOT NULL REFERENCES pessoas (id) ON DELETE CASCADE,
+        placa     TEXT NOT NULL CHECK (length(placa) = {MAXIMO_PLACA}),
+        PRIMARY KEY (pessoa_id, placa)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_placas_pessoa_placa ON placas_pessoa (placa)",
+]
+
+
+def _passo_v12(banco, con, versao):
+    """
+    Versão 2.5: placas_pessoa (RN47), já com a placa do cadastro e as
+    placas com que cada pessoa veio nas visitas (os carros que ela já
+    usou passam a aparecer na ficha; o que não for mais dela, o
+    cadastro tira em Editar).
+    """
+    for sql in ESQUEMA_V12:
+        con.execute(sql)
+    con.execute("INSERT OR IGNORE INTO placas_pessoa (pessoa_id, placa) "
+                "SELECT id, placa FROM pessoas WHERE length(placa) = ?",
+                (MAXIMO_PLACA,))
+    con.execute("INSERT OR IGNORE INTO placas_pessoa (pessoa_id, placa) "
+                "SELECT DISTINCT pessoa_id, placa FROM registros "
+                "WHERE pessoa_id IS NOT NULL AND length(placa) = ?",
+                (MAXIMO_PLACA,))
+
+
 # (versão alcançada, função) em ordem; uma migração nova entra no fim.
 # Cada passo pode rodar de novo sem estragar nada (banco rebaixado).
 MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7), (8, _passo_v8),
-             (9, _passo_v9), (10, _passo_v10), (11, _passo_v11)]
+             (9, _passo_v9), (10, _passo_v10), (11, _passo_v11),
+             (12, _passo_v12)]
 
 VERSAO_MAIS_NOVA = ("Este banco de dados foi criado por uma versão mais nova "
                     "do programa.\nAtualize o programa para abrir este banco "
@@ -1360,8 +1396,17 @@ class Banco:
                              (r["cpf"],)).fetchone()[0]
         con.execute("UPDATE registros SET pessoa_id = ? WHERE id = ?",
                     (pessoa, id_registro))
+        Banco._guardar_placa(con, pessoa, r.get("placa", ""))
         Banco._atualizar_pessoa_se_recente(con, pessoa, id_registro, r)
         return id_registro
+
+    @staticmethod
+    def _guardar_placa(con, pessoa, placa):
+        """RN47: veio com um carro que não estava no cadastro? Ele passa a
+        ser um dos veículos da pessoa (mesmo numa visita retroativa)."""
+        if placa:
+            con.execute("INSERT OR IGNORE INTO placas_pessoa (pessoa_id, "
+                        "placa) VALUES (?, ?)", (pessoa, placa))
 
     @staticmethod
     def _atualizar_pessoa_se_recente(con, pessoa, id_registro, r):
@@ -1590,6 +1635,7 @@ class Banco:
                                  (novo["cpf"],)).fetchone()[0]
             con.execute("UPDATE registros SET pessoa_id = ? WHERE id = ?",
                         (pessoa, id_registro))
+            self._guardar_placa(con, pessoa, novo["placa"])
             self._atualizar_pessoa_se_recente(con, pessoa, id_registro, novo)
             self._sincronizar_estadia(con, id_registro, novo, linha[4],
                                       pessoa, autor)
@@ -2070,10 +2116,12 @@ class Banco:
                                  (placa,)).fetchall()
         return [_autorizado(linha) for linha in linhas]
 
-    def adicionar_autorizado(self, dono_cpf, cpf, nome, valido_ate, autor):
+    def adicionar_autorizado(self, dono_cpf, cpf, nome, valido_ate, autor,
+                             placa=None):
         """
         Põe `cpf`/`nome` na lista de quem pode retirar o carro de `dono_cpf`
-        (a placa cadastrada dele), com validade opcional (date ou None).
+        (`placa`, um dos veículos dele; sem ela, a placa principal), com
+        validade opcional (date ou None).
         RN35: o porteiro só cadastra com o dono no campus agora; o
         administrador, a qualquer hora. O histórico grava quem cadastrou e
         se o dono estava presente. Devolve o id.
@@ -2083,11 +2131,17 @@ class Banco:
         _exigir_tamanho("CPF", cpf, MAXIMO_CPF)
         with self._conexao() as con:
             usuario = self._exigir(con, autor, so_admin=False)
-            dono = con.execute("SELECT placa, nome FROM pessoas WHERE cpf = ?",
-                               (dono_cpf,)).fetchone()
+            dono = con.execute("SELECT placa, nome, id FROM pessoas "
+                               "WHERE cpf = ?", (dono_cpf,)).fetchone()
             if dono is None:
                 raise ErroDados("O dono do veículo não está cadastrado.")
-            placa, nome_dono = dono
+            principal, nome_dono, id_dono = dono
+            if placa and placa != principal and con.execute(
+                    "SELECT 1 FROM placas_pessoa WHERE pessoa_id = ? AND "
+                    "placa = ?", (id_dono, placa)).fetchone() is None:
+                raise ErroDados(f"O carro {formatar_placa(placa)} não está "
+                                f"no cadastro de {nome_dono}.")
+            placa = placa or principal
             presente = con.execute("SELECT 1 FROM registros WHERE cpf = ? "
                                    "AND saida = ''",
                                    (dono_cpf,)).fetchone() is not None
@@ -2565,9 +2619,12 @@ class Banco:
     # --------------------------------------------------------------
     @staticmethod
     def _pessoa(linha):
-        i, cpf, nome, cel, placa, tipo, visitas, ultima, aberta = linha
+        i, cpf, nome, cel, placa, tipo, visitas, ultima, aberta, todas = linha
+        # RN47: a principal (pessoas.placa) primeiro, as outras em ordem
+        outras = sorted(set((todas or "").split()) - {placa})
         return {"id": i, "cpf": cpf, "nome": nome, "celular": cel,
-                "placa": placa, "tipo": tipo, "visitas": visitas,
+                "placa": placa, "placas": ([placa] if placa else []) + outras,
+                "tipo": tipo, "visitas": visitas,
                 "ultima_visita": de_iso(ultima or ""),
                 "dentro_desde": de_iso(aberta or "")}
 
@@ -2590,6 +2647,11 @@ class Banco:
         """
         condicao, params = _condicao_busca(
             texto, "pessoas", COLUNAS_BUSCA, so_cpf_completo)
+        placa = validacao.normalizar_placa(texto)[:MAXIMO_PLACA]
+        if condicao and placa:      # RN47: acha por qualquer veículo dela
+            condicao = (f"({condicao} OR id IN (SELECT pessoa_id FROM "
+                        "placas_pessoa WHERE instr(placa, ?) > 0))")
+            params = [*params, placa]
         if so_ativas:
             condicao = " AND ".join(c for c in (condicao, (
                 "NOT EXISTS (SELECT 1 FROM bloqueios b WHERE b.tipo = 'cpf' "
@@ -2622,6 +2684,33 @@ class Banco:
                                 (cpf,)).fetchone()
         return self._pessoa(linha) if linha else None
 
+    def placas_da_pessoa(self, id_pessoa):
+        """RN47: os veículos da pessoa, a principal primeiro."""
+        with self._conexao() as con:
+            principal = con.execute("SELECT placa FROM pessoas WHERE id = ?",
+                                    (id_pessoa,)).fetchone()
+            todas = {p for p, in con.execute(
+                "SELECT placa FROM placas_pessoa WHERE pessoa_id = ?",
+                (id_pessoa,))}
+        principal = principal[0] if principal else ""
+        return ([principal] if principal else []) + sorted(todas - {principal})
+
+    @staticmethod
+    def _placas_do_cadastro(placas, atuais=0):
+        """`placas`: uma placa (texto) ou a lista inteira (a 1ª é a
+        principal). Confere cada uma (RN47); passar do máximo só é aceito
+        se a lista não cresceu (as visitas também guardam placas)."""
+        if isinstance(placas, str):
+            placas = [placas]
+        for p in placas:
+            _exigir_tamanho("Placa", validacao.normalizar_placa(p),
+                            MAXIMO_PLACA)
+        ok, msg, lista = validacao.validar_placas(
+            placas, max(validacao.MAXIMO_PLACAS_PESSOA, atuais))
+        if not ok:
+            raise ErroDados(msg)
+        return lista
+
     def cadastrar_pessoa(self, cpf, nome, celular, placa, tipo, autor):
         """
         "Nova pessoa" (2.3): cadastra SEM registrar entrada. Mesma
@@ -2629,10 +2718,12 @@ class Banco:
         conferida de novo aqui); CPF já cadastrado é recusado. Qualquer
         usuário ativo cadastra (o porteiro já cadastra na entrada). CPF
         desativado pode ser cadastrado: continua desativado. Devolve o id.
+        `placa`: uma placa ou a lista de placas (RN47, a 1ª é a principal).
         """
+        placas = self._placas_do_cadastro(placa)
         dados = {"nome": " ".join((nome or "").split()), "cpf": cpf or "",
-                 "celular": celular or "", "placa": (placa or "").upper(),
-                 "tipo": tipo}
+                 "celular": celular or "",
+                 "placa": placas[0] if placas else "", "tipo": tipo}
         _exigir_tamanho("CPF", dados["cpf"], MAXIMO_CPF)
         _exigir_tamanhos_da_visita(dados)
         ok, msg = validacao.validar_campos(dados)
@@ -2650,9 +2741,13 @@ class Banco:
                 "VALUES (?, ?, ?, ?, ?)",
                 (dados["cpf"], dados["nome"], dados["celular"], dados["placa"],
                  dados["tipo"]))
+            for p in placas:
+                self._guardar_placa(con, cursor.lastrowid, p)
             self._evento(con, autor, PESSOA_CADASTRADA,
                          f"{dados['nome']} (pessoa #{cursor.lastrowid}), sem "
-                         "entrada")
+                         "entrada"
+                         + (f"; placas {', '.join(placas)}"
+                            if len(placas) > 1 else ""))
             return cursor.lastrowid
 
     def excluir_pessoa(self, id_pessoa, autor):
@@ -2683,6 +2778,8 @@ class Banco:
                 "UPDATE autorizados_veiculo SET ativo = 0, removido_em = ?, "
                 "removido_por = ? WHERE dono_cpf = ? AND ativo = 1",
                 (agora, autor, cpf)).rowcount
+            con.execute("DELETE FROM placas_pessoa WHERE pessoa_id = ?",
+                        (id_pessoa,))
             con.execute("DELETE FROM pessoas WHERE id = ?", (id_pessoa,))
             self._evento(con, autor, PESSOA_EXCLUIDA,
                          f"{nome} (CPF {mascarar_cpf(cpf)}, pessoa "
@@ -2692,25 +2789,52 @@ class Banco:
 
     def atualizar_pessoa(self, id_pessoa, nome, celular, placa, tipo, autor=None):
         """Corrige o cadastro da pessoa (as visitas antigas não mudam). O
-        banco confere de novo os campos (validacao.validar_campos)."""
-        _exigir_tamanhos_da_visita({"nome": nome, "celular": celular,
-                                    "placa": placa})
+        banco confere de novo os campos (validacao.validar_campos).
+        `placa`: a lista inteira de placas (RN47; a 1ª é a principal) ou
+        uma só (fica só ela). Placa tirada do cadastro: quem podia
+        retirar aquele carro dela sai da lista (remoção lógica)."""
+        _exigir_tamanhos_da_visita({"nome": nome, "celular": celular})
         with self._conexao() as con:
             self._conferir_autor(con, autor)
             linha = con.execute("SELECT cpf FROM pessoas WHERE id = ?",
                                 (id_pessoa,)).fetchone()
             if linha is None:
                 raise ErroDados("Esta pessoa não está mais cadastrada.")
+            cpf = linha[0]
+            atuais = {p for p, in con.execute(
+                "SELECT placa FROM placas_pessoa WHERE pessoa_id = ?",
+                (id_pessoa,))}
+            placas = self._placas_do_cadastro(placa, len(atuais))
             ok, msg = validacao.validar_campos(
-                {"nome": nome, "cpf": linha[0], "celular": celular,
-                 "placa": placa, "tipo": tipo})
+                {"nome": nome, "cpf": cpf, "celular": celular,
+                 "placa": placas[0] if placas else "", "tipo": tipo})
             if not ok:
                 raise ErroDados(msg)
             con.execute("UPDATE pessoas SET nome = ?, celular = ?, placa = ?, "
                         "tipo = ? WHERE id = ?",
-                        (nome, celular, placa, tipo, id_pessoa))
+                        (nome, celular, placas[0] if placas else "", tipo,
+                         id_pessoa))
+            tiradas = sorted(atuais - set(placas))
+            removidos = 0
+            agora = self.relogio().strftime(FORMATO_ISO)
+            for p in tiradas:
+                con.execute("DELETE FROM placas_pessoa WHERE pessoa_id = ? "
+                            "AND placa = ?", (id_pessoa, p))
+                removidos += con.execute(
+                    "UPDATE autorizados_veiculo SET ativo = 0, removido_em = ?, "
+                    "removido_por = ? WHERE dono_cpf = ? AND placa = ? "
+                    "AND ativo = 1", (agora, autor, cpf, p)).rowcount
+            for p in placas:
+                self._guardar_placa(con, id_pessoa, p)
+            novas = [p for p in placas if p not in atuais]
             self._evento(con, autor, "Dados de pessoa alterados",
-                         f"{nome} (pessoa #{id_pessoa})")
+                         f"{nome} (pessoa #{id_pessoa})"
+                         + (f"; placa(s) incluída(s): {', '.join(novas)}"
+                            if novas else "")
+                         + (f"; placa(s) tirada(s): {', '.join(tiradas)}"
+                            if tiradas else "")
+                         + (f"; {removidos} autorizado(s) a retirar o carro "
+                            "removido(s)" if removidos else ""))
 
     # --------------------------------------------------------------
     # Usuários

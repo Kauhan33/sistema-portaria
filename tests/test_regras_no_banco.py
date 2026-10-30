@@ -13,8 +13,8 @@ from portaria.senhas import gerar_hash
 from portaria.horarios import Evento, Horario, RegraCategoria, hora
 
 from .test_dados import (objetos_do_banco, rebaixar_para_v6,
-                         rebaixar_para_v7, rebaixar_para_v10, registro,
-                         versao_do_arquivo)
+                         rebaixar_para_v7, rebaixar_para_v10,
+                         rebaixar_para_v11, registro, versao_do_arquivo)
 
 SEGUNDA = date(2026, 10, 19)
 
@@ -887,7 +887,7 @@ class TestMigracaoV10ParaV11(BaseRegras):
         self.assertEqual(versao_do_arquivo(self.caminho), 10)
         self.assertNotIn("autorizados_veiculo", objetos_do_banco(self.caminho))
         banco = dados.Banco(self.caminho, relogio=lambda: self.AGORA)
-        self.assertEqual(versao_do_arquivo(self.caminho), 11)
+        self.assertEqual(versao_do_arquivo(self.caminho), dados.VERSAO_ESQUEMA)
         self.assertEqual(banco.listar(), self.antes["registros"])
         self.assertEqual(banco.listar_pessoas(), self.antes["pessoas"])
         self.assertEqual(banco.listar_estacionamento(),
@@ -906,7 +906,8 @@ class TestMigracaoV10ParaV11(BaseRegras):
         for tabela in ("codigos_recuperacao", "autorizados_veiculo"):
             self.assertIn(tabela, objetos_do_banco(self.caminho))
         backups = os.listdir(os.path.join(self.pasta.name, "backups"))
-        self.assertTrue(any("antes-v11-de-v10" in b for b in backups))
+        self.assertTrue(any(f"antes-v{dados.VERSAO_ESQUEMA}-de-v10" in b
+                            for b in backups))
 
     def test_migracao_que_falha_nao_muda_nada(self):
         self.preparar_banco_da_2_1()

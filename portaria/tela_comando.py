@@ -108,6 +108,9 @@ def caber(texto, fonte, largura):
 # ----------------------------------------------------------------------
 # O campo: uma linha de Text (cores por trecho) que fala como um Entry
 # ----------------------------------------------------------------------
+# o modo didático abre e fecha por este atalho (o interruptor não aparece)
+ATALHO_DIDATICO = "Ctrl+Shift+D"
+
 class LinhaComando(tk.Text):
     """
     O Tk Entry não colore trechos; o Text colore (tags), mas tem várias
@@ -381,10 +384,13 @@ class PainelComando:
                                   self.executar, self._ao_mudar)
         self.campo.pack(side="left")
         self.linha = self.campo.entrada
+        # 2.5.3 (pedido do aluno): o interruptor "Didático" saiu da tela —
+        # o modo é da apresentação, não da guarita. Ele abre e fecha pelo
+        # atalho ATALHO_DIDATICO (listado em Configurações › Atalhos); o
+        # interruptor continua existindo, só não aparece.
         self.alternador = Alternador(self.linha_campo, "Didático",
                                      self.var_didatico,
                                      self.alternar_didatico, fundo_pai=fundo)
-        self.alternador.pack(side="left", padx=(px(12), 0))
         for tecla in ("<Return>", "<KP_Enter>"):
             self.linha.bind(tecla, self.executar)
         self.linha.bind("<Tab>", self.completar)
@@ -596,6 +602,11 @@ class PainelComando:
         return opcoes
 
     # --- modo didático ---------------------------------------------------
+    def alternar_pelo_teclado(self):
+        """Ctrl+Shift+D: abre o modo didático (ou fecha, se aberto)."""
+        self.var_didatico.set(not self.var_didatico.get())
+        self.alternar_didatico()
+
     def alternar_didatico(self):
         if self.var_didatico.get():
             self.abrir_didatico()

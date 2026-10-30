@@ -311,7 +311,8 @@ mudança de esquema (banco v11).
   registro do formulário e passa pelas mesmas funções; quando falta o que o
   formulário perguntaria, abre o mesmo diálogo. Resposta numa linha e
   console recolhível com as últimas respostas (linha, ^, fase e dica).
-- ✅ **E2 / RF32** — **modo didático** (interruptor "Didático"): a faixa
+- ✅ **E2 / RF32** — **modo didático** (na 2.4, interruptor "Didático"; desde
+  a 2.5.3, só pelo atalho Ctrl+Shift+D, listado em Configurações › Atalhos): a faixa
   Léxico → Sintático → Semântico → Execução (✓/✗/—) e as abas Tokens,
   Árvore (desenhada no Canvas, o nó com erro em vermelho), Símbolos e
   Checagens; janela por cima da tabela (cabe no 1366×670), claro e escuro.

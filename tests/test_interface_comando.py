@@ -326,6 +326,25 @@ class TestModoDidatico(BaseComando):
         self.comando("dentro visitante")
         self.assertEqual(didatica.analise.fases["Execução"], PASSOU)
 
+    def test_so_pelo_atalho_do_teclado(self):
+        """2.5.3 (pedido do aluno): o interruptor "Didático" não aparece;
+        Ctrl+Shift+D (de qualquer página) leva à Entrada e saída e abre o
+        modo; de novo, fecha. O atalho está em Configurações › Atalhos."""
+        self.assertEqual(self.painel.alternador.winfo_manager(), "")
+        self.assertIn("<Control-Key-D>", self.app.janela.bind())
+        self.app.ir_para(self.app.aba_pessoas)
+        self.app.alternar_modo_didatico()
+        self.assertEqual(self.app.abas.select(), str(self.app.aba_cad))
+        self.assertTrue(self.painel.var_didatico.get())
+        self.assertTrue(self.painel.janela_didatica.existe())
+        self.app.alternar_modo_didatico()
+        self.assertFalse(self.painel.var_didatico.get())
+        self.assertFalse(self.painel.janela_didatica.existe())
+        config = self.app.tela_configuracoes
+        config.seletor.selecionar("Atalhos")
+        self.assertIn("modo didático",
+                      config.lbl_atalhos["Ctrl+Shift+D"].cget("text"))
+
     def test_fechar_desliga_o_interruptor(self):
         didatica = self.painel.abrir_didatico()
         self.assertIsInstance(didatica, JanelaDidatica)

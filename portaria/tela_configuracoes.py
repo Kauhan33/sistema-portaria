@@ -36,7 +36,20 @@ from .horarios import DIAS_SEMANA, FORMATO_DATA
 from .validacao import MAXIMO_DESCRICAO, MAXIMO_HORA, TIPOS_ACESSO
 from .veiculos import MAXIMO_VAGAS, ler_vagas
 
-SECOES = ("Funcionamento", "Categorias", "Feriados e eventos")
+SECOES = ("Funcionamento", "Categorias", "Feriados e eventos", "Atalhos")
+# Configurações › Atalhos (2.5.3): as teclas do programa, inclusive a do
+# modo didático, que não tem mais botão na tela
+ATALHOS = (
+    ("F2 ou Ctrl+K", "Vai ao campo Comando, de qualquer página"),
+    ("Enter", "Registrar entrada (na Entrada e saída) ou executar o comando"),
+    ("Tab", "No campo Comando: completa o comando, a palavra, o tipo ou o nome"),
+    ("Esc", "No campo Comando: limpa a linha; fecha o console"),
+    ("Ctrl+L", "Travar a guarita (Ausentar)"),
+    ("Ctrl+Shift+D", "Abre e fecha o modo didático do campo Comando: as fases "
+                     "da análise (léxico, sintático, semântico e execução), "
+                     "os tokens, a árvore, os símbolos e as checagens. É da "
+                     "apresentação de Compiladores; o porteiro não precisa"),
+)
 JANELAS = {"Do funcionamento": True, "Horário fixo": False}
 PERMANENCIAS = {"Até fechar +": True, "No máximo": False}
 JANELA_FIXA_PADRAO = ("08:00", "18:00")
@@ -90,6 +103,7 @@ class AbaConfiguracoes:
         self._montar_funcionamento(self.secoes["Funcionamento"])
         self._montar_categorias(self.secoes["Categorias"])
         self._montar_calendario(self.secoes["Feriados e eventos"])
+        self._montar_atalhos(self.secoes["Atalhos"])
         self.seletor.selecionar(SECOES[0])
         self.atualizar()
 
@@ -328,6 +342,28 @@ class AbaConfiguracoes:
     # --------------------------------------------------------------
     # Feriados e eventos
     # --------------------------------------------------------------
+    def _montar_atalhos(self, secao):
+        """Só leitura: as teclas do programa (a do modo didático é a única
+        forma de abri-lo)."""
+        cartao = Cartao(secao, pad=20)
+        cartao.pack(fill="both", expand=True)
+        m = cartao.miolo
+        titulo_cartao(m, "Atalhos do teclado").pack(anchor="w")
+        fundo = COR["superficie"]
+        grade = tk.Frame(m, bg=fundo)
+        grade.pack(fill="x", pady=(px(12), 0))
+        grade.columnconfigure(1, weight=1)
+        self.lbl_atalhos = {}
+        for i, (teclas, faz) in enumerate(ATALHOS):
+            tk.Label(grade, text=teclas, font=FONTE["rotulo"], bg=fundo,
+                     fg=COR["texto"], anchor="nw").grid(
+                row=i, column=0, sticky="nw", padx=(0, px(24)), pady=px(6))
+            rotulo = tk.Label(grade, text=faz, font=FONTE["corpo"], bg=fundo,
+                              fg=COR["texto_2"], anchor="w", justify="left",
+                              wraplength=px(640))
+            rotulo.grid(row=i, column=1, sticky="w", pady=px(6))
+            self.lbl_atalhos[teclas] = rotulo
+
     def _montar_calendario(self, secao):
         secao.columnconfigure(0, weight=2, uniform="c")
         secao.columnconfigure(1, weight=3, uniform="c")

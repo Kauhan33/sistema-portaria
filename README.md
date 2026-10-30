@@ -128,7 +128,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-1011 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
+1012 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
 comandos** (uma classe por fase: léxico, gramática LL(1), sintático,
 semântico e a execução comparada com o formulário, além do campo, do console
 e do modo didático), validações, regras de
@@ -635,7 +635,9 @@ aceitam o plural (`visitantes`).
 Dica: Formatos ABC1234 (antiga) ou ABC1D23 (Mercosul).
 ```
 
-- **Modo didático** (interruptor ao lado do campo): a faixa Léxico ✓ →
+- **Modo didático** (atalho **Ctrl+Shift+D**, listado em Configurações ›
+  Atalhos; desde a 2.5.3 não há botão na tela, porque o modo é da
+  apresentação e não da guarita): a faixa Léxico ✓ →
   Sintático ✓ → Semântico ✗ → Execução — e as abas **Tokens**, **Árvore**
   (desenhada no Canvas, o nó com erro em vermelho), **Símbolos** e
   **Checagens**. Abre por cima da tabela e cabe no notebook 1366×670.
@@ -766,6 +768,11 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**2.5.3** (30/10/2026) — o modo didático saiu da tela (pedido do aluno): o
+interruptor "Didático" ao lado do campo Comando não aparece mais; o modo
+abre e fecha com **Ctrl+Shift+D**, e Configurações ganhou a subaba
+**Atalhos**, com todas as teclas do programa; 1012 testes.
 
 **2.5.2** (30/10/2026) — correção (sem mudança no banco): na ficha de uma
 pessoa desativada (subaba Pessoas desativadas), a seção Veículo saía

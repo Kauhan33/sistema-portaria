@@ -98,7 +98,8 @@ from .usuarios import (MINUTOS_INATIVIDADE, PERFIS, SESSAO_ENCERRADA,
 from .validacao import formatar_cpf, mascarar_cpf
 
 TECLAS_DA_SESSAO = ("<Return>", "<KP_Enter>", "<F2>", "<Control-k>",
-                    "<Control-K>", "<Control-l>", "<Control-L>")
+                    "<Control-K>", "<Control-l>", "<Control-L>",
+                    "<Control-D>")
 ITEM_CODIGOS = "Gerar novos códigos de recuperação"
 GUARITA_TRAVADA = "Guarita travada"
 GUARITA_DESTRAVADA = "Guarita destravada"
@@ -730,6 +731,9 @@ class AppPortaria:
         self.janela.bind("<Control-K>", self.ir_para_saida_rapida)
         self.janela.bind("<Control-l>", self.travar)       # Ausentar (B4)
         self.janela.bind("<Control-L>", self.travar)
+        # 2.5.3: modo didático só pelo teclado (Configurações › Atalhos);
+        # com Shift o Tk entrega o "D" maiúsculo
+        self.janela.bind("<Control-D>", self.alternar_modo_didatico)
 
         self.tela_cadastro.limpar()
         self.atualizar_tabela()
@@ -747,6 +751,14 @@ class AppPortaria:
         """Mostra a página e acende o item do menu (e relê os dados dela)."""
         self.abas.select(aba)
         self.ao_trocar_aba()
+
+    def alternar_modo_didatico(self, event=None):
+        """Ctrl+Shift+D: leva à Entrada e saída e abre (ou fecha) o modo
+        didático da linha de comando."""
+        if self.abas.select() != str(self.aba_cad):
+            self.ir_para(self.aba_cad)
+        self.tela_cadastro.comando.alternar_pelo_teclado()
+        return "break"
 
     def ir_para_saida_rapida(self, event=None):
         """F2 ou Ctrl+K: de qualquer página, leva o cursor ao campo Comando

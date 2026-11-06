@@ -54,6 +54,9 @@ MAXIMO_CPF = 11
 MAXIMO_CELULAR = 11
 MAXIMO_PLACA = 7
 MAXIMO_PLACAS_PESSOA = 5       # veículos no cadastro de uma pessoa (RN47, 2.5)
+MAXIMO_EMPRESA = 80           # empresa ou instituição (RN48, 3.0)
+MAXIMO_MOTIVO_VISITA = 200    # motivo da visita (RN48, 3.0)
+MAXIMO_OCORRENCIA = 500       # descrição da ocorrência (RN49, 3.0)
 MAXIMO_CODIGO = 9             # código de recuperação: K7QM-2F9X (RN38)
 MAXIMO_COMANDO = 200          # linha de comando (2.4): cabe o cadastro completo
 
@@ -188,9 +191,13 @@ def formatar_placa(p):
 # ------------------------------------------------------------------
 # Registro completo
 # ------------------------------------------------------------------
-def normalizar(nome, cpf, celular, placa, tipo, entrada, saida):
-    """Monta o registro como será salvo, a partir do texto digitado."""
-    return {
+def normalizar(nome, cpf, celular, placa, tipo, entrada, saida, empresa=None,
+               motivo=None):
+    """Monta o registro como será salvo, a partir do texto digitado.
+    `empresa` e `motivo` (RN48): a tela de Cadastro sempre manda os dois, e
+    aí eles são obrigatórios; quem não manda (a Saída, um lançamento antigo)
+    não passa por essa checagem."""
+    registro = {
         "nome": " ".join(nome.split()),
         "cpf": so_digitos(cpf),
         "celular": so_digitos(celular),
@@ -199,6 +206,11 @@ def normalizar(nome, cpf, celular, placa, tipo, entrada, saida):
         "entrada": _normalizar_data(entrada),
         "saida": _normalizar_data(saida),
     }
+    if empresa is not None:
+        registro["empresa"] = " ".join(empresa.split())
+    if motivo is not None:
+        registro["motivo"] = " ".join(motivo.split())
+    return registro
 
 
 def _normalizar_data(texto):
@@ -257,6 +269,54 @@ def validar_campos(registro):
 
     if registro["tipo"] not in TIPOS_ACESSO:  # VERIFICAÇÃO SEMÂNTICA 1
         return False, "Selecione um tipo de acesso válido."
+
+    # RN48: só quando a tela manda (ver normalizar)
+    if "empresa" in registro:
+        if not registro["empresa"]:
+            return False, "A empresa é obrigatória."
+        ok, msg = checar_tamanho("Empresa", registro["empresa"], MAXIMO_EMPRESA)
+        if not ok:
+            return False, msg
+    if "motivo" in registro:
+        if not registro["motivo"]:
+            return False, "O motivo da visita é obrigatório."
+        ok, msg = checar_tamanho("Motivo da visita", registro["motivo"],
+                                 MAXIMO_MOTIVO_VISITA)
+        if not ok:
+            return False, msg
+    return True, ""
+
+
+def codigo_da_visita(id_visita):
+    """Código de identificação do cadastro (RN48): 7 -> '007'."""
+    return f"{int(id_visita):03d}"
+
+
+# ------------------------------------------------------------------
+# Ocorrências da portaria (RN49, 3.0)
+# ------------------------------------------------------------------
+CATEGORIAS_OCORRENCIA = ["Segurança", "Acesso negado", "Veículo", "Equipamento",
+                         "Achados e perdidos", "Outra"]
+OCORRENCIA_MINIMA = 5
+
+
+def validar_ocorrencia(categoria, texto, cpf="", placa=""):
+    """(ok, mensagem) da ocorrência. CPF e placa são opcionais: ligam a
+    ocorrência a uma pessoa ou a um carro; se vierem, têm de ser válidos."""
+    if categoria not in CATEGORIAS_OCORRENCIA:
+        return False, "Selecione a categoria da ocorrência."
+    texto = " ".join((texto or "").split())
+    if len(texto) < OCORRENCIA_MINIMA:
+        return False, ("Descreva a ocorrência (pelo menos "
+                       f"{OCORRENCIA_MINIMA} caracteres).")
+    ok, msg = checar_tamanho("Descrição", texto, MAXIMO_OCORRENCIA)
+    if not ok:
+        return False, msg
+    if cpf and not cpf_valido(cpf):
+        return False, "CPF inválido.\nDigite os 11 números (somente números)."
+    if placa and not placa_valida(placa):
+        return False, ("Placa inválida.\nUse o formato antigo (ABC1234) ou "
+                       "Mercosul (ABC1D23).")
     return True, ""
 
 

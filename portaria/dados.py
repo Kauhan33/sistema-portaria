@@ -88,6 +88,7 @@ from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
                        conferir_autorizador, pode_editar, pode_excluir_pessoa,
                        validar_edicao_usuario)
 from .validacao import (FORMATO, MAXIMO_BUSCA, MAXIMO_CELULAR, MAXIMO_CPF,
+                        MAXIMO_OCORRENCIA,
                         MAXIMO_CODIGO, MAXIMO_DATA_HORA, MAXIMO_DESCRICAO,
                         MAXIMO_JUSTIFICATIVA, MAXIMO_LOGIN, MAXIMO_MOTIVO,
                         MAXIMO_NOME, MAXIMO_PLACA, MAXIMO_SENHA, TIPOS_ACESSO,
@@ -122,7 +123,9 @@ FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
 # 12 (versão 2.5): placas_pessoa — uma pessoa pode ter vários veículos
 #     (RN47); pessoas.placa continua sendo a principal (a que o CPF
 #     preenche na entrada)
-VERSAO_ESQUEMA = 12
+# 13 (versão 3.0, enunciado A3): empresa da pessoa e da visita, motivo da
+#     visita (RN48) e o livro de ocorrências (RN49)
+VERSAO_ESQUEMA = 13
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
 REGISTRO_MUDOU = ("Este registro foi alterado em outra estação enquanto a "
@@ -222,16 +225,20 @@ SELECT p.id, p.cpf, p.nome, p.celular, p.placa, p.tipo,
        COUNT(r.id), MAX(r.entrada),
        MAX(CASE WHEN r.saida = '' THEN r.entrada END),
        (SELECT group_concat(v.placa, ' ') FROM placas_pessoa v
-        WHERE v.pessoa_id = p.id)
+        WHERE v.pessoa_id = p.id), p.empresa
 FROM pessoas p LEFT JOIN registros r ON r.pessoa_id = p.id
 """
 
-COLUNAS_REGISTRO = "id, nome, cpf, celular, placa, tipo, entrada, saida"
+COLUNAS_REGISTRO = ("id, nome, cpf, celular, placa, tipo, entrada, saida, "
+                    "empresa, motivo")
 # Tamanho máximo dos textos da visita, conferido antes de gravar
 TAMANHOS_DA_VISITA = (("Nome completo", "nome", MAXIMO_NOME),
                       ("CPF", "cpf", MAXIMO_CPF),
                       ("Celular", "celular", MAXIMO_CELULAR),
                       ("Placa", "placa", MAXIMO_PLACA),
+                      ("Empresa", "empresa", validacao.MAXIMO_EMPRESA),
+                      ("Motivo da visita", "motivo",
+                       validacao.MAXIMO_MOTIVO_VISITA),
                       ("Entrada", "entrada", MAXIMO_DATA_HORA),
                       ("Saída", "saida", MAXIMO_DATA_HORA))
 # Ações do histórico (auditoria) que passaram por cima de uma regra: o
@@ -411,10 +418,10 @@ def _exigir_tamanhos_da_visita(registro):
 
 
 def _registro(linha):
-    i, nome, cpf, cel, placa, tipo, entrada, saida = linha
+    i, nome, cpf, cel, placa, tipo, entrada, saida, empresa, motivo = linha
     return {"id": i, "nome": nome, "cpf": cpf, "celular": cel,
             "placa": placa, "tipo": tipo, "entrada": de_iso(entrada),
-            "saida": de_iso(saida)}
+            "saida": de_iso(saida), "empresa": empresa, "motivo": motivo}
 
 
 def _estadia(linha):
@@ -908,11 +915,46 @@ def _passo_v12(banco, con, versao):
                 (MAXIMO_PLACA,))
 
 
+ESQUEMA_V13 = [
+    # RN49: livro de ocorrências da portaria; cpf e placa são opcionais
+    f"""CREATE TABLE IF NOT EXISTS ocorrencias (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        momento       TEXT NOT NULL,        -- ISO
+        categoria     TEXT NOT NULL CHECK (categoria <> ''),
+        texto         TEXT NOT NULL CHECK (texto <> ''
+                           AND length(texto) <= {MAXIMO_OCORRENCIA}),
+        cpf           TEXT NOT NULL DEFAULT '',
+        placa         TEXT NOT NULL DEFAULT '',
+        autor         TEXT NOT NULL,
+        resolvida_em  TEXT NOT NULL DEFAULT '',
+        resolvida_por TEXT NOT NULL DEFAULT ''
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_ocorrencias_momento ON ocorrencias (momento)",
+]
+
+
+def _passo_v13(banco, con, versao):
+    """
+    Versão 3.0 (enunciado A3): registros.empresa e registros.motivo,
+    pessoas.empresa e a tabela ocorrencias. Quem já estava no banco fica
+    com empresa e motivo vazios (a tela mostra "—" e pede na próxima vez).
+    """
+    for tabela, colunas_novas in (("registros", ("empresa", "motivo")),
+                                  ("pessoas", ("empresa",))):
+        existentes = {c[1] for c in con.execute(f"PRAGMA table_info({tabela})")}
+        for coluna in colunas_novas:
+            if coluna not in existentes:
+                con.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} TEXT "
+                            "NOT NULL DEFAULT ''")
+    for sql in ESQUEMA_V13:
+        con.execute(sql)
+
+
 # (versão alcançada, função) em ordem; uma migração nova entra no fim.
 # Cada passo pode rodar de novo sem estragar nada (banco rebaixado).
 MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7), (8, _passo_v8),
              (9, _passo_v9), (10, _passo_v10), (11, _passo_v11),
-             (12, _passo_v12)]
+             (12, _passo_v12), (13, _passo_v13)]
 
 VERSAO_MAIS_NOVA = ("Este banco de dados foi criado por uma versão mais nova "
                     "do programa.\nAtualize o programa para abrir este banco "
@@ -1398,15 +1440,17 @@ class Banco:
         """
         _exigir_tamanhos_da_visita(r)
         cursor = con.execute(
-            "INSERT INTO registros (nome, cpf, celular, placa, tipo, entrada, saida) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO registros (nome, cpf, celular, placa, tipo, entrada, "
+            "saida, empresa, motivo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (r["nome"], r["cpf"], r["celular"], r.get("placa", ""), r["tipo"],
-             para_iso(r["entrada"]), para_iso(r.get("saida", ""))))
+             para_iso(r["entrada"]), para_iso(r.get("saida", "")),
+             r.get("empresa", ""), r.get("motivo", "")))
         id_registro = cursor.lastrowid
-        con.execute("INSERT INTO pessoas (cpf, nome, celular, placa, tipo) "
-                    "VALUES (?, ?, ?, ?, ?) ON CONFLICT (cpf) DO NOTHING",
+        con.execute("INSERT INTO pessoas (cpf, nome, celular, placa, tipo, "
+                    "empresa) VALUES (?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT (cpf) DO NOTHING",
                     (r["cpf"], r["nome"], r["celular"], r.get("placa", ""),
-                     r["tipo"]))
+                     r["tipo"], r.get("empresa", "")))
         pessoa = con.execute("SELECT id FROM pessoas WHERE cpf = ?",
                              (r["cpf"],)).fetchone()[0]
         con.execute("UPDATE registros SET pessoa_id = ? WHERE id = ?",
@@ -1425,17 +1469,21 @@ class Banco:
 
     @staticmethod
     def _atualizar_pessoa_se_recente(con, pessoa, id_registro, r):
-        """A pessoa fica com os dados da visita mais recente (a placa só muda
-        se veio de carro desta vez)."""
+        """A pessoa fica com os dados da visita mais recente (a placa e a
+        empresa só mudam se a visita trouxe uma)."""
         mais_recente = con.execute(
             "SELECT id FROM registros WHERE pessoa_id = ? "
             "ORDER BY entrada DESC, id DESC LIMIT 1", (pessoa,)).fetchone()[0]
         if mais_recente == id_registro:
             placa = r.get("placa", "")
+            empresa = r.get("empresa", "")
             con.execute(
                 "UPDATE pessoas SET nome = ?, celular = ?, tipo = ?, "
-                "placa = CASE WHEN ? <> '' THEN ? ELSE placa END WHERE id = ?",
-                (r["nome"], r["celular"], r["tipo"], placa, placa, pessoa))
+                "placa = CASE WHEN ? <> '' THEN ? ELSE placa END, "
+                "empresa = CASE WHEN ? <> '' THEN ? ELSE empresa END "
+                "WHERE id = ?",
+                (r["nome"], r["celular"], r["tipo"], placa, placa, empresa,
+                 empresa, pessoa))
 
     def registrar_saida(self, id_registro, saida, autor=None, autorizacao=None):
         """Saída de uma visita; False se ela já tinha saída ou não existe."""
@@ -1633,19 +1681,24 @@ class Banco:
                                original["celular"], original.get("placa", ""),
                                original["tipo"], para_iso(original["entrada"]),
                                para_iso(original["saida"]))
+            # empresa e motivo: sem a chave, ficam como estavam
             cursor = con.execute(
                 "UPDATE registros SET nome = ?, cpf = ?, celular = ?, placa = ?, "
-                "tipo = ?, entrada = ?, saida = ? WHERE id = ?" + condicao,
+                "tipo = ?, entrada = ?, saida = ?, "
+                "empresa = COALESCE(?, empresa), motivo = COALESCE(?, motivo) "
+                "WHERE id = ?" + condicao,
                 (novo["nome"], novo["cpf"], novo["celular"], novo["placa"],
                  novo["tipo"], para_iso(novo["entrada"]), para_iso(novo["saida"]),
+                 novo.get("empresa"), novo.get("motivo"),
                  id_registro, *como_estava))
             if not cursor.rowcount:
                 raise ErroDados(REGISTRO_MUDOU)
             # Pessoa do CPF (novo): cria se ainda não existe
-            con.execute("INSERT INTO pessoas (cpf, nome, celular, placa, tipo) "
-                        "VALUES (?, ?, ?, ?, ?) ON CONFLICT (cpf) DO NOTHING",
+            con.execute("INSERT INTO pessoas (cpf, nome, celular, placa, tipo, "
+                        "empresa) VALUES (?, ?, ?, ?, ?, ?) "
+                        "ON CONFLICT (cpf) DO NOTHING",
                         (novo["cpf"], novo["nome"], novo["celular"],
-                         novo["placa"], novo["tipo"]))
+                         novo["placa"], novo["tipo"], novo.get("empresa", "")))
             pessoa = con.execute("SELECT id FROM pessoas WHERE cpf = ?",
                                  (novo["cpf"],)).fetchone()[0]
             con.execute("UPDATE registros SET pessoa_id = ? WHERE id = ?",
@@ -2691,12 +2744,13 @@ class Banco:
     # --------------------------------------------------------------
     @staticmethod
     def _pessoa(linha):
-        i, cpf, nome, cel, placa, tipo, visitas, ultima, aberta, todas = linha
+        (i, cpf, nome, cel, placa, tipo, visitas, ultima, aberta, todas,
+         empresa) = linha
         # RN47: a principal (pessoas.placa) primeiro, as outras em ordem
         outras = sorted(set((todas or "").split()) - {placa})
         return {"id": i, "cpf": cpf, "nome": nome, "celular": cel,
                 "placa": placa, "placas": ([placa] if placa else []) + outras,
-                "tipo": tipo, "visitas": visitas,
+                "tipo": tipo, "empresa": empresa, "visitas": visitas,
                 "ultima_visita": de_iso(ultima or ""),
                 "dentro_desde": de_iso(aberta or "")}
 
@@ -2786,7 +2840,8 @@ class Banco:
             raise ErroDados(msg)
         return lista
 
-    def cadastrar_pessoa(self, cpf, nome, celular, placa, tipo, autor):
+    def cadastrar_pessoa(self, cpf, nome, celular, placa, tipo, autor,
+                         empresa=None):
         """
         "Nova pessoa" (2.3): cadastra SEM registrar entrada. Mesma
         validação e mesmos limites da entrada (validacao.validar_campos,
@@ -2799,6 +2854,8 @@ class Banco:
         dados = {"nome": " ".join((nome or "").split()), "cpf": cpf or "",
                  "celular": celular or "",
                  "placa": placas[0] if placas else "", "tipo": tipo}
+        if empresa is not None:          # RN48: quem manda, tem de preencher
+            dados["empresa"] = " ".join(empresa.split())
         _exigir_tamanho("CPF", dados["cpf"], MAXIMO_CPF)
         _exigir_tamanhos_da_visita(dados)
         ok, msg = validacao.validar_campos(dados)
@@ -2812,10 +2869,10 @@ class Banco:
                 raise ErroDados(f"Este CPF já está cadastrado "
                                 f"({existente[0]}).")
             cursor = con.execute(
-                "INSERT INTO pessoas (cpf, nome, celular, placa, tipo) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO pessoas (cpf, nome, celular, placa, tipo, empresa) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 (dados["cpf"], dados["nome"], dados["celular"], dados["placa"],
-                 dados["tipo"]))
+                 dados["tipo"], dados.get("empresa", "")))
             for p in placas:
                 self._guardar_placa(con, cursor.lastrowid, p)
             self._evento(con, autor, PESSOA_CADASTRADA,
@@ -2862,13 +2919,16 @@ class Banco:
                          + (f"; {removidos} autorizado(s) a retirar o carro "
                             "removido(s)" if removidos else ""))
 
-    def atualizar_pessoa(self, id_pessoa, nome, celular, placa, tipo, autor=None):
+    def atualizar_pessoa(self, id_pessoa, nome, celular, placa, tipo, autor=None,
+                         empresa=None):
         """Corrige o cadastro da pessoa (as visitas antigas não mudam). O
         banco confere de novo os campos (validacao.validar_campos).
         `placa`: a lista inteira de placas (RN47; a 1ª é a principal) ou
         uma só (fica só ela). Placa tirada do cadastro: quem podia
-        retirar aquele carro dela sai da lista (remoção lógica)."""
-        _exigir_tamanhos_da_visita({"nome": nome, "celular": celular})
+        retirar aquele carro dela sai da lista (remoção lógica).
+        `empresa` None: continua a que estava."""
+        _exigir_tamanhos_da_visita({"nome": nome, "celular": celular,
+                                    "empresa": empresa or ""})
         with self._conexao() as con:
             self._conferir_autor(con, autor)
             linha = con.execute("SELECT cpf FROM pessoas WHERE id = ?",
@@ -2886,9 +2946,9 @@ class Banco:
             if not ok:
                 raise ErroDados(msg)
             con.execute("UPDATE pessoas SET nome = ?, celular = ?, placa = ?, "
-                        "tipo = ? WHERE id = ?",
+                        "tipo = ?, empresa = COALESCE(?, empresa) WHERE id = ?",
                         (nome, celular, placas[0] if placas else "", tipo,
-                         id_pessoa))
+                         empresa, id_pessoa))
             tiradas = sorted(atuais - set(placas))
             removidos = 0
             agora = self.relogio().strftime(FORMATO_ISO)
@@ -3228,6 +3288,83 @@ class Banco:
                                  "LIMIT ?", ((texto,) if texto else ())
                                  + (limite,)).fetchall()
         return [self._formatar_evento(linha) for linha in linhas]
+
+    # --------------------------------------------------------------
+    # Ocorrências da portaria (RN49, 3.0)
+    # --------------------------------------------------------------
+    def registrar_ocorrencia(self, categoria, texto, autor, cpf="", placa=""):
+        """Grava a ocorrência (qualquer usuário ativo). CPF digitado no
+        texto vai mascarado (RN14). Devolve o id."""
+        cpf, placa = so_digitos(cpf or ""), validacao.normalizar_placa(placa)
+        texto = " ".join((texto or "").split())
+        ok, msg = validacao.validar_ocorrencia(categoria, texto, cpf, placa)
+        if not ok:
+            raise ErroDados(msg)
+        texto = mascarar_cpfs_no_texto(texto)
+        with self._conexao() as con:
+            self._exigir(con, autor, so_admin=False)
+            cursor = con.execute(
+                "INSERT INTO ocorrencias (momento, categoria, texto, cpf, placa,"
+                " autor) VALUES (?, ?, ?, ?, ?, ?)",
+                (self.relogio().strftime(FORMATO_ISO), categoria, texto, cpf,
+                 placa, autor))
+            self._evento(con, autor, "Ocorrência registrada",
+                         f"#{cursor.lastrowid} {categoria}: {texto[:80]}")
+            return cursor.lastrowid
+
+    def listar_ocorrencias(self, texto="", categoria=None, so_abertas=False,
+                           limite=200):
+        """Da mais recente para a mais antiga. Busca e filtros no SQL, antes
+        do limite (uma ocorrência antiga também é achada)."""
+        partes, params = [], []
+        texto = (texto or "").strip().lower()[:MAXIMO_BUSCA]
+        if texto:
+            partes.append("instr(minusculo(categoria || ' ' || texto || ' ' || "
+                          "placa || ' ' || autor), ?) > 0")
+            params.append(texto)
+        if categoria:
+            partes.append("categoria = ?")
+            params.append(categoria)
+        if so_abertas:
+            partes.append("resolvida_em = ''")
+        where = f"WHERE {' AND '.join(partes)} " if partes else ""
+        with self._conexao() as con:
+            linhas = con.execute(
+                "SELECT id, momento, categoria, texto, cpf, placa, autor, "
+                f"resolvida_em, resolvida_por FROM ocorrencias {where}"
+                "ORDER BY momento DESC, id DESC LIMIT ?",
+                (*params, int(limite))).fetchall()
+        return [{"id": i, "momento": de_iso(m), "categoria": c, "texto": t,
+                 "cpf": cpf, "placa": placa, "autor": a,
+                 "resolvida_em": de_iso(em), "resolvida_por": por}
+                for i, m, c, t, cpf, placa, a, em, por in linhas]
+
+    def resolver_ocorrencia(self, id_ocorrencia, autor):
+        """Marca como resolvida (qualquer usuário ativo); fica no histórico."""
+        with self._conexao() as con:
+            self._exigir(con, autor, so_admin=False)
+            cursor = con.execute(
+                "UPDATE ocorrencias SET resolvida_em = ?, resolvida_por = ? "
+                "WHERE id = ? AND resolvida_em = ''",
+                (self.relogio().strftime(FORMATO_ISO), autor, id_ocorrencia))
+            if not cursor.rowcount:
+                raise ErroDados("Esta ocorrência já foi resolvida ou não "
+                                "existe mais.")
+            self._evento(con, autor, "Ocorrência resolvida",
+                         f"#{id_ocorrencia}")
+
+    def excluir_ocorrencia(self, id_ocorrencia, autor):
+        """Só o administrador (RN02); o histórico guarda o que foi apagado."""
+        with self._conexao() as con:
+            self._exigir(con, autor, para="excluir ocorrências")
+            linha = con.execute("SELECT categoria, texto FROM ocorrencias "
+                                "WHERE id = ?", (id_ocorrencia,)).fetchone()
+            if linha is None:
+                raise ErroDados("Esta ocorrência não existe mais.")
+            con.execute("DELETE FROM ocorrencias WHERE id = ?",
+                        (id_ocorrencia,))
+            self._evento(con, autor, "Ocorrência excluída",
+                         f"#{id_ocorrencia} {linha[0]}: {linha[1][:80]}")
 
     # --------------------------------------------------------------
     # Migração do JSON da versão 1

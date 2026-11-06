@@ -120,10 +120,11 @@ class TestExportarCsv(BaseBackup):
         self.assertIn("Saída".encode("utf-8"), bruto)
         self.assertEqual(linhas, [
             backup.CABECALHO_CSV,
-            ["João Ávila", "529.982.247-25", "(31) 98765-4321", "QWE-1234",
-             "Funcionário", "15/10/2026 07:00", "15/10/2026 08:00"],
-            ["Ana Silva", "111.444.777-35", "(11) 99876-5432", "", "Visitante",
-             "16/10/2026 23:59", ""]])
+            ["002", "João Ávila", "529.982.247-25", "(31) 98765-4321", "",
+             "QWE-1234", "Funcionário", "", "15/10/2026 07:00",
+             "15/10/2026 08:00"],
+            ["001", "Ana Silva", "111.444.777-35", "(11) 99876-5432", "", "",
+             "Visitante", "", "16/10/2026 23:59", ""]])
 
     def test_exportacao_fica_no_historico(self):
         backup.exportar_csv(self.banco, self.csv, date(2026, 10, 15),
@@ -152,7 +153,7 @@ class TestExportarCsv(BaseBackup):
             con.execute("UPDATE registros SET nome = '=HYPERLINK(1)'")
         backup.exportar_csv(self.banco, self.csv, date(2026, 10, 15),
                             date(2026, 10, 15), autor="ana")
-        self.assertEqual(self.ler()[1][1][0], "'=HYPERLINK(1)")
+        self.assertEqual(self.ler()[1][1][1], "'=HYPERLINK(1)")
 
     def test_periodo_invertido(self):
         with self.assertRaises(dados.ErroDados):

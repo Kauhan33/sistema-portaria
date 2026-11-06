@@ -22,11 +22,13 @@ from datetime import date, datetime
 
 from . import excecoes
 from .dados import SEGUNDOS_ESPERA, ErroDados, copiar_banco, log, mensagem_amigavel
-from .validacao import formatar_celular, formatar_cpf, formatar_placa
+from .validacao import (codigo_da_visita, formatar_celular, formatar_cpf,
+                        formatar_placa)
 
 PREFIXO = "portaria"
 MANTER_BACKUPS = 30
-CABECALHO_CSV = ["Nome", "CPF", "Celular", "Placa", "Tipo", "Entrada", "Saída"]
+CABECALHO_CSV = ["Código", "Nome", "CPF", "Telefone", "Empresa", "Placa", "Tipo",
+                 "Motivo", "Entrada", "Saída"]
 CABECALHO_EXCECOES = ["Quando", "Tipo", "Pessoa", "Quem autorizou",
                       "Quem operava", "Justificativa"]
 
@@ -123,9 +125,10 @@ def exportar_csv(banco, caminho_csv, desde, ate, autor):
         raise ErroDados("A data final não pode ser anterior à inicial.")
     registros = banco.registros_do_periodo(desde, ate, autor=autor)
     _gravar_csv(caminho_csv, CABECALHO_CSV, [(
-        r["nome"], formatar_cpf(r["cpf"]), formatar_celular(r["celular"]),
-        formatar_placa(r["placa"]), r["tipo"], r["entrada"], r["saida"])
-        for r in registros])
+        codigo_da_visita(r["id"]), r["nome"], formatar_cpf(r["cpf"]),
+        formatar_celular(r["celular"]), r["empresa"],
+        formatar_placa(r["placa"]), r["tipo"], r["motivo"], r["entrada"],
+        r["saida"]) for r in registros])
     banco.registrar_evento(autor, "Exportação de registros",
                            f"{len(registros)} registro(s) de {desde:%d/%m/%Y} "
                            f"a {ate:%d/%m/%Y}")

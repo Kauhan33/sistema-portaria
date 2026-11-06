@@ -58,7 +58,8 @@ class TestBanco(BaseTemp):
 
     def test_inserir_e_listar_mantem_acentos_e_formato_da_tela(self):
         id_ = self.banco.inserir(registro())
-        self.assertEqual(self.banco.listar(), [dict(registro(), id=id_)])
+        self.assertEqual(self.banco.listar(),
+                         [dict(registro(), id=id_, empresa="", motivo="")])
 
     def test_datas_ficam_em_iso_no_banco(self):
         self.banco.inserir(registro(saida="16/10/2026 09:30"))
@@ -692,7 +693,8 @@ class TestMigracao(BaseTemp):
         self.escrever_json(antigos)
         aviso = self.banco.importar_json(self.caminho_json)
         self.assertIn("2 registro(s)", aviso)
-        self.assertEqual([{k: v for k, v in r.items() if k != "id"}
+        self.assertEqual([{k: v for k, v in r.items()
+                           if k not in ("id", "empresa", "motivo")}
                           for r in self.banco.listar()], antigos)
         self.assertFalse(os.path.exists(self.caminho_json))
         self.assertTrue(os.path.exists(self.caminho_json + ".migrado"))
@@ -757,9 +759,24 @@ def agora_menos(**delta):
     return (datetime.now() - timedelta(**delta)).strftime(FORMATO)
 
 
+def rebaixar_para_v12(caminho):
+    """Deixa um banco como a versão 12 deixava (2.5): sem empresa, motivo
+    e ocorrências (RN48 e RN49, 3.0)."""
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        DROP TABLE IF EXISTS ocorrencias;
+        ALTER TABLE registros DROP COLUMN empresa;
+        ALTER TABLE registros DROP COLUMN motivo;
+        ALTER TABLE pessoas DROP COLUMN empresa;
+        UPDATE meta SET valor = 12 WHERE chave = 'versao_esquema';
+        PRAGMA user_version = 12;""")
+    con.close()
+
+
 def rebaixar_para_v11(caminho):
     """Deixa um banco como a versão 11 deixava (2.2 a 2.4): sem as placas
     de cada pessoa (RN47, 2.5)."""
+    rebaixar_para_v12(caminho)
     con = sqlite3.connect(caminho)
     con.executescript("""
         DROP TABLE IF EXISTS placas_pessoa;

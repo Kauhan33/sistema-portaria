@@ -82,7 +82,7 @@ FORMATO_DATA = "%d/%m/%Y"
 _REGEX_HORA = re.compile(r"^\d{2}:\d{2}$")
 
 # Situação de uma visita na tabela Movimento
-NO_CAMPUS = "No campus"
+NO_CAMPUS = "Dentro"        # enunciado do A3: "Dentro" ou "Saiu"
 TEMPO_EXCEDIDO = "Tempo excedido"
 SAIDA_PENDENTE = "Saída pendente"
 SAIU = "Saiu"

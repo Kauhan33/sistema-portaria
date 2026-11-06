@@ -16,8 +16,10 @@ transparência gerados aqui mesmo (zlib + struct, biblioteca padrão).
 
 import base64
 import math
+import os
 import re
 import struct
+import sys
 import tkinter as tk
 import tkinter.font as tkfont
 import zlib
@@ -356,6 +358,178 @@ class Botao(tk.Canvas):
                              font=FONTE["dica"],
                              fill=COR["dica_invertida"] if sobre_primario
                              else COR["texto_3"])
+
+
+class BotaoTk(tk.Button):
+    """
+    Botão do enunciado do A3: um tk.Button de verdade, com as cores do tema
+    e a mesma interface do Botao desenhado (definir_texto, definir_ativo,
+    invocar). É o usado no Login, no Cadastro e no Controle de acesso.
+    """
+
+    def __init__(self, pai, texto, comando=None, variante="secundario",
+                 fundo_pai=None, altura=ALTURA_CAMPO, **_):
+        self.fundo_pai = fundo_pai or COR["superficie"]
+        self.texto, self.comando, self.variante = texto, comando, variante
+        self.ativo = True
+        fonte = tkfont.Font(root=pai, font=FONTE["botao"])
+        margem = max(0, (px(altura) - fonte.metrics("linespace")) // 2 - px(4))
+        super().__init__(pai, text=texto, command=self.invocar,
+                         font=FONTE["botao"], relief="flat", bd=0,
+                         padx=px(16), pady=margem, cursor="hand2",
+                         takefocus=1, highlightthickness=0)
+        self._aplicar_cores()
+        self.bind("<Enter>", lambda e: self._pintar("hover"))
+        self.bind("<Leave>", lambda e: self._pintar("normal"))
+        for tecla in ("<Return>", "<KP_Enter>"):
+            self.bind(tecla, self._tecla)
+
+    def _aplicar_cores(self):
+        fundo, hover, press, texto, _ = Botao.cores_da_variante(self.variante)
+        # o tk.Button não desenha borda colorida no Windows: em vez do
+        # contorno do Botao, o secundário e o perigo ganham um fundo próprio
+        if self.variante == "secundario":
+            fundo, hover = COR["fundo"], COR["hover"]
+        elif self.variante == "perigo":
+            fundo, hover = ESTADO["erro"][1], COR["hover"]
+        self.cores = {"normal": fundo or self.fundo_pai, "hover": hover}
+        self.config(bg=self.cores["normal"], fg=texto, activebackground=press,
+                    activeforeground=texto, disabledforeground=COR["texto_3"])
+
+    def _pintar(self, estado):
+        if self.ativo:
+            self.config(bg=self.cores[estado])
+
+    def _tecla(self, event):
+        self.invocar()
+        return "break"           # o Enter não chega à janela (não cadastra)
+
+    def definir_texto(self, texto, variante=None):
+        self.texto = texto
+        self.config(text=texto)
+        if variante and variante != self.variante:
+            self.variante = variante
+            self._aplicar_cores()
+
+    def definir_ativo(self, ativo):
+        self.ativo = bool(ativo)
+        self.config(state="normal" if self.ativo else "disabled",
+                    cursor="hand2" if self.ativo else "arrow",
+                    takefocus=1 if self.ativo else 0)
+        self.config(bg=self.cores["normal"])
+
+    def invocar(self):
+        if self.ativo and self.comando:
+            self.comando()
+
+
+class CampoTexto(tk.Frame):
+    """
+    Caixa de texto de várias linhas (tk.Text: o Motivo da visita), com o
+    tamanho máximo de todo campo (RN33): a digitação para no máximo e a
+    colagem entra cortada. Fala como um Entry (get, delete, insert), para o
+    formulário tratar todos os campos do mesmo jeito. Enter não quebra a
+    linha (confirma o formulário); Shift+Enter quebra, e ao gravar as
+    quebras viram espaço. Tab vai ao próximo campo.
+    """
+
+    def __init__(self, pai, maximo, linhas=2, fundo_pai=None):
+        super().__init__(pai, bg=COR["borda_campo"], highlightthickness=0, bd=0)
+        self.maximo = maximo
+        self.var = tk.StringVar(self)
+        self.entrada = self
+        self.texto = tk.Text(self, height=linhas, wrap="word", relief="flat",
+                             bd=0, font=FONTE["corpo"], bg=COR["superficie"],
+                             fg=COR["texto"], insertbackground=COR["texto"],
+                             selectbackground=COR["selecao"],
+                             selectforeground=COR["texto"], padx=px(10),
+                             pady=px(6), highlightthickness=1,
+                             highlightbackground=COR["borda_campo"],
+                             highlightcolor=COR["foco"])
+        self.texto.pack(fill="both", expand=True)
+        self.texto.bind("<Key>", self._ao_teclar)
+        self.texto.bind("<KeyRelease>", lambda e: self._sincronizar())
+        self.texto.bind("<<Paste>>", self._colar)
+        self.texto.bind("<Tab>", self._proximo)
+        self.texto.bind("<Shift-Tab>", self._anterior)
+
+    # --- como um Entry -------------------------------------------------
+    def get(self):
+        return self.texto.get("1.0", "end-1c")
+
+    def delete(self, inicio=0, fim=None):
+        self.texto.delete("1.0", tk.END)
+        self._sincronizar()
+
+    def insert(self, indice, texto):
+        livre = self.maximo - len(self.get())
+        self.texto.insert(tk.INSERT, str(texto)[:max(0, livre)])
+        self._sincronizar()
+
+    def focus_set(self):
+        self.texto.focus_set()
+
+    focus = focus_set
+
+    def bind_enter(self, acao):
+        """O que o Enter faz neste campo (Shift+Enter continua quebrando)."""
+        for tecla in ("<Return>", "<KP_Enter>"):
+            self.texto.bind(tecla, lambda e: (acao(), "break")[1])
+        self.texto.bind("<Shift-Return>", lambda e: None)
+
+    # --- máximo --------------------------------------------------------
+    def _sincronizar(self):
+        self.var.set(self.get())
+
+    def _ao_teclar(self, event):
+        if (event.char and event.char.isprintable()
+                and not event.state & 0x4          # Ctrl+alguma coisa passa
+                and not self.texto.tag_ranges(tk.SEL)
+                and len(self.get()) >= self.maximo):
+            return "break"
+        return None
+
+    def _colar(self, event=None):
+        try:
+            colado = self.texto.clipboard_get()
+        except tk.TclError:
+            return "break"
+        if self.texto.tag_ranges(tk.SEL):
+            self.texto.delete(tk.SEL_FIRST, tk.SEL_LAST)
+        self.insert(tk.INSERT, " ".join(colado.split()))
+        return "break"
+
+    def _proximo(self, event):
+        event.widget.tk_focusNext().focus_set()
+        return "break"
+
+    def _anterior(self, event):
+        event.widget.tk_focusPrev().focus_set()
+        return "break"
+
+
+def checkbutton(pai, texto, var, comando=None, fundo=None):
+    """tk.Checkbutton com as cores do tema (claro e escuro)."""
+    fundo = fundo or COR["superficie"]
+    return tk.Checkbutton(pai, text=texto, variable=var, command=comando,
+                          font=FONTE["corpo"], bg=fundo, fg=COR["texto"],
+                          activebackground=fundo, activeforeground=COR["texto"],
+                          selectcolor=COR["superficie"], bd=0,
+                          highlightthickness=0, anchor="w", cursor="hand2")
+
+
+def imagem_do_logo(pai):
+    """O logo do sistema como imagem (assets/logo_portaria.png), ou None se
+    o arquivo não existir. Guarde a referência: o Tk apaga a imagem sem ela."""
+    base = getattr(sys, "_MEIPASS",
+                   os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    arquivo = os.path.join(base, "assets", "logo_portaria.png")
+    if not os.path.exists(arquivo):
+        return None
+    try:
+        return tk.PhotoImage(master=pai, file=arquivo)
+    except tk.TclError:
+        return None
 
 
 class BotaoIcone(tk.Label):

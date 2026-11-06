@@ -282,7 +282,7 @@ AUTORIZACAO_SEM_SENHA = ("A autorização de outro usuário só vale com a senha
                          "dele.\nNada foi gravado.")
 # Busca (visitas e pessoas): texto no nome, tipo e placa; dígitos no CPF
 # e no celular
-COLUNAS_BUSCA = {"texto": ("nome", "tipo", "placa"),
+COLUNAS_BUSCA = {"texto": ("nome", "tipo", "placa", "empresa"),
                  "digitos": ("cpf", "celular")}
 
 # Estadia de veículo com o tipo de acesso do responsável (da visita de

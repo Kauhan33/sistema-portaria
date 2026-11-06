@@ -113,7 +113,7 @@ class TestValidar(unittest.TestCase):
     def test_campos_obrigatorios_vazios(self):
         self.assertRecusa(registro(nome=""), "nome")
         self.assertRecusa(registro(cpf=""), "CPF é obrigatório")
-        self.assertRecusa(registro(celular=""), "celular é obrigatório")
+        self.assertRecusa(registro(celular=""), "telefone é obrigatório")
         self.assertRecusa(registro(tipo=""), "tipo de acesso")
 
     def test_nome_sem_sobrenome(self):

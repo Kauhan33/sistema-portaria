@@ -401,7 +401,7 @@ def _montar_fontes():
         "botao": (f["semi"], 10),
         "numero": (f["numero_semi"], 20),        # histórico da pessoa
         "kpi": (f["numero_semi"], 26),           # números do Painel
-        "kpi_destaque": (f["numero_semi"], 34),  # "No campus agora"
+        "kpi_destaque": (f["numero_semi"], 34),  # "Dentro agora"
         "relogio": (f["numero"], 54),            # relógio do login
         "cpf": (f["numero"], 12),                # CPF na ficha da pessoa
         "placa": (f["placa"], 22),

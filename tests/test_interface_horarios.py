@@ -339,11 +339,10 @@ class TestOTempoPassando(BaseHorarios):
         self.assertEqual(self.app.entrada.get(), tela(AGORA.replace(minute=8)))
 
     def test_escolher_no_calendario_conta_como_editado(self):
-        campo = self.app.tela_cadastro.pecas["entrada"][1]
+        campo = self.app.tela_cadastro.pecas["hora"][1]
         campo.abrir_seletor()
         pop = campo.seletor_aberto
         self.assertEqual(pop.valor, AGORA)                  # abre no agora do app
-        pop.escolher_dia(AGORA.date())
         pop.escolher_hora(9)
         pop.escolher_minuto(15)
         pop.confirmar()

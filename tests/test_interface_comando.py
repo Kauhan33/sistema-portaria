@@ -83,7 +83,7 @@ class TestCampoComando(BaseComando):
             self.assertTrue(self.janela.bind(tecla), tecla)
         self.app.ir_para(self.app.aba_pessoas)
         self.assertEqual(self.app.ir_para_saida_rapida(), "break")
-        self.assertEqual(self.app.abas.select(), str(self.app.aba_cad))
+        self.assertEqual(self.app.abas.select(), str(self.app.aba_controle))
         self.assertEqual(self.tela.lbl_saida_rapida.cget("text"),
                          "Comando (F2 · Ctrl+K)")
 
@@ -334,7 +334,7 @@ class TestModoDidatico(BaseComando):
         self.assertIn("<Control-Key-D>", self.app.janela.bind())
         self.app.ir_para(self.app.aba_pessoas)
         self.app.alternar_modo_didatico()
-        self.assertEqual(self.app.abas.select(), str(self.app.aba_cad))
+        self.assertEqual(self.app.abas.select(), str(self.app.aba_controle))
         self.assertTrue(self.painel.var_didatico.get())
         self.assertTrue(self.painel.janela_didatica.existe())
         self.app.alternar_modo_didatico()
@@ -399,7 +399,7 @@ class TestComandoAbreOsDialogos(BaseComando):
         comando abre a autorização do administrador e, com a senha, grava a
         exceção como o formulário."""
         texto = (f'entrada {ANA} visitante nome "Ana Silva" '
-                 "cel 31987654321 em 18/10/2026 09:00")
+                 "cel 31987654321 empresa \"Alfa\" motivo \"Visita\" em 18/10/2026 09:00")
         self.comando(texto)                               # cancela
         self.assertEqual(len(self.autorizacoes), 1)
         self.assertEqual(self.no_banco(), [])
@@ -473,7 +473,7 @@ class TestExecucaoIgualAoFormulario(BaseComando):
         self.preencher(placa="ABC1D23")
         self.app.cadastrar()
         self.comando('entrada 529.982.247-25 visitante nome "Ana Silva" '
-                     "cel 31987654321 placa ABC1D23", self.app2)
+                     "cel 31987654321 empresa \"Alfa\" motivo \"Visita\" placa ABC1D23", self.app2)
         self.assertIn("Registro cadastrado com sucesso!",
                       self.resposta(self.app2))
         self.comparar()
@@ -507,7 +507,7 @@ class TestExecucaoIgualAoFormulario(BaseComando):
         self.app.entrada.insert(0, "18/10/2026 09:00")
         self.app.cadastrar()
         self.comando(f'entrada {ANA} visitante nome "Ana Silva" '
-                     "cel 31987654321 em 18/10/2026 09:00", self.app2)
+                     "cel 31987654321 empresa \"Alfa\" motivo \"Visita\" em 18/10/2026 09:00", self.app2)
         self.assertEqual(len(self.autorizacoes), 2)
         self.comparar()
 
@@ -520,11 +520,13 @@ class TestExecucaoIgualAoFormulario(BaseComando):
         d.cpf.insert(0, NOVO)
         d.nome.insert(0, "Rui Lima")
         d.celular.insert(0, "31987651234")
+        d.empresa.insert(0, "Alfa")
         d.tipo.set("Visitante")
         self.assertTrue(d.salvar())
         d = pessoas.editar()
         d.celular.delete(0, tk.END)
         d.celular.insert(0, "31999990000")
+        d.empresa.insert(0, "Alfa")
         d.tipo.set("Professor")
         self.assertTrue(d.salvar())
         d = pessoas.desativar_selecionada()
@@ -534,7 +536,7 @@ class TestExecucaoIgualAoFormulario(BaseComando):
         pessoas.abrir_ficha(self.banco.buscar_pessoa(NOVO))
         self.assertTrue(pessoas.excluir_selecionada())
         for texto in (f'cadastrar {NOVO} visitante nome "Rui Lima" '
-                      "cel 31987651234",
+                      "cel 31987651234 empresa \"Alfa\"",
                       f"editar {NOVO} cel 31999990000 tipo professor",
                       f'desativar {NOVO} motivo "agressão ao porteiro"',
                       f"reativar {NOVO}", f"excluir {NOVO}"):
@@ -552,6 +554,7 @@ class TestExecucaoIgualAoFormulario(BaseComando):
         d.cpf.insert(0, NOVO)
         d.nome.insert(0, "Rui Lima")
         d.celular.insert(0, "31987651234")
+        d.empresa.insert(0, "Alfa")
         d.tipo.set("Visitante")
         for placa in ("ABC1D23", "NEY4829"):
             d.caixa_placa.insert(0, placa)
@@ -562,7 +565,7 @@ class TestExecucaoIgualAoFormulario(BaseComando):
         d.caixa_placa.insert(0, "QWE1E34")
         self.assertTrue(d.salvar())
         for texto in (f'cadastrar {NOVO} visitante nome "Rui Lima" '
-                      "cel 31987651234 placa ABC1D23 placa NEY4829",
+                      "cel 31987651234 empresa \"Alfa\" placa ABC1D23 placa NEY4829",
                       f"editar {NOVO} sem placa NEY4829 placa QWE1E34"):
             self.comando(texto, self.app2)
             self.assertNotIn("[", self.resposta(self.app2), texto)
@@ -576,7 +579,7 @@ class TestExecucaoIgualAoFormulario(BaseComando):
     def test_cadastrar_atualiza_a_pagina_pessoas(self):
         pessoas = self.app.tela_pessoas
         self.comando(f'cadastrar {NOVO} visitante nome "Rui Lima" '
-                     "cel 31987651234")
+                     "cel 31987651234 empresa \"Alfa\"")
         self.assertIn("Pessoa cadastrada: Rui Lima", self.resposta())
         nomes = [pessoas.tabela.item(i, "values")[0]
                  for i in pessoas.tabela.get_children()]

@@ -1,6 +1,7 @@
 """
-Gera assets/portaria.ico: o símbolo da cancela (o mesmo da barra lateral e
-do login) em vários tamanhos, para a janela e para o .exe.
+Gera assets/portaria.ico (o símbolo da cancela, em vários tamanhos, para a
+janela e para o .exe) e assets/logo_portaria.png (a Imagem/Logo do login: a
+cancela vermelha numa placa branca).
 
 Só é preciso rodar de novo se o símbolo mudar. Usa o Pillow (pip install
 pillow), que NÃO é necessário para usar o programa.
@@ -29,9 +30,25 @@ def desenhar():
     return img
 
 
+def desenhar_logo(tamanho=72):
+    """A cancela em vermelho sobre placa branca, para o painel vermelho.
+    Desenhada em tamanho grande e reduzida: as bordas ficam suaves."""
+    img = desenhar()
+    pixels = img.load()
+    for x in range(LADO):
+        for y in range(LADO):
+            r, g, b, a = pixels[x, y]
+            if a:                       # troca o vermelho e o branco
+                pixels[x, y] = (BRANCO[:3] + (a,)
+                                if (r, g, b) == VERMELHO[:3]
+                                else VERMELHO[:3] + (a,))
+    return img.resize((tamanho, tamanho), Image.LANCZOS)
+
+
 if __name__ == "__main__":
-    destino = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "portaria.ico")
+    pasta = os.path.dirname(os.path.abspath(__file__))
+    desenhar_logo().save(os.path.join(pasta, "logo_portaria.png"))
+    destino = os.path.join(pasta, "portaria.ico")
     desenhar().save(destino, sizes=[(16, 16), (24, 24), (32, 32), (48, 48),
                                     (64, 64), (128, 128), (256, 256)])
     print("ícone salvo em", destino)

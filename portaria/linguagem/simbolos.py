@@ -84,6 +84,13 @@ class TabelaDeSimbolos:
                          f"{p['nome']} · {p['tipo']} · {onde}{placa}")
         return p
 
+    def ultimo_motivo(self, pessoa):
+        """O motivo da última visita (o mesmo que o formulário preenche)."""
+        visitas = self._uma_vez(
+            ("ultima", pessoa["id"]),
+            lambda: self.banco.visitas_da_pessoa(pessoa["id"], 1))
+        return visitas[0].get("motivo", "") if visitas else ""
+
     def visitas(self, cpf):
         """Todas as visitas do CPF (banco.listar_por_cpf), para validar."""
         return self._uma_vez(("visitas", cpf),

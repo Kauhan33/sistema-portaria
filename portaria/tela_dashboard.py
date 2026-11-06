@@ -29,7 +29,7 @@ PLURAL_TIPO = {"Aluno": "Alunos", "Professor": "Professores",
                "Entregador": "Entregadores",
                "Prestador de serviço": "Prestadores"}
 # (chave, rótulo); o primeiro é o destaque
-NUMEROS = [("dentro", "No campus agora"), ("hoje", "Entradas hoje"),
+NUMEROS = [("dentro", "Dentro agora"), ("hoje", "Entradas hoje"),
            ("permanencia", "Permanência média"),
            ("estacionamento", "No estacionamento"),
            ("excedido", "Tempo excedido")]

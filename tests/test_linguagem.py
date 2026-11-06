@@ -289,7 +289,7 @@ class TestSintatico(unittest.TestCase):
             "saida 52998224725 sem carro": ComandoSaida,
             "52998224725": ComandoImplicito, "ABC1D23": ComandoImplicito,
             'cadastrar 11144477735 visitante nome "Bruno Almeida" '
-            "cel 31987651234": ComandoCadastrar,
+            "cel 31987651234 empresa \"Alfa\"": ComandoCadastrar,
             "editar 11144477735 tipo professor": ComandoEditar,
             "excluir 11144477735": ComandoExcluir,
             'desativar placa ABC1D23 motivo "furto"': ComandoDesativar,
@@ -392,16 +392,16 @@ class BaseBanco(unittest.TestCase):
         self.porteiro = {"login": "paulo", "perfil": "porteiro",
                          "nome": "Paulo Porteiro"}
         # Carla no campus com o carro; Duda já saiu; Beto cadastrado
-        self.banco.inserir({"nome": "Carla Souza", "cpf": CARLA,
+        self.banco.inserir({"empresa": "UNA", "motivo": "Aula", "nome": "Carla Souza", "cpf": CARLA,
                             "celular": "31987654321", "placa": "ABC1D23",
                             "tipo": "Aluno", "entrada": "21/10/2026 08:14",
                             "saida": ""}, autor="ana")
-        self.banco.inserir({"nome": "Duda Martins", "cpf": DUDA,
+        self.banco.inserir({"empresa": "UNA", "motivo": "Aula", "nome": "Duda Martins", "cpf": DUDA,
                             "celular": "31987654321", "placa": "",
                             "tipo": "Professor", "entrada": "21/10/2026 07:00",
                             "saida": "21/10/2026 09:34"}, autor="ana")
         self.banco.cadastrar_pessoa(BETO, "Beto Rocha", "31987651234",
-                                    "QWE1E34", "Visitante", "ana")
+                                    "QWE1E34", "Visitante", "ana", empresa="UNA")
 
     def tearDown(self):
         self.pasta.cleanup()
@@ -461,7 +461,7 @@ class TestSemantico(BaseBanco):
         self.assertEqual(e.recusa["placa"], "QWE1E34")
         # a placa do cadastro também é conferida (como no formulário)
         self.assertEqual(self.erro(f"entrada {BETO} visitante").regra, "RN12")
-        a = self.analisar(f"entrada {BETO} visitante sem carro")
+        a = self.analisar(f"entrada {BETO} visitante motivo \"Aula\" sem carro")
         self.assertIsNone(a.erro)
         self.banco.desativar("cpf", BETO, "agressão ao porteiro", "ana")
         e = self.erro(f"entrada {BETO} visitante sem carro")
@@ -485,7 +485,7 @@ class TestSemantico(BaseBanco):
     def test_tipo_diferente_e_aviso(self):
         """CT-60 | RF14 | positivo | o tipo diferente do cadastro é um
         AVISO (segue, mas pergunta), como a conversão de tipo."""
-        a = self.analisar(f"entrada {BETO} prestador sem carro")
+        a = self.analisar(f"entrada {BETO} prestador motivo \"Aula\" sem carro")
         self.assertIsNone(a.erro)
         self.assertIn(AVISO, [c.estado for c in a.checagens])
         self.assertIn("Registrar como Prestador de serviço?",
@@ -503,12 +503,12 @@ class TestSemantico(BaseBanco):
         """CT-61 | RN24 | positivo | o lançamento de um dia que já fechou e
         a entrada fora da janela da categoria passam no semântico com a
         checagem AUTORIZACAO: a execução abre o diálogo do admin."""
-        a = self.analisar(f"entrada {BETO} visitante sem carro "
+        a = self.analisar(f"entrada {BETO} visitante motivo \"Aula\" sem carro "
                           "em 18/10/2026 08:00")
         self.assertIsNone(a.erro)
         self.assertEqual(self.estados(a)["RN17, RN20, RN24"], AUTORIZACAO)
         self.agora = AGORA.replace(hour=19, minute=30)
-        a = self.analisar(f"entrada {BETO} visitante sem carro as 19:10")
+        a = self.analisar(f"entrada {BETO} visitante motivo \"Aula\" sem carro as 19:10")
         self.assertEqual(self.estados(a)["RN17, RN20, RN24"], AUTORIZACAO)
         e = self.erro(f"entrada {BETO} visitante sem carro as 20:00")
         self.assertEqual(e.regra, "RN07")                  # no futuro
@@ -516,10 +516,10 @@ class TestSemantico(BaseBanco):
     def test_cpf_novo_sem_dados(self):
         e = self.erro(f"entrada {NOVO}")
         self.assertEqual(e.regra, "RN01")
-        self.assertIn("informe o tipo, o nome e o celular", e.mensagem)
+        self.assertIn("informe o tipo, o nome, o telefone, a empresa e o motivo", e.mensagem)
         self.assertIn('nome "Bruno Almeida"', e.dica)
         e = self.erro(f'entrada {NOVO} visitante nome "Rui Lima"')
-        self.assertIn("informe o celular", e.mensagem)
+        self.assertIn("informe o telefone, a empresa e o motivo", e.mensagem)
 
     def test_opcao_repetida_e_contraditoria(self):
         """CT-60 | RN06 | negativo | "placa" duas vezes = variável declarada
@@ -538,11 +538,11 @@ class TestSemantico(BaseBanco):
     def test_pergunta_do_carro_rn34(self):
         """Beto tem placa no cadastro e não disse "placa" nem "sem carro":
         a execução abre a pergunta do formulário (RN34)."""
-        a = self.analisar(f"entrada {BETO}")
+        a = self.analisar(f"entrada {BETO} motivo \"Aula\"")
         self.assertIsNone(a.erro)
         self.assertEqual(self.estados(a)["RN34"], PERGUNTA)
         self.assertEqual(a.plano.dados["sugerida"], "QWE1E34")
-        a = self.analisar(f"entrada {BETO} sem carro")
+        a = self.analisar(f"entrada {BETO} motivo \"Aula\" sem carro")
         self.assertEqual(a.plano.dados["registro"]["placa"], "")
         self.assertEqual(a.plano.dados["sugerida"], "")
 
@@ -574,15 +574,15 @@ class TestSemantico(BaseBanco):
 
     def test_crud_da_pessoa(self):
         a = self.analisar(f'cadastrar {NOVO} visitante nome "Rui Lima" '
-                          "cel 31987651234")
+                          "cel 31987651234 empresa \"Alfa\"")
         self.assertEqual(a.plano.acao, "cadastrar")
         e = self.erro(f'cadastrar {BETO} visitante nome "Rui Lima" '
-                      "cel 31987651234")
+                      "cel 31987651234 empresa \"Alfa\"")
         self.assertEqual(e.regra, "RN41")
-        e = self.erro(f'cadastrar {NOVO} visitante nome "Rui" cel 31987651234')
+        e = self.erro(f'cadastrar {NOVO} visitante nome "Rui" cel 31987651234 empresa \"Alfa\"')
         self.assertIn("nome completo", e.mensagem)
         a = self.analisar(f"editar {BETO} cel 31999990000 tipo professor")
-        self.assertEqual(a.plano.dados["mudou"], ["celular", "tipo"])
+        self.assertEqual(a.plano.dados["mudou"], ["telefone", "tipo"])
         self.assertIn("nada muda", self.erro(f"editar {BETO} tipo "
                                              "visitante").mensagem)
         self.assertIn("não está cadastrado", self.erro(f"editar {NOVO} tipo "
@@ -599,7 +599,7 @@ class TestSemantico(BaseBanco):
         """CT-69 | RN47 | positivo | cadastrar com um "placa" por carro;
         editar inclui ("placa") e tira ("sem placa") carros."""
         a = self.analisar(f'cadastrar {NOVO} visitante nome "Rui Lima" '
-                          "cel 31987651234 placa NEY4829 placa abc1d23")
+                          "cel 31987651234 empresa \"Alfa\" placa NEY4829 placa abc1d23")
         self.assertEqual(a.plano.dados["dados"]["placas"],
                          ["NEY4829", "ABC1D23"])
         self.assertEqual(a.plano.dados["dados"]["placa"], "NEY4829")
@@ -624,7 +624,7 @@ class TestSemantico(BaseBanco):
         self.assertIn("incluído e tirado", e.mensagem)
         seis = " ".join(f"placa ABC1D2{i}" for i in range(6))
         e = self.erro(f'cadastrar {NOVO} visitante nome "Rui Lima" '
-                      f"cel 31987651234 {seis}")
+                      f"cel 31987651234 empresa \"Alfa\" {seis}")
         self.assertEqual(e.regra, "RN47")
         self.assertIn("No máximo 5 placas", e.mensagem)
         with self.assertRaises(ErroDeAnalise) as erro:

@@ -24,8 +24,8 @@ códigos de recuperação dele (tela_recuperacao.py), uma vez só.
 import tkinter as tk
 from datetime import datetime
 
-from .componentes import (Aviso, Botao, Campo, data_por_extenso, link,
-                          marca_cancela)
+from .componentes import (Aviso, BotaoTk, Campo, checkbutton,
+                          data_por_extenso, imagem_do_logo, link, marca_cancela)
 from .dados import ErroDados, log
 from .tela_recuperacao import mostrar_codigos
 from .estilo import COR, FONTE, px
@@ -52,6 +52,8 @@ class TelaLogin:
         self.ao_entrar = ao_entrar
         self.relogio = relogio or datetime.now
         self.campos = []                 # caixas de texto, na ordem da tela
+        self.senhas = []                 # as caixas de senha do formulário
+        self.var_mostrar = tk.BooleanVar(pai, False)   # "Mostrar senha"
         self.primeiro_acesso = False
         self.formulario = None           # "entrar", "primeiro_acesso"...
         self._usuario_pendente = None    # RN39: entrou, falta a senha dele
@@ -88,6 +90,8 @@ class TelaLogin:
         for w in self.miolo.winfo_children():
             w.destroy()
         self.campos = []
+        self.senhas = []
+        self.var_mostrar.set(False)
         self.formulario = nome
         self._titulo(titulo, subtitulo)
 
@@ -97,9 +101,19 @@ class TelaLogin:
         campo (cada campo fica no seu Frame)."""
         self.faixa = Aviso(self.miolo)
         self.lbl_erro = self.faixa.lbl
-        self.btn_acao = Botao(self.miolo, texto, acao, "primario", altura=40,
-                              dica_tecla="Enter")
-        self.btn_acao.pack(fill="x")
+        self.chk_mostrar = None
+        if self.senhas:      # enunciado: ver e ocultar a senha (Checkbutton)
+            self.chk_mostrar = checkbutton(self.miolo, "Mostrar senha",
+                                           self.var_mostrar, self.mostrar_senha)
+            self.chk_mostrar.pack(anchor="w", pady=(0, px(14)))
+        self.linha_botoes = tk.Frame(self.miolo, bg=COR["superficie"])
+        self.linha_botoes.pack(fill="x")
+        self.btn_acao = BotaoTk(self.linha_botoes, texto, acao, "primario",
+                                altura=40)
+        self.btn_acao.pack(side="left", fill="x", expand=True)
+        self.btn_limpar = BotaoTk(self.linha_botoes, "Limpar", self.limpar,
+                                  "secundario", altura=40)
+        self.btn_limpar.pack(side="left", padx=(px(8), 0))
         self.link = None
         if dica or ligacao:
             rodape = tk.Frame(self.miolo, bg=COR["superficie"])
@@ -116,6 +130,26 @@ class TelaLogin:
             caixa_texto.bind("<Return>", lambda e: (acao(), "break")[1])
             caixa_texto.bind("<KP_Enter>", lambda e: (acao(), "break")[1])
         self.campos[0].focus_set()
+
+    def mostrar_senha(self):
+        """Checkbutton "Mostrar senha": mostra ou esconde o que foi digitado
+        (RNF02: começa escondido, e cada formulário novo volta a esconder)."""
+        sinal = "" if self.var_mostrar.get() else "•"
+        for caixa in self.senhas:
+            caixa.config(show=sinal)
+
+    def limpar(self):
+        """Botão Limpar: esvazia o formulário, esconde a senha e o erro."""
+        for caixa in self.campos:
+            if caixa.cget("state") == "normal":
+                caixa.delete(0, tk.END)
+        self.var_mostrar.set(False)
+        self.mostrar_senha()
+        self.faixa.pack_forget()
+        for caixa in self.campos:
+            if caixa.cget("state") == "normal":
+                caixa.focus_set()
+                break
 
     def mostrar_primeiro_acesso(self):
         self._novo_formulario("primeiro_acesso", "Primeiro acesso",
@@ -208,8 +242,13 @@ class TelaLogin:
         painel.pack_propagate(False)
         dentro = tk.Frame(painel, bg=marca)
         dentro.pack(fill="both", expand=True, padx=px(48), pady=px(48))
-        marca_cancela(dentro, marca, tamanho=56, cor=branco,
-                      traco=marca).pack(anchor="w")
+        # enunciado: Imagem/Logo. A imagem fica guardada (o Tk apaga sem isso)
+        self.logo = imagem_do_logo(painel)
+        if self.logo is not None:
+            tk.Label(dentro, image=self.logo, bg=marca, bd=0).pack(anchor="w")
+        else:
+            marca_cancela(dentro, marca, tamanho=56, cor=branco,
+                          traco=marca).pack(anchor="w")
         tk.Label(dentro, text="Portaria", font=FONTE["titulo_grande"], bg=marca,
                  fg=branco).pack(anchor="w", pady=(px(20), 0))
         tk.Label(dentro, text="Controle de entrada e saída\ndo campus da "
@@ -263,12 +302,15 @@ class TelaLogin:
         campo = Campo(self.miolo, senha=senha, maximo=maximo)
         campo.pack(fill="x", pady=(0, px(16)))
         self.campos.append(campo.entrada)
+        if senha:
+            self.senhas.append(campo.entrada)
         return campo.entrada
 
     def _mostrar(self, tipo, texto):
         self.faixa.mostrar(tipo, texto)
         if not self.faixa.winfo_manager():
-            self.faixa.pack(fill="x", pady=(0, px(16)), before=self.btn_acao)
+            self.faixa.pack(fill="x", pady=(0, px(16)),
+                            before=self.linha_botoes)
 
     def erro(self, texto):
         self._mostrar("erro", texto)

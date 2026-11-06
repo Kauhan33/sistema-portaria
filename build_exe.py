@@ -17,6 +17,7 @@ import sys
 
 RAIZ = os.path.dirname(os.path.abspath(__file__))
 ICONE = os.path.join(RAIZ, "assets", "portaria.ico")
+LOGO = os.path.join(RAIZ, "assets", "logo_portaria.png")
 
 
 def main():
@@ -33,6 +34,7 @@ def main():
         "--windowed",                                   # sem a janela preta
         "--icon", ICONE,                                # ícone do arquivo .exe
         "--add-data", f"{ICONE}{os.pathsep}assets",     # ícone da janela
+        "--add-data", f"{LOGO}{os.pathsep}assets",      # logo do login
         "--clean",
         "--noconfirm",
     ])

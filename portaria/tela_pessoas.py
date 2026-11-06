@@ -54,7 +54,8 @@ from .estilo import (COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, fonte_icone,
                      px)
 from .usuarios import (eh_admin, pode_excluir_pessoa,
                        pode_gerenciar_desativacoes)
-from .validacao import (DESATIVADO, MAXIMO_BUSCA, MAXIMO_MOTIVO, MAXIMO_NOME,
+from .validacao import (DESATIVADO, MAXIMO_BUSCA, MAXIMO_EMPRESA, MAXIMO_MOTIVO,
+                        MAXIMO_NOME,
                         O_QUE, TIPOS_ACESSO, converter_data, cpf_valido,
                         formatar_celular, formatar_desativacao,
                         formatar_placa, normalizar, normalizar_desativacao,
@@ -664,7 +665,7 @@ class AbaPessoas:
     def _situacao_da_pessoa(self, p):
         """(ordem, texto da coluna Situação, texto da bolinha, cor)."""
         if p["dentro_desde"]:
-            return NO_CAMPUS, "No campus", "No campus", COR["sucesso"]
+            return NO_CAMPUS, "Dentro", "Dentro", COR["sucesso"]
         return FORA, "—", "Fora", COR["barra"]
 
     def _ordem_situacao(self, p):
@@ -753,7 +754,7 @@ class AbaPessoas:
         if desativacao:
             self._faixa("erro", descrever_desativacao(desativacao))
         elif p["dentro_desde"]:
-            self._faixa("sucesso", f"No campus desde {p['dentro_desde']}.")
+            self._faixa("sucesso", f"Dentro desde {p['dentro_desde']}.")
         else:
             self.faixa.pack_forget()
         if self.btn_desativar is not None:
@@ -1111,7 +1112,7 @@ class AbaPessoas:
             nomes = ", ".join(r["nome"] for r in dentro)
             mensagens.info("Atenção", f"{O_QUE[tipo]} "
                                       f"{formatar_desativacao(tipo, valor)} "
-                                      f"{DESATIVADO[tipo]}.\n\nNo campus "
+                                      f"{DESATIVADO[tipo]}.\n\nDentro "
                                       f"agora: {nomes}.\nA desativação vale "
                                       "para as próximas entradas.")
 
@@ -1312,9 +1313,10 @@ class DialogoPessoa(Dialogo):
         self.tipo = campo("Tipo de acesso", 0, 1, opcoes=TIPOS_ACESSO).entrada
         self.nome = campo("Nome completo", 1, 0, juntas=2,
                           maximo=MAXIMO_NOME).entrada
-        self.celular = campo("Celular com DDD", 2, 0, apoio="só números",
+        self.celular = campo("Telefone", 2, 0, apoio="celular com DDD",
                              numeros=11).entrada
-        c = campo("Placas", 2, 1, apoio="Enter adiciona", placa=True)
+        self.empresa = campo("Empresa", 2, 1, maximo=MAXIMO_EMPRESA).entrada
+        c = campo("Placas", 5, 0, juntas=2, apoio="Enter adiciona", placa=True)
         self.caixa_placa = c.entrada
         self.caixa_placa.bind("<Return>", self.adicionar_placa)
         self.caixa_placa.bind("<KP_Enter>", self.adicionar_placa)
@@ -1336,6 +1338,7 @@ class DialogoPessoa(Dialogo):
             self.nome.insert(0, pessoa["nome"])
             self.celular.insert(0, pessoa["celular"])
             self.tipo.set(pessoa["tipo"])
+            self.empresa.insert(0, pessoa.get("empresa", ""))
         self.adicionar_botao("Cadastrar" if nova else "Salvar alterações",
                              self.salvar, "primario")
         self.adicionar_botao("Cancelar", self.fechar)
@@ -1343,7 +1346,7 @@ class DialogoPessoa(Dialogo):
 
     def _mostrar_faixa(self, tipo, texto):
         self.faixa.mostrar(tipo, texto)
-        self.faixa.grid(row=4, column=0, columnspan=2, sticky="ew")
+        self.faixa.grid(row=7, column=0, columnspan=2, sticky="ew")
 
     def _placas_digitadas(self):
         """As placas da lista mais a que está no campo (sem Enter)."""
@@ -1397,7 +1400,7 @@ class DialogoPessoa(Dialogo):
             tk.Label(self.linha_placas, text="a 1ª é a principal",
                      font=FONTE["dica"], bg=fundo,
                      fg=COR["texto_3"]).pack(side="left")
-        self.linha_placas.grid(row=3, column=0, columnspan=2, sticky="w",
+        self.linha_placas.grid(row=6, column=0, columnspan=2, sticky="w",
                                pady=(0, px(14)))
 
     def _desativacao(self, cpf):
@@ -1439,8 +1442,15 @@ class DialogoPessoa(Dialogo):
         if not ok:
             self._mostrar_faixa("erro", msg)
             return False
+        # empresa obrigatória (RN48); um cadastro antigo, sem ela, ainda pode
+        # ter o telefone corrigido sem preencher a empresa
+        empresa = self.empresa.get()
+        if self.pessoa is not None and not empresa.strip() and \
+                not self.pessoa.get("empresa"):
+            empresa = None
         dados = normalizar(self.nome.get(), cpf, self.celular.get(),
-                           placas[0] if placas else "", self.tipo.get(), "", "")
+                           placas[0] if placas else "", self.tipo.get(), "", "",
+                           empresa=empresa)
         ok, msg = validar_campos(dados)
         if not ok:
             self._mostrar_faixa("erro", msg)
@@ -1448,7 +1458,8 @@ class DialogoPessoa(Dialogo):
         if self.pessoa is not None:
             ok, _ = app.tentar(app.banco.atualizar_pessoa, self.pessoa["id"],
                                dados["nome"], dados["celular"], placas,
-                               dados["tipo"], autor=app.autor)
+                               dados["tipo"], autor=app.autor,
+                               empresa=dados.get("empresa"))
             if not ok:
                 return False
             self.fechar()
@@ -1474,7 +1485,7 @@ class DialogoPessoa(Dialogo):
             return False
         ok, _ = app.tentar(app.banco.cadastrar_pessoa, dados["cpf"],
                            dados["nome"], dados["celular"], placas,
-                           dados["tipo"], app.autor)
+                           dados["tipo"], app.autor, empresa=dados["empresa"])
         if not ok:
             return False
         self.fechar()

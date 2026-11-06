@@ -28,6 +28,8 @@ opcao_ent  = "placa" PLACA
            | "sem" "carro"                 (* a pé, mesmo com placa cadastrada *)
            | "nome" TEXTO
            | "cel" NUMERO
+           | "empresa" TEXTO
+           | "motivo" TEXTO
            | "as" HORA                     (* hoje, em outro horário *)
            | "em" DATA HORA ;              (* lançamento retroativo, RN24 *)
 
@@ -38,9 +40,10 @@ opcao_sai  = "placa" PLACA                 (* com qual carro, RN40 *)
 implicito  = cpf | PLACA ;                 (* = saida *)
 
 cadastrar  = "cadastrar" cpf TIPO "nome" TEXTO "cel" NUMERO
+             "empresa" TEXTO
              { "placa" PLACA } ;           (* até 5 carros, RN47 *)
 editar     = "editar" cpf campo { campo } ;
-campo      = "nome" TEXTO | "cel" NUMERO | "tipo" TIPO
+campo      = "nome" TEXTO | "cel" NUMERO | "tipo" TIPO | "empresa" TEXTO
            | "placa" PLACA                 (* inclui o carro, RN47 *)
            | "sem" "placa" PLACA ;         (* tira o carro do cadastro *)
 excluir    = "excluir" cpf ;
@@ -65,7 +68,7 @@ EXEMPLOS = {
     "saida": "saida 52998224725 · saida placa ABC1D23 · "
              "saida 52998224725 sem carro",
     "cadastrar": 'cadastrar 111.444.777-35 visitante nome "Bruno Almeida" '
-                 'cel 31987651234',
+                 'cel 31987651234 empresa "Alfa Ltda"',
     "editar": "editar 11144477735 cel 31999990000 tipo professor · "
               "editar 11144477735 placa NEY4829 sem placa ABC1D23",
     "excluir": "excluir 11144477735",
@@ -82,12 +85,12 @@ FAZ = {
     "entrada": "Registra a entrada (Criar visita)",
     "saida": "Registra a saída da pessoa ou do carro",
     "cadastrar": "Nova pessoa, sem entrada (RN41)",
-    "editar": "Muda nome, celular ou tipo; inclui ou tira carros",
+    "editar": "Muda nome, telefone, tipo ou empresa; inclui ou tira carros",
     "excluir": "Exclui o cadastro de quem nunca teve visita (RN42, admin)",
     "desativar": "Pessoa ou veículo desativado não entra (RN12, admin)",
     "reativar": "Encerra a desativação (RN12, admin)",
     "situacao": "Ficha resumida: dentro ou fora, carro, desativado",
-    "dentro": "Quem está no campus agora (pode filtrar por tipo)",
+    "dentro": "Quem está dentro agora (pode filtrar por tipo)",
     "buscar": "Procura no histórico",
     "pendentes": "Saídas pendentes, tempo excedido e carros com o dono fora",
     "ajuda": "Mostra a gramática (esta tabela)",

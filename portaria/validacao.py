@@ -255,9 +255,9 @@ def validar_campos(registro):
         return False, "CPF inválido.\nDigite os 11 números (somente números)."
 
     if not registro["celular"]:
-        return False, "O celular é obrigatório."
+        return False, "O telefone é obrigatório."
     if not celular_valido(registro["celular"]):
-        return False, ("Celular inválido.\nUse DDD + 9 + 8 dígitos "
+        return False, ("Telefone inválido.\nUse DDD + 9 + 8 dígitos "
                        "(ex.: 31 9 1234 5678, somente números).")
 
     if registro["placa"]:

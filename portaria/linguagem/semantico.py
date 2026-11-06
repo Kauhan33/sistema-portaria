@@ -52,7 +52,8 @@ OK, ERRO, AVISO, PERGUNTA, AUTORIZACAO = ("ok", "erro", "aviso", "pergunta",
 CONFLITOS = (("placa", "sem carro"), ("as", "em"))
 PERIODOS_EM_DIAS = {"hoje": 0, "ontem": 1, "semana": 6, "mes": 29}
 EXEMPLO_NOVA = ('entrada {cpf} visitante nome "Bruno Almeida" '
-                'cel 31987651234')
+                'cel 31987651234'
+                'empresa "Alfa Ltda" motivo "Reunião"')
 
 
 @dataclass
@@ -186,10 +187,13 @@ class AnalisadorSemantico:
         tipo = no.tipo.valor if no.tipo else None
         nome = opcoes["nome"].valor.valor if "nome" in opcoes else None
         cel = opcoes["cel"].valor.valor if "cel" in opcoes else None
+        empresa = opcoes["empresa"].valor.valor if "empresa" in opcoes else None
+        motivo = opcoes["motivo"].valor.valor if "motivo" in opcoes else None
         if pessoa is None:
             faltam = [o for o, v in (("o tipo", tipo), ("o nome", nome),
-                                     ("o celular", cel)) if not v]
-            self._exigir(not faltam, "CPF novo traz tipo, nome e celular",
+                                     ("o telefone", cel), ("a empresa", empresa),
+                                     ("o motivo", motivo)) if not v]
+            self._exigir(not faltam, "CPF novo traz o cadastro completo",
                          "RN01", "CPF não cadastrado: informe "
                          + ", ".join(faltam[:-1])
                          + (" e " if len(faltam) > 1 else "") + faltam[-1]
@@ -205,6 +209,11 @@ class AnalisadorSemantico:
                                     f"comando diz {tipo}: o programa "
                                     "pergunta antes de seguir.", no.tipo)
         p = pessoa or {}
+        # como o formulário (RN48): a empresa vem do cadastro e o motivo, da
+        # última visita; o que faltar é pedido logo antes de gravar
+        empresa = empresa if empresa is not None else p.get("empresa", "")
+        motivo = (motivo if motivo is not None
+                  else self.s.ultimo_motivo(p) if p else "")
         # a placa, como o formulário: digitada, "sem carro" (a pé) ou a do
         # cadastro (aí a pergunta "vai entrar de carro?", RN34), a não ser
         # que o carro dela já esteja no estacionamento (entra a pé)
@@ -222,7 +231,8 @@ class AnalisadorSemantico:
         registro = normalizar(nome or p.get("nome", ""), cpf,
                               cel or p.get("celular", ""), placa,
                               tipo or p.get("tipo", ""),
-                              momento.strftime(FORMATO), "")
+                              momento.strftime(FORMATO), "",
+                              empresa=empresa, motivo=motivo)
         ok, msg = checar_desativacao(registro, self.s.desativacoes())
         pessoa_desativada = self.s.desativacao("cpf", cpf)
         if placa:
@@ -257,6 +267,13 @@ class AnalisadorSemantico:
             self._exigir(momento <= self.agora, "Entrada não está no futuro",
                          "RN07", "a entrada não pode estar no futuro.",
                          quando)
+        faltam = [o for o, v in (("a empresa", empresa), ("o motivo", motivo))
+                  if not (v or "").strip()]
+        self._exigir(not faltam, "Empresa e motivo informados", "RN48",
+                     "informe " + " e ".join(faltam) + "."
+                     if faltam else "", no.cpf,
+                     f'Ex.: entrada {self._texto_cpf(cpf)} empresa "Alfa Ltda" '
+                     'motivo "Reunião"')
         ok, msg = validar(registro, self.s.visitas(cpf), self.agora)
         self._exigir(ok, "Registro completo: campos e período (validar)",
                      "RN01, RN05, RN06, RN07", self._uma_linha(msg),
@@ -464,10 +481,12 @@ class AnalisadorSemantico:
             [o for o in no.opcoes if o.nome == "placa"], [])
         dados = normalizar(valores.get("nome", ""), cpf,
                            valores.get("cel", ""), placas[0] if placas else "",
-                           no.tipo.valor, "", "")
+                           no.tipo.valor, "", "",
+                           empresa=valores.get("empresa", ""))
         ok, msg = validar_campos(dados)
-        self._exigir(ok, "Nome, celular e placa válidos (validar_campos)",
-                     "RN01, RN06, RN33", self._uma_linha(msg))
+        self._exigir(ok, "Nome, telefone, empresa e placa válidos "
+                         "(validar_campos)",
+                     "RN01, RN06, RN33, RN48", self._uma_linha(msg))
         dados["placas"] = placas
         desativada = self.s.desativacao("cpf", cpf)
         confirmar = ""
@@ -514,18 +533,24 @@ class AnalisadorSemantico:
                      f"o CPF {self._texto_cpf(cpf)} não está cadastrado.",
                      no.cpf, 'para cadastrar: cadastrar CPF tipo nome "..." '
                              "cel ...")
-        novo = {k: pessoa[k] for k in ("nome", "celular", "tipo")}
-        chaves = {"nome": "nome", "cel": "celular", "tipo": "tipo"}
+        novo = {k: pessoa[k] for k in ("nome", "celular", "tipo", "empresa")}
+        chaves = {"nome": "nome", "cel": "celular", "tipo": "tipo",
+                  "empresa": "empresa"}
         for nome, opcao in campos.items():
             novo[chaves[nome]] = opcao.valor.valor
         placas = self._placas(
             [o for o in carros if o.nome == "placa"],
             [o for o in carros if o.nome == "sem placa"], pessoa["placas"])
+        # cadastro antigo, sem empresa: pode mudar o resto sem informá-la
+        empresa = (novo["empresa"] if novo["empresa"] or "empresa" in campos
+                   else None)
         dados = normalizar(novo["nome"], cpf, novo["celular"],
-                           placas[0] if placas else "", novo["tipo"], "", "")
+                           placas[0] if placas else "", novo["tipo"], "", "",
+                           empresa=empresa)
         mudou = [rotulo for chave, rotulo in (
-            ("nome", "nome"), ("celular", "celular"), ("tipo", "tipo"))
-            if dados[chave] != pessoa[chave]]
+            ("nome", "nome"), ("celular", "telefone"), ("tipo", "tipo"),
+            ("empresa", "empresa"))
+            if dados.get(chave, pessoa[chave]) != pessoa[chave]]
         if placas != pessoa["placas"]:
             mudou.append("carros")
         dados["placas"] = placas
@@ -533,8 +558,9 @@ class AnalisadorSemantico:
                      f"o cadastro de {pessoa['nome']} já tem esses dados: "
                      "nada muda.")
         ok, msg = validar_campos(dados)
-        self._exigir(ok, "Nome, celular e placa válidos (validar_campos)",
-                     "RN01, RN06, RN33", self._uma_linha(msg))
+        self._exigir(ok, "Nome, telefone, empresa e placa válidos "
+                         "(validar_campos)",
+                     "RN01, RN06, RN33, RN48", self._uma_linha(msg))
         return Plano("editar", {"pessoa": pessoa, "dados": dados,
                                 "mudou": mudou})
 

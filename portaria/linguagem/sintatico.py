@@ -150,9 +150,10 @@ class ComandoAjuda(Comando):
 # ------------------------------------------------------------------
 # Mensagens
 # ------------------------------------------------------------------
-OPCOES_ENTRADA = ("placa", "sem", "nome", "cel", "as", "em")
+OPCOES_ENTRADA = ("placa", "sem", "nome", "cel", "empresa", "motivo", "as",
+                  "em")
 OPCOES_SAIDA = ("placa", "sem", "as")
-CAMPOS = ("nome", "cel", "placa", "tipo", "sem")
+CAMPOS = ("nome", "cel", "empresa", "placa", "tipo", "sem")
 LISTA_COMANDOS = "entrada, saida, buscar…"
 
 
@@ -281,15 +282,22 @@ class AnalisadorSintatico:
         opcoes = []
         while self._eh(*OPCOES_ENTRADA):
             opcoes.append(self._opcao_ent())
-        self.esperado = ("uma opção (placa, sem carro, nome, cel, as, em) "
-                         "ou o fim da linha" + ("" if tipo or opcoes else
+        self.esperado = ("uma opção (placa, sem carro, nome, cel, empresa, "
+                         "motivo, as, em) ou o fim da linha"
+                         + ("" if tipo or opcoes else
                                                 ", ou o tipo"))
         return ComandoEntrada(comando, cpf, tipo, opcoes)
 
     def _opcao_ent(self):
         """opcao_ent = "placa" PLACA | "sem" "carro" | "nome" TEXTO
-                     | "cel" NUMERO | "as" HORA | "em" DATA HORA ;"""
+                     | "cel" NUMERO | "empresa" TEXTO | "motivo" TEXTO
+                     | "as" HORA | "em" DATA HORA ;"""
         palavra = self.atual.valor
+        if palavra in ("empresa", "motivo"):
+            p = self._avancar()
+            return Opcao(p, [self._esperar(TEXTO, palavra,
+                                           f'{palavra} vai entre aspas: '
+                                           f'{palavra} "Alfa Ltda".')])
         if palavra == "nome":
             p = self._avancar()
             return Opcao(p, [self._esperar(TEXTO, "nome",
@@ -343,7 +351,7 @@ class AnalisadorSintatico:
 
     def _cadastrar(self):
         """cadastrar = "cadastrar" cpf TIPO "nome" TEXTO "cel" NUMERO
-                       { "placa" PLACA } ;"""
+                       "empresa" TEXTO { "placa" PLACA } ;"""
         comando = self._avancar()
         ex = "Ex.: " + exemplo("cadastrar")
         cpf = self._cpf("cadastrar")
@@ -351,7 +359,9 @@ class AnalisadorSintatico:
         opcoes = [Opcao(self._palavra("nome", ex),
                         [self._esperar(TEXTO, "nome", ex)]),
                   Opcao(self._palavra("cel", ex),
-                        [self._esperar(NUMERO, "cel", ex)])]
+                        [self._esperar(NUMERO, "cel", ex)]),
+                  Opcao(self._palavra("empresa", ex),
+                        [self._esperar(TEXTO, "empresa", ex)])]
         while self._eh("placa"):          # RN47: um "placa" por carro
             p = self._avancar()
             opcoes.append(Opcao(p, [self._esperar(PLACA, "placa")]))
@@ -365,16 +375,17 @@ class AnalisadorSintatico:
         campos = [self._campo()]
         while self._eh(*CAMPOS):
             campos.append(self._campo())
-        self.esperado = ("o que muda (nome, cel, tipo, placa, sem placa) ou "
-                         "o fim da linha")
+        self.esperado = ("o que muda (nome, cel, tipo, empresa, placa, sem "
+                         "placa) ou o fim da linha")
         return ComandoEditar(comando, cpf, campos)
 
     def _campo(self):
-        """campo = "nome" TEXTO | "cel" NUMERO | "tipo" TIPO
+        """campo = "nome" TEXTO | "cel" NUMERO | "tipo" TIPO | "empresa" TEXTO
                  | "placa" PLACA | "sem" "placa" PLACA ;"""
         if not self._eh(*CAMPOS):
-            raise self._erro("esperado o que muda (nome, cel, tipo, placa ou "
-                             f"sem placa); encontrado {descrever(self.atual)}.",
+            raise self._erro("esperado o que muda (nome, cel, tipo, empresa, "
+                             "placa ou sem placa); encontrado "
+                             f"{descrever(self.atual)}.",
                              "Ex.: " + exemplo("editar"))
         palavra = self._avancar()
         if palavra.valor == "sem":        # tira um carro do cadastro (RN47)
@@ -382,10 +393,10 @@ class AnalisadorSintatico:
             chave = self._palavra("placa", dica)
             return Opcao(palavra, [chave, self._esperar(PLACA, "sem placa",
                                                         dica)])
-        tipo = {"nome": TEXTO, "cel": NUMERO, "placa": PLACA,
-                "tipo": TIPO}[palavra.valor]
-        dica = ('o nome vai entre aspas: nome "Bruno Almeida".'
-                if tipo == TEXTO else "")
+        tipo = {"nome": TEXTO, "cel": NUMERO, "placa": PLACA, "tipo": TIPO,
+                "empresa": TEXTO}[palavra.valor]
+        dica = (f'{palavra.valor} vai entre aspas: {palavra.valor} "Bruno '
+                'Almeida".' if tipo == TEXTO else "")
         return Opcao(palavra, [self._esperar(tipo, palavra.lexema, dica)])
 
     def _excluir(self):

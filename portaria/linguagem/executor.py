@@ -130,7 +130,7 @@ class Executor:
             return Resposta(CANCELADO, NADA_GRAVADO)
         ok, _ = app.tentar(app.banco.cadastrar_pessoa, dados["cpf"],
                            dados["nome"], dados["celular"], dados["placas"],
-                           dados["tipo"], app.autor)
+                           dados["tipo"], app.autor, empresa=dados["empresa"])
         if not ok:
             return Resposta(ERRO, NADA_GRAVADO)
         self._depois_de_mudar()
@@ -142,7 +142,8 @@ class Executor:
         app = self.app
         ok, _ = app.tentar(app.banco.atualizar_pessoa, pessoa["id"],
                            dados["nome"], dados["celular"], dados["placas"],
-                           dados["tipo"], autor=app.autor)
+                           dados["tipo"], autor=app.autor,
+                           empresa=dados.get("empresa"))
         if not ok:
             return Resposta(ERRO, NADA_GRAVADO)
         self._depois_de_mudar()
@@ -175,7 +176,7 @@ class Executor:
         dentro = [r for r in app.registros if not r["saida"] and (
             r["cpf"] == valor or r.get("placa") == valor)]
         if dentro:
-            texto += (". No campus agora: " + ", ".join(r["nome"]
+            texto += (". Dentro agora: " + ", ".join(r["nome"]
                                                        for r in dentro)
                       + " (vale para as próximas entradas)")
         return Resposta(SUCESSO, texto + ".")
@@ -249,8 +250,9 @@ def situacao_da_pessoa(d, exibir_cpf, quando):
         if desativacao:
             texto += f" CPF desativado: {desativacao['motivo']}."
         return Resposta(INFO, texto)
-    linhas = [f"CPF {exibir_cpf(cpf)} · {pessoa['tipo']} · celular "
-              f"{formatar_celular(pessoa['celular'])}"]
+    linhas = [f"CPF {exibir_cpf(cpf)} · {pessoa['tipo']} · telefone "
+              f"{formatar_celular(pessoa['celular'])}"
+              + (f" · {pessoa['empresa']}" if pessoa.get("empresa") else "")]
     if d["abertas"]:
         texto = (f"{pessoa['nome']} está no campus desde "
                  f"{quando(d['abertas'][0]['entrada'])}")

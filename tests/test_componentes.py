@@ -319,11 +319,11 @@ class TestComponentes(unittest.TestCase):
         self.assertEqual(tab["columns"], ("a", "b"))
         self.assertEqual(tab["displaycolumns"], ("b",))
         self.assertEqual(len(quadro.winfo_children()), 2)     # tabela + rolagem
-        componentes.inserir_linha(tab, 0, ("1", "2"), iid="x", situacao="No campus",
+        componentes.inserir_linha(tab, 0, ("1", "2"), iid="x", situacao="Dentro",
                                   cor=ESTADO["sucesso"][0])
         componentes.inserir_linha(tab, 1, ("3", "4"), iid="y", situacao="Saiu",
                                   cor=COR["barra"])
-        self.assertEqual(tab.item("x")["text"], "No campus")
+        self.assertEqual(tab.item("x")["text"], "Dentro")
         self.assertTrue(tab.item("x")["image"])
         self.assertEqual(tab.item("y")["tags"], ["zebra"])
         _, tab = componentes.tabela(self.pai, colunas, rolagem=False)

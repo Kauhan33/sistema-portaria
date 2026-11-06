@@ -55,7 +55,7 @@ TIPOS_DE_TOKEN = (COMANDO, PALAVRA_CHAVE, TIPO, PERIODO, CPF, NUMERO, PLACA,
 COMANDOS = ("entrada", "saida", "cadastrar", "editar", "excluir", "desativar",
             "reativar", "situacao", "dentro", "buscar", "pendentes", "ajuda")
 PALAVRAS_CHAVE = ("placa", "nome", "cel", "tipo", "motivo", "sem", "carro",
-                  "as", "em", "de", "ate")
+                  "as", "em", "de", "ate", "empresa")
 PERIODOS = ("hoje", "ontem", "semana", "mes")
 # palavra (singular) -> o tipo de acesso como está em validacao.TIPOS_ACESSO
 TIPOS = {"aluno": "Aluno", "professor": "Professor",

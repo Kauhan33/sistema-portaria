@@ -8,8 +8,9 @@ from .validacao import (TIPOS_ACESSO, converter_data, formatar_celular,
 
 # Campos de um registro na ordem e com o nome que aparecem no histórico
 CAMPOS_REGISTRO = [("cpf", "CPF", formatar_cpf), ("nome", "Nome", str),
-                   ("celular", "Celular", formatar_celular),
+                   ("celular", "Telefone", formatar_celular),
                    ("placa", "Placa", formatar_placa), ("tipo", "Tipo", str),
+                   ("empresa", "Empresa", str), ("motivo", "Motivo", str),
                    ("entrada", "Entrada", str), ("saida", "Saída", str)]
 
 
@@ -25,7 +26,8 @@ def descrever_alteracoes(antes, depois):
 
 
 def filtrar(registros, texto):
-    """Registros que batem com a busca (nome, CPF, celular, placa ou tipo)."""
+    """Registros que batem com a busca (nome, CPF, telefone, placa, tipo ou
+    empresa)."""
     texto = texto.strip().lower()
     numeros = so_digitos(texto)
     resultado = []
@@ -34,6 +36,7 @@ def filtrar(registros, texto):
             achou = (texto in r["nome"].lower()
                      or texto in r["tipo"].lower()
                      or texto in r.get("placa", "").lower()
+                     or texto in r.get("empresa", "").lower()
                      or (numeros and (numeros in r.get("cpf", "")
                                       or numeros in r.get("celular", ""))))
             if not achou:

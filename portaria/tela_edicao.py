@@ -17,7 +17,8 @@ from .dados import VEICULO_SEM_DONO
 from .estilo import COR, FONTE, ICONE, px
 from .tela_autorizacao import autorizar_excecao
 from .usuarios import eh_admin, pode_editar
-from .validacao import (FORMATO_EXIBICAO, MAXIMO_NOME, TIPOS_ACESSO,
+from .validacao import (FORMATO_EXIBICAO, MAXIMO_EMPRESA,
+                        MAXIMO_MOTIVO_VISITA, MAXIMO_NOME, TIPOS_ACESSO,
                         checar_desativacao_correcao, mascarar_cpf, normalizar,
                         validar)
 
@@ -45,11 +46,11 @@ class JanelaEdicao(Dialogo):
     def _montar_campos(self):
         form = tk.Frame(self.miolo, bg=COR["superficie"])
         form.pack(fill="x")
-        form.columnconfigure((0, 1, 2, 3), weight=1, uniform="e")
+        form.columnconfigure((0, 1, 2, 3, 4), weight=1, uniform="e")
         r = self.original
 
         def novo(texto, linha, coluna, valor, apoio="", juntas=1, **opcoes):
-            espaco = (0, px(12)) if coluna + juntas < 4 else 0
+            espaco = (0, px(12)) if coluna + juntas < 5 else 0
             frame, _ = rotulo_campo(form, texto, apoio)
             frame.grid(row=linha, column=coluna, sticky="w", pady=(0, px(4)),
                        padx=espaco)
@@ -59,8 +60,8 @@ class JanelaEdicao(Dialogo):
             campo.var.set(valor or "")      # valor do banco, sem passar pela digitação
             return campo
 
-        # Q04: CPF, celular e placa com as mesmas restrições da Entrada e
-        # saída. Duas linhas de 4 colunas: cabe num notebook 1366x768 a 125%
+        # Q04: CPF, telefone e placa com as mesmas restrições do Cadastro.
+        # Duas linhas de 5 colunas: cabe num notebook 1366x768 a 125%
         if self.cpf_oculto:
             self.cpf = novo("CPF", 0, 0, mascarar_cpf(r["cpf"]), "lápis = trocar",
                             numeros=11, icone=ICONE["editar"],
@@ -71,7 +72,7 @@ class JanelaEdicao(Dialogo):
             self.cpf = novo("CPF", 0, 0, r["cpf"], numeros=11).entrada
         self.nome = novo("Nome completo", 0, 1, r["nome"], juntas=2,
                          maximo=MAXIMO_NOME).entrada
-        self.celular = novo("Celular", 0, 3, r["celular"], "só números",
+        self.celular = novo("Telefone", 0, 3, r["celular"], "só números",
                             numeros=11).entrada
         campo_placa = novo("Placa", 2, 0, r.get("placa", ""), "opcional",
                            placa=True)
@@ -80,8 +81,13 @@ class JanelaEdicao(Dialogo):
                          opcoes=TIPOS_ACESSO).entrada
         self.entrada = novo("Entrada", 2, 2, r["entrada"], FORMATO_EXIBICAO,
                             seletor="data_hora", relogio=self.app.relogio).entrada
-        self.saida = novo("Saída", 2, 3, r["saida"], "vazio = no campus",
+        self.saida = novo("Saída", 2, 3, r["saida"], "vazio = dentro",
                           seletor="data_hora", relogio=self.app.relogio).entrada
+        # RN48: empresa e motivo também se corrigem
+        self.empresa = novo("Empresa", 0, 4, r.get("empresa", ""),
+                            maximo=MAXIMO_EMPRESA).entrada
+        self.motivo = novo("Motivo", 2, 4, r.get("motivo", ""),
+                           maximo=MAXIMO_MOTIVO_VISITA).entrada
         self.cpf.config(font=FONTE["cpf"])
 
     def _montar_historico(self):
@@ -135,6 +141,12 @@ class JanelaEdicao(Dialogo):
         novo = normalizar(self.nome.get(), cpf, self.celular.get(),
                           self.var_placa.get(), self.tipo.get(),
                           self.entrada.get(), self.saida.get())
+        # empresa e motivo só são obrigatórios se a visita já tinha (uma
+        # visita antiga, sem eles, continua podendo ser corrigida)
+        for chave, campo in (("empresa", self.empresa), ("motivo", self.motivo)):
+            valor = " ".join(campo.get().split())
+            if valor or self.original.get(chave):
+                novo[chave] = valor
         alteracoes = descrever_alteracoes(self.original, novo)
         if not alteracoes:
             mensagens.info("Corrigir registro", "Nada foi alterado.",

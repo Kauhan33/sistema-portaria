@@ -83,6 +83,7 @@ from tkinter import ttk
 
 from . import backup, dados, estilo, mensagens
 from .componentes import Avatar, BotaoIcone, ItemMenu, marca_cancela
+from .tela_ocorrencias import AbaOcorrencias
 from .estilo import (COR, FONTE, ICONE, LARGURA_LATERAL, PREFERENCIAS_TEMA,
                      aplicar_tema, carregar_fontes, pintar_barra_de_titulo, px)
 from .tela_cadastro import AbaCadastro
@@ -115,7 +116,8 @@ AVISO_INATIVIDADE = (f"Sua sessão foi encerrada depois de {MINUTOS_INATIVIDADE}
 NOMES_DO_CADASTRO = {
     "nome", "cpf", "var_cpf", "celular", "var_placa", "tipo", "entrada",
     "saida", "tabela", "busca", "lbl_pessoa", "lbl_dica_placa",
-    "lbl_placa_status", "lbl_aviso", "btn_desfazer", "btn_excluir",
+    "lbl_placa_status", "lbl_aviso", "btn_desfazer", "btn_excluir", "empresa",
+    "motivo", "filtro",
     "campo_saida_rapida", "lbl_status", "janela_edicao", "cadastrar", "limpar",
     "registrar_saida", "registrar_saida_da_linha", "saida_rapida",
     "desfazer_saida", "editar_selecionado", "excluir_selecionado",
@@ -127,6 +129,7 @@ NOMES_DO_CADASTRO = {
 # nome do atributo -> (página onde ela mora, classe)
 PAGINAS_SOB_DEMANDA = {
     "tela_pessoas": ("aba_pessoas", AbaPessoas),
+    "tela_ocorrencias": ("aba_ocorrencias", AbaOcorrencias),
     "tela_dashboard": ("aba_dash", AbaDashboard),
     "tela_usuarios": ("aba_usuarios", AbaUsuarios),
     "tela_configuracoes": ("aba_configuracoes", AbaConfiguracoes),
@@ -459,7 +462,8 @@ class AppPortaria:
     def _pagina_atual(self):
         """Nome do atributo da página aberta (ex.: "aba_pessoas")."""
         atual = self.abas.select()
-        nomes = ["aba_cad"] + [aba for aba, _ in PAGINAS_SOB_DEMANDA.values()]
+        nomes = ["aba_cad", "aba_controle"] + [
+            aba for aba, _ in PAGINAS_SOB_DEMANDA.values()]
         return next((nome for nome in nomes
                      if str(getattr(self, nome)) == atual), "aba_cad")
 
@@ -705,8 +709,11 @@ class AppPortaria:
         self.itens_menu = {}
         self.abas = ttk.Notebook(self.corpo, style="Paginas.TNotebook")
         self.abas.pack(fill="both", expand=True)
-        self.aba_cad = self._nova_pagina("Entrada e saída", "entrada")
+        # as telas 2 e 3 do enunciado (a classe AbaCadastro cuida das duas)
+        self.aba_cad = self._nova_pagina("Cadastro", "pessoa")
+        self.aba_controle = self._nova_pagina("Controle de acesso", "entrada")
         self.aba_pessoas = self._nova_pagina("Pessoas", "pessoas")
+        self.aba_ocorrencias = self._nova_pagina("Ocorrências", "alerta")
         self.aba_dash = self._nova_pagina("Painel", "painel")
         self.aba_usuarios = self.aba_configuracoes = None
         if pode_gerenciar_usuarios(self.usuario):
@@ -714,16 +721,17 @@ class AppPortaria:
             self.aba_configuracoes = self._nova_pagina("Configurações", "config")
         for nome in PAGINAS_SOB_DEMANDA:       # as da sessão anterior saem
             self.__dict__.pop(nome, None)
-        # a Entrada e saída é a página inicial: montada já
-        self.tela_cadastro = AbaCadastro(self.aba_cad, self)
+        # o Cadastro é a página inicial: montado já
+        self.tela_cadastro = AbaCadastro(self.aba_cad, self, self.aba_controle)
 
         # página -> nome da tela (abrir a página monta ou relê a tela)
         self._paginas = {str(getattr(self, aba)): nome for nome, (aba, _)
                          in PAGINAS_SOB_DEMANDA.items()
                          if getattr(self, aba) is not None}
         self._paginas[str(self.aba_cad)] = "tela_cadastro"
+        self._paginas[str(self.aba_controle)] = "tela_cadastro"
 
-        # Enter registra a entrada (só na Entrada e saída; a busca ignora)
+        # Enter registra a entrada (só no Cadastro; a busca ignora)
         self.janela.bind("<Return>", self.tela_cadastro.cadastrar)
         self.janela.bind("<KP_Enter>", self.tela_cadastro.cadastrar)
         self.janela.bind("<F2>", self.ir_para_saida_rapida)
@@ -753,18 +761,18 @@ class AppPortaria:
         self.ao_trocar_aba()
 
     def alternar_modo_didatico(self, event=None):
-        """Ctrl+Shift+D: leva à Entrada e saída e abre (ou fecha) o modo
+        """Ctrl+Shift+D: leva ao Controle de acesso e abre (ou fecha) o modo
         didático da linha de comando."""
-        if self.abas.select() != str(self.aba_cad):
-            self.ir_para(self.aba_cad)
+        if self.abas.select() != str(self.aba_controle):
+            self.ir_para(self.aba_controle)
         self.tela_cadastro.comando.alternar_pelo_teclado()
         return "break"
 
     def ir_para_saida_rapida(self, event=None):
         """F2 ou Ctrl+K: de qualquer página, leva o cursor ao campo Comando
-        (a antiga saída rápida, no mesmo lugar)."""
-        if self.abas.select() != str(self.aba_cad):
-            self.ir_para(self.aba_cad)
+        (a antiga saída rápida), no Controle de acesso."""
+        if self.abas.select() != str(self.aba_controle):
+            self.ir_para(self.aba_controle)
         self.tela_cadastro.campo_saida_rapida.focus_set()
         return "break"
 

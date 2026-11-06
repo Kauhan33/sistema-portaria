@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta
 from unittest import mock
 
 from portaria import dados, estilo
-from portaria.componentes import Botao
+from portaria.componentes import Botao, BotaoTk
 from portaria.interface import AppPortaria
 from portaria.tela_autorizacao import JanelaAutorizacao
 from portaria.tela_recuperacao import JanelaCodigos
@@ -23,7 +23,8 @@ from portaria.validacao import FORMATO, converter_data
 VISITA_ANTIGA = {"nome": "Beto Rocha", "cpf": "11144477735",
                  "celular": "31933334444", "placa": "QWE1234",
                  "tipo": "Professor", "entrada": "15/10/2026 07:00",
-                 "saida": "15/10/2026 12:00"}
+                 "saida": "15/10/2026 12:00", "empresa": "UNA",
+                 "motivo": "Aula"}
 
 
 # Relógio fixo do app nos testes: uma quarta-feira às 10:00, com o campus
@@ -230,6 +231,10 @@ class BaseInterface(unittest.TestCase):
         self.app.celular.insert(0, celular)
         self.app.var_placa.set(placa)
         self.app.tipo.set(tipo)
+        self.app.empresa.delete(0, tk.END)
+        self.app.empresa.insert(0, "Empresa Teste")
+        self.app.motivo.delete(0, tk.END)
+        self.app.motivo.insert(0, "Reunião")
 
     def cadastrar_um(self):
         self.preencher()
@@ -240,7 +245,7 @@ class BaseInterface(unittest.TestCase):
         """Textos de todos os botões desenhados (Botao) dentro de `widget`."""
         achados = []
         for filho in widget.winfo_children():
-            if isinstance(filho, Botao):
+            if isinstance(filho, (Botao, BotaoTk)):
                 achados.append(filho.cget("text"))
             achados.extend(self.botoes(filho))
         return achados
@@ -324,14 +329,15 @@ class TestCadastroComoAdmin(BaseInterface):
 
     def test_admin_ve_botao_excluir_e_aba_usuarios(self):
         self.assertIsNotNone(self.app.btn_excluir)
-        self.assertIn("Excluir", self.botoes(self.app.aba_cad))
+        self.assertIn("Excluir", self.botoes(self.app.aba_controle))
         self.assertIsNotNone(self.app.aba_usuarios)
         self.assertEqual(self.app.lbl_usuario.cget("text"), "Ana Admin")
         self.assertEqual(self.app.lbl_perfil.cget("text"), "Administrador")
 
     def test_rotulo_mostra_formato_legivel(self):  # falha F4 da v1
         textos = self.textos(self.app.aba_cad)
-        self.assertTrue(any("dd/mm/aaaa hh:mm" in t for t in textos))
+        self.assertTrue(any("dd/mm/aaaa" in t for t in textos))
+        self.assertTrue(any("hh:mm" in t for t in textos))
         self.assertFalse(any("%d" in t for t in textos))
 
     def test_enter_cadastra_na_aba_cadastro(self):
@@ -429,6 +435,7 @@ class TestLinhaDesatualizada(BaseInterface):
 
     def test_enter_com_o_foco_na_tabela_nao_cadastra(self):
         # a tecla vai para quem tem o foco: a janela precisa estar visível
+        self.app.ir_para(self.app.aba_controle)
         self.app.janela.deiconify()
         self.app.janela.update()
         self.app.tabela.focus_force()
@@ -454,6 +461,7 @@ class TestTelaPequena(BaseInterface):
             self.banco.inserir(dict(VISITA_ANTIGA, cpf=cpf, saida="", placa="",
                                     entrada=agora_menos(10 * i + 5)))
         self.app.atualizar_tabela()
+        self.app.ir_para(self.app.aba_controle)
         self.janela.deiconify()
 
     def tamanho(self, geometria):
@@ -473,10 +481,25 @@ class TestTelaPequena(BaseInterface):
         self.tamanho(self.PEQUENA)
         self.assertTrue(self.app.tela_cadastro.compacta)
         self.assertGreaterEqual(self.linhas_visiveis(), 4)
-        botao = self.app.tela_cadastro.btn_cadastrar
-        self.assertTrue(botao.winfo_ismapped())
-        self.assertLessEqual(botao.winfo_rooty() + botao.winfo_height(),
-                             self.janela.winfo_rooty() + 536)
+        for botao in (self.app.tela_cadastro.btn_entrada_controle,
+                      self.app.tela_cadastro.btn_voltar):
+            self.assertTrue(botao.winfo_ismapped())
+            self.assertLessEqual(botao.winfo_rooty() + botao.winfo_height(),
+                                 self.janela.winfo_rooty() + 536)
+
+    def test_cadastro_cabe_inteiro_na_tela_pequena(self):
+        """Enunciado do A3: todos os campos e botões à vista em 1366x768."""
+        tela = self.app.tela_cadastro
+        self.app.ir_para(self.app.aba_cad)
+        self.tamanho(self.PEQUENA)
+        self.janela.update()
+        base = self.janela.winfo_rooty() + 536
+        for campo in (tela.cpf, tela.nome, tela.celular, tela.tipo, tela.empresa,
+                      tela.motivo, tela.saida, tela.btn_cadastrar,
+                      tela.btn_limpar, tela.btn_cancelar):
+            self.assertTrue(campo.winfo_ismapped(), campo)
+            self.assertLessEqual(campo.winfo_rooty() + campo.winfo_height(),
+                                 base, campo)
 
     def test_tela_grande_volta_ao_layout_normal(self):
         if self.janela.winfo_screenheight() < 760:
@@ -486,26 +509,30 @@ class TestTelaPequena(BaseInterface):
         self.tamanho(self.GRANDE)
         tela = self.app.tela_cadastro
         self.assertFalse(tela.compacta)
-        self.assertTrue(tela.ficha.winfo_ismapped())
-        self.assertEqual(tela.btn_limpar.texto, "Limpar formulário")
         self.assertGreaterEqual(self.linhas_visiveis(), 4)
 
     def _conferir_cabecalho_do_movimento(self):
-        """2.3: o título "Movimento" numa linha própria, no canto de cima;
-        as subabas logo embaixo, à esquerda; busca e botões à direita, na
-        linha das subabas; o status ao lado do título."""
+        """O título "Movimento" numa linha própria, no canto de cima; as
+        subabas logo embaixo, à esquerda; a pesquisa e o filtro à direita, na
+        linha das subabas; os botões no pé da tabela; o status ao lado do
+        título."""
         tela = self.app.tela_cadastro
         self.janela.update()
         titulo, seletor = tela.titulo_mov, tela.seletor_lista
-        botoes = [b for b in (tela.btn_saida, tela.btn_corrigir,
-                              tela.btn_excluir) if b is not None]
-        for w in (titulo, seletor, tela.campo_busca, *botoes):
+        botoes = [b for b in (tela.btn_entrada_controle, tela.btn_saida,
+                              tela.btn_corrigir, tela.btn_excluir,
+                              tela.btn_atualizar, tela.btn_voltar)
+                  if b is not None]
+        for w in (titulo, seletor, tela.campo_busca, tela.campo_filtro, *botoes):
             self.assertTrue(w.winfo_ismapped(), w)
+        for b in botoes:
+            self.assertGreaterEqual(b.winfo_rooty(), tela.tabela.winfo_rooty()
+                                    + tela.tabela.winfo_height())
         base_titulo = titulo.winfo_rooty() + titulo.winfo_height()
         self.assertLessEqual(base_titulo, seletor.winfo_rooty())
         self.assertLessEqual(abs(titulo.winfo_rootx() - seletor.winfo_rootx()),
                              2)
-        for b in [tela.campo_busca, *botoes]:
+        for b in [tela.campo_busca, tela.campo_filtro]:
             self.assertGreater(b.winfo_rootx(), seletor.winfo_rootx()
                                + seletor.winfo_width())
             self.assertGreaterEqual(b.winfo_rooty(), base_titulo)
@@ -745,7 +772,7 @@ class TestPorteiro(BaseInterface):
 
     def test_porteiro_nao_ve_botao_excluir_nem_aba_usuarios(self):  # RN02
         self.assertIsNone(self.app.btn_excluir)
-        botoes = self.botoes(self.app.aba_cad)     # os botões são desenhados
+        botoes = self.botoes(self.app.aba_controle)
         self.assertIn("Corrigir", botoes)          # (a busca enxerga Botao)
         self.assertNotIn("Excluir", botoes)
         self.assertIsNone(self.app.aba_usuarios)
@@ -921,6 +948,7 @@ class TestBuscaEViradaDoDia(BaseInterface):
         chamadas = []
         tela.espera_busca.acao = lambda: chamadas.append(tela.busca.get())
         # a tecla vai para quem tem o foco: a janela precisa estar visível
+        self.app.ir_para(self.app.aba_controle)
         self.app.janela.deiconify()
         self.app.janela.update()
         tela.busca.focus_force()
@@ -962,7 +990,7 @@ class TestDataAbsurdaNoBanco(BaseInterface):
         self.app.sair()
         self.app.entrar(self.admin)
         self.assertEqual(self.app.tabela.item(self.app.tabela.get_children()[0])
-                         ["text"], "No campus")
+                         ["text"], "Dentro")
         self.app.ir_para(self.app.aba_dash)
         self.app.atualizar_tabela()
 
@@ -972,7 +1000,7 @@ class TestSessao(BaseInterface):
 
     def test_menu_lateral_tem_as_paginas_do_perfil(self):
         textos = [i.cget("text") for i in self.app.itens_menu.values()]
-        self.assertEqual(textos, ["Entrada e saída", "Pessoas",
+        self.assertEqual(textos, ["Cadastro", "Controle de acesso", "Pessoas", "Ocorrências",
                                   "Painel"])               # porteiro: sem Usuários
         self.assertTrue(self.app.itens_menu[str(self.app.aba_cad)].ativo)
 
@@ -1011,7 +1039,7 @@ class TestSessao(BaseInterface):
     def test_f2_de_outra_pagina_volta_para_a_entrada_e_saida(self):
         self.app.ir_para(self.app.aba_dash)
         self.app.ir_para_saida_rapida()
-        self.assertEqual(self.app.abas.select(), str(self.app.aba_cad))
+        self.assertEqual(self.app.abas.select(), str(self.app.aba_controle))
 
     def test_trocar_minha_senha(self):
         menu = self.app.menu_usuario
@@ -1536,10 +1564,10 @@ class TestAbaPessoas(BaseInterface):
     def test_lista_pessoas_com_visitas_e_situacao(self):
         self.assertEqual(self.aba.tabela.get_children(),
                          (str(self.ana), str(self.beto)))   # ordem alfabética
-        self.assertEqual(self.valores(self.ana)[-1], "No campus")
+        self.assertEqual(self.valores(self.ana)[-1], "Dentro")
         self.assertEqual(self.valores(self.beto)[5:], [1, "15/10/2026 07:00", "—"])
         self.assertIn("1 no campus agora", self.aba.lbl_total.cget("text"))
-        self.assertEqual(self.aba.tabela.item(str(self.ana))["text"], "No campus")
+        self.assertEqual(self.aba.tabela.item(str(self.ana))["text"], "Dentro")
 
     def test_busca(self):
         self.aba.busca.insert(0, "beto")
@@ -1585,6 +1613,7 @@ class TestAbaPessoas(BaseInterface):
         dialogo = self.aba.editar()
         dialogo.celular.delete(0, tk.END)
         dialogo.celular.insert(0, "31955556666")
+        dialogo.empresa.insert(0, "Alfa")
         self.assertTrue(dialogo.salvar())
         self.assertEqual(self.banco.buscar_pessoa("11144477735")["celular"],
                          "31955556666")
@@ -1669,6 +1698,7 @@ class TestVariasPlacas(TestAbaPessoas):
         dialogo.cpf.insert(0, "39053344705")
         dialogo.nome.insert(0, "Carla Nogueira")
         dialogo.celular.insert(0, "31988887777")
+        dialogo.empresa.insert(0, "Alfa")
         dialogo.tipo.set("Professor")
         for placa in ("BRA2E19", "NEY4829"):
             dialogo.caixa_placa.insert(0, placa)
@@ -1838,6 +1868,7 @@ class TestNovaPessoa(BaseInterface):
         dialogo.cpf.insert(0, cpf)
         dialogo.nome.insert(0, nome)
         dialogo.celular.insert(0, celular)
+        dialogo.empresa.insert(0, "Alfa")
         dialogo.caixa_placa.insert(0, placa)
         dialogo.tipo.set(tipo)
         return dialogo
@@ -1860,7 +1891,7 @@ class TestNovaPessoa(BaseInterface):
     def test_mesma_validacao_da_entrada(self):
         casos = [({"nome": "Fernanda"}, "nome completo"),
                  ({"cpf": "12345678900"}, "CPF inválido"),
-                 ({"celular": "3198765432"}, "Celular inválido"),
+                 ({"celular": "3198765432"}, "Telefone inválido"),
                  ({"placa": "AB12"}, "Placa inválida"),
                  ({"tipo": ""}, "tipo de acesso")]
         for mudanca, trecho in casos:
@@ -2008,7 +2039,7 @@ class TestHistoricoEOrdemNaPaginaPessoas(BaseInterface):
                          "Visitas (3)")
         hoje, dia_16, dia_15 = self.aba.visitas           # mais recente primeiro
         self.assertEqual((hoje["situacao"], hoje["saida"], hoje["duracao"]),
-                         ("No campus", "sem saída", "1 h até agora"))
+                         ("Dentro", "sem saída", "1 h até agora"))
         self.assertEqual((dia_16["saida"], dia_16["duracao"], dia_16["tipo"],
                           dia_16["placa"], dia_16["como"]),
                          ("17/10/2026 08:00", "23 h", "Visitante", "",
@@ -2160,7 +2191,7 @@ class TestSaidaRapida(BaseInterface):
         self.assertFalse(self.desfazer_visivel())
         self.assertIn(("paulo", "Saída desfeita"), self.acoes())
         linha = self.app.tabela.item(str(self.ids["Beto"]))
-        self.assertEqual((linha["text"], linha["values"][-1]), ("No campus", "—"))
+        self.assertEqual((linha["text"], linha["values"][-1]), ("Dentro", "—"))
 
     def test_f2_vai_para_a_saida_rapida(self):
         self.assertTrue(self.janela.bind("<F2>"))
@@ -2222,7 +2253,7 @@ class TestEstadiaDeVeiculo(BaseInterface):
         self.assertIsNotNone(self.estadia())                 # o carro fica
         self.assertIn("a pé; o carro ABC-1234 fica", self.app.lbl_aviso.cget("text"))
         linha = self.tela.tabela_veiculos.item(str(self.estadia()["id"]))
-        self.assertEqual(linha["values"][-1], "Fora do campus")
+        self.assertEqual(linha["values"][-1], "Saiu")
         # volta (só o CPF): faixa do carro e entrada a pé
         self.agora = AGORA + timedelta(hours=1)
         self.app.limpar()
@@ -2337,7 +2368,7 @@ class TestEstadiaDeVeiculo(BaseInterface):
         linha = self.tela.tabela_veiculos.item(iid)
         self.assertEqual(linha["text"], "No estacionamento")
         self.assertEqual(linha["values"][:2], ["ABC-1234", "Ana Silva"])
-        self.assertEqual(linha["values"][-1], "No campus")
+        self.assertEqual(linha["values"][-1], "Dentro")
         self.tela.tabela_veiculos.selection_set(iid)
         self.responder_veiculo = "principal"                 # saiu junto
         self.app.registrar_saida()
@@ -2349,7 +2380,7 @@ class TestEstadiaDeVeiculo(BaseInterface):
         iid = self.tela.tabela_veiculos.get_children()[0]
         linha = self.tela.tabela_veiculos.item(iid)
         self.assertEqual(linha["text"], "Dono fora do campus")
-        self.assertEqual(linha["values"][-1], "Fora do campus")
+        self.assertEqual(linha["values"][-1], "Saiu")
 
     def test_faixa_do_carro_diz_que_o_dono_pode_sair_com_ele(self):
         self.sair_pelo_cpf("a_pe")
@@ -2783,7 +2814,7 @@ class TestAbaDesativadas(BaseInterface):
     def test_avisa_se_a_pessoa_desativada_esta_no_campus(self):
         self.banco.inserir(dict(VISITA_ANTIGA, entrada=ha_uma_hora(), saida=""))
         self.preencher("cpf", "11144477735", "Ameaçou um aluno")
-        self.assertIn("No campus agora: Beto Rocha",
+        self.assertIn("Dentro agora: Beto Rocha",
                       self.msg.showinfo.call_args[0][1])
 
     def test_desativar_pela_ficha_e_reativar(self):
@@ -2873,6 +2904,8 @@ class TestAbaDesativadas(BaseInterface):
         self.app.nome.insert(0, "Ana Silva")
         self.app.celular.insert(0, "31987654321")
         self.app.tipo.set("Visitante")
+        self.app.empresa.insert(0, "Empresa Teste")
+        self.app.motivo.insert(0, "Reunião")
         self.app.cadastrar()
         self.assertEqual(len(self.no_banco()), 1)
 

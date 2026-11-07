@@ -31,7 +31,8 @@ PALAVRAS = (
     ["entrada", "saida", "saída", "cadastrar", "editar", "excluir",
      "desativar", "reativar", "situacao", "situação", "dentro", "buscar",
      "pendentes", "ajuda", "ENTRADA", "entrda", "sai"]
-    + ["placa", "nome", "cel", "tipo", "motivo", "sem", "carro", "as", "em",
+    + ["placa", "nome", "cel", "tipo", "motivo", "empresa", "sem", "carro",
+       "as", "em",
        "de", "ate", "até"]
     + ["aluno", "professores", "visitante", "prestador", "entregador",
        "funcionario", "hoje", "ontem", "semana", "mes"])

@@ -785,3 +785,18 @@ class AppPortaria:
             self.__dict__[nome].atualizar()        # já montada: relê
         elif nome is not None:
             getattr(self, nome)                    # monta (e lê) agora
+        self._foco_da_pagina(atual)
+
+    def _foco_da_pagina(self, atual):
+        """Cadastro abre no CPF e Controle de acesso na pesquisa, a não ser
+        que o foco já esteja em algo visível (ex.: F2 foi para o Comando)."""
+        campo = {str(self.aba_cad): "cpf",
+                 str(self.aba_controle): "busca"}.get(atual)
+        if campo is None:
+            return
+        try:
+            foco = self.janela.focus_get()
+        except KeyError:                  # (a lista aberta de um Combobox)
+            return
+        if foco is None or not foco.winfo_viewable():
+            getattr(self.tela_cadastro, campo).focus_set()

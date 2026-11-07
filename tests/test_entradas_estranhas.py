@@ -47,13 +47,24 @@ class TestEntradasEstranhas(unittest.TestCase):
                                  texto(self.r), texto(self.r), texto(self.r),
                                  texto(self.r),
                                  self.r.choice(validacao.TIPOS_ACESSO + [""]),
-                                 texto(self.r), texto(self.r))
+                                 texto(self.r), texto(self.r),
+                                 self.r.choice([None, texto(self.r)]),
+                                 self.r.choice([None, texto(self.r)]))
             ok, msg = self.sem_excecao("validar_campos", validacao.validar_campos, r)
             self.assertTrue(ok or msg)
             ok, msg = self.sem_excecao("validar", validacao.validar, r, [],
                                        self.agora)
             self.assertTrue(ok or msg)
             self.sem_excecao("checar_saida", validacao.checar_saida, r, self.agora)
+
+    def test_ocorrencia(self):
+        categorias = validacao.CATEGORIAS_OCORRENCIA + ["", "Inventada"]
+        for _ in range(VOLTAS):
+            ok, msg = self.sem_excecao(
+                "validar_ocorrencia", validacao.validar_ocorrencia,
+                self.r.choice(categorias), texto(self.r), texto(self.r),
+                texto(self.r))
+            self.assertTrue(ok or msg)
 
     def test_campos_soltos(self):
         for _ in range(VOLTAS):

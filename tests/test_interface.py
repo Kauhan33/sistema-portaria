@@ -173,6 +173,12 @@ class BaseInterface(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         self.addCleanup(estilo.usar_tema, "claro")
+        # o ícone o Tk carrega a cada janela nova e não devolve os objetos
+        # gráficos: com mil testes no mesmo processo estoura o limite do
+        # Windows (o programa de verdade carrega uma vez só)
+        patcher = mock.patch.object(AppPortaria, "_aplicar_icone")
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
         self.agora = AGORA
         self.banco = dados.Banco(self.caminho_db)

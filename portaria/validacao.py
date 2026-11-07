@@ -209,7 +209,8 @@ def normalizar(nome, cpf, celular, placa, tipo, entrada, saida, empresa=None,
     if empresa is not None:
         registro["empresa"] = " ".join(empresa.split())
     if motivo is not None:
-        registro["motivo"] = " ".join(motivo.split())
+        # texto livre que aparece para todos: CPF digitado vai mascarado (RN14)
+        registro["motivo"] = mascarar_cpfs_no_texto(" ".join(motivo.split()))
     return registro
 
 

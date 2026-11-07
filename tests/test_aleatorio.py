@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 
 from portaria import dados
 from portaria.senhas import gerar_hash
-from portaria.validacao import FORMATO, TIPOS_ACESSO
+from portaria.validacao import CATEGORIAS_OCORRENCIA, FORMATO, TIPOS_ACESSO
 
 PASSOS = int(os.environ.get("PORTARIA_PASSOS", "250"))
 SEMENTES = (1, 2, 3)
@@ -90,7 +90,9 @@ class Maquina:
             else self.r.choice(NOMES)
         r = {"nome": nome, "cpf": c, "celular": "31987654321", "placa": placa,
              "tipo": self.r.choice(TIPOS_ACESSO),
-             "entrada": self.quando(self.r.choice([0, 0, 5, 30])), "saida": ""}
+             "entrada": self.quando(self.r.choice([0, 0, 5, 30])), "saida": "",
+             "empresa": self.r.choice(["", "Alfa Ltda", "Clima Frio"]),
+             "motivo": self.r.choice(["", "Reunião", "Manutenção"])}
         self.banco.inserir(r, autor=self.autor(), lotado_confirmado=True)
 
     def op_saida(self):
@@ -158,7 +160,28 @@ class Maquina:
         placas = self.r.sample(PLACAS, self.r.randint(0, 3))
         self.banco.cadastrar_pessoa(self.r.choice(CPFS), self.r.choice(NOMES),
                                     "31999998888", placas,
-                                    self.r.choice(TIPOS_ACESSO), self.autor())
+                                    self.r.choice(TIPOS_ACESSO), self.autor(),
+                                    empresa=self.r.choice([None, "Alfa Ltda"]))
+
+    def op_ocorrencia(self):
+        self.banco.registrar_ocorrencia(
+            self.r.choice(CATEGORIAS_OCORRENCIA + ["Inventada"]),
+            self.r.choice(["curto", "Carro sobre a calçada", "x" * 600,
+                           "Discussão com 529.982.247-25"]),
+            self.autor(), cpf=self.r.choice(["", self.r.choice(CPFS), "123"]),
+            placa=self.r.choice(["", self.r.choice(PLACAS), "ABC"]))
+
+    def op_resolver_ocorrencia(self):
+        abertas = self.banco.listar_ocorrencias(so_abertas=True)
+        if abertas:
+            self.banco.resolver_ocorrencia(self.r.choice(abertas)["id"],
+                                           self.autor())
+
+    def op_excluir_ocorrencia(self):
+        todas = self.banco.listar_ocorrencias()
+        if todas:
+            self.banco.excluir_ocorrencia(self.r.choice(todas)["id"],
+                                          self.autor())
 
     def op_editar_pessoa(self):
         pessoas = self.banco.listar_pessoas()
@@ -202,7 +225,8 @@ class Maquina:
         "entrada": 9, "saida": 6, "desfazer": 2, "excluir": 1, "corrigir": 3,
         "saida_do_carro": 2, "desativar": 1, "reativar": 1, "cadastrar": 2,
         "editar_pessoa": 2, "excluir_pessoa": 1, "autorizado": 1,
-        "remover_autorizado": 1, "encerrar": 1,
+        "remover_autorizado": 1, "encerrar": 1, "ocorrencia": 2,
+        "resolver_ocorrencia": 1, "excluir_ocorrencia": 1,
     }
 
     def passo(self):
@@ -225,6 +249,10 @@ class Maquina:
         teste.assertEqual(s("SELECT placa FROM estadias_veiculo WHERE saida = '' "
                             "GROUP BY placa HAVING COUNT(*) > 1"), [],
                           f"{nome}: a mesma placa duas vezes no estacionamento")
+        teste.assertEqual(s("SELECT id FROM ocorrencias WHERE texto LIKE "
+                            "'%529.982.247-25%' OR (resolvida_em = '') <> "
+                            "(resolvida_por = '') OR categoria = 'Inventada'"),
+                          [], f"{nome}: ocorrência fora das regras")
         teste.assertEqual(s("SELECT r.id FROM registros r JOIN pessoas p ON "
                             "p.id = r.pessoa_id WHERE p.cpf <> r.cpf"), [],
                           f"{nome}: visita ligada à pessoa de outro CPF")

@@ -1312,12 +1312,11 @@ class DialogoPessoa(Dialogo):
         c = campo("CPF", 0, 0, apoio="só números", numeros=11)
         self.cpf, self.var_cpf = c.entrada, c.var
         self.tipo = campo("Tipo de acesso", 0, 1, opcoes=TIPOS_ACESSO).entrada
-        self.nome = campo("Nome completo", 1, 0, juntas=2,
-                          maximo=MAXIMO_NOME).entrada
+        self.nome = campo("Nome completo", 1, 0, maximo=MAXIMO_NOME).entrada
+        self.empresa = campo("Empresa", 1, 1, maximo=MAXIMO_EMPRESA).entrada
         self.celular = campo("Telefone", 2, 0, apoio="celular com DDD",
                              numeros=11).entrada
-        self.empresa = campo("Empresa", 2, 1, maximo=MAXIMO_EMPRESA).entrada
-        c = campo("Placas", 5, 0, juntas=2, apoio="Enter adiciona", placa=True)
+        c = campo("Placas", 2, 1, apoio="Enter adiciona", placa=True)
         self.caixa_placa = c.entrada
         self.caixa_placa.bind("<Return>", self.adicionar_placa)
         self.caixa_placa.bind("<KP_Enter>", self.adicionar_placa)
@@ -1347,7 +1346,7 @@ class DialogoPessoa(Dialogo):
 
     def _mostrar_faixa(self, tipo, texto):
         self.faixa.mostrar(tipo, texto)
-        self.faixa.grid(row=7, column=0, columnspan=2, sticky="ew")
+        self.faixa.grid(row=4, column=0, columnspan=2, sticky="ew")
 
     def _placas_digitadas(self):
         """As placas da lista mais a que está no campo (sem Enter)."""
@@ -1401,7 +1400,7 @@ class DialogoPessoa(Dialogo):
             tk.Label(self.linha_placas, text="a 1ª é a principal",
                      font=FONTE["dica"], bg=fundo,
                      fg=COR["texto_3"]).pack(side="left")
-        self.linha_placas.grid(row=6, column=0, columnspan=2, sticky="w",
+        self.linha_placas.grid(row=3, column=0, columnspan=2, sticky="w",
                                pady=(0, px(14)))
 
     def _desativacao(self, cpf):

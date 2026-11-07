@@ -4,12 +4,18 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
-**Versão atual: 2.4** — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
+**Versão atual: 3.0** (projeto final, Atividade A3) — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
 
-![Tela Entrada e saída com o campo Comando](docs/design/final/v24_comando_sucesso_claro.png)
+![Tela Controle de acesso](docs/design/final/v30_controle_claro.png)
 
-Na 2.4 o sistema ganhou uma **linguagem de comandos** com analisador léxico,
-sintático e semântico de verdade — veja
+A 3.0 atende, item por item, ao **enunciado da Atividade A3**: login, cadastro e
+controle de entrada e saída em telas próprias, mais os desafios extras de
+veículos e placas, prestadores de serviços e ocorrências. O mapa de cada item
+pedido, com o teste que o comprova, está em
+[`docs/ENUNCIADO_A3.md`](docs/ENUNCIADO_A3.md).
+
+Desde a 2.4 o sistema tem também uma **linguagem de comandos** com analisador
+léxico, sintático e semântico de verdade — veja
 [Linguagem de comandos](#linguagem-de-comandos-compiladores).
 
 ## Como executar
@@ -85,7 +91,7 @@ Na primeira vez o sistema pede para **criar o administrador** (não existe senha
 padrão) e mostra, uma única vez, os **8 códigos de recuperação** dele (RN38):
 "Imprimir" abre uma página no navegador e só dá para continuar marcando
 "Guardei os códigos em lugar seguro". Depois disso abre sempre na tela de
-login.
+login, que tem a caixa **Mostrar senha** e o botão **Limpar**.
 
 - **Defina sua senha** (RN39): quem o administrador cria, ou cuja senha ele
   redefine, entra com uma senha provisória e escolhe a dele antes de
@@ -100,7 +106,7 @@ login.
   Crie um segundo."
 - **Ausentar** (B4): o cadeado no rodapé da barra lateral, ou **Ctrl+L**,
   cobre a janela com o login ("Guarita travada por Paulo às 14:32"),
-  guardando o que estava digitado na Entrada e saída e a página aberta. A
+  guardando o que estava digitado no Cadastro e a página aberta. A
   mesma senha destrava e devolve tudo; outro usuário entrando é troca de
   turno (o rascunho é descartado). As janelas abertas fecham, como na sessão
   que expira.
@@ -128,7 +134,10 @@ logado e ativo.
 python -m unittest -v
 ```
 
-1012 testes (biblioteca padrão `unittest`) cobrindo a **linguagem de
+NUMERO_DE_TESTES testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
+Atividade A3 item por item** (`tests/test_enunciado_a3.py`: as três telas, os
+requisitos técnicos e os desafios extras, além de um teste de que usar as telas
+não consome os recursos do Windows), a **linguagem de
 comandos** (uma classe por fase: léxico, gramática LL(1), sintático,
 semântico e a execução comparada com o formulário, além do campo, do console
 e do modo didático), validações, regras de
@@ -173,10 +182,10 @@ resultado não depende da hora em que eles rodam.
 python -m tests.relatorio [pasta de saída] [--sem-suite]
 ```
 
-Roda os testes automáticos ligados a cada caso (CT-01 a CT-68, positivos e
+Roda os testes automáticos ligados a cada caso (CT-01 a CT-109, positivos e
 negativos, cada um com o RF/RN, a entrada, o resultado esperado e o teste
-que o comprova; os CT-54 a CT-68 ficam na seção **"Linguagem de comandos"**,
-com a fase do analisador), marca **PASSOU** ou **FALHOU** e grava
+que o comprova; os casos da linguagem ficam na seção **"Linguagem de comandos"**,
+com a fase do analisador, e os CT-90 a CT-107 são os do enunciado do A3), marca **PASSOU** ou **FALHOU** e grava
 `relatorio_testes.html`, `.csv` e `.json` (com a matriz de rastreabilidade
 requisito × caso e o resultado da suíte completa `python -m unittest`, como
 evidência) numa pasta temporária ou na pasta pedida — nunca dentro do
@@ -184,12 +193,35 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 ## Galeria
 
-As telas `v25_*` (pessoas com mais de um carro) e `v24_*` (linguagem de
-comandos) são da versão atual. As `v23_*` e as anteriores mostram recursos
-que continuam iguais, mas a subaba "Pessoas desativadas" ainda se chama
-"Desativadas", no topo da Entrada e saída ainda aparece a "Saída rápida", que
-na 2.4 virou o campo Comando (e nas anteriores à 2.3 a barra lateral ainda tem
-a página Bloqueios).
+As telas `v30_*` são da versão atual (3.0), em claro e escuro, no tamanho normal
+e num notebook 1366×768 a 125% (`_1366x670`). Dados fictícios.
+
+| | |
+|---|---|
+| ![Login](docs/design/final/v30_login_claro.png) | ![Mostrar senha](docs/design/final/v30_login_mostrar_senha_claro.png) |
+| **Login** — usuário, senha, logo, Entrar e Limpar | **Mostrar senha** — o Checkbutton mostra e esconde |
+| ![Campos vazios](docs/design/final/v30_login_campos_vazios_claro.png) | ![Senha errada](docs/design/final/v30_login_senha_errada_escuro.png) |
+| **Campos vazios** são recusados | **Dados incorretos** — a mesma mensagem para usuário ou senha |
+| ![Cadastro](docs/design/final/v30_cadastro_preenchido_claro.png) | ![Confirmação](docs/design/final/v30_cadastro_confirmacao_claro.png) |
+| **Cadastro** — empresa, data, horário, motivo; Cadastrar, Limpar e Cancelar | **Confirmação** — com o código de identificação |
+| ![Controle de acesso](docs/design/final/v30_controle_claro.png) | ![Prestadores](docs/design/final/v30_controle_prestadores_claro.png) |
+| **Controle de acesso** — pesquisa, filtro, Código, Situação e as ações | **Prestadores de serviços** — o filtro mostra a empresa e o motivo |
+| ![Pesquisa](docs/design/final/v30_controle_pesquisa_claro.png) | ![Filtro Dentro](docs/design/final/v30_controle_dentro_escuro.png) |
+| **Pesquisa** — no histórico inteiro; achar pelo código também | **Filtro "Dentro"**, no tema escuro |
+| ![Ocorrências](docs/design/final/v30_ocorrencias_selecionada_claro.png) | ![Nova ocorrência](docs/design/final/v30_nova_ocorrencia_claro.png) |
+| **Ocorrências** — o livro da portaria | **Nova ocorrência** — categoria, descrição, CPF e placa opcionais |
+| ![Corrigir](docs/design/final/v30_corrigir_claro.png) | ![Nova pessoa](docs/design/final/v30_nova_pessoa_claro.png) |
+| **Corrigir registro** — agora com a empresa e o motivo | **Nova pessoa** — com a empresa |
+| ![Cadastro no notebook](docs/design/final/v30_cadastro_preenchido_escuro_1366x670.png) | ![Controle no notebook](docs/design/final/v30_controle_claro_1366x670.png) |
+| **Notebook 1366×768**: o Cadastro cabe inteiro (tema escuro) | **Notebook 1366×768**: o Controle de acesso |
+
+<details>
+<summary><b>Telas das versões anteriores</b> (recursos que continuam iguais)</summary>
+
+Nestes prints a antiga página **Entrada e saída** ainda não foi dividida em
+Cadastro e Controle de acesso, e a situação ainda diz "No campus" em vez de
+"Dentro". Nos anteriores à 2.4 aparece a "Saída rápida", que virou o campo
+Comando, e nos anteriores à 2.3, a página Bloqueios.
 
 | | |
 |---|---|
@@ -272,6 +304,8 @@ a página Bloqueios).
 
 Todos os prints usam dados fictícios. Mais telas em `docs/design/final/`.
 
+</details>
+
 ## Telas e funcionalidades
 
 O visual segue o sistema de design **Guarita** (`docs/design/PROPOSTA_DESIGN.md`):
@@ -280,20 +314,22 @@ importa — verde pode entrar, âmbar atenção, vermelho desativado. O vermelho
 UNA aparece como identidade (símbolo, item ativo do menu, painel do login).
 Tudo em Tkinter puro: cantos arredondados, botões, placa e gráficos são
 desenhados no `Canvas`, os ícones são da fonte Segoe Fluent Icons e o texto
-fica nítido em telas com escala de 125% ou 150% (DPI). Num notebook 1366×768
-a 125% a página Entrada e saída usa um layout compacto (formulário em duas
-linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
+fica nítido em telas com escala de 125% ou 150% (DPI). As três telas do
+enunciado usam `tk.Button` e `tk.Checkbutton` de verdade, com as cores do tema.
+Num notebook 1366×768 a 125% o Cadastro cabe inteiro e o Controle de acesso
+usa linhas mais baixas para mostrar mais visitas. Prints em
 `docs/design/final/`.
 
-- **Login**: painel vermelho com o símbolo da cancela e o relógio da guarita;
-  à direita, usuário e senha. No primeiro uso, o mesmo layout cria o
-  administrador.
+- **Login**: painel vermelho com o logo (uma imagem, `assets/logo_portaria.png`)
+  e o relógio da guarita; à direita, usuário, senha, a caixa **Mostrar senha**,
+  **Entrar** e **Limpar**. Campos vazios e dados incorretos dão mensagem de erro.
+  No primeiro uso, o mesmo layout cria o administrador.
 - **Modo noturno**: cada usuário escolhe o tema no menu da conta (três
   pontos no rodapé da barra lateral): **Tema: Claro**, **Tema: Escuro** ou
   **Tema: Seguir o Windows** (lê no Windows se os aplicativos estão no modo
   escuro). A troca acontece na hora, **sem fechar o programa**: a sessão
-  continua, a página aberta também, e o que estava digitado na Entrada e
-  saída volta para o lugar (janelas abertas, como Corrigir, são fechadas). A
+  continua, a página aberta também, e o que estava digitado no Cadastro
+  volta para o lugar (janelas abertas, como Corrigir, são fechadas). A
   escolha fica gravada no usuário e vale nos próximos logins dele; a tela de
   login segue sempre o tema do Windows. O tema escuro ("Guarita à noite") tem
   paleta própria, com contraste WCAG AA conferido por teste, placa Mercosul
@@ -301,14 +337,37 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
   escura no Windows 10/11
   (`docs/design/PROPOSTA_DESIGN.md`, seção 10). As caixas de mensagem
   nativas do Windows seguem o tema do próprio Windows.
-- **Barra lateral**: Entrada e saída, Pessoas, Painel, Usuários e
-  Configurações (as duas últimas só para o administrador), com o número de
-  pessoas cadastradas. (Até a 2.2 havia a página Bloqueios: na 2.3 ela virou
+- **Barra lateral**: Cadastro, Controle de acesso, Pessoas, Ocorrências, Painel,
+  Usuários e Configurações (as duas últimas só para o administrador), com o
+  número de pessoas cadastradas. (Até a 2.2 havia a página Bloqueios: na 2.3 ela virou
   a desativação, dentro de Pessoas.) No
   rodapé, quem está logado, o menu da conta (**Trocar minha senha**, **Gerar
   novos códigos de recuperação** para o administrador, o **tema** e Sair),
   o **cadeado** ("Ausentar", Ctrl+L) e o botão sair.
-- **Entrada e saída** (tecla **Enter** registra a entrada):
+- **Cadastro** (tela 2 do enunciado; **Enter** ou **Cadastrar** registra a
+  entrada): CPF, nome, telefone, placa (opcional), tipo de acesso, **empresa**,
+  **data** (com o calendário), **horário** (com o relógio), **motivo da visita**
+  (um `tk.Text`, com contador de até 200 caracteres) e saída (opcional, para
+  lançamento retroativo). Os obrigatórios têm `*`. **Limpar** esvazia o formulário;
+  **Cancelar** descarta e vai ao Controle de acesso. A confirmação aparece na
+  faixa verde, com o **código de identificação** ("Código 007", RN48). Quem já
+  veio traz a empresa do cadastro e o motivo da última visita, para conferir ou
+  trocar.
+- **Controle de acesso** (tela 3 do enunciado; é onde fica o campo **Comando**):
+  a **pesquisa** (nome, CPF, telefone, placa, tipo, empresa ou código), o **filtro**
+  (Todos, Dentro, Saiu ou um tipo de acesso), a tabela (Situação "Dentro" ou
+  "Saiu", Código, Nome, CPF, Placa, Tipo de acesso, Entrada e Saída) e, no pé,
+  **Registrar entrada** (na pessoa selecionada, com o horário de agora; quem
+  está dentro é recusado), **Registrar saída**, **Corrigir**, **Excluir**
+  (administrador), **Atualizar** (relê o banco, inclusive o que outra estação
+  gravou) e **Voltar** (ao Cadastro). Filtrando por **Prestador de serviço**, a
+  tabela mostra a empresa e o motivo no lugar da placa e do tipo.
+- **Ocorrências** (desafio extra, RN49): o livro da portaria. **Nova ocorrência**
+  com categoria, descrição (`tk.Text`, de 5 a 500 caracteres) e, se houver, CPF e
+  placa; a lista com pesquisa, filtro por categoria e **Só abertas**; **Marcar
+  como resolvida** (qualquer usuário) e **Excluir** (administrador). Tudo fica no
+  histórico, e CPF digitado na descrição vai mascarado.
+- **Cadastro e Controle de acesso, em detalhe:**
   - ao completar o CPF, a faixa de situação diz se a pessoa é nova, já
     cadastrada (nome, celular, placa e tipo se preenchem sozinhos, só nos campos
     vazios), está no campus (com o atalho "Registrar saída") ou está
@@ -332,15 +391,15 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
     (o responsável) está no campus, a pergunta se ele saiu junto (sai os
     dois, sem senha); placa de carro que não está no estacionamento é
     recusada, nunca dá a saída da pessoa;
-  - cartão **Movimento**, logo abaixo do formulário: o título numa linha
+  - cartão **Movimento**, no Controle de acesso: o título numa linha
     própria (com o status ao lado: "6 entradas hoje · 5 no campus"), as
-    subabas **Pessoas | Veículos** embaixo, à esquerda, e a busca e os
-    botões à direita. Em Pessoas: as
+    subabas **Pessoas | Veículos** embaixo, à esquerda, a pesquisa e o filtro
+    à direita, e os botões no pé. Em Pessoas: as
     entradas e saídas de hoje e todo mundo que ainda está no campus; com texto
     na busca, procura no **histórico inteiro** (nome, CPF, celular, placa ou
     tipo; o porteiro acha um CPF só pelos 11 dígitos, porque ele vê o CPF
     mascarado). A busca espera uma pausa de 300 ms na digitação. A situação
-    de cada visita: no campus, saiu, **Tempo excedido**
+    de cada visita: dentro, saiu, **Tempo excedido**
     (âmbar) ou **Saída pendente** (vermelho, em destaque), recalculada a cada
     30 s junto com as faixas. Duplo clique ou "Registrar saída" dão a saída
     (aceita várias linhas); o aviso com **Desfazer** fica 10 segundos ao
@@ -430,7 +489,7 @@ linhas, sem a ficha da placa) para a tabela continuar visível. Prints em
   desativado avisa. A **ficha** da pessoa escolhida mostra nome, CPF,
   celular e tipo, a placa, as visitas e a situação (na lista, a coluna
   Placa mostra a principal e quantas mais: "ABC1D23 +1"); no pé, **Registrar
-  entrada** (abre a Entrada e saída já preenchida), **Editar** (o mesmo
+  entrada** (abre o Cadastro já preenchido), **Editar** (o mesmo
   diálogo da Nova pessoa, com o CPF fixo) e, para o administrador,
   **Desativar** / Reativar e **Excluir** (só quem nunca teve visita; com
   histórico, o botão explica que é preciso desativar); e duas seções —
@@ -575,7 +634,7 @@ Regras e segurança:
 ## Linguagem de comandos (Compiladores)
 
 A 2.4 transformou a relação com Compiladores em funcionalidade: o campo
-**Comando** (F2 ou Ctrl+K, na Entrada e saída) entende uma pequena
+**Comando** (F2 ou Ctrl+K, no Controle de acesso) entende uma pequena
 linguagem, analisada pelas fases de um compilador, em `portaria/linguagem/`.
 A gramática (EBNF, aprovada pelo aluno) está em
 [`docs/GRAMATICA_DA_LINGUAGEM.md`](docs/GRAMATICA_DA_LINGUAGEM.md); um teste
@@ -585,7 +644,8 @@ confere que ela é a mesma do código e que é **LL(1)**.
 entrada 529.982.247-25 aluno placa ABC1D23
 saida 52998224725 sem carro
 ABC1D23                                         (só a placa = saída do carro)
-cadastrar 111.444.777-35 visitante nome "Bruno Almeida" cel 31987651234
+cadastrar 111.444.777-35 visitante nome "Bruno Almeida" cel 31987651234 empresa "Alfa Ltda"
+entrada 390.533.447-05 professor nome "Carla Nogueira" cel 31987654321 empresa "UNA" motivo "Aula"
 desativar placa ABC1D23 motivo "furto no estacionamento"
 buscar maria visitante semana
 ```
@@ -595,7 +655,7 @@ buscar maria visitante semana
 | `entrada` | `entrada 529.982.247-25 aluno placa ABC1D23` | Registra a entrada | todos |
 | `saida` | `saida 52998224725` · `saida placa ABC1D23` · `saida 52998224725 sem carro` | Saída da pessoa ou do carro (`placa X`: com qual carro; `as 14:05`: horário de hoje que já passou) | todos |
 | *(implícito)* | `52998224725` · `ABC1D23` | Só o CPF ou só a placa = `saida` (a antiga Saída rápida) | todos |
-| `cadastrar` | `cadastrar 111.444.777-35 visitante nome "Bruno Almeida" cel 31987651234 [placa ABC1D23 placa NEY4829]` | Nova pessoa, sem entrada (RN41); um `placa` por carro (RN47) | todos |
+| `cadastrar` | `cadastrar 111.444.777-35 visitante nome "Bruno Almeida" cel 31987651234 empresa "Alfa Ltda" [placa ABC1D23 placa NEY4829]` | Nova pessoa, sem entrada (RN41); um `placa` por carro (RN47) | todos |
 | `editar` | `editar 11144477735 cel 31999990000 tipo professor` · `editar 11144477735 placa NEY4829 sem placa ABC1D23` | Muda nome, celular ou tipo; `placa X` inclui um carro e `sem placa X` tira (RN47) | todos |
 | `excluir` | `excluir 11144477735` | Exclui quem nunca teve visita (RN42) | admin |
 | `desativar` | `desativar 11144477735 motivo "agressão ao porteiro"` | Pessoa ou veículo não entra (RN12) | admin |
@@ -687,7 +747,7 @@ alguém apagá-los). Trate a pasta de backups com o mesmo cuidado do banco.
 **Privacidade na tela:** o porteiro vê o CPF mascarado (`***.982.247-**`) nas
 tabelas, na ficha da página Pessoas e na janela Corrigir (o lápis do campo
 deixa digitar um CPF novo, sem mostrar o antigo). **Exceção:** em Pessoas →
-"Registrar entrada", o CPF completo vai para o campo CPF da Entrada e saída,
+"Registrar entrada", o CPF completo vai para o campo CPF do Cadastro,
 porque é o dado necessário para registrar a entrada. O celular aparece
 completo na ficha da pessoa (é o campo para corrigi-lo). O histórico de ações
 grava os CPFs mascarados (o celular aparece completo quando uma correção o
@@ -738,7 +798,8 @@ danificado):
 | `portaria/interface.py` | Janela principal, barra lateral, sessão e o contrato que as telas usam |
 | `portaria/tela_login.py` | Login, primeiro acesso, "Defina sua senha", "Esqueci a senha" e a guarita travada |
 | `portaria/tela_recuperacao.py` | Códigos de recuperação (mostrar uma vez, imprimir, gerar novos) |
-| `portaria/tela_cadastro.py` | Entrada e saída (formulário, Movimento) |
+| `portaria/tela_cadastro.py` | Cadastro (formulário) e Controle de acesso (Movimento), uma classe para as duas páginas |
+| `portaria/tela_ocorrencias.py` | Ocorrências: o livro da portaria (RN49) |
 | `portaria/tela_comando.py` | Campo Comando: realce, Tab, console e modo didático (2.4) |
 | `portaria/linguagem/` | A linguagem de comandos: `lexico.py`, `gramatica.py`, `sintatico.py`, `simbolos.py`, `semantico.py`, `executor.py`, `interpretador.py`, `erros.py` |
 | `docs/GRAMATICA_DA_LINGUAGEM.md` | A gramática da linguagem (tokens, EBNF, checagens, erros por fase) |
@@ -752,13 +813,14 @@ danificado):
 | `portaria/seletor_data.py` | Calendário e relógio dos campos de data e hora (Canvas) |
 | `portaria/tela_senha.py` | Janela "Trocar minha senha" |
 | `docs/design/` | Proposta de design, protótipo e prints (antes, protótipo e final) |
+| `docs/ENUNCIADO_A3.md` | O enunciado da Atividade A3, item por item, com o teste de cada um |
 | `docs/CRUD.md` | Matriz CRUD: cada página e aba × Criar, Ler, Atualizar e Excluir |
 | `docs/revisao/` | Relatórios das revisões de segurança, código e backend (antes e depois da reforma) |
 | `docs/qa/` | Relatórios dos dois testes de QA, a situação de cada achado (`CORRECOES.md`) e prints antes/depois |
 | `build_exe.py` | Gera o `dist/Portaria.exe` com o PyInstaller |
 | `build_instalador.py` e `instalador/portaria.iss` | Geram o instalador com o Inno Setup |
 | `portaria/caminhos.py` | Escolhe a pasta de dados (instalado × portátil) |
-| `assets/` | Ícone do programa (`portaria.ico`) e o script que o gera |
+| `assets/` | Ícone do programa (`portaria.ico`), logo do login (`logo_portaria.png`) e o script que os gera |
 | `tests/` | Testes automatizados |
 | `IDEIAS_E_MELHORIAS.md` | Análise do código, falhas encontradas e roteiro de melhorias |
 | `docs/IDEIAS_NOVAS.md` | Sugestões de novas funcionalidades e o esboço da linha de comando (Compiladores) |
@@ -768,6 +830,29 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**3.0** (06/11/2026) — **projeto final, Atividade A3** (banco v13; o banco antigo
+é migrado sozinho, com backup antes):
+
+- **Login**: `tk.Checkbutton` Mostrar senha, botão Limpar, logo em imagem e
+  `tk.Button`;
+- **Cadastro** e **Controle de acesso** em páginas separadas (a Entrada e saída
+  foi dividida). Cadastro: empresa e motivo (`tk.Text`) obrigatórios, data e horário
+  separados, Cadastrar, Limpar e Cancelar, código de identificação na confirmação
+  (RN48). Controle: filtro (Combobox), coluna Código, situação "Dentro" ou "Saiu",
+  Registrar entrada na pessoa selecionada, Atualizar e Voltar; a pesquisa também
+  acha pela empresa e pelo código;
+- **desafios extras**: veículos e placas (já existia), **prestadores de serviços**
+  (o filtro mostra a empresa e o motivo) e **ocorrências** (página nova, RN49);
+- a **linguagem** ganhou `empresa` e `motivo`, com as mesmas regras do formulário;
+  Corrigir, Nova pessoa, Editar, a ficha da pessoa e o CSV também;
+- "celular" virou **telefone** nas telas e mensagens;
+- **testes**: `tests/test_enunciado_a3.py` confere o enunciado item por item;
+  casos CT-90 a CT-109; NUMERO_DE_TESTES testes automatizados. Campanha de ataque da
+  3.0: 48 mil operações aleatórias no banco, 20 mil linhas de fuzz na linguagem,
+  macaco na janela de verdade e smoke visível nos dois temas e dois tamanhos.
+  Um teste novo mede os objetos gráficos do Windows durante o uso. O mapa está em
+  [`docs/ENUNCIADO_A3.md`](docs/ENUNCIADO_A3.md).
 
 **2.5.3** (30/10/2026) — o modo didático saiu da tela (pedido do aluno): o
 interruptor "Didático" ao lado do campo Comando não aparece mais; o modo

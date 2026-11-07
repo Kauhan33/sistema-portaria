@@ -83,9 +83,9 @@ SEGUNDOS_PARA_DESFAZER = 10
 SAIDA_JA_FEITA = ("Essa visita já tinha saída ou foi excluída em outra "
                   "estação. A tabela foi atualizada.")
 LIMITE_BUSCA = 200
-COLUNAS = [("Nome", "Nome", 116, "w"), ("CPF", "CPF", 116, "w"),
+COLUNAS = [("Nome", "Nome", 110, "w"), ("CPF", "CPF", 116, "w"),
            ("Celular", "Telefone", 112, "w"), ("Placa", "Placa", 78, "w"),
-           ("Tipo", "Tipo de acesso", 146, "w"),
+           ("Tipo", "Tipo de acesso", 152, "w"),
            ("Entrada", "Entrada", 126, "w"), ("Saida", "Saída", 126, "w"),
            ("Codigo", "Código", 72, "center"), ("Empresa", "Empresa", 150, "w"),
            ("Motivo", "Motivo", 190, "w")]

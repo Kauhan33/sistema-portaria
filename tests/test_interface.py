@@ -1589,7 +1589,7 @@ class TestAbaPessoas(BaseInterface):
         self.assertEqual(self.aba.lbl_visitas.cget("text"), "1")
         self.assertEqual(self.aba.desenho_placa.texto, "QWE1234")
         self.assertEqual(self.aba.lbl_contato.cget("text"),
-                         "(31) 93333-4444  ·  Professor")
+                         "(31) 93333-4444  ·  Professor  ·  UNA")
 
     def test_editar_abre_o_dialogo_preenchido_com_o_cpf_fixo(self):
         self.selecionar(self.beto)

@@ -134,7 +134,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-NUMERO_DE_TESTES testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
+1099 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
 Atividade A3 item por item** (`tests/test_enunciado_a3.py`: as três telas, os
 requisitos técnicos e os desafios extras, além de um teste de que usar as telas
 não consome os recursos do Windows), a **linguagem de
@@ -848,7 +848,7 @@ danificado):
   Corrigir, Nova pessoa, Editar, a ficha da pessoa e o CSV também;
 - "celular" virou **telefone** nas telas e mensagens;
 - **testes**: `tests/test_enunciado_a3.py` confere o enunciado item por item;
-  casos CT-90 a CT-109; NUMERO_DE_TESTES testes automatizados. Campanha de ataque da
+  casos CT-90 a CT-109; 1099 testes automatizados. Campanha de ataque da
   3.0: 48 mil operações aleatórias no banco, 20 mil linhas de fuzz na linguagem,
   macaco na janela de verdade e smoke visível nos dois temas e dois tamanhos.
   Um teste novo mede os objetos gráficos do Windows durante o uso. O mapa está em

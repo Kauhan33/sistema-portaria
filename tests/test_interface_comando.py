@@ -328,7 +328,7 @@ class TestModoDidatico(BaseComando):
 
     def test_so_pelo_atalho_do_teclado(self):
         """2.5.3 (pedido do aluno): o interruptor "Didático" não aparece;
-        Ctrl+Shift+D (de qualquer página) leva à Entrada e saída e abre o
+        Ctrl+Shift+D (de qualquer página) leva ao Controle de acesso e abre o
         modo; de novo, fecha. O atalho está em Configurações › Atalhos."""
         self.assertEqual(self.painel.alternador.winfo_manager(), "")
         self.assertIn("<Control-Key-D>", self.app.janela.bind())

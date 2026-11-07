@@ -1065,6 +1065,172 @@ CASOS = [
           "test_cpf_trocado_tira_a_placa_da_pessoa_errada",
           "test_placas.TestCorrecaoDaPlaca."
           "test_quem_podia_retirar_o_carro_errado_sai_da_lista"]),
+    # --- Versão 3.0: o enunciado da Atividade A3, tela por tela --------
+    caso("CT-90", ["RF34", "RNF02"], POSITIVO,
+         "Login: mostrar e ocultar a senha",
+         "Digitar a senha e marcar e desmarcar o Checkbutton Mostrar senha.",
+         "A senha começa escondida, aparece com a marca e volta a esconder; "
+         "o texto digitado não muda.",
+         ["test_enunciado_a3.TestTela1Login.test_senha_comeca_escondida_e_o_checkbutton_mostra",
+          "test_enunciado_a3.TestPrimeiroAcessoComCheckbutton."
+          "test_mostra_as_duas_senhas_e_limpar_nao_apaga_o_que_nao_deve"]),
+    caso("CT-91", ["RF34"], POSITIVO, "Login: Limpar e a imagem do logo",
+         "Clicar em Limpar depois de um erro; abrir o login.",
+         "Os campos esvaziam, a senha volta a esconder e o erro some. O logo é "
+         "uma imagem (assets/logo_portaria.png), que também vai no .exe.",
+         ["test_enunciado_a3.TestTela1Login.test_limpar_esvazia_esconde_a_senha_e_o_erro",
+          "test_enunciado_a3.TestTela1Login.test_logo_e_uma_imagem_de_verdade",
+          "test_enunciado_a3.TestTela1Login.test_arquivo_do_logo_existe_e_vai_no_exe"]),
+    caso("CT-92", ["RF34", "RN38"], NEGATIVO,
+         "Login: campos vazios e dados incorretos",
+         "Entrar com campos vazios, só espaços, senha errada e usuário que "
+         "não existe.",
+         "Nenhum entra. Vazio pede para informar; errado dá a mesma mensagem "
+         "para usuário e senha (não entrega quem existe).",
+         ["test_enunciado_a3.TestTela1Login.test_impede_campos_vazios",
+          "test_enunciado_a3.TestTela1Login.test_dados_incorretos_dao_mensagem_de_erro",
+          "test_enunciado_a3.TestTela1Login.test_usuario_que_nao_existe_da_a_mesma_mensagem"]),
+    caso("CT-93", ["RF01", "RN48"], POSITIVO,
+         "Cadastro completo: salva no SQLite, gera o código e confirma",
+         "Preencher nome, CPF, telefone, tipo, empresa, data, horário e motivo "
+         "e clicar em Cadastrar.",
+         "A visita e a empresa ficam no banco; a faixa verde confirma com o "
+         "código (\"Código 001\"), cada cadastro tem o seu, e o formulário "
+         "fica limpo.",
+         ["test_enunciado_a3.TestTela2Cadastro.test_salva_tudo_no_sqlite",
+          "test_enunciado_a3.TestTela2Cadastro.test_gera_codigo_e_confirma_depois_de_salvar",
+          "test_enunciado_a3.TestTela2Cadastro.test_cada_cadastro_tem_o_seu_codigo"]),
+    caso("CT-94", ["RN01", "RN06", "RN48"], NEGATIVO,
+         "Cadastro: cada campo obrigatório e CPF inválido",
+         "Deixar vazio (ou só com espaços) cada campo; CPF com dígitos errados "
+         "ou repetidos; data e horário que não existem.",
+         "Nada é gravado e a mensagem diz o campo.",
+         ["test_enunciado_a3.TestTela2Cadastro.test_cada_campo_obrigatorio",
+          "test_enunciado_a3.TestTela2Cadastro.test_so_espacos_nao_contam",
+          "test_enunciado_a3.TestTela2Cadastro.test_cpf_vazio_ou_invalido_e_recusado",
+          "test_enunciado_a3.TestTela2Cadastro.test_data_ou_horario_invalidos"]),
+    caso("CT-95", ["RN05"], NEGATIVO, "Cadastro: não duplica a entrada",
+         "Cadastrar duas vezes o mesmo CPF, sem saída.",
+         "A segunda é recusada: \"entrada sem saída\".",
+         ["test_enunciado_a3.TestTela2Cadastro.test_nao_duplica_a_entrada_em_aberto",
+          "test_enunciado_a3.TestTela3Controle.test_impede_segunda_entrada_sem_saida"]),
+    caso("CT-96", ["RF35"], POSITIVO, "Cadastro: Limpar e Cancelar",
+         "Preencher e clicar em Limpar; preencher e clicar em Cancelar.",
+         "Limpar esvazia tudo e volta a data e o horário para agora; Cancelar "
+         "não grava e vai ao Controle de acesso.",
+         ["test_enunciado_a3.TestTela2Cadastro.test_limpar_esvazia_todos_os_campos",
+          "test_enunciado_a3.TestTela2Cadastro.test_cancelar_descarta_e_vai_ao_controle"]),
+    caso("CT-97", ["RN33", "RN14", "RN48"], NEGATIVO,
+         "Motivo: limite, colagem, SQL injection e CPF no texto",
+         "Colar 250 caracteres, texto com quebras de linha, comando SQL, "
+         "emoji e um CPF no motivo.",
+         "Para em 200, fica numa linha, é gravado como texto, sem quebrar nada, "
+         "e o CPF vai mascarado.",
+         ["test_enunciado_a3.TestTela2Cadastro.test_motivo_tem_limite_e_contador",
+          "test_enunciado_a3.TestTela2Cadastro.test_motivo_colado_com_quebras_vira_uma_linha_so",
+          "test_enunciado_a3.TestTela2Cadastro.test_codigo_e_sql_injection_no_motivo_nao_quebram",
+          "test_enunciado_a3.TestTela2Cadastro.test_cpf_no_motivo_vai_mascarado_na_tela_do_porteiro"]),
+    caso("CT-98", ["RN48"], POSITIVO,
+         "Quem já veio traz a empresa e o motivo; cadastro antigo completa",
+         "Digitar o CPF de quem já veio; de quem veio antes da 3.0, sem empresa.",
+         "Os campos vêm preenchidos. O cadastro antigo pede a empresa e o "
+         "motivo uma vez e fica completo.",
+         ["test_enunciado_a3.TestTela2Cadastro.test_cpf_de_quem_ja_veio_traz_empresa_e_ultimo_motivo",
+          "test_enunciado_a3.TestTela2Cadastro.test_cadastro_antigo_sem_empresa_pede_para_completar",
+          "test_enunciado_a3.TestTela3Controle.test_registrar_entrada_com_cadastro_antigo_abre_o_cadastro"]),
+    caso("CT-99", ["RF35", "RF03"], POSITIVO,
+         "Controle: as colunas, a pesquisa e o filtro",
+         "Pesquisar por nome, CPF e empresa; filtrar por Todos, Dentro, Saiu "
+         "e por tipo de acesso; juntar os dois.",
+         "A tabela tem Código, Nome, CPF, Tipo de acesso, Entrada, Saída e "
+         "Situação e mostra só as linhas certas.",
+         ["test_enunciado_a3.TestTela3Controle.test_colunas_do_enunciado",
+          "test_enunciado_a3.TestTela3Controle.test_pesquisa_localiza_por_nome_cpf_e_empresa",
+          "test_enunciado_a3.TestTela3Controle.test_filtro_todos_dentro_saiu_e_tipos",
+          "test_enunciado_a3.TestTela3Controle.test_filtro_e_pesquisa_juntos"]),
+    caso("CT-100", ["RF35", "RN05"], POSITIVO,
+         "Controle: Registrar entrada e saída com horário automático",
+         "Selecionar uma pessoa e clicar em Registrar entrada; depois, em "
+         "Registrar saída.",
+         "Os horários são os do relógio do sistema, a situação passa de "
+         "\"Dentro\" para \"Saiu\" e a tabela atualiza a cada operação.",
+         ["test_enunciado_a3.TestTela3Controle.test_registrar_entrada_com_horario_automatico",
+          "test_enunciado_a3.TestTela3Controle.test_registrar_saida_com_horario_automatico",
+          "test_enunciado_a3.TestTela3Controle.test_situacao_dentro_ou_saiu",
+          "test_enunciado_a3.TestTela3Controle.test_tabela_atualiza_depois_de_cada_operacao"]),
+    caso("CT-101", ["RF35"], NEGATIVO, "Controle: ações sem seleção ou repetidas",
+         "Clicar em Registrar entrada e saída sem selecionar; dar saída em "
+         "quem já saiu.",
+         "Avisa e não grava; a saída de quem já saiu não muda o horário.",
+         ["test_enunciado_a3.TestTela3Controle.test_registrar_entrada_sem_selecao_avisa",
+          "test_enunciado_a3.TestTela3Controle.test_registrar_saida_sem_selecao_avisa",
+          "test_enunciado_a3.TestTela3Controle.test_saida_de_quem_ja_saiu_e_recusada"]),
+    caso("CT-102", ["RF35"], POSITIVO, "Controle: Atualizar e Voltar",
+         "Outra estação grava uma entrada; clicar em Atualizar e em Voltar.",
+         "Atualizar mostra a entrada nova; Voltar abre o Cadastro.",
+         ["test_enunciado_a3.TestTela3Controle.test_atualizar_le_o_que_a_outra_estacao_gravou",
+          "test_enunciado_a3.TestTela3Controle.test_voltar_vai_ao_cadastro"]),
+    caso("CT-103", ["RF37", "RN48"], POSITIVO,
+         "Desafio extra: registro de prestadores de serviços",
+         "Filtrar o Controle por Prestador de serviço.",
+         "A tabela troca a Placa e o Tipo pela Empresa e o Motivo; ao voltar "
+         "para Todos, as colunas voltam.",
+         ["test_enunciado_a3.TestTela3Controle.test_prestador_mostra_empresa_e_motivo"]),
+    caso("CT-104", ["RF36", "RN49"], POSITIVO,
+         "Desafio extra: registro de ocorrências",
+         "Registrar, pesquisar, filtrar, marcar como resolvida e excluir.",
+         "Fica no livro com a categoria, o usuário e a situação; o administrador "
+         "exclui com confirmação; tudo no histórico.",
+         ["test_enunciado_a3.TestOcorrencias.test_registra_e_aparece_no_livro",
+          "test_enunciado_a3.TestOcorrencias.test_filtros_e_pesquisa",
+          "test_enunciado_a3.TestOcorrencias.test_resolver_e_filtro_so_abertas",
+          "test_enunciado_a3.TestOcorrencias.test_excluir_pede_confirmacao_e_fica_no_historico"]),
+    caso("CT-105", ["RN49", "RN02", "RN14"], NEGATIVO,
+         "Ocorrências: dados inválidos, permissão e CPF no texto",
+         "Sem categoria, descrição curta, CPF e placa inválidos; porteiro "
+         "tentando excluir direto no banco; CPF na descrição; duas estações "
+         "resolvendo a mesma.",
+         "Recusa com a mensagem certa; o banco confere a permissão de novo; o "
+         "CPF fica mascarado; a segunda estação é avisada.",
+         ["test_enunciado_a3.TestOcorrencias.test_validacao",
+          "test_enunciado_a3.TestOcorrenciasNoBanco.test_porteiro_nao_exclui_nem_com_a_tela_burlada",
+          "test_enunciado_a3.TestOcorrencias.test_cpf_digitado_na_descricao_vai_mascarado",
+          "test_enunciado_a3.TestOcorrencias.test_resolver_duas_vezes_em_duas_estacoes"]),
+    caso("CT-106", ["RNF04"], POSITIVO, "Requisitos técnicos do enunciado",
+         "Ler o código-fonte: widgets, estruturas e bibliotecas.",
+         "Tem Entry, Button, Label, Combobox, Checkbutton, Treeview, Text e "
+         "PhotoImage; IF/ELSE, FOR/WHILE, funções e TRY/EXCEPT; SQLite3, "
+         "Datetime e CSV, só da biblioteca padrão.",
+         ["test_enunciado_a3.TestRequisitosTecnicos.test_widgets_pedidos",
+          "test_enunciado_a3.TestRequisitosTecnicos.test_estruturas_pedidas",
+          "test_enunciado_a3.TestRequisitosTecnicos.test_bibliotecas_pedidas",
+          "test_enunciado_a3.TestRequisitosTecnicos.test_so_biblioteca_padrao"]),
+    caso("CT-107", ["RNF03"], POSITIVO,
+         "Dia inteiro de uso não consome os recursos do Windows",
+         "Repetir 25 vezes: cadastrar, dar saída, corrigir e abrir todas as "
+         "páginas e diálogos.",
+         "O número de objetos gráficos do processo não cresce.",
+         ["test_enunciado_a3.TestSemVazamentoDeRecursos."
+          "test_usar_as_telas_nao_consome_objetos_graficos"]),
+    caso_da_linguagem(
+        "CT-108", "Semântico", ["RN46", "RN48"], NEGATIVO,
+        "Empresa e motivo: as mesmas regras do formulário",
+        "entrada de CPF novo sem empresa; cadastrar com empresa vazia.",
+        "Recusa, como o formulário; nada é gravado.",
+        ["test_enunciado_a3.TestLinguagemComEmpresaEMotivo."
+         "test_entrada_nova_sem_empresa_e_recusada_como_no_formulario",
+         "test_enunciado_a3.TestLinguagemComEmpresaEMotivo.test_empresa_vazia_e_recusada"]),
+    caso_da_linguagem(
+        "CT-109", "Execução", ["RN46", "RN48"], POSITIVO,
+        "Empresa e motivo pela linguagem",
+        "entrada ... empresa \"Alfa Ltda\" motivo \"Reunião\"; entrada só com o "
+        "CPF de quem já veio; cadastrar e editar a empresa.",
+        "Grava igual ao formulário; quem já veio reaproveita a empresa e o "
+        "último motivo.",
+        ["test_enunciado_a3.TestLinguagemComEmpresaEMotivo.test_entrada_nova_com_tudo",
+         "test_enunciado_a3.TestLinguagemComEmpresaEMotivo."
+         "test_quem_ja_veio_reaproveita_empresa_e_motivo",
+         "test_enunciado_a3.TestLinguagemComEmpresaEMotivo.test_cadastrar_e_editar_empresa"]),
 ]
 
 

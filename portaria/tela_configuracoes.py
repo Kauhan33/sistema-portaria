@@ -41,7 +41,7 @@ SECOES = ("Funcionamento", "Categorias", "Feriados e eventos", "Atalhos")
 # modo didático, que não tem mais botão na tela
 ATALHOS = (
     ("F2 ou Ctrl+K", "Vai ao campo Comando, de qualquer página"),
-    ("Enter", "Registrar entrada (na Entrada e saída) ou executar o comando"),
+    ("Enter", "Registrar entrada (no Cadastro) ou executar o comando"),
     ("Tab", "No campo Comando: completa o comando, a palavra, o tipo ou o nome"),
     ("Esc", "No campo Comando: limpa a linha; fecha o console"),
     ("Ctrl+L", "Travar a guarita (Ausentar)"),

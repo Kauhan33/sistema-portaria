@@ -202,6 +202,17 @@ class TestTela2Cadastro(BaseCadastro):
                        "Motivo da visita *", "* campos obrigatórios"):
             self.assertIn(rotulo, textos)
 
+    def test_as_tres_colunas_do_formulario_tem_a_mesma_largura(self):
+        self.janela.deiconify()
+        for tamanho in ("1093x536", "1180x760"):
+            self.janela.geometry(tamanho)
+            self.janela.update()
+            tela = self.app.tela_cadastro
+            larguras = [c.winfo_width() for c in (tela.pecas["celular"][1],
+                                                  tela.pecas["placa"][1],
+                                                  tela.pecas["tipo"][1])]
+            self.assertLessEqual(max(larguras) - min(larguras), 14, larguras)
+
     def test_data_abre_o_calendario(self):
         campo = self.app.tela_cadastro.pecas["data"][1]
         self.assertEqual(campo.modo_seletor, "data")
@@ -473,6 +484,38 @@ class TestTela3Controle(BaseCadastro):
                 self.tela.filtro.event_generate("<<ComboboxSelected>>")
                 self.janela.update()
                 self.assertEqual({n for _, n in self.linhas()}, esperado)
+
+    def test_pesquisa_acha_pelo_codigo(self):
+        ana = self.entrar()
+        self.entrar(cpf=BETO, nome="Beto Rocha")
+        self.buscar(f"{ana:03d}")
+        self.assertEqual([n for _, n in self.linhas()], ["Ana Silva"])
+
+    def test_filtro_vai_ao_banco_antes_do_limite(self):
+        """Uma visita antiga aparece mesmo com muitas visitas mais novas."""
+        antiga = self.banco.inserir(dict(VISITA_ANTIGA, placa="", nome="Ana Velha",
+                                         cpf=CARLA, tipo="Professor"), autor="ana.admin")
+        with mock.patch("portaria.tela_cadastro.LIMITE_BUSCA", 1):
+            self.entrar()                   # "ana", mais nova e Visitante
+            self.tela.filtro.set("Professor")
+            self.buscar("ana")
+            self.assertEqual(self.tela.tabela.get_children(), (str(antiga),))
+            self.tela.filtro.set("Saiu")
+            self.buscar("ana")
+            self.assertEqual(self.tela.tabela.get_children(), (str(antiga),))
+            self.tela.filtro.set("Dentro")
+            self.buscar("ana")
+            self.assertEqual([n for _, n in self.linhas()], ["Ana Silva"])
+
+    def test_formulario_e_filtro_sobrevivem_a_troca_de_tema(self):
+        self.preencher_tudo()
+        self.tela.filtro.set("Saiu")
+        self.app.trocar_tema("escuro")
+        tela = self.app.tela_cadastro
+        self.assertEqual(tela.empresa.get(), "Alfa Ltda")
+        self.assertEqual(tela.motivo.get(), "Reunião")
+        self.assertEqual(tela.filtro.get(), "Saiu")
+        self.assertEqual(self.app.abas.select(), str(self.app.aba_controle))
 
     def test_filtro_e_pesquisa_juntos(self):
         self.entrar()

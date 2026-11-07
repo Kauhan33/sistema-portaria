@@ -38,7 +38,7 @@ CONTRATO DO APP — o que as telas podem usar da AppPortaria:
     app.atualizar_tabela()       relê o movimento e redesenha a Entrada e
                                  saída, o Painel e os contadores do menu
     app.avisar(texto, desfazer=None)  aviso que some sozinho no Movimento
-    app.preencher_pessoa(pessoa) abre a Entrada e saída com a pessoa preenchida
+    app.preencher_pessoa(pessoa) abre o Cadastro com a pessoa preenchida
     app.ir_para(pagina)          mostra uma página (ex.: app.aba_pessoas)
     app.mostrar_desativacao(tipo, valor)  abre Pessoas › Pessoas desativadas
                                  (tipo "cpf") ou › Veículos desativados
@@ -59,19 +59,19 @@ Nenhuma tela mexe em atributo com "_" do app.
 Tema (claro/escuro): as cores vêm de estilo.COR, que muda de conteúdo com
 o tema. Trocar o tema = estilo.usar_tema + remontar a barra lateral e as
 páginas (as telas leem as cores na montagem), mantendo a sessão, a página
-aberta e o que estava digitado na Entrada e saída. A tela de login segue
+aberta e o que estava digitado no Cadastro. A tela de login segue
 sempre o tema do Windows: ela é da estação, não de um usuário.
 
 Ausentar (B4): o cadeado no rodapé da barra lateral (ou Ctrl+L) trava a
 guarita pelo MESMO caminho da sessão que expira (fecha as janelas abertas,
 e uma caixa que ficou aberta não grava nada: app.perguntar devolve None),
-mas guarda o rascunho da Entrada e saída e a página aberta. A tela de login
+mas guarda o rascunho do Cadastro e a página aberta. A tela de login
 diz "Guarita travada por Paulo às 14:32"; a mesma senha destrava e devolve
 o rascunho; OUTRO usuário entrando é troca de turno (o rascunho é
 descartado). Tudo vai para o histórico.
 
 Convenção das páginas: class AbaX com __init__(self, aba, app) e atualizar().
-A Entrada e saída é montada no login; as outras páginas na primeira vez que
+O Cadastro e o Controle de acesso são montados no login; as outras páginas na primeira vez que
 são abertas ou usadas (app.tela_pessoas etc. — ver PAGINAS_SOB_DEMANDA).
 """
 
@@ -110,7 +110,7 @@ SEGUNDOS_ENTRE_CONFERENCIAS = 30      # de quanto em quanto tempo olha a inativi
 AVISO_INATIVIDADE = (f"Sua sessão foi encerrada depois de {MINUTOS_INATIVIDADE} "
                      "minutos sem uso. Entre de novo para continuar.")
 
-# Nomes da Entrada e saída que continuam valendo como app.<nome> (os testes
+# Nomes do Cadastro e do Controle que continuam valendo como app.<nome> (os testes
 # e a versão anterior usavam assim): app.cpf é o mesmo que
 # app.tela_cadastro.cpf.
 NOMES_DO_CADASTRO = {
@@ -186,7 +186,7 @@ class AppPortaria:
 
     def __getattr__(self, nome):
         # Só é chamado quando o app não tem o atributo: app.cpf, app.cadastrar
-        # etc. são repassados para a Entrada e saída (ver NOMES_DO_CADASTRO).
+        # etc. são repassados para o Cadastro (ver NOMES_DO_CADASTRO).
         # app.tela_pessoas etc. ainda não montadas são montadas agora.
         if nome in PAGINAS_SOB_DEMANDA and "abas" in self.__dict__:
             return self._montar_pagina(nome)
@@ -544,7 +544,7 @@ class AppPortaria:
 
     def _vigiar_inatividade(self):
         """A cada SEGUNDOS_ENTRE_CONFERENCIAS: confere a inatividade e
-        deixa o tempo passar na Entrada e saída (campo Entrada, situação
+        deixa o tempo passar no Cadastro (campo Entrada, situação
         das linhas, saídas pendentes e aviso de fechamento)."""
         self._timer_inatividade = None
         if not self.conferir_inatividade() and self.usuario:
@@ -574,7 +574,7 @@ class AppPortaria:
         self._aplicar_icone()
         janela.geometry(f"{px(1180)}x{px(760)}")
         # cabe num notebook 1366x768 a 125% (área útil ~1366x670 px): abaixo
-        # de uns 740 px lógicos a Entrada e saída usa o layout compacto
+        # de uns 740 px lógicos o Controle de acesso usa o layout compacto
         janela.minsize(px(1000), px(500))
         janela.report_callback_exception = self._erro_inesperado
         carregar_fontes(janela)

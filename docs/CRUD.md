@@ -1,4 +1,4 @@
-# Matriz CRUD — Sistema de Portaria (versão 2.4)
+# Matriz CRUD — Sistema de Portaria (versão 3.0)
 
 Levantamento feito no código da versão 2.3 e revisto na 2.4 (`portaria/tela_*.py` e
 `portaria/dados.py`), página por página e aba por aba: como cada operação
@@ -16,13 +16,14 @@ listas.
 
 | Página › aba | Criar | Ler | Atualizar | Excluir |
 |---|---|---|---|---|
-| **Entrada e saída › Movimento › Pessoas** (visitas) | **Todos** — formulário "Nova entrada", botão **Registrar entrada** (ou Enter) | **Todos** — tabela Movimento (hoje + quem está no campus); a busca vai ao histórico inteiro | **Todos** — **Registrar saída** (botão, duplo clique, campo Comando F2/Ctrl+K com só o CPF ou a placa, Desfazer) e **Corrigir** (porteiro: entrada nas últimas 24 h, RN11; admin: qualquer uma) | **Admin** — **Excluir** (RN02); o porteiro nem vê o botão |
-| **Entrada e saída › Movimento › Veículos** (estadias) | Automático — a entrada **com placa** abre a estadia do carro (RN25); não há criação solta | **Todos** — subaba **Veículos (n)** | **Todos** — **Registrar saída** do carro (pela placa ou duplo clique); sem o dono, só com a senha do admin (RN32); a placa e o horário se corrigem pela visita (**Corrigir**) | Não se exclui: a estadia é histórico do estacionamento. Sai junto quando a visita encerrada que a abriu é excluída (RN28) |
+| **Cadastro** e **Controle de acesso › Movimento › Pessoas** (visitas) | **Todos** — Cadastro: formulário com empresa e motivo, botão **Cadastrar** (ou Enter), com o código na confirmação (RN48); Controle: **Registrar entrada** na pessoa selecionada | **Todos** — tabela Movimento (hoje + quem está no campus); a busca vai ao histórico inteiro | **Todos** — **Registrar saída** (botão, duplo clique, campo Comando F2/Ctrl+K com só o CPF ou a placa, Desfazer) e **Corrigir** (porteiro: entrada nas últimas 24 h, RN11; admin: qualquer uma) | **Admin** — **Excluir** (RN02); o porteiro nem vê o botão |
+| **Controle de acesso › Movimento › Veículos** (estadias) | Automático — a entrada **com placa** abre a estadia do carro (RN25); não há criação solta | **Todos** — subaba **Veículos (n)** | **Todos** — **Registrar saída** do carro (pela placa ou duplo clique); sem o dono, só com a senha do admin (RN32); a placa e o horário se corrigem pela visita (**Corrigir**) | Não se exclui: a estadia é histórico do estacionamento. Sai junto quando a visita encerrada que a abriu é excluída (RN28) |
 | **Pessoas › Ativas** | **Todos** — **Nova pessoa** (CPF, nome, celular, placas opcionais — até 5, RN47 —, tipo; sem entrada; RN41) | **Todos** — lista com busca (também por qualquer placa) e ordenação + ficha (visitas, veículos: a linha Carro escolhe o carro) | **Todos** — ficha › **Editar** (mesmo diálogo, CPF fixo; inclui e tira placas) | **Admin** — ficha › **Excluir**, só sem visitas (RN42); com histórico, **Desativar** (RN12) |
 | **Pessoas › Pessoas desativadas** | **Admin** — **Desativar CPF** (lista) ou ficha › **Desativar**, com motivo (RN12) | **Todos** — nome (ou "(sem cadastro)"), CPF, motivo, quando e quem; **Mostrar reativadas** | **Admin** — **Reativar** (lista ou ficha); o motivo não se edita: reative e desative de novo (os dois ficam no histórico) | Não se apaga: reativar encerra a desativação, que fica guardada (quem e quando) |
 | **Pessoas › Veículos desativados** | **Admin** — **Desativar placa** (lista) ou ficha › Veículo › **Desativar placa** | **Todos** — placa, pessoa dona, motivo, quando e quem; **Mostrar reativados** | **Admin** — **Reativar** (lista) ou ficha › **Reativar placa** | Não se apaga (como acima) |
 | **Pessoas › ficha › Veículo** (quem pode retirar o carro, RN35) | **Todos** — **Adicionar** (porteiro só com o dono no campus; admin a qualquer hora) | **Todos** — lista da placa (nome, CPF, validade) | **Todos** — **Validade** (RN45; mesma permissão de Adicionar) | **Todos** — **Remover** (remoção lógica, com histórico: remover só diminui a permissão) |
-| **Pessoas › ficha › Visitas** | — (a visita nasce na Entrada e saída) | **Todos** — histórico da pessoa | Pela **Entrada e saída › Corrigir** | Pela **Entrada e saída › Excluir** (Admin) |
+| **Pessoas › ficha › Visitas** | — (a visita nasce no Cadastro) | **Todos** — histórico da pessoa | Pelo **Controle de acesso › Corrigir** | Pelo **Controle de acesso › Excluir** (Admin) |
+| **Ocorrências** (RN49) | **Todos** — **Nova ocorrência** (categoria, descrição, CPF e placa opcionais) | **Todos** — lista com pesquisa, filtro por categoria e "Só abertas" | **Todos** — **Marcar como resolvida** (o texto não muda: é um livro) | **Admin** — **Excluir**, com confirmação e no histórico |
 | **Painel** | — | **Todos** — números do dia, gráficos e horários; **Exportar CSV** (Admin) | — | — |
 | **Usuários › Contas** | **Admin** — **Novo usuário** | **Admin** — lista de contas e a **Atividade** (histórico, com filtro) | **Admin** — **Editar** (nome e perfil; RN43), **Redefinir senha** (RN39), **Ativar**; cada um troca a própria senha (menu da conta) | **Admin** — **Desativar** (não apaga: o login identifica quem fez cada ação no histórico; RN08 garante um admin ativo) |
 | **Usuários › Exceções** | — (as exceções nascem nas autorizações da guarita) | **Admin** — período, tipo e quem autorizou; **Exportar CSV** | — | — |
@@ -33,7 +34,7 @@ listas.
 
 ## CRUD também pela linguagem de comandos (2.4)
 
-O campo **Comando** (F2 ou Ctrl+K, na Entrada e saída) faz o CRUD da
+O campo **Comando** (F2 ou Ctrl+K, no Controle de acesso) faz o CRUD da
 pessoa e da visita por texto. É só outra porta (RN46): cada comando passa
 pelas mesmas funções e pelos mesmos métodos do `Banco` dos botões acima,
 abre os mesmos diálogos e confirmações e respeita o mesmo perfil — o
@@ -72,7 +73,7 @@ pelos botões (a gramática aprovada não tem esses comandos).
 - **Painel** é **só leitura**: é um relatório calculado na hora a partir das
   visitas (números do dia, gráficos, horários). Não existe um "registro do
   Painel" para criar, editar ou excluir; mudar o que ele mostra é mudar as
-  visitas, na Entrada e saída. A exportação (CSV) é uma leitura.
+  visitas, no Cadastro e no Controle de acesso. A exportação (CSV) é uma leitura.
 - **Exceções** é **leitura e exportação**: cada linha é um evento de
   auditoria (quem autorizou o quê, quando e por quê). Por segurança, a
   trilha de auditoria não se edita nem se apaga — senão quem passou por
@@ -84,6 +85,6 @@ pelos botões (a gramática aprovada não tem esses comandos).
 - **Desativações** não se apagam pelo mesmo motivo: reativar guarda quem
   reativou e quando.
 - **Veículos (estadias)** e **Visitas da ficha** não têm botões próprios de
-  criar e excluir: nascem e somem com a visita (Entrada e saída).
+  criar e excluir: nascem e somem com a visita (Cadastro e Controle de acesso).
 - **Configurações › Funcionamento e Categorias** são parâmetros fixos (um
   por dia da semana e um por tipo de acesso): só se lê e se atualiza.

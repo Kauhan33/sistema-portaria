@@ -1031,7 +1031,7 @@ class TestSessao(BaseInterface):
             return {n for n in ("tela_pessoas", "tela_dashboard")
                     if n in vars(self.app)}
 
-        self.assertEqual(montadas(), set())         # só a Entrada e saída
+        self.assertEqual(montadas(), set())         # só o Cadastro e o Controle
         self.app.ir_para(self.app.aba_pessoas)
         self.assertEqual(montadas(), {"tela_pessoas"})
         self.assertEqual(len(self.app.aba_pessoas.winfo_children()), 3)

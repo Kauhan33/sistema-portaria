@@ -16,7 +16,7 @@ Quando falta algo que o formulário perguntaria, o fluxo da tela abre o
 MESMO diálogo ("Vai entrar de carro?", "Com qual carro está saindo?", a
 autorização do administrador) e conclui. O banco confere tudo de novo.
 
-A `porta` é a página Entrada e saída (AbaCadastro); `app` é a janela
+A `porta` são as páginas Cadastro e Controle de acesso (AbaCadastro); `app` é a janela
 principal (o contrato público de interface.py: banco, usuario, autor,
 relogio, tentar, perguntar, exibir_cpf).
 """
@@ -83,7 +83,7 @@ class Executor:
         return Resposta(CANCELADO, NADA_GRAVADO)
 
     # --------------------------------------------------------------
-    # Entrada e saída: os fluxos da página Entrada e saída
+    # Entrada e saída: os fluxos do Cadastro e do Controle
     # --------------------------------------------------------------
     def _entrada(self, registro, sugerida, pessoa_id, confirmar_tipo):
         if confirmar_tipo and not self.app.perguntar(

@@ -1,6 +1,6 @@
 """
 Linguagem de comandos da portaria (versão 2.4): o campo Comando (F2 ou
-Ctrl+K) da página Entrada e saída.
+Ctrl+K) da página Controle de acesso.
 
 Um comando passa pelas fases de um compilador, cada uma num módulo:
 

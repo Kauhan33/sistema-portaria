@@ -17,7 +17,8 @@ As ideias estão agrupadas em versões. Cada versão é entregável sozinha.
 - **Esquema:** a versão do banco depois da entrega. Hoje o banco está na v10.
   Toda migração é atômica (`PRAGMA user_version`) e faz um backup antes.
 - **RN nova:** a numeração continua a partir da RN35 (na 2.3 foram da RN41
-  à RN45; na 2.4, a RN46; na 2.5, a RN47; a próxima livre é a RN48).
+  à RN45; na 2.4, a RN46; na 2.5, a RN47; na 3.0, a RN48 e a RN49; a próxima
+  livre é a RN50).
 
 **O que todo item precisa ter para ser considerado pronto** (vale para todos e
 não se repete abaixo):
@@ -425,20 +426,58 @@ Pedido do aluno depois do teste da 2.4 (30/10/2026).
   callback do Tk dá erro, e um erro inesperado com a pilha cheia não
   derruba mais o programa.
 
-## Versão 2.6 — Visitante e operação da guarita (esquema v13)
+## Versão 3.0 — Atividade A3 (esquema v13) ✅
 
-### A1. Visitante completo: anfitrião, setor, motivo e crachá · M · RN48
+O enunciado da Atividade A3 pede três telas e pelo menos dois desafios extras.
+O que ele pede, item por item, está em [`ENUNCIADO_A3.md`](ENUNCIADO_A3.md).
+
+### A3-1. Login do enunciado · P · RF34 ✅
+- `tk.Checkbutton` **Mostrar senha** (RNF02: começa escondida, e cada
+  formulário novo volta a esconder), `tk.Button` **Entrar** e **Limpar** e a
+  **imagem** do logo (`assets/logo_portaria.png`, com a marca desenhada de
+  reserva se o arquivo faltar).
+
+### A3-2. Cadastro separado do Controle de acesso · G · RF35, RN48 ✅
+- A antiga "Entrada e saída" virou duas páginas: **Cadastro** (o formulário) e
+  **Controle de acesso** (o Movimento e o campo Comando). Uma classe só
+  (`AbaCadastro`) cuida das duas: `aba` e `aba_controle`.
+- Cadastro: **Empresa** e **Motivo** (`tk.Text`, `CampoTexto`) obrigatórios,
+  **Data** e **Horário** separados, botões **Cadastrar**, **Limpar** e
+  **Cancelar** (`tk.Button`, `BotaoTk`), confirmação com o **código**.
+- Controle: **filtro** (Combobox), colunas **Código** e **Situação**
+  ("Dentro" ou "Saiu"), botões **Registrar entrada** (na pessoa selecionada),
+  **Registrar saída**, **Atualizar** e **Voltar**.
+- **Banco (v13):** `registros.empresa`, `registros.motivo`, `pessoas.empresa`.
+
+### A3-3. Ocorrências · M · RF36, RN49 ✅
+- Página **Ocorrências** (`tela_ocorrencias.py`): pesquisa, filtro por
+  categoria, "Só abertas" (`tk.Checkbutton`), Nova ocorrência, Marcar como
+  resolvida e Excluir (administrador). **Banco (v13):** tabela `ocorrencias`.
+
+### A3-4. Prestadores de serviços · P · RF37 ✅
+- Filtrando por **Prestador de serviço**, a tabela mostra Empresa e Motivo no
+  lugar da Placa e do Tipo; a pesquisa também acha pela empresa.
+
+### A3-5. Linguagem de comandos · P · RN46, RN48 ✅
+- `entrada ... empresa "..." motivo "..."`, `cadastrar ... empresa "..."` e
+  `editar ... empresa "..."`, com as mesmas regras do formulário. Quem já veio
+  reaproveita a empresa do cadastro e o motivo da última visita.
+
+---
+
+## Versão 3.1 — Visitante e operação da guarita (esquema v14)
+
+### A1. Visitante completo: anfitrião, setor e crachá · M · RN50
 - Para Visitante, Prestador e Entregador, aparece uma linha extra no
   formulário:
   - **Vai até:** nome ou setor, com sugestões; até 60 caracteres;
-  - **Motivo:** reunião, entrega, manutenção, evento ou outro;
   - **Crachá:** sugere o primeiro número livre, de 1 a 50 (faixa ajustável em
     Configurações).
-- **Regra (RN48):**
+- **Regra (RN50):**
   - um crachá não fica com duas pessoas ao mesmo tempo;
   - na saída, o sistema pergunta "Devolveu o crachá 07?";
   - os crachás não devolvidos aparecem numa faixa.
-- **Banco (v13):** colunas opcionais `anfitriao`, `motivo` e `cracha` em
+- **Banco (v14):** colunas opcionais `anfitriao` e `cracha` em
   `registros`; `parametros.crachas` com a faixa de números.
 
 ### A4. Lista de evacuação · P
@@ -447,13 +486,10 @@ Pedido do aluno depois do teste da 2.4 (30/10/2026).
 - Opções "Imprimir" (HTML no navegador) e "Marcar presentes".
 - CPF sempre mascarado.
 
-### A3. Livro de ocorrências e passagem de turno · M
-- Botão **Ocorrência**: texto de até 500 caracteres, categoria e, se quiser,
-  uma pessoa ou placa ligada.
+### A3. Passagem de turno · M (o livro de ocorrências saiu na 3.0)
 - Ao **Sair**, aparece o "Resumo do turno" com um "Recado para o próximo
   turno". O recado fica num cartão até alguém marcar "Lido".
-- **Banco (v13):** tabelas `ocorrencias` e `recados_turno`. CPF digitado no
-  texto é mascarado.
+- **Banco (v14):** tabela `recados_turno`. CPF digitado no texto é mascarado.
 
 ### A2. Visitantes esperados · M (depois do A1)
 - O administrador agenda nome, CPF (opcional), data, hora, anfitrião e, se
@@ -477,7 +513,7 @@ Pedido do aluno depois do teste da 2.4 (30/10/2026).
 
 ---
 
-## Versão 2.7 — Dados, relatórios e apresentação (sem mudança de esquema)
+## Versão 3.2 — Dados, relatórios e apresentação (sem mudança de esquema)
 
 ### F2. Gerador de dados fictícios · P/M
 - `python -m portaria.demo --meses 3 --banco demo.db`. Usa semente fixa e
@@ -515,9 +551,9 @@ Pedido do aluno depois do teste da 2.4 (30/10/2026).
 
 ---
 
-## Versão 2.8 — LGPD e segurança (esquema v14)
+## Versão 3.3 — LGPD e segurança (esquema v15)
 
-### B1. Retenção, anonimização e relatório do titular · M · RN49
+### B1. Retenção, anonimização e relatório do titular · M · RN51
 - **Retenção:** em Configurações › Privacidade, "Guardar visitas identificadas
   por 12 meses". Depois disso, nome, CPF, celular e placa viram "Anonimizado",
   e a contagem do Painel continua igual.

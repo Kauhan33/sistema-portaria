@@ -66,7 +66,7 @@ from .veiculos import (DONO_PRECISA_ESTAR, pode_cadastrar_autorizado,
 
 ABAS = ("Ativas", "Pessoas desativadas", "Veículos desativados")
 COLUNAS = [("nome", "Nome", 160, "w"), ("cpf", "CPF", 112, "w"),
-           ("celular", "Celular", 115, "w"), ("placa", "Placa", 80, "w"),
+           ("celular", "Telefone", 115, "w"), ("placa", "Placa", 80, "w"),
            ("tipo", "Tipo", 110, "w"), ("visitas", "Visitas", 66, "center"),
            ("ultima", "Última visita", 124, "w"),
            ("situacao", "Situação", 95, "w")]
@@ -278,7 +278,7 @@ class AbaPessoas:
         barra = tk.Frame(m, bg=COR["superficie"])
         barra.pack(fill="x", padx=px(19), pady=(px(6), px(12)))
         campo = Campo(barra, icone=ICONE["busca"],
-                      dica_vazio="Buscar por nome, CPF, celular, placa ou tipo",
+                      dica_vazio="Buscar por nome, CPF, telefone, placa, tipo ou empresa",
                       maximo=MAXIMO_BUSCA)
         campo.pack(fill="x")
         self.busca = campo.entrada
@@ -748,8 +748,9 @@ class AbaPessoas:
         self.lbl_cpf.config(text="CPF " + self.app.exibir_cpf(p["cpf"]))
         self.lbl_visitas.config(text=str(p["visitas"]))
         self.lbl_ultima.config(text=(p["ultima_visita"] or "—")[:5])
-        self.lbl_contato.config(text=f"{formatar_celular(p['celular'])}  ·  "
-                                     f"{p['tipo']}")
+        self.lbl_contato.config(
+            text="  ·  ".join(t for t in (formatar_celular(p["celular"]), p["tipo"],
+                                          p.get("empresa")) if t))
         desativacao = self.desativacoes.get(p["cpf"])
         if desativacao:
             self._faixa("erro", descrever_desativacao(desativacao))
@@ -997,7 +998,7 @@ class AbaPessoas:
             mensagens.aviso(
                 "Atenção", f"{p['nome']} já está no campus desde "
                            f"{p['dentro_desde']}.\nRegistre a saída na página "
-                           "Entrada e saída.")
+                           "Controle de acesso.")
             return
         self.app.preencher_pessoa(p)
 

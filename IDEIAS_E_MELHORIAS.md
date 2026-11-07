@@ -367,6 +367,17 @@ Sem mudança de esquema (banco v12).
   de carro?").
 - 1010 testes automatizados; casos de teste CT-01 a CT-89.
 
+### Versão 3.0 — Atividade A3 (06/11/2026) ✅
+
+- ✅ **RF34** — login com Checkbutton "Mostrar senha", Limpar e a imagem do logo.
+- ✅ **RF35 / RN48** — Cadastro e Controle de acesso em páginas separadas;
+  empresa e motivo obrigatórios; data e horário separados; código de cada
+  cadastro; filtro, Registrar entrada na lista, Atualizar e Voltar; situação
+  "Dentro" ou "Saiu".
+- ✅ **RF36 / RN49** — livro de ocorrências.
+- ✅ **RF37** — registro de prestadores de serviços (desafio extra).
+- O enunciado, item por item, está em `docs/ENUNCIADO_A3.md`.
+
 ## 4. Rascunho de requisitos para o Word
 
 **RF**: RF01 cadastrar entrada · RF02 registrar saída (botão, duplo clique,
@@ -393,7 +404,10 @@ editar o nome e o perfil de um usuário (2.3) · RF30 editar feriado e evento
 (2.3) · RF31 editar a validade de quem pode retirar o veículo (2.3) · RF32 modo
 didático: mostrar as fases da análise do comando (tokens, árvore, tabela de
 símbolos e checagens) (2.4) · RF33 cadastrar e ver mais de uma placa por
-pessoa (2.5).
+pessoa (2.5) · RF34 mostrar e ocultar a senha, e limpar o login (3.0) · RF35
+controle de acesso em tela própria, com filtro, Registrar entrada na lista e
+Atualizar (3.0) · RF36 registrar, resolver e excluir ocorrências (3.0) · RF37
+registrar prestadores de serviços, com empresa e motivo (3.0).
 
 **RNF**: RNF01 interface simples com botões identificados · RNF02 senha oculta e
 armazenada com hash · RNF03 tela principal e busca respondem na hora mesmo com
@@ -557,6 +571,18 @@ sozinha; tirar uma placa do cadastro tira também quem podia retirar aquele carr
 estacionamento, e o carro escolhido passa pelas mesmas checagens (RN12, RN26); na
 correção de uma visita, a placa antiga sai dos carros da pessoa se nenhuma outra
 visita dela usou essa placa (2.5.1).
+
+Novas na 3.0 (Atividade A3):
+RN48 CADASTRO COMPLETO: toda entrada nova informa empresa (até 80 caracteres) e
+motivo da visita (até 200); o motivo é um texto livre, gravado numa linha só e com
+CPF mascarado (RN14); o código de identificação é o número da visita com 3 dígitos
+("007"); data e horário são campos separados; quem já veio reaproveita a empresa do
+cadastro e o motivo da última visita; um cadastro antigo, sem esses dados, completa
+na próxima entrada (e pode ser corrigido sem eles).
+RN49 OCORRÊNCIAS: categoria da lista, descrição de 5 a 500 caracteres, CPF e placa
+opcionais (conferidos como no Cadastro); CPF digitado na descrição é mascarado;
+qualquer usuário registra e marca como resolvida; só o administrador exclui (RN02);
+registrar, resolver e excluir ficam no histórico.
 
 ## 5. Pendências registradas na revisão final (para a versão 2.1+)
 

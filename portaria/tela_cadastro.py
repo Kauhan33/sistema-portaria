@@ -1,5 +1,5 @@
 """
-Página "Entrada e saída" (antiga aba Cadastro): registrar a entrada de uma
+Páginas "Cadastro" e "Controle de acesso" (a antiga Entrada e saída): registrar a entrada de uma
 pessoa (com preenchimento automático pelo CPF, faixa de situação e alerta
 de desativação), dar saída (saída rápida F2 por CPF ou placa, botão ou duplo
 clique), desfazer a saída, corrigir e excluir registros.
@@ -53,7 +53,7 @@ from datetime import datetime
 
 from . import horarios, mensagens
 from .componentes import (Aviso, BotaoTk, Cabecalho, Campo, CampoTexto, Cartao,
-                          Contador, EsperaDigitacao, Placa, Seletor, bolinha, data_por_extenso, inserir_linha,
+                          Contador, EsperaDigitacao, mostrar_colunas, Placa, Seletor, bolinha, data_por_extenso, inserir_linha,
                           link, plural, rotulo_campo, tabela, titulo_cartao)
 from .dados import ENTRADA_RECUSADA
 from .estilo import (COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM,
@@ -83,11 +83,11 @@ SEGUNDOS_PARA_DESFAZER = 10
 SAIDA_JA_FEITA = ("Essa visita já tinha saída ou foi excluída em outra "
                   "estação. A tabela foi atualizada.")
 LIMITE_BUSCA = 200
-COLUNAS = [("Nome", "Nome", 135, "w"), ("CPF", "CPF", 114, "w"),
-           ("Celular", "Telefone", 112, "w"), ("Placa", "Placa", 73, "w"),
+COLUNAS = [("Nome", "Nome", 116, "w"), ("CPF", "CPF", 116, "w"),
+           ("Celular", "Telefone", 112, "w"), ("Placa", "Placa", 78, "w"),
            ("Tipo", "Tipo de acesso", 146, "w"),
-           ("Entrada", "Entrada", 125, "w"), ("Saida", "Saída", 125, "w"),
-           ("Codigo", "Código", 64, "center"), ("Empresa", "Empresa", 150, "w"),
+           ("Entrada", "Entrada", 126, "w"), ("Saida", "Saída", 126, "w"),
+           ("Codigo", "Código", 72, "center"), ("Empresa", "Empresa", 150, "w"),
            ("Motivo", "Motivo", 190, "w")]
 # o celular, a empresa e o motivo continuam nos values, mas não aparecem
 COLUNAS_VISIVEIS = ("Codigo", "Nome", "CPF", "Placa", "Tipo", "Entrada", "Saida")
@@ -139,7 +139,7 @@ ESPACOS = {
 # Na compacta o rótulo "Comando (F2 · Ctrl+K)" sai de cima do campo e vai
 # para dentro dele (sobra altura para o Movimento)
 DICA_COMANDO = DICA_VAZIO
-DICA_BUSCA = "Buscar: nome, placa, CPF…"
+DICA_BUSCA = "Pesquisar: nome, CPF, placa, empresa ou código…"
 
 
 # Situação da visita -> (token da cor da bolinha, marca da linha em
@@ -397,6 +397,9 @@ class AbaCadastro:
         self.form.columnconfigure((0, 1, 2), weight=1, uniform="f")
         for chave, (rotulo, campo) in self.pecas.items():
             linha, coluna, juntas = GRADE[chave]
+            # quem manda na largura é a grade (colunas iguais), não o texto
+            caixa = campo.texto if chave == "motivo" else campo.entrada
+            caixa.config(width=1)
             rotulo.grid(row=linha, column=coluna, columnspan=juntas, sticky="ew",
                         pady=(0, px(4)),
                         padx=(0, px(12) if coluna + juntas < 3 else 0))
@@ -644,17 +647,18 @@ class AbaCadastro:
         self._dia_mostrado = agora.date()
         texto = self.busca.get().strip()
         if texto:
+            # o filtro vai ao SQL, antes do limite: senão uma visita antiga
+            # sumia quando o termo tinha muitas visitas mais novas
             ok, registros = self.app.tentar(
                 self.app.banco.buscar_registros, texto, LIMITE_BUSCA,
-                so_cpf_completo=not eh_admin(self.app.usuario))
+                so_cpf_completo=not eh_admin(self.app.usuario),
+                **self._filtro_do_banco())
             if not ok:
                 return
         else:
-            registros = self.app.registros
-        registros = self._filtrados(registros)
-        self.tabela.configure(displaycolumns=(
-            COLUNAS_PRESTADOR if self.filtro.get() == PRESTADOR
-            else COLUNAS_VISIVEIS))
+            registros = self._filtrados(self.app.registros)
+        mostrar_colunas(self.tabela, COLUNAS_PRESTADOR
+                        if self.filtro.get() == PRESTADOR else COLUNAS_VISIVEIS)
         selecao = self.tabela.selection()
         self.tabela.delete(*self.tabela.get_children())
         self.mostrados = {}
@@ -691,6 +695,14 @@ class AbaCadastro:
             plural(dentro, "pessoa", "pessoas") + " no campus agora")
         self._mostrar_lotacao()
         self.atualizar_alertas()
+
+    def _filtro_do_banco(self):
+        filtro = self.filtro.get()
+        if filtro == horarios.NO_CAMPUS:
+            return {"situacao": "dentro"}
+        if filtro == horarios.SAIU:
+            return {"situacao": "saiu"}
+        return {"tipo": filtro} if filtro in TIPOS_ACESSO else {}
 
     def _filtrados(self, registros):
         """Combobox do Controle: Todos, Dentro, Saiu ou um tipo de acesso."""
@@ -932,7 +944,7 @@ class AbaCadastro:
     # --------------------------------------------------------------
     def cadastrar(self, event=None):
         if event is not None and not self._esta_visivel():
-            return  # Enter só registra na página Entrada e saída
+            return  # Enter só registra na página Cadastro
         self.acompanhar_relogio()      # Entrada intocada = o agora exato
         registro = normalizar(self.nome.get(), self.cpf.get(),
                               self.celular.get(), self.var_placa.get(),

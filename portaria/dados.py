@@ -1275,20 +1275,29 @@ class Banco:
         return [_registro(linha) for linha in linhas]
 
     def buscar_registros(self, texto, limite=200, so_cpf_completo=False,
-                         desde=None, ate=None, tipo=None):
+                         desde=None, ate=None, tipo=None, situacao=None):
         """
         Busca no histórico inteiro com o mesmo critério de consultas.filtrar
-        (nome, tipo, placa; CPF e celular pelos dígitos), da visita mais
-        recente para a mais antiga, no máximo `limite`. Texto vazio = as
-        mais recentes. so_cpf_completo: ver _condicao_busca (porteiro).
-        `desde`/`ate` (date, inclusive) e `tipo` filtram no próprio SQL,
+        (nome, tipo, placa, empresa; CPF e celular pelos dígitos; e o código
+        da visita, "007"), da visita mais recente para a mais antiga, no
+        máximo `limite`. Texto vazio = as mais recentes. so_cpf_completo: ver
+        _condicao_busca (porteiro). `desde`/`ate` (date, inclusive), `tipo` e
+        `situacao` ("dentro" ou "saiu") filtram no próprio SQL,
         antes do limite: senão um período antigo nunca aparecia quando o
         termo tinha mais de `limite` visitas recentes (o "buscar ... de
         DATA ate DATA" da linguagem respondia "Nada encontrado").
         """
         condicao, params = _condicao_busca(
             texto, "registros", COLUNAS_BUSCA, so_cpf_completo)
+        codigo = texto.strip()
+        if condicao and codigo.isdecimal() and len(codigo) < 11:
+            condicao = f"({condicao} OR id = ?)"
+            params = [*params, int(codigo)]
         partes = [condicao] if condicao else []
+        if situacao == "dentro":
+            partes.append("saida = ''")
+        elif situacao == "saiu":
+            partes.append("saida <> ''")
         if desde is not None:
             partes.append("entrada >= ?")
             params = [*params, _dia_iso(desde)]

@@ -1,5 +1,5 @@
 """
-Campo Comando (F2 ou Ctrl+K) da página Entrada e saída (versão 2.4).
+Campo Comando (F2 ou Ctrl+K) da página Controle de acesso (versão 2.4).
 
 No lugar da antiga "Saída rápida", no mesmo canto: o porteiro digita um
 comando da linguagem da portaria (portaria/linguagem) e aperta Enter. Só

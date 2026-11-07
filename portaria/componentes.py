@@ -1220,6 +1220,7 @@ def tabela(pai, colunas, situacao=None, mostrar=None, altura=None,
                    anchor=ancora)
     if mostrar:
         tab.configure(displaycolumns=mostrar)
+    tab.larguras_de_projeto = larguras
     tab.bind("<Configure>", lambda e: _encaixar_colunas(tab, larguras),
              add="+")
     tab.tag_configure("zebra", background=COR["superficie_2"])
@@ -1234,6 +1235,13 @@ def tabela(pai, colunas, situacao=None, mostrar=None, altura=None,
         tab.configure(yscrollcommand=barra.set)
         barra.pack(side="right", fill="y", padx=(px(2), px(4)))
     return quadro, tab
+
+
+def mostrar_colunas(tab, colunas):
+    """Troca as colunas visíveis e reparte a largura entre elas."""
+    if tuple(tab["displaycolumns"]) != tuple(colunas):
+        tab.configure(displaycolumns=colunas)
+        _encaixar_colunas(tab, tab.larguras_de_projeto)
 
 
 def _encaixar_colunas(tab, larguras):

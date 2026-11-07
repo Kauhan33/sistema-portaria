@@ -388,7 +388,7 @@ def _montar_fontes():
     return {
         # escala tipográfica (pt): 9 · 10 · 12 · 16 · 18 · 28
         "titulo_grande": (f["display"], 28),     # "Portaria" no login
-        "titulo_pagina": (f["display"], 18),     # "Entrada e saída", "Pessoas"
+        "titulo_pagina": (f["display"], 18),     # "Cadastro", "Pessoas"
         "titulo_dialogo": (f["display"], 16),    # "Corrigir registro #12"
         "titulo_cartao": (f["semi"], 12),        # "Nova entrada", "Movimento"
         "marca": (f["semi"], 13),                # "Portaria" na barra lateral

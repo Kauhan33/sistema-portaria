@@ -76,6 +76,7 @@ PALETAS = {
         "lateral_ativo": "#2A3344",    # pílula do item ativo
         "lateral_hover": "#212837",    # item com o mouse em cima
         "lateral_borda": "#2A3344",    # divisores dentro da barra
+        "lateral_marca": "#FF4D5E",    # traço do item ativo (3:1 no grafite)
         "avatar_fundo": "#3A4558",     # círculo das iniciais
         "avatar_texto": "#FFFFFF",
         "superficie": "#FFFFFF",       # cartões, campos, tabelas
@@ -135,6 +136,7 @@ PALETAS = {
         "lateral_ativo": "#1E2530",
         "lateral_hover": "#171C25",
         "lateral_borda": "#1E2530",
+        "lateral_marca": "#FF4D5E",
         "avatar_fundo": "#2D3644",
         "avatar_texto": "#FFFFFF",
         "superficie": "#1B2028",
@@ -305,7 +307,7 @@ def pares_de_contraste():
          TEXTO_AA),
         ("avatar_texto / avatar_fundo", c["avatar_texto"], c["avatar_fundo"],
          TEXTO_AA),
-        ("marca / lateral_ativo (traço do item ativo)", c["marca"],
+        ("lateral_marca / lateral_ativo (traço do item ativo)", c["lateral_marca"],
          c["lateral_ativo"], GRAFICO_AA),
         ("lateral_texto / painel_login", c["lateral_texto"], c["painel_login"],
          TEXTO_AA),

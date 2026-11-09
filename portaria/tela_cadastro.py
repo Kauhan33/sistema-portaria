@@ -53,6 +53,7 @@ from datetime import datetime
 
 from . import horarios, mensagens
 from .componentes import (Aviso, BotaoTk, Cabecalho, Campo, CampoTexto, Cartao,
+                          Chip,
                           Contador, EsperaDigitacao, mostrar_colunas, Placa, Seletor, bolinha, data_por_extenso, inserir_linha,
                           link, plural, rotulo_campo, tabela, titulo_cartao)
 from .dados import ENTRADA_RECUSADA
@@ -112,19 +113,23 @@ LISTAS = ("Pessoas", "Veículos")
 ALTURA_CONFORTAVEL = 740
 ALTURA_CADASTRO = 660       # abaixo disso o Cadastro usa menos respiro
 # Posição (linha, coluna, colunas ocupadas) de cada campo do Cadastro, com o
-# rótulo na linha de cima
+# rótulo na linha de cima. Dois blocos, na ordem em que o porteiro pergunta:
+# a Pessoa (quem é) e a Visita (quando, com qual carro e por quê). A ordem
+# daqui é também a ordem do Tab.
 GRADE = {
     "cpf": (0, 0, 1),
     "nome": (0, 1, 2),
     "celular": (3, 0, 1),
-    "placa": (3, 1, 1),
+    "empresa": (3, 1, 1),
     "tipo": (3, 2, 1),
-    "empresa": (5, 0, 1),
-    "data": (5, 1, 1),
-    "hora": (5, 2, 1),
-    "motivo": (7, 0, 2),
-    "saida": (7, 2, 1),
+    # linha 5: o título do bloco Visita
+    "data": (6, 0, 1),
+    "hora": (6, 1, 1),
+    "placa": (6, 2, 1),
+    "motivo": (8, 0, 2),
+    "saida": (8, 2, 1),
 }
+LINHA_VISITA, LINHA_BOTOES = 5, 10
 # Espaços (px lógicos) de cada densidade
 # (2.3: o Movimento sobe — menos espaço entre os dois cartões — e ganha a
 # linha do título; as subabas Pessoas | Veículos ficam logo embaixo dele)
@@ -237,11 +242,9 @@ class AbaCadastro:
         self.lbl_no_campus = tk.Label(cab.linha, font=FONTE["corpo_semi"],
                                       bg=COR["fundo"], fg=COR["sucesso"])
         self.lbl_no_campus.pack(side="left")
-        # RN37: ao lado do título (a linha de baixo já é longa)
-        self.lbl_estacionamento = tk.Label(cab.topo, font=FONTE["corpo_semi"],
-                                           bg=COR["fundo"], fg=COR["texto_2"])
-        self.lbl_estacionamento.pack(side="left", anchor="s",
-                                     padx=(px(16), 0), pady=(0, px(4)))
+        # RN37: uma etiqueta ao lado do título (some sem controle de vagas)
+        self.chip_estacionamento = Chip(cab.topo, COR["fundo"])
+        self.lbl_estacionamento = self.chip_estacionamento.lbl
 
         self.comando = PainelComando(cab.acoes, self)
         # os nomes de antes continuam valendo (testes e interface.py)
@@ -266,7 +269,7 @@ class AbaCadastro:
         m = self.cartao_form.miolo
         self.cab_form = tk.Frame(m, bg=COR["superficie"])
         self.cab_form.pack(fill="x")
-        self.titulo_form = titulo_cartao(self.cab_form, "Cadastro de pessoas")
+        self.titulo_form = titulo_cartao(self.cab_form, "Pessoa")
         corpo = tk.Frame(m, bg=COR["superficie"])
         corpo.pack(fill="x")
         self.ficha = tk.Frame(corpo, bg=COR["superficie"], width=px(214))
@@ -319,7 +322,7 @@ class AbaCadastro:
         self.btn_limpar = BotaoTk(self.linha_botoes, "Limpar", self.limpar)
         self.btn_limpar.pack(side="left", padx=(px(8), 0))
         self.btn_cancelar = BotaoTk(self.linha_botoes, "Cancelar", self.cancelar,
-                                    "perigo")
+                                    "fantasma")
         self.btn_cancelar.pack(side="left", padx=(px(8), 0))
         tk.Label(self.linha_botoes, text="* campos obrigatórios",
                  font=FONTE["dica"], bg=COR["superficie"],
@@ -356,8 +359,11 @@ class AbaCadastro:
             padx=px(14 if compacta else 18), pady=px(8 if compacta else 18))
         self.cab_form.pack_configure(pady=(0, px(4 if compacta else 10)))
         self.aviso_pessoa.definir_respiro(4 if compacta else 9)
-        for linha in (3, 5, 7):
+        for linha in (3, 6, 8):
             self.form.grid_rowconfigure(linha, pad=px(2 if compacta else 8))
+        self.secao_visita.grid_configure(
+            pady=(px(2 if compacta else 10), px(2 if compacta else 8)))
+        self.titulo_visita.pack_configure(pady=(px(3 if compacta else 10), 0))
 
     def _escolher_densidade(self, altura):
         """Compacta quando a página, tirando as faixas de alerta, é baixa."""
@@ -406,11 +412,20 @@ class AbaCadastro:
             campo.grid(row=linha + 1, column=coluna, columnspan=juntas,
                        sticky="new", pady=(0, px(8)),
                        padx=(0, px(12) if coluna + juntas < 3 else 0))
+        for chave in GRADE:                 # o Tab segue a ordem da tela
+            self.pecas[chave][1].lift()
         self.titulo_form.pack(side="left")
         self.aviso_pessoa.grid(in_=self.form, row=2, column=0, columnspan=3,
                                sticky="ew", pady=(px(2), px(10)))
-        self.linha_botoes.grid(in_=self.form, row=9, column=0, columnspan=3,
-                               sticky="w", pady=(px(4), 0))
+        # o segundo bloco: um fio e o título "Visita"
+        self.secao_visita = tk.Frame(self.form, bg=COR["superficie"])
+        tk.Frame(self.secao_visita, bg=COR["borda"], height=1).pack(fill="x")
+        self.titulo_visita = titulo_cartao(self.secao_visita, "Visita")
+        self.titulo_visita.pack(anchor="w", pady=(px(10), 0))
+        self.secao_visita.grid(row=LINHA_VISITA, column=0, columnspan=3,
+                               sticky="ew", pady=(px(10), px(8)))
+        self.linha_botoes.grid(in_=self.form, row=LINHA_BOTOES, column=0,
+                               columnspan=3, sticky="w", pady=(px(6), 0))
         self.ficha.pack(side="right", fill="y", before=self.form)
         self.divisor_ficha.pack(side="right", fill="y", padx=px(20),
                                 before=self.form)
@@ -498,8 +513,9 @@ class AbaCadastro:
         if pode_excluir(self.app.usuario):  # RN02: o porteiro nem vê o botão
             self.btn_excluir = BotaoTk(acoes, "Excluir",
                                        self.excluir_selecionado, "perigo")
-        self.btn_atualizar = BotaoTk(acoes, "Atualizar", self.atualizar)
-        self.btn_voltar = BotaoTk(acoes, "Voltar", self.voltar)
+        self.btn_atualizar = BotaoTk(acoes, "Atualizar", self.atualizar,
+                                     "fantasma")
+        self.btn_voltar = BotaoTk(acoes, "Voltar", self.voltar, "fantasma")
 
         # o status ("6 entradas hoje · 5 no campus") e o aviso que some
         # sozinho ficam na linha do título, à direita dele: sobra altura
@@ -563,7 +579,11 @@ class AbaCadastro:
                               pady=(px(8), px(10)))
         visiveis = (botoes if pessoas
                     else [self.btn_saida, self.btn_atualizar, self.btn_voltar])
-        for i, botao in enumerate(b for b in visiveis if b is not None):
+        # o que apaga fica longe das ações do dia a dia: Excluir à direita
+        if pessoas and self.btn_excluir is not None:
+            self.btn_excluir.pack(side="right")
+        for i, botao in enumerate(b for b in visiveis
+                                  if b is not None and b is not self.btn_excluir):
             botao.pack(side="left", padx=(0 if i == 0 else px(8), 0))
         quadro = self.quadro_pessoas if pessoas else self.quadro_veiculos
         quadro.pack(fill="both", expand=True, padx=px(12))
@@ -691,8 +711,8 @@ class AbaCadastro:
         self.cabecalho.subtitulo.config(
             text=data_por_extenso(self.app.relogio()) + "  ·  ")
         self.lbl_no_campus.config(
-            text="Ninguém no campus agora" if not dentro else
-            plural(dentro, "pessoa", "pessoas") + " no campus agora")
+            text="Ninguém dentro agora" if not dentro else
+            plural(dentro, "pessoa dentro", "pessoas dentro") + " agora")
         self._mostrar_lotacao()
         self.atualizar_alertas()
 
@@ -722,8 +742,12 @@ class AbaCadastro:
         texto = texto_lotacao(len(self.veiculos), vagas)
         lotado = esta_lotado(len(self.veiculos), vagas)
         self.lbl_estacionamento.config(
-            text=(ICONE["carro"] + "  " + texto) if texto else "",
-            fg=COR["alerta"] if lotado else COR["texto_2"])
+            text=texto, fg=COR["alerta"] if lotado else COR["texto_2"])
+        if texto:
+            self.chip_estacionamento.pack(side="left", anchor="s",
+                                          padx=(px(14), 0), pady=(0, px(7)))
+        else:
+            self.chip_estacionamento.pack_forget()
 
     def _mostrar_status(self):
         """Status do Movimento (ao lado do título), conforme a lista mostrada."""
@@ -740,12 +764,11 @@ class AbaCadastro:
             if n >= LIMITE_BUSCA:
                 status += f" (os {LIMITE_BUSCA} mais recentes)"
         else:
-            dentro = sum(1 for r in self.app.registros if not r["saida"])
             hoje = self.app.relogio().strftime("%d/%m/%Y")
             entradas_hoje = sum(1 for r in self.app.registros
                                 if r["entrada"].startswith(hoje))
             status = (f"{plural(entradas_hoje, 'entrada', 'entradas')} hoje"
-                      f"  ·  {dentro} no campus  ·  duplo clique registra a saída")
+                      "  ·  duplo clique registra a saída")
         self.lbl_status.config(text=status)
 
     # --------------------------------------------------------------

@@ -734,9 +734,9 @@ class TestDashboard(BaseInterface):
         # os seis cartões por tipo viraram o gráfico "Pessoas por tipo"
         tipos = {rotulo: (total, extra) for rotulo, total, extra
                  in self.app.tela_dashboard.dados["tipos"]}
-        self.assertEqual(tipos["Visitantes"], (1, "1 no campus"))
-        self.assertEqual(tipos["Professores"], (1, "0 no campus"))
-        self.assertEqual(tipos["Alunos"], (0, "0 no campus"))
+        self.assertEqual(tipos["Visitantes"], (1, "1 dentro"))
+        self.assertEqual(tipos["Professores"], (1, "0 dentro"))
+        self.assertEqual(tipos["Alunos"], (0, "0 dentro"))
         dias = self.app.tela_dashboard.dados["dias"]
         self.assertEqual(len(dias), 7)
         self.assertEqual(dias[-1][1], 1)                         # hoje
@@ -1572,7 +1572,7 @@ class TestAbaPessoas(BaseInterface):
                          (str(self.ana), str(self.beto)))   # ordem alfabética
         self.assertEqual(self.valores(self.ana)[-1], "Dentro")
         self.assertEqual(self.valores(self.beto)[5:], [1, "15/10/2026 07:00", "—"])
-        self.assertIn("1 no campus agora", self.aba.lbl_total.cget("text"))
+        self.assertIn("1 dentro agora", self.aba.lbl_total.cget("text"))
         self.assertEqual(self.aba.tabela.item(str(self.ana))["text"], "Dentro")
 
     def test_busca(self):

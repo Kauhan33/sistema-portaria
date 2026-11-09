@@ -137,7 +137,7 @@ class AbaDashboard:
         self._mostrar_faixa_admin()
 
         self.dados["tipos"] = [
-            (PLURAL_TIPO.get(t, t), por_tipo[t][0], f"{por_tipo[t][1]} no campus")
+            (PLURAL_TIPO.get(t, t), por_tipo[t][0], f"{por_tipo[t][1]} dentro")
             for t in TIPOS_ACESSO]
         self.dados["dias"] = [(d.strftime("%d/%m"), n)
                               for d, n in r["por_dia"].items()]
@@ -157,7 +157,7 @@ class AbaDashboard:
         pendentes = contagem[horarios.SAIDA_PENDENTE]
         self._mostrar("excedido", excedidos,
                       "+ " + plural(pendentes, "saída pendente", "saídas pendentes")
-                      if pendentes else "acima da permanência da categoria")
+                      if pendentes else "acima do tempo permitido")
         self.cards["excedido"][0].config(
             fg=COR["alerta"] if excedidos else COR["texto"])
         self.cards["excedido"][1].config(

@@ -239,8 +239,10 @@ class Chip(Cartao):
     """Etiqueta em pílula com um rótulo dentro (.lbl): "7 dentro agora",
     "Estacionamento 3/50". `estado` escolhe as cores (ESTADO)."""
 
-    def __init__(self, pai, fundo_pai=None, estado="neutro"):
-        cor_texto, cor_fundo, cor_borda = ESTADO[estado]
+    def __init__(self, pai, fundo_pai=None, estado=None):
+        cor_texto, cor_fundo, cor_borda = (
+            ESTADO[estado] if estado
+            else (COR["texto_2"], COR["superficie"], COR["borda"]))
         super().__init__(pai, fundo_pai, pad=0, raio=12, cor=cor_fundo,
                          borda=cor_borda)
         self.miolo.pack_configure(padx=px(10), pady=px(3))
@@ -1301,7 +1303,7 @@ class ItemMenu(tk.Canvas):
                             cor, lateral, borda, px(2))
         if self.ativo:
             ret_arredondado(self, px(4), h / 2 - px(9), px(7), h / 2 + px(9), 1,
-                            COR["marca"], COR["lateral_ativo"])
+                            COR["lateral_marca"], COR["lateral_ativo"])
         cor_texto = (COR["lateral_destaque"] if self.ativo
                      else COR["lateral_texto"])
         self.create_text(px(18), h / 2, text=self.icone, anchor="w",

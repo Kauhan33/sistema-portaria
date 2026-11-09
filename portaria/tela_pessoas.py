@@ -186,8 +186,10 @@ class AbaPessoas:
         cab = Cabecalho(aba, "Pessoas").posicionar()
         self.cabecalho = cab
         self.lbl_total = cab.subtitulo
+        # secundário: o botão principal desta página é o "Registrar entrada"
+        # da ficha (um só botão vermelho por tela)
         self.btn_nova = Botao(cab.acoes, "Nova pessoa", self.nova_pessoa,
-                              "primario", icone=ICONE["mais"],
+                              "secundario", icone=ICONE["mais"],
                               fundo_pai=COR["fundo"])
         self.btn_nova.pack()
         self.seletor = Seletor(aba, ABAS, self.mostrar_aba)
@@ -255,7 +257,7 @@ class AbaPessoas:
         """Contagens no subtítulo e nas subabas (app.atualizar_contadores)."""
         self.lbl_total.config(
             text=plural(n["pessoas"], "pessoa cadastrada", "pessoas cadastradas")
-            + f"  ·  {n['no_campus']} no campus agora")
+            + f"  ·  {n['no_campus']} dentro agora")
         for aba, chave in ((ABAS[1], "desativadas"),
                            (ABAS[2], "veiculos_desativados")):
             self.seletor.definir_texto(

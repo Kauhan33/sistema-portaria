@@ -592,17 +592,15 @@ class AppPortaria:
         fundo = COR["lateral"]
         self.lateral = tk.Frame(self.janela, bg=fundo, width=px(LARGURA_LATERAL))
         self.lateral.pack_propagate(False)
-        tk.Frame(self.lateral, bg=COR["borda"], width=1).pack(side="right",
-                                                              fill="y")
         marca = tk.Frame(self.lateral, bg=fundo)
         marca.pack(fill="x", padx=px(16), pady=(px(20), px(24)))
         marca_cancela(marca, fundo).pack(side="left")
         textos = tk.Frame(marca, bg=fundo)
         textos.pack(side="left", padx=(px(12), 0))
         tk.Label(textos, text="Portaria", font=FONTE["marca"], bg=fundo,
-                 fg=COR["texto"]).pack(anchor="w")
+                 fg=COR["lateral_destaque"]).pack(anchor="w")
         tk.Label(textos, text="Universidade", font=FONTE["dica"], bg=fundo,
-                 fg=COR["texto_3"]).pack(anchor="w")
+                 fg=COR["lateral_texto_2"]).pack(anchor="w")
 
         self.menu = tk.Frame(self.lateral, bg=fundo)
         self.menu.pack(fill="x", padx=px(10))
@@ -611,30 +609,33 @@ class AppPortaria:
         self.sessao = tk.Frame(self.lateral, bg=fundo)
         self.sessao.pack(side="bottom", fill="x", padx=(px(14), px(6)),
                          pady=px(14))
-        tk.Frame(self.lateral, bg=COR["borda"], height=1).pack(
+        tk.Frame(self.lateral, bg=COR["lateral_borda"], height=1).pack(
             side="bottom", fill="x", padx=px(16))
         self.avatar = Avatar(self.sessao, fundo)
         self.avatar.pack(side="left")
         quem = tk.Frame(self.sessao, bg=fundo)   # entra depois dos botões:
         # com nome longo, ele encolhe e os ícones continuam inteiros
         self.lbl_usuario = tk.Label(quem, font=FONTE["corpo_semi"], bg=fundo,
-                                    fg=COR["texto"], anchor="w")
+                                    fg=COR["lateral_destaque"], anchor="w")
         self.lbl_usuario.pack(anchor="w", fill="x")
         self.lbl_perfil = tk.Label(quem, font=FONTE["dica"], bg=fundo,
-                                   fg=COR["texto_3"], anchor="w")
+                                   fg=COR["lateral_texto_2"], anchor="w")
         self.lbl_perfil.pack(anchor="w")
         # três ícones no rodapé (opções, travar e sair): folga menor, para
         # o nome de quem está logado caber
+        cores = {"cor": COR["lateral_texto"], "cor_hover": COR["lateral_ativo"]}
         self.btn_sair = BotaoIcone(self.sessao, ICONE["sair"], self.sair, fundo,
-                                   descricao="Sair", folga=2)
+                                   descricao="Sair", folga=2, **cores)
         self.btn_sair.pack(side="right")
         self.btn_travar = BotaoIcone(self.sessao, ICONE["cadeado"], self.travar,
                                      fundo, descricao="Travar a guarita "
-                                                      "(Ctrl+L)", folga=2)
+                                                      "(Ctrl+L)", folga=2,
+                                     **cores)
         self.btn_travar.pack(side="right")
         self.btn_opcoes = BotaoIcone(self.sessao, ICONE["mais_opcoes"],
                                      self.abrir_menu_usuario, fundo,
-                                     descricao="Opções da conta", folga=2)
+                                     descricao="Opções da conta", folga=2,
+                                     **cores)
         self.btn_opcoes.pack(side="right")
         quem.pack(side="left", padx=(px(6), 0), fill="x", expand=True)
 

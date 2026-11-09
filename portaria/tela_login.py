@@ -251,20 +251,37 @@ class TelaLogin:
                           traco=marca).pack(anchor="w")
         tk.Label(dentro, text="Portaria", font=FONTE["titulo_grande"], bg=marca,
                  fg=branco).pack(anchor="w", pady=(px(20), 0))
+        apoio = COR["lateral_texto"]
         tk.Label(dentro, text="Controle de entrada e saída\ndo campus da "
                               "universidade", font=FONTE["corpo_grande"],
-                 bg=marca, fg=branco, justify="left").pack(anchor="w",
-                                                           pady=(px(4), 0))
+                 bg=marca, fg=apoio, justify="left").pack(anchor="w",
+                                                          pady=(px(4), 0))
         relogio = tk.Frame(dentro, bg=marca)
         relogio.pack(side="bottom", anchor="w")
         self.lbl_hora = tk.Label(relogio, font=FONTE["relogio"], bg=marca,
                                  fg=branco)
         self.lbl_hora.pack(anchor="w")
         self.lbl_data = tk.Label(relogio, font=FONTE["corpo_grande"], bg=marca,
-                                 fg=branco)
+                                 fg=apoio)
         self.lbl_data.pack(anchor="w")
+        # o braço da cancela (o mesmo do logo), deitado sobre o relógio: a
+        # assinatura visual do sistema
+        self.cancela = tk.Canvas(dentro, height=px(8), bg=marca,
+                                 highlightthickness=0, bd=0)
+        self.cancela.pack(side="bottom", fill="x", pady=(0, px(18)))
+        self.cancela.bind("<Configure>", self._desenhar_cancela)
         self._atualizar_relogio()
         painel.bind("<Destroy>", self._parar_relogio)
+
+    def _desenhar_cancela(self, event=None):
+        """Blocos vermelhos e brancos, como o braço de uma cancela."""
+        cv = self.cancela
+        cv.delete("all")
+        w, h, bloco = cv.winfo_width(), cv.winfo_height(), px(34)
+        for i, x in enumerate(range(0, w, bloco)):
+            cv.create_rectangle(x, 0, min(x + bloco, w), h, width=0,
+                                fill=COR["marca"] if i % 2 == 0
+                                else COR["texto_sobre_marca"])
 
     def _atualizar_relogio(self):
         agora = self.relogio()

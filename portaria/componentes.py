@@ -26,7 +26,8 @@ import zlib
 from datetime import datetime
 from tkinter import ttk
 
-from .estilo import (ALTURA_CAMPO, COR, ESTADO, FONTE, ICONE, MARGEM, TEMA,
+from .estilo import (ALTURA_CAMPO, COR, ESTADO, FONTE, ICONE, MARGEM,
+                     RAIO_CARTAO, RAIO_CONTROLE, TEMA,
                      fonte_icone, pintar_barra_de_titulo, px)
 from .validacao import (MAXIMO_DATA, MAXIMO_DATA_HORA, MAXIMO_HORA,
                         MAXIMO_PLACA, MAXIMO_SENHA, placa_antiga)
@@ -103,23 +104,53 @@ def _canto(r, preench, fundo, borda, esp):
     return linhas
 
 
-def cantos(widget, r, preench, fundo, borda=None, esp=1):
-    """As 4 imagens de canto (nw, ne, sw, se) para essas cores."""
-    cache = _cache(widget)
-    chave = ("canto", r, preench, fundo, borda, esp)
-    if chave not in cache:
+_MATRIZES = {}      # cores dos 4 cantos: só texto, valem para qualquer janela
+
+
+def _matrizes_de_canto(r, preench, fundo, borda=None, esp=1):
+    """{nw, ne, sw, se}: as cores de cada canto, prontas para o put()."""
+    chave = (r, preench, fundo, borda, esp)
+    if chave not in _MATRIZES:
         tl = _canto(r, preench, fundo, borda, esp)
         variantes = {"nw": tl,
                      "ne": [list(reversed(l)) for l in tl],
                      "sw": list(reversed(tl)),
                      "se": [list(reversed(l)) for l in reversed(tl)]}
+        _MATRIZES[chave] = {
+            nome: " ".join("{" + " ".join(l) + "}" for l in linhas)
+            for nome, linhas in variantes.items()}
+    return _MATRIZES[chave]
+
+
+def cantos(widget, r, preench, fundo, borda=None, esp=1):
+    """As 4 imagens de canto (nw, ne, sw, se) para essas cores."""
+    cache = _cache(widget)
+    chave = ("canto", r, preench, fundo, borda, esp)
+    if chave not in cache:
         imagens = {}
-        for nome, linhas in variantes.items():
+        for nome, dados in _matrizes_de_canto(r, preench, fundo, borda,
+                                              esp).items():
             img = tk.PhotoImage(master=widget, width=r, height=r)
-            img.put(" ".join("{" + " ".join(l) + "}" for l in linhas), to=(0, 0))
+            img.put(dados, to=(0, 0))
             imagens[nome] = img
         cache[chave] = imagens
     return cache[chave]
+
+
+def imagem_arredondada(mestre, w, h, r, preench, fundo, borda=None, esp=1):
+    """Uma imagem w x h com o retângulo de cantos arredondados já pintado
+    (o fundo de um tk.Button de verdade: ver BotaoTk)."""
+    w, h = max(2, int(w)), max(2, int(h))
+    r = max(1, min(int(r), w // 2, h // 2))
+    img = tk.PhotoImage(master=mestre, width=w, height=h)
+    img.put(borda or preench, to=(0, 0, w, h))
+    if borda:
+        img.put(preench, to=(esp, esp, w - esp, h - esp))
+    m = _matrizes_de_canto(r, preench, fundo, borda, esp)
+    for nome, (x, y) in (("nw", (0, 0)), ("ne", (w - r, 0)),
+                         ("sw", (0, h - r)), ("se", (w - r, h - r))):
+        img.put(m[nome], to=(x, y))
+    return img
 
 
 def ret_arredondado(cv, x0, y0, x1, y1, r, preench, fundo, borda=None, esp=1,
@@ -181,9 +212,9 @@ def bolinha(widget, cor):
 # Cartão
 # ----------------------------------------------------------------------
 class Cartao(tk.Frame):
-    """Superfície branca, cantos de 8 px e contorno sutil. Monte em .miolo."""
+    """Superfície branca, cantos de 12 px e contorno sutil. Monte em .miolo."""
 
-    def __init__(self, pai, fundo_pai=None, pad=20, raio=8, cor=None,
+    def __init__(self, pai, fundo_pai=None, pad=20, raio=RAIO_CARTAO, cor=None,
                  borda=None):
         fundo_pai = fundo_pai or COR["fundo"]
         super().__init__(pai, bg=fundo_pai)
@@ -202,6 +233,20 @@ class Cartao(tk.Frame):
         if w > 4 and h > 4:
             ret_arredondado(self.cv, 0, 0, w, h, self.raio, self.cor,
                             self.fundo_pai, self.borda or None)
+
+
+class Chip(Cartao):
+    """Etiqueta em pílula com um rótulo dentro (.lbl): "7 dentro agora",
+    "Estacionamento 3/50". `estado` escolhe as cores (ESTADO)."""
+
+    def __init__(self, pai, fundo_pai=None, estado="neutro"):
+        cor_texto, cor_fundo, cor_borda = ESTADO[estado]
+        super().__init__(pai, fundo_pai, pad=0, raio=12, cor=cor_fundo,
+                         borda=cor_borda)
+        self.miolo.pack_configure(padx=px(10), pady=px(3))
+        self.lbl = tk.Label(self.miolo, font=FONTE["rotulo"], bg=cor_fundo,
+                            fg=cor_texto)
+        self.lbl.pack()
 
 
 def titulo_cartao(pai, texto, fundo=None):
@@ -232,8 +277,10 @@ class Botao(tk.Canvas):
                       COR["texto_sobre_marca"], None),
             "secundario": (COR["superficie"], COR["superficie_2"], COR["hover"],
                            COR["texto"], COR["borda_campo"]),
+            # contorno neutro e texto vermelho: apaga, mas não disputa com
+            # o botão principal (que é o único preenchido de vermelho)
             "perigo": (COR["superficie"], ESTADO["erro"][1], COR["erro_press"],
-                       ESTADO["erro"][0], ESTADO["erro"][2]),
+                       ESTADO["erro"][0], COR["borda_campo"]),
             "fantasma": (None, COR["hover"], COR["press"], COR["texto"], None),
         }[variante]
 
@@ -338,8 +385,8 @@ class Botao(tk.Canvas):
         if self.focado and self.ativo:
             borda, esp = COR["foco"], px(2)
         if cor != self.fundo_pai or borda:
-            ret_arredondado(self, 0, 0, w, h, px(6), cor, self.fundo_pai,
-                            borda, esp)
+            ret_arredondado(self, 0, 0, w, h, px(RAIO_CONTROLE), cor,
+                            self.fundo_pai, borda, esp)
         largura_icone = px(24) if self.icone else 0
         total = largura_icone + self.fonte.measure(self.texto)
         if self.dica_tecla:
@@ -362,61 +409,129 @@ class Botao(tk.Canvas):
 
 class BotaoTk(tk.Button):
     """
-    Botão do enunciado do A3: um tk.Button de verdade, com as cores do tema
-    e a mesma interface do Botao desenhado (definir_texto, definir_ativo,
-    invocar). É o usado no Login, no Cadastro e no Controle de acesso.
+    Botão do enunciado do A3: um tk.Button de verdade, com a mesma cara e a
+    mesma interface do Botao desenhado (definir_texto, definir_ativo,
+    invocar). O fundo de cantos arredondados é uma imagem (compound="center"
+    põe o texto por cima), refeita no tamanho que o botão tiver na tela.
+    Variantes: "primario" (um por tela), "secundario" (contorno), "fantasma"
+    (só o texto) e "perigo" (contorno neutro, texto vermelho).
+
+    O estado "desativado" é cuidado aqui (cget("state") responde
+    "disabled"): o do Tk pontilharia a imagem de fundo no Windows.
     """
 
     def __init__(self, pai, texto, comando=None, variante="secundario",
-                 fundo_pai=None, altura=ALTURA_CAMPO, **_):
+                 fundo_pai=None, largura=None, altura=ALTURA_CAMPO, **_):
         self.fundo_pai = fundo_pai or COR["superficie"]
         self.texto, self.comando, self.variante = texto, comando, variante
-        self.ativo = True
-        fonte = tkfont.Font(root=pai, font=FONTE["botao"])
-        margem = max(0, (px(altura) - fonte.metrics("linespace")) // 2 - px(4))
+        self.largura_fixa = largura
+        self.ativo, self.estado, self.focado = True, "normal", False
+        self.fonte = tkfont.Font(root=pai, font=FONTE["botao"])
+        self._tamanho = (self._largura_natural(), px(altura))
+        self._imagens = {}
+        self._mestre = pai
+        imagem, cor_texto = self._aparencia()
         super().__init__(pai, text=texto, command=self.invocar,
-                         font=FONTE["botao"], relief="flat", bd=0,
-                         padx=px(16), pady=margem, cursor="hand2",
-                         takefocus=1, highlightthickness=0)
-        self._aplicar_cores()
-        self.bind("<Enter>", lambda e: self._pintar("hover"))
-        self.bind("<Leave>", lambda e: self._pintar("normal"))
-        for tecla in ("<Return>", "<KP_Enter>"):
+                         image=imagem, compound="center", font=FONTE["botao"],
+                         fg=cor_texto, activeforeground=cor_texto,
+                         bg=self.fundo_pai, activebackground=self.fundo_pai,
+                         relief="flat", overrelief="flat", bd=0, padx=0, pady=0,
+                         highlightthickness=0, cursor="hand2", takefocus=1,
+                         width=self._tamanho[0], height=self._tamanho[1])
+        self.bind("<Configure>", self._ao_redimensionar)
+        self.bind("<Enter>", lambda e: self._mudar("hover"))
+        self.bind("<Leave>", lambda e: self._mudar("normal"))
+        self.bind("<ButtonPress-1>", lambda e: self._mudar("press"))
+        self.bind("<ButtonRelease-1>", self._soltar)
+        self.bind("<FocusIn>", lambda e: self._foco(True))
+        self.bind("<FocusOut>", lambda e: self._foco(False))
+        for tecla in ("<space>", "<Return>", "<KP_Enter>"):
             self.bind(tecla, self._tecla)
 
-    def _aplicar_cores(self):
-        fundo, hover, press, texto, _ = Botao.cores_da_variante(self.variante)
-        # o tk.Button não desenha borda colorida no Windows: em vez do
-        # contorno do Botao, o secundário e o perigo ganham um fundo próprio
-        if self.variante == "secundario":
-            fundo, hover = COR["fundo"], COR["hover"]
-        elif self.variante == "perigo":
-            fundo, hover = ESTADO["erro"][1], COR["hover"]
-        self.cores = {"normal": fundo or self.fundo_pai, "hover": hover}
-        self.config(bg=self.cores["normal"], fg=texto, activebackground=press,
-                    activeforeground=texto, disabledforeground=COR["texto_3"])
+    def _largura_natural(self):
+        if self.largura_fixa:
+            return px(self.largura_fixa)
+        return self.fonte.measure(self.texto) + px(32)
 
-    def _pintar(self, estado):
+    # --- aparência -----------------------------------------------------
+    def _aparencia(self):
+        """(imagem de fundo, cor do texto) do estado em que o botão está."""
+        fundo, hover, press, cor_texto, borda = \
+            Botao.cores_da_variante(self.variante)
+        cores = {"normal": fundo or self.fundo_pai, "hover": hover,
+                 "press": press}
+        cor, esp = cores[self.estado if self.ativo else "normal"], 1
+        if not self.ativo:
+            cor_texto = COR["texto_3"]
+            if self.variante in ("primario", "marca"):
+                cor = COR["hover"]
+            borda = COR["borda"] if borda else None
+        if self.focado and self.ativo:
+            borda, esp = COR["foco"], px(2)
+        chave = (cor, borda, esp)
+        if chave not in self._imagens:
+            self._imagens[chave] = imagem_arredondada(
+                self._mestre, *self._tamanho, px(RAIO_CONTROLE), cor,
+                self.fundo_pai, borda, esp)
+        return self._imagens[chave], cor_texto
+
+    def _pintar(self):
+        imagem, cor_texto = self._aparencia()
+        self.config(image=imagem, fg=cor_texto, activeforeground=cor_texto)
+
+    def _ao_redimensionar(self, event):
+        """O fundo acompanha o tamanho que o botão ganhou (ex.: fill="x")."""
+        tamanho = (event.width, event.height)
+        if tamanho != self._tamanho and min(tamanho) > 4:
+            self._tamanho = tamanho
+            self._imagens = {}
+            self._pintar()
+
+    def _mudar(self, estado):
+        self.estado = estado
         if self.ativo:
-            self.config(bg=self.cores[estado])
+            self._pintar()
+        return "break"            # quem cuida do clique é este botão
+
+    def _foco(self, sim):
+        self.focado = sim
+        self._pintar()
+
+    def _soltar(self, event):
+        dentro = (0 <= event.x < self.winfo_width()
+                  and 0 <= event.y < self.winfo_height())
+        self._mudar("hover" if dentro else "normal")
+        if dentro:
+            self.invocar()
+        return "break"
 
     def _tecla(self, event):
         self.invocar()
         return "break"           # o Enter não chega à janela (não cadastra)
 
+    # --- a mesma interface do Botao ---------------------------------------
+    def cget(self, chave):
+        if chave == "state":
+            return "normal" if self.ativo else "disabled"
+        return super().cget(chave)
+
+    __getitem__ = cget
+
     def definir_texto(self, texto, variante=None):
         self.texto = texto
-        self.config(text=texto)
-        if variante and variante != self.variante:
+        if variante:
             self.variante = variante
-            self._aplicar_cores()
+        self._tamanho = (self._largura_natural(), self._tamanho[1])
+        self._imagens = {}
+        imagem, cor_texto = self._aparencia()
+        self.config(text=texto, image=imagem, fg=cor_texto,
+                    activeforeground=cor_texto, width=self._tamanho[0])
 
     def definir_ativo(self, ativo):
         self.ativo = bool(ativo)
-        self.config(state="normal" if self.ativo else "disabled",
-                    cursor="hand2" if self.ativo else "arrow",
+        self.config(cursor="hand2" if self.ativo else "arrow",
                     takefocus=1 if self.ativo else 0)
-        self.config(bg=self.cores["normal"])
+        self._pintar()
 
     def invocar(self):
         if self.ativo and self.comando:
@@ -434,24 +549,43 @@ class CampoTexto(tk.Frame):
     """
 
     def __init__(self, pai, maximo, linhas=2, fundo_pai=None):
-        super().__init__(pai, bg=COR["borda_campo"], highlightthickness=0, bd=0)
+        self.fundo_pai = fundo_pai or COR["superficie"]
+        super().__init__(pai, bg=self.fundo_pai, highlightthickness=0, bd=0)
         self.maximo = maximo
         self.var = tk.StringVar(self)
         self.entrada = self
+        self.focado = False
+        # a mesma moldura do Campo: contorno arredondado, azul com o foco
+        self.cv = tk.Canvas(self, bg=self.fundo_pai, highlightthickness=0, bd=0)
+        self.cv.place(x=0, y=0, relwidth=1, relheight=1)
         self.texto = tk.Text(self, height=linhas, wrap="word", relief="flat",
                              bd=0, font=FONTE["corpo"], bg=COR["superficie"],
                              fg=COR["texto"], insertbackground=COR["texto"],
                              selectbackground=COR["selecao"],
-                             selectforeground=COR["texto"], padx=px(10),
-                             pady=px(6), highlightthickness=1,
-                             highlightbackground=COR["borda_campo"],
-                             highlightcolor=COR["foco"])
-        self.texto.pack(fill="both", expand=True)
+                             selectforeground=COR["texto"], padx=px(8),
+                             pady=px(3), highlightthickness=0)
+        self.texto.pack(fill="both", expand=True, padx=px(3), pady=px(3))
+        self.cv.bind("<Configure>", lambda e: self._desenhar())
+        self.texto.bind("<FocusIn>", lambda e: self._foco(True), add="+")
+        self.texto.bind("<FocusOut>", lambda e: self._foco(False), add="+")
         self.texto.bind("<Key>", self._ao_teclar)
         self.texto.bind("<KeyRelease>", lambda e: self._sincronizar())
         self.texto.bind("<<Paste>>", self._colar)
         self.texto.bind("<Tab>", self._proximo)
         self.texto.bind("<Shift-Tab>", self._anterior)
+
+    def _foco(self, sim):
+        self.focado = sim
+        self._desenhar()
+
+    def _desenhar(self):
+        self.cv.delete("all")
+        w, h = self.cv.winfo_width(), self.cv.winfo_height()
+        if w < 10:
+            return
+        cor, esp = (COR["foco"], px(2)) if self.focado else (COR["traco_campo"], 1)
+        ret_arredondado(self.cv, 0, 0, w, h, px(RAIO_CONTROLE),
+                        COR["superficie"], self.fundo_pai, cor, esp)
 
     # --- como um Entry -------------------------------------------------
     def get(self):
@@ -508,14 +642,77 @@ class CampoTexto(tk.Frame):
         return "break"
 
 
+def _png_da_caixa(marcada):
+    """A caixa de seleção (desmarcada: contorno; marcada: vermelha com o
+    "visto" branco), com 4x4 amostras por pixel e fundo transparente. À
+    direita sobra uma folga transparente: é o espaço até o texto."""
+    t, folga, n = px(18), px(8), 4
+    r, esp, traco = px(5), max(1.0, px(3) / 2), px(2) / 2 + 0.35
+    borda, fundo = _rgb(COR["traco_campo"]), _rgb(COR["superficie"])
+    cheia, visto = _rgb(COR["primario"]), _rgb(COR["texto_invertido"])
+    pontos = [(0.25 * t, 0.53 * t), (0.43 * t, 0.70 * t), (0.76 * t, 0.33 * t)]
+
+    def ate_o_visto(x, y):
+        menor = t
+        for (ax, ay), (bx, by) in zip(pontos, pontos[1:]):
+            dx, dy = bx - ax, by - ay
+            k = max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy)
+                             / (dx * dx + dy * dy)))
+            menor = min(menor, math.hypot(x - ax - k * dx, y - ay - k * dy))
+        return menor
+
+    linhas = []
+    for y in range(t):
+        linha = []
+        for x in range(t + folga):
+            soma, dentro = [0, 0, 0], 0
+            for i in range(n):
+                for j in range(n):
+                    sx, sy = x + (i + .5) / n, y + (j + .5) / n
+                    qx = abs(sx - t / 2) - (t / 2 - r)
+                    qy = abs(sy - t / 2) - (t / 2 - r)
+                    d = (math.hypot(max(qx, 0), max(qy, 0))
+                         + min(max(qx, qy), 0) - r)
+                    if d > 0:
+                        continue
+                    if marcada:
+                        cor = visto if ate_o_visto(sx, sy) <= traco else cheia
+                    else:
+                        cor = borda if d > -esp else fundo
+                    dentro += 1
+                    for k in range(3):
+                        soma[k] += cor[k]
+            linha.append((*(round(v / dentro) if dentro else 0 for v in soma),
+                          round(255 * dentro / (n * n))))
+        linhas.append(linha)
+    return base64.b64encode(_png_rgba(t + folga, t, linhas))
+
+
+def imagens_da_caixa(widget):
+    """(desmarcada, marcada) do tema em uso, guardadas na janela raiz."""
+    cache = _cache(widget)
+    if "caixa" not in cache:
+        cache["caixa"] = tuple(
+            tk.PhotoImage(master=widget, data=_png_da_caixa(m), format="png")
+            for m in (False, True))
+    return cache["caixa"]
+
+
 def checkbutton(pai, texto, var, comando=None, fundo=None):
-    """tk.Checkbutton com as cores do tema (claro e escuro)."""
+    """tk.Checkbutton de verdade com a caixa desenhada no estilo do sistema
+    (imagem para desmarcada e para marcada), nos temas claro e escuro."""
     fundo = fundo or COR["superficie"]
+    desmarcada, marcada = imagens_da_caixa(pai)
     return tk.Checkbutton(pai, text=texto, variable=var, command=comando,
+                          image=desmarcada, selectimage=marcada,
+                          indicatoron=False, compound="left",
                           font=FONTE["corpo"], bg=fundo, fg=COR["texto"],
                           activebackground=fundo, activeforeground=COR["texto"],
-                          selectcolor=COR["superficie"], bd=0,
-                          highlightthickness=0, anchor="w", cursor="hand2")
+                          selectcolor=fundo, bd=0, relief="flat",
+                          offrelief="flat", overrelief="flat",
+                          highlightthickness=px(2), highlightbackground=fundo,
+                          highlightcolor=COR["foco"], anchor="w",
+                          cursor="hand2")
 
 
 def imagem_do_logo(pai):
@@ -536,14 +733,15 @@ class BotaoIcone(tk.Label):
     """Ícone clicável (ex.: sair, mais opções), com foco de teclado."""
 
     def __init__(self, pai, icone, comando, fundo_pai, tamanho=12,
-                 descricao="", folga=6):
+                 descricao="", folga=6, cor=None, cor_hover=None):
         super().__init__(pai, text=icone, font=fonte_icone(tamanho),
-                         bg=fundo_pai, fg=COR["texto_2"], cursor="hand2",
+                         bg=fundo_pai, fg=cor or COR["texto_2"], cursor="hand2",
                          padx=px(folga), pady=px(4), takefocus=1,
                          highlightthickness=px(2), highlightcolor=COR["foco"],
                          highlightbackground=fundo_pai)
         self.comando, self.fundo_pai, self.descricao = comando, fundo_pai, descricao
-        self.bind("<Enter>", lambda e: self.config(bg=COR["hover"]))
+        cor_hover = cor_hover or COR["hover"]
+        self.bind("<Enter>", lambda e: self.config(bg=cor_hover))
         self.bind("<Leave>", lambda e: self.config(bg=self.fundo_pai))
         self.bind("<Button-1>", lambda e: self.invocar(e))
         for tecla in ("<space>", "<Return>", "<KP_Enter>"):
@@ -757,11 +955,11 @@ class Campo(tk.Frame):
         w, h = cv.winfo_width(), cv.winfo_height()
         if w < 10:
             return
-        r = px(4)
-        ret_arredondado(cv, 0, 0, w, h, r, COR["superficie"], self.fundo_pai,
-                        COR["borda_campo"])
+        # contorno inteiro, com contraste de 3:1 (o campo se vê como campo);
+        # com o foco, o contorno engrossa e fica azul
         cor, esp = (COR["foco"], px(2)) if self.focado else (COR["traco_campo"], 1)
-        cv.create_rectangle(r, h - esp, w - r, h, fill=cor, width=0)
+        ret_arredondado(cv, 0, 0, w, h, px(RAIO_CONTROLE), COR["superficie"],
+                        self.fundo_pai, cor, esp)
 
 
 class EsperaDigitacao:
@@ -928,8 +1126,8 @@ class Aviso(tk.Frame):
         if w < 10:
             return
         _, cor_fundo, cor_borda = ESTADO[self.tipo]
-        ret_arredondado(self.cv, 0, 0, w, h, px(6), cor_fundo, self.fundo_pai,
-                        cor_borda)
+        ret_arredondado(self.cv, 0, 0, w, h, px(RAIO_CONTROLE), cor_fundo,
+                        self.fundo_pai, cor_borda)
 
 
 # ----------------------------------------------------------------------
@@ -1059,8 +1257,8 @@ class Placa(tk.Canvas):
 # Barra lateral e marca
 # ----------------------------------------------------------------------
 class ItemMenu(tk.Canvas):
-    """Item da barra lateral: ícone + texto (+ contador). O ativo tem
-    pílula branca e o traço vermelho UNA à esquerda."""
+    """Item da barra lateral grafite: ícone + texto (+ contador). O ativo
+    tem a pílula mais clara, texto branco e o traço vermelho UNA à esquerda."""
 
     def __init__(self, pai, texto, icone, comando, contador=""):
         super().__init__(pai, height=px(40), bg=COR["lateral"],
@@ -1097,14 +1295,15 @@ class ItemMenu(tk.Canvas):
             return
         lateral = COR["lateral"]
         if self.ativo or self.hover or self.focado:
-            cor = COR["superficie"] if self.ativo else COR["hover"]
+            cor = COR["lateral_ativo"] if self.ativo else COR["lateral_hover"]
             borda = COR["foco"] if self.focado else None
-            ret_arredondado(self, 0, px(2), w, h - px(2), px(6), cor, lateral,
-                            borda, px(2))
+            ret_arredondado(self, 0, px(2), w, h - px(2), px(RAIO_CONTROLE),
+                            cor, lateral, borda, px(2))
         if self.ativo:
             ret_arredondado(self, px(4), h / 2 - px(9), px(7), h / 2 + px(9), 1,
-                            COR["marca"], COR["superficie"])
-        cor_texto = COR["texto"] if self.ativo else COR["texto_2"]
+                            COR["marca"], COR["lateral_ativo"])
+        cor_texto = (COR["lateral_destaque"] if self.ativo
+                     else COR["lateral_texto"])
         self.create_text(px(18), h / 2, text=self.icone, anchor="w",
                          font=fonte_icone(12), fill=cor_texto)
         self.create_text(px(46), h / 2, text=self.texto, anchor="w",
@@ -1112,7 +1311,7 @@ class ItemMenu(tk.Canvas):
                          fill=cor_texto)
         if self.contador:
             self.create_text(w - px(12), h / 2, text=self.contador, anchor="e",
-                             font=FONTE["dica"], fill=COR["texto_3"])
+                             font=FONTE["dica"], fill=COR["lateral_texto_2"])
 
 
 class Avatar(tk.Canvas):
@@ -1129,10 +1328,10 @@ class Avatar(tk.Canvas):
         iniciais = (partes[0][0] + (partes[-1][0] if len(partes) > 1 else "")
                     if partes else "?").upper()
         self.delete("all")
-        ret_arredondado(self, 0, 0, self.t, self.t, self.t // 2, COR["texto"],
-                        self.fundo_pai)
+        ret_arredondado(self, 0, 0, self.t, self.t, self.t // 2,
+                        COR["avatar_fundo"], self.fundo_pai)
         self.create_text(self.t / 2, self.t / 2, text=iniciais,
-                         fill=COR["texto_invertido"], font=FONTE["rotulo"])
+                         fill=COR["avatar_texto"], font=FONTE["rotulo"])
 
 
 def marca_cancela(pai, fundo_pai, tamanho=36, cor=None, traco=None):
@@ -1438,7 +1637,7 @@ class Alternador(tk.Canvas):
         ligado = bool(self.var.get())
         w_ch, h_ch = px(34), px(18)
         y0 = (h - h_ch) / 2
-        cor = COR["primario"] if ligado else COR["superficie"]
+        cor = COR["ligado"] if ligado else COR["superficie"]
         borda = COR["foco"] if self.focado else (None if ligado else COR["traco_campo"])
         ret_arredondado(self, 0, y0, w_ch, y0 + h_ch, h_ch // 2, cor,
                         self.fundo_pai, borda, px(2) if self.focado else 1)

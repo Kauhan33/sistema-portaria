@@ -1,10 +1,11 @@
 """
 Cores, fontes, ícones e medidas do sistema, num lugar só (tokens com nome).
 
-Sistema de design "Guarita" (docs/design/PROPOSTA_DESIGN.md): a tela é
-calma (neutros, um só botão escuro por tela) e só "grita" quando importa,
-como uma cancela: verde = pode entrar, âmbar = atenção, vermelho = bloqueado.
-O vermelho da UNA é identidade (símbolo, item ativo do menu, login).
+Sistema de design "Guarita" (docs/design/PROPOSTA_DESIGN.md), repaginado na
+3.1: o menu lateral é grafite (a navegação fica separada do trabalho), o
+conteúdo é claro e calmo, e cada tela tem UM botão principal, no vermelho da
+UNA. As outras ações são discretas (contorno ou só texto). Verde = dentro /
+pode entrar, âmbar = atenção, vermelho em texto = erro ou ação que apaga.
 
 As telas nunca escrevem "#d9001b" nem ("Segoe UI", 10): usam COR["marca"],
 FONTE["corpo"], ICONE["busca"], px(24) etc. Para mudar o visual, muda-se
@@ -64,11 +65,19 @@ PALETAS = {
         "marca": "#D9001B",            # símbolo, traço do item ativo
         "marca_escura": "#B80017",     # botão "marca" com o mouse em cima
         "marca_press": "#9A0013",
-        "painel_login": "#D9001B",     # painel vermelho do login
+        "painel_login": "#171C26",     # painel do login: o grafite do menu
         "texto_sobre_marca": "#FFFFFF",
         # neutros
-        "fundo": "#F3F4F6",            # fundo da janela
-        "lateral": "#EEF0F3",          # barra lateral
+        "fundo": "#F4F5F7",            # fundo da janela
+        "lateral": "#171C26",          # barra lateral (grafite)
+        "lateral_texto": "#C5CCD8",    # item do menu
+        "lateral_texto_2": "#939DAE",  # "Universidade", perfil, contador
+        "lateral_destaque": "#FFFFFF",  # item ativo, nome de quem está logado
+        "lateral_ativo": "#2A3344",    # pílula do item ativo
+        "lateral_hover": "#212837",    # item com o mouse em cima
+        "lateral_borda": "#2A3344",    # divisores dentro da barra
+        "avatar_fundo": "#3A4558",     # círculo das iniciais
+        "avatar_texto": "#FFFFFF",
         "superficie": "#FFFFFF",       # cartões, campos, tabelas
         "superficie_2": "#F8F9FB",     # cabeçalho de tabela, zebra, rodapé de diálogo
         "borda": "#E1E4EA",            # contorno de cartão (decorativo)
@@ -83,11 +92,12 @@ PALETAS = {
         "barra": "#858E9F",            # barras do gráfico, bolinha "saiu" (3:1)
         "rolagem": "#CDD3DC",          # barra de rolagem
         # ação principal (um botão por tela)
-        "primario": "#1B2330",
-        "primario_hover": "#2E3A4D",
-        "primario_press": "#10161F",
+        "primario": "#D9001B",
+        "primario_hover": "#B80017",
+        "primario_press": "#9A0013",
         "texto_invertido": "#FFFFFF",  # texto sobre o primário
-        "dica_invertida": "#AEB7C6",   # "Enter" dentro do botão primário
+        "dica_invertida": "#FFF8F9",   # "Enter" dentro do botão primário
+        "ligado": "#0B6B3A",           # interruptor ligado
         "foco": "#1F5FBF",             # anel de foco do teclado, links
         # estados: cor do texto (o conjunto completo fica em ESTADO)
         "sucesso": "#0B6B3A",
@@ -109,16 +119,24 @@ PALETAS = {
     },
     # "Guarita à noite": ardósia azulada (nem preto puro, nem o claro
     # invertido). As superfícies sobem de tom em vez de ganhar sombra; o
-    # primário vira claro (o botão principal continua sendo o ponto de maior
-    # contraste da tela) e os estados viram texto claro sobre fundo tingido.
+    # primário continua vermelho (um pouco mais vivo) e os estados viram
+    # texto claro sobre fundo tingido.
     "escuro": {
         "marca": "#E01A32",            # um pouco mais viva: aparece no escuro
         "marca_escura": "#C8001C",
         "marca_press": "#B0001A",
-        "painel_login": "#A8001A",     # vermelho mais fundo: não ofusca à noite
+        "painel_login": "#0C0F14",
         "texto_sobre_marca": "#FFFFFF",
         "fundo": "#13171D",
-        "lateral": "#0F1217",
+        "lateral": "#0C0F14",
+        "lateral_texto": "#B6BFCC",
+        "lateral_texto_2": "#8792A4",
+        "lateral_destaque": "#FFFFFF",
+        "lateral_ativo": "#1E2530",
+        "lateral_hover": "#171C25",
+        "lateral_borda": "#1E2530",
+        "avatar_fundo": "#2D3644",
+        "avatar_texto": "#FFFFFF",
         "superficie": "#1B2028",
         "superficie_2": "#222833",
         "borda": "#2D3440",
@@ -132,11 +150,12 @@ PALETAS = {
         "press": "#2F3744",
         "barra": "#6F7A8C",
         "rolagem": "#4A5465",
-        "primario": "#E9EDF3",
-        "primario_hover": "#D2D9E3",
-        "primario_press": "#B9C2CF",
-        "texto_invertido": "#13171D",
-        "dica_invertida": "#4E5868",
+        "primario": "#E01A32",
+        "primario_hover": "#C8142B",
+        "primario_press": "#AE1024",
+        "texto_invertido": "#FFFFFF",
+        "dica_invertida": "#FFF8F9",
+        "ligado": "#2F9E64",
         "foco": "#7DB1FF",
         "sucesso": "#5FD08F",
         "alerta": "#F2B45A",
@@ -274,10 +293,24 @@ def pares_de_contraste():
     dois temas e a tabela da documentação sai desta mesma lista."""
     c = COR
     pares = []
-    for fundo in ("fundo", "lateral", "superficie", "superficie_2", "hover"):
+    for fundo in ("fundo", "superficie", "superficie_2", "hover"):
         for texto in ("texto", "texto_2", "texto_3"):
             pares.append((f"{texto} / {fundo}", c[texto], c[fundo], TEXTO_AA))
+    # barra lateral grafite: tem os textos dela
+    for fundo in ("lateral", "lateral_hover", "lateral_ativo"):
+        for texto in ("lateral_texto", "lateral_destaque"):
+            pares.append((f"{texto} / {fundo}", c[texto], c[fundo], TEXTO_AA))
     pares += [
+        ("lateral_texto_2 / lateral", c["lateral_texto_2"], c["lateral"],
+         TEXTO_AA),
+        ("avatar_texto / avatar_fundo", c["avatar_texto"], c["avatar_fundo"],
+         TEXTO_AA),
+        ("marca / lateral_ativo (traço do item ativo)", c["marca"],
+         c["lateral_ativo"], GRAFICO_AA),
+        ("lateral_texto / painel_login", c["lateral_texto"], c["painel_login"],
+         TEXTO_AA),
+        ("texto_invertido / ligado (interruptor)", c["texto_invertido"],
+         c["ligado"], GRAFICO_AA),
         ("texto / selecao", c["texto"], c["selecao"], TEXTO_AA),
         ("texto_3 / selecao (linha apagada selecionada)", c["texto_3"],
          c["selecao"], TEXTO_AA),
@@ -386,9 +419,10 @@ PREFERIDAS = {
 def _montar_fontes():
     f = FAMILIAS
     return {
-        # escala tipográfica (pt): 9 · 10 · 12 · 16 · 18 · 28
+        # escala tipográfica (pt): 9 · 10 · 12 · 16 · 20 · 28
         "titulo_grande": (f["display"], 28),     # "Portaria" no login
-        "titulo_pagina": (f["display"], 18),     # "Cadastro", "Pessoas"
+        "titulo_pagina": (f["display"], 20),     # "Cadastro", "Pessoas"
+        "secao": (f["semi"], 10),                # "Pessoa", "Visita" no formulário
         "titulo_dialogo": (f["display"], 16),    # "Corrigir registro #12"
         "titulo_cartao": (f["semi"], 12),        # "Nova entrada", "Movimento"
         "marca": (f["semi"], 13),                # "Portaria" na barra lateral
@@ -434,6 +468,8 @@ def carregar_fontes(raiz):
 # Medidas (px lógicos; sempre passam por px() na hora de usar)
 # ----------------------------------------------------------------------
 MARGEM = 24              # margem da página
+RAIO_CARTAO = 12         # cantos do cartão
+RAIO_CONTROLE = 8        # cantos de botão, campo e faixa de aviso
 ESPACO_CARTOES = 16      # distância entre cartões
 ALTURA_CAMPO = 36        # campo e botão (45 px reais a 125%: alvo ≥ 44)
 ALTURA_LINHA = 34        # linha da tabela

@@ -30,6 +30,12 @@ from tkinter import ttk
 # Escala da tela (DPI)
 # ----------------------------------------------------------------------
 ESCALA = 1.0          # 1.25 com a escala de 125% do Windows
+# Tamanho da letra escolhido pelo usuário (3.2): aumenta as fontes e, junto,
+# todas as medidas (px), como um zoom. As telas já se ajustam à escala do
+# Windows pelo mesmo caminho.
+ZOOM = 1.0
+ZOOMS = {"normal": 1.0, "grande": 1.12, "maior": 1.25}
+NOMES_DA_LETRA = {"normal": "Normal", "grande": "Grande", "maior": "Maior"}
 
 
 def ligar_nitidez():
@@ -49,7 +55,7 @@ def ligar_nitidez():
 
 def px(n):
     """Medida em pixels "lógicos" (de 100%) → pixels reais da tela."""
-    return max(1, round(n * ESCALA))
+    return max(1, round(n * ESCALA * ZOOM))
 
 
 # ----------------------------------------------------------------------
@@ -388,6 +394,7 @@ ICONE = {
     "pessoa": chr(0xE77B), "carro": chr(0xE804), "baixar": chr(0xE896),
     "chave": chr(0xE8D7), "mais_opcoes": chr(0xE712),
     "config": chr(0xE713), "escudo": chr(0xEA18), "calendario": chr(0xE787),
+    "autorizado": chr(0xE930), "pacote": chr(0xE7B8), "imprimir": chr(0xE749),
 }
 
 # ----------------------------------------------------------------------
@@ -420,6 +427,11 @@ PREFERIDAS = {
 
 def _montar_fontes():
     f = FAMILIAS
+    return {nome: (fonte[0], max(6, round(fonte[1] * ZOOM)), *fonte[2:])
+            for nome, fonte in _fontes_de_base(f).items()}
+
+
+def _fontes_de_base(f):
     return {
         # escala tipográfica (pt): 9 · 10 · 12 · 16 · 20 · 28
         "titulo_grande": (f["display"], 28),     # "Portaria" no login
@@ -454,7 +466,19 @@ FONTE = _montar_fontes()
 
 
 def fonte_icone(tamanho=12):
-    return (FAMILIAS["icone"], tamanho)
+    return (FAMILIAS["icone"], max(6, round(tamanho * ZOOM)))
+
+
+def usar_letra(nome):
+    """Põe em uso o tamanho da letra ("normal", "grande" ou "maior").
+    Devolve True se mudou (quem chama remonta a janela)."""
+    global ZOOM
+    novo = ZOOMS.get(nome, 1.0)
+    if novo == ZOOM:
+        return False
+    ZOOM = novo
+    FONTE.update(_montar_fontes())
+    return True
 
 
 def carregar_fontes(raiz):

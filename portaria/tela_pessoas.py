@@ -55,6 +55,7 @@ from .estilo import (COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, fonte_icone,
 from .usuarios import (eh_admin, pode_excluir_pessoa,
                        pode_gerenciar_desativacoes)
 from .validacao import (DESATIVADO, MAXIMO_BUSCA, MAXIMO_EMPRESA, MAXIMO_MOTIVO,
+                        codigo_da_pessoa,
                         MAXIMO_NOME,
                         O_QUE, TIPOS_ACESSO, converter_data, cpf_valido,
                         formatar_celular, formatar_desativacao,
@@ -345,6 +346,9 @@ class AbaPessoas:
         self.lbl_cpf = tk.Label(c, font=FONTE["cpf"], bg=fundo,
                                 fg=COR["texto_2"])
         self.lbl_cpf.pack(anchor="w")
+        self.lbl_codigo = tk.Label(c, font=FONTE["dica"], bg=fundo,
+                                   fg=COR["texto_3"])
+        self.lbl_codigo.pack(anchor="w")
         # celular e tipo (o que antes era a seção Cadastro)
         self.lbl_contato = tk.Label(c, font=FONTE["corpo"], bg=fundo,
                                     fg=COR["texto_2"], anchor="w")
@@ -748,6 +752,8 @@ class AbaPessoas:
         self.conteudo.pack(fill="both", expand=True)
         self.lbl_titulo.config(text=p["nome"])
         self.lbl_cpf.config(text="CPF " + self.app.exibir_cpf(p["cpf"]))
+        # o código de identificação do cadastro da pessoa (enunciado do A3)
+        self.lbl_codigo.config(text="Código " + codigo_da_pessoa(p["id"]))
         self.lbl_visitas.config(text=str(p["visitas"]))
         self.lbl_ultima.config(text=(p["ultima_visita"] or "—")[:5])
         self.lbl_contato.config(

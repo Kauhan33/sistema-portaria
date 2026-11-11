@@ -68,7 +68,8 @@ from .tela_veiculo import (A_PE, COM_CARRO, ENTRAR_COM_SENHA, JA_SAIU,
                            responsavel_saiu_junto, saiu_com_o_veiculo,
                            vai_entrar_de_carro, vai_levar_o_carro)
 from .usuarios import eh_admin, pode_editar, pode_excluir
-from .validacao import (FORMATO, MAXIMO_BUSCA, MAXIMO_EMPRESA,
+from .validacao import (FORMATO, MAXIMO_ANFITRIAO, MAXIMO_BUSCA, MAXIMO_CRACHA,
+                        MAXIMO_EMPRESA,
                         MAXIMO_MOTIVO_VISITA, MAXIMO_NOME, PLACA_OBRIGATORIA,
                         TIPOS_ACESSO, checar_desativacao, checar_saida,
                         codigo_da_visita, cpf_valido, formatar_celular, formatar_cpf,
@@ -89,13 +90,16 @@ COLUNAS = [("Nome", "Nome", 110, "w"), ("CPF", "CPF", 116, "w"),
            ("Tipo", "Tipo de acesso", 152, "w"),
            ("Entrada", "Entrada", 126, "w"), ("Saida", "Saída", 126, "w"),
            ("Codigo", "Código", 72, "center"), ("Empresa", "Empresa", 150, "w"),
-           ("Motivo", "Motivo", 190, "w")]
+           ("Motivo", "Motivo", 190, "w"), ("Cracha", "Crachá", 126, "w"),
+           ("Anfitriao", "Quem procura", 150, "w")]
 # o celular, a empresa e o motivo continuam nos values, mas não aparecem
 COLUNAS_VISIVEIS = ("Codigo", "Nome", "CPF", "Placa", "Tipo", "Entrada", "Saida")
 # desafio extra (registro de prestadores): filtrando por prestador, a tabela
 # mostra a empresa e o motivo no lugar da placa e do tipo
 COLUNAS_PRESTADOR = ("Codigo", "Nome", "CPF", "Empresa", "Motivo", "Entrada",
                      "Saida")
+# quem está dentro não tem saída: no lugar dela, o crachá que a pessoa levou
+COLUNAS_DENTRO = ("Codigo", "Nome", "CPF", "Placa", "Tipo", "Entrada", "Cracha")
 FILTRO_TODOS = "Todos"
 FILTROS = [FILTRO_TODOS, horarios.NO_CAMPUS, horarios.SAIU] + TIPOS_ACESSO
 PRESTADOR = "Prestador de serviço"
@@ -119,16 +123,19 @@ ALTURA_CADASTRO = 660       # abaixo disso o Cadastro usa menos respiro
 GRADE = {
     "cpf": (0, 0, 1),
     "nome": (0, 1, 2),
-    "celular": (3, 0, 1),
-    "empresa": (3, 1, 1),
-    "tipo": (3, 2, 1),
+    "celular": (0, 3, 1),
+    "empresa": (3, 0, 2),
+    "tipo": (3, 2, 2),
     # linha 5: o título do bloco Visita
     "data": (6, 0, 1),
     "hora": (6, 1, 1),
     "placa": (6, 2, 1),
+    "cracha": (6, 3, 1),
     "motivo": (8, 0, 2),
-    "saida": (8, 2, 1),
+    "anfitriao": (8, 2, 1),
+    "saida": (8, 3, 1),
 }
+COLUNAS_DO_FORMULARIO = 4
 LINHA_VISITA, LINHA_BOTOES = 5, 10
 # Espaços (px lógicos) de cada densidade
 # (2.3: o Movimento sobe — menos espaço entre os dois cartões — e ganha a
@@ -260,6 +267,8 @@ class AbaCadastro:
         self.faixa_pendentes = Aviso(self.alertas, fundo_pai=COR["fundo"])
         self.faixa_fechamento = Aviso(self.alertas, fundo_pai=COR["fundo"])
         self.faixa_esquecidos = Aviso(self.alertas, fundo_pai=COR["fundo"])
+        self.faixa_recado = Aviso(self.alertas, fundo_pai=COR["fundo"])
+        self.recado = None
 
     def _montar_formulario(self):
         """Tela de Cadastro: o formulário à esquerda, com a ficha da pessoa
@@ -283,7 +292,7 @@ class AbaCadastro:
         self.nome = self._peca("nome", "Nome completo *",
                                Campo(form, maximo=MAXIMO_NOME))
         self.celular = self._peca("celular", "Telefone *",
-                                  Campo(form, numeros=11), "celular com DDD")
+                                  Campo(form, numeros=11), "com DDD")
         campo_placa = Campo(form, placa=True)
         self.var_placa = campo_placa.var
         self._peca("placa", "Placa", campo_placa, DICA_PLACA)
@@ -308,8 +317,14 @@ class AbaCadastro:
         linha_motivo = self.pecas["motivo"][0]
         self.contador_motivo = Contador(linha_motivo, self.campo_motivo)
         self.contador_motivo.pack(side="right")
+        # 3.2: quem a visita procura e o crachá entregue (opcionais)
+        self.anfitriao = self._peca("anfitriao", "Quem procura",
+                                    Campo(form, maximo=MAXIMO_ANFITRIAO),
+                                    "opcional")
+        self.cracha = self._peca("cracha", "Crachá",
+                                 Campo(form, numeros=MAXIMO_CRACHA), "opcional")
         self.saida = self._peca("saida", "Saída", self._campo_data(form),
-                                "vazio = dentro")
+                                "se já saiu")
 
         # Faixa de situação da pessoa (neutra, nova, já veio, dentro,
         # desativada) e os botões do enunciado: Cadastrar, Limpar e Cancelar
@@ -400,7 +415,8 @@ class AbaCadastro:
             faixa.definir_respiro(5 if compacta else 9)
 
     def _posicionar_formulario(self):
-        self.form.columnconfigure((0, 1, 2), weight=1, uniform="f")
+        n = COLUNAS_DO_FORMULARIO
+        self.form.columnconfigure(tuple(range(n)), weight=1, uniform="f")
         for chave, (rotulo, campo) in self.pecas.items():
             linha, coluna, juntas = GRADE[chave]
             # quem manda na largura é a grade (colunas iguais), não o texto
@@ -408,24 +424,27 @@ class AbaCadastro:
             caixa.config(width=1)
             rotulo.grid(row=linha, column=coluna, columnspan=juntas, sticky="ew",
                         pady=(0, px(4)),
-                        padx=(0, px(12) if coluna + juntas < 3 else 0))
+                        padx=(0, px(12) if coluna + juntas < n else 0))
             campo.grid(row=linha + 1, column=coluna, columnspan=juntas,
                        sticky="new", pady=(0, px(8)),
-                       padx=(0, px(12) if coluna + juntas < 3 else 0))
+                       padx=(0, px(12) if coluna + juntas < n else 0))
         for chave in GRADE:                 # o Tab segue a ordem da tela
             self.pecas[chave][1].lift()
         self.titulo_form.pack(side="left")
-        self.aviso_pessoa.grid(in_=self.form, row=2, column=0, columnspan=3,
-                               sticky="ew", pady=(px(2), px(10)))
+        self.aviso_pessoa.grid(in_=self.form, row=2, column=0,
+                               columnspan=COLUNAS_DO_FORMULARIO, sticky="ew",
+                               pady=(px(2), px(10)))
         # o segundo bloco: um fio e o título "Visita"
         self.secao_visita = tk.Frame(self.form, bg=COR["superficie"])
         tk.Frame(self.secao_visita, bg=COR["borda"], height=1).pack(fill="x")
         self.titulo_visita = titulo_cartao(self.secao_visita, "Visita")
         self.titulo_visita.pack(anchor="w", pady=(px(10), 0))
-        self.secao_visita.grid(row=LINHA_VISITA, column=0, columnspan=3,
-                               sticky="ew", pady=(px(10), px(8)))
+        self.secao_visita.grid(row=LINHA_VISITA, column=0,
+                               columnspan=COLUNAS_DO_FORMULARIO, sticky="ew",
+                               pady=(px(10), px(8)))
         self.linha_botoes.grid(in_=self.form, row=LINHA_BOTOES, column=0,
-                               columnspan=3, sticky="w", pady=(px(6), 0))
+                               columnspan=COLUNAS_DO_FORMULARIO, sticky="w",
+                               pady=(px(6), 0))
         self.ficha.pack(side="right", fill="y", before=self.form)
         self.divisor_ficha.pack(side="right", fill="y", padx=px(20),
                                 before=self.form)
@@ -677,8 +696,10 @@ class AbaCadastro:
                 return
         else:
             registros = self._filtrados(self.app.registros)
-        mostrar_colunas(self.tabela, COLUNAS_PRESTADOR
-                        if self.filtro.get() == PRESTADOR else COLUNAS_VISIVEIS)
+        mostrar_colunas(self.tabela, {
+            PRESTADOR: COLUNAS_PRESTADOR,
+            horarios.NO_CAMPUS: COLUNAS_DENTRO}.get(self.filtro.get(),
+                                                    COLUNAS_VISIVEIS))
         selecao = self.tabela.selection()
         self.tabela.delete(*self.tabela.get_children())
         self.mostrados = {}
@@ -696,7 +717,9 @@ class AbaCadastro:
                 r["saida"] or "—",
                 codigo_da_visita(r["id"]),
                 r.get("empresa") or "—",
-                r.get("motivo") or "—"), iid=str(r["id"]),
+                r.get("motivo") or "—",
+                r.get("cracha") or "—",
+                r.get("anfitriao") or "—"), iid=str(r["id"]),
                 situacao=situacao, cor=cor,
                 tags=(destaque,) if destaque else (), zebra=not destaque)
         manter = [i for i in selecao if self.tabela.exists(i)]
@@ -840,7 +863,9 @@ class AbaCadastro:
                 "alerta", esquecidos, icone=ICONE["carro"],
                 acao="Ver veículos",
                 comando=lambda: self.seletor_lista.selecionar(LISTAS[1]))
+        self._mostrar_recado()
         self._posicionar_faixas([f for f, visivel in (
+            (self.faixa_recado, self.recado is not None),
             (self.faixa_pendentes, pendentes > 0 or bool(carros)),
             (self.faixa_fechamento, minutos is not None),
             (self.faixa_esquecidos, bool(esquecidos))) if visivel])
@@ -880,8 +905,24 @@ class AbaCadastro:
                                      acao=acao, comando=comando)
 
     def _faixas(self):
-        return (self.faixa_pendentes, self.faixa_fechamento,
-                self.faixa_esquecidos)
+        return (self.faixa_recado, self.faixa_pendentes,
+                self.faixa_fechamento, self.faixa_esquecidos)
+
+    def _mostrar_recado(self):
+        """O recado de turno mais antigo que ninguém leu ainda."""
+        ok, recados = self.app.tentar(self.app.banco.listar_recados, True)
+        self.recado = recados[-1] if ok and recados else None
+        if self.recado is not None:
+            r = self.recado
+            self.faixa_recado.mostrar(
+                "info", f"Recado de {r['autor']} ({r['momento']}): {r['texto']}",
+                acao="Marcar como lido", comando=self.marcar_recado_lido)
+
+    def marcar_recado_lido(self):
+        if self.recado is not None:
+            self.app.tentar(self.app.banco.marcar_recado_lido,
+                            self.recado["id"], self.app.autor)
+            self.atualizar_alertas()
 
     def _posicionar_faixas(self, faixas):
         """As faixas visíveis ficam lado a lado, dividindo a largura (uma
@@ -973,7 +1014,9 @@ class AbaCadastro:
                               self.celular.get(), self.var_placa.get(),
                               self.tipo.get(), self.entrada.get(),
                               self.saida.get(), empresa=self.empresa.get(),
-                              motivo=self.motivo.get())
+                              motivo=self.motivo.get(),
+                              anfitriao=self.anfitriao.get(),
+                              cracha=self.cracha.get())
         texto = self.registrar_entrada(registro, self._placa_sugerida(),
                                        (self._auto or {}).get("pessoa_id"),
                                        self._digitar_outro_carro)
@@ -1116,7 +1159,9 @@ class AbaCadastro:
         texto = (f"{SUCESSO_CADASTRO} Entrada de "
                  f"{registro['nome'].split()[0]} às {hora}"
                  + self._com_autorizacao(autorizacao)
-                 + f" Código {codigo_da_visita(id_visita)}.")
+                 + f" Código {codigo_da_visita(id_visita)}."
+                 + (f" Crachá {registro['cracha']}."
+                    if registro.get("cracha") else ""))
         self.avisar(texto)
         return texto
 
@@ -1278,6 +1323,8 @@ class AbaCadastro:
         self.tipo.set("")
         self.empresa.delete(0, tk.END)
         self.motivo.delete(0, tk.END)
+        self.anfitriao.delete(0, tk.END)
+        self.cracha.delete(0, tk.END)
         self._escrever_entrada_agora()
         self.saida.delete(0, tk.END)
         self.cpf.focus()
@@ -1312,7 +1359,8 @@ class AbaCadastro:
 
     def _campos_digitaveis(self):
         return {**self._campos_pessoa(), "cpf": self.var_cpf,
-                "saida": self.saida}
+                "saida": self.saida, "anfitriao": self.anfitriao,
+                "cracha": self.cracha}
 
     def preencher_pessoa(self, pessoa):
         """Começa uma nova entrada para a pessoa (usado pela página Pessoas)."""
@@ -1362,6 +1410,33 @@ class AbaCadastro:
             parado = self._carro_no_estacionamento(pessoa["placa"])
             self._preencher_automatico(pessoa, sem_placa=parado is not None)
         self._mostrar_situacao(cpf, pessoa)
+        self._mostrar_autorizacao(cpf, pessoa)
+
+    def _mostrar_autorizacao(self, cpf, pessoa):
+        """Visitante autorizado (3.2): quem tem autorização de entrada
+        válida hoje já vem com os dados dela, e a faixa diz quem autorizou.
+        Pessoa desativada ou que já está dentro continua barrada."""
+        ok, a = self.app.tentar(self.app.banco.autorizacao_valida, cpf)
+        if not ok or a is None:
+            return
+        if self._auto is None:            # pessoa nova: o CPF trocado limpa
+            self._auto = {"cpf": cpf, "pessoa_id": None, "campos": {},
+                          "placas": []}
+        automaticos = self._auto["campos"]
+        campos = {"nome": self.nome, "empresa": self.empresa,
+                  "motivo": self.motivo, "anfitriao": self.anfitriao}
+        for chave, campo in campos.items():
+            atual = campo.get().strip()
+            # o motivo da última visita dá lugar ao da autorização
+            troca = chave == "motivo" and atual == automaticos.get("motivo")
+            if a[chave] and (not atual or troca):
+                self._escrever(campo, a[chave])
+                automaticos[chave] = campo.get()
+        if self.aviso_pessoa.tipo in ("info", "sucesso"):
+            self._situacao(
+                "sucesso", f"Entrada autorizada por {a['anfitriao']} "
+                           f"(autorização nº {a['id']:03d}). Confira os dados "
+                           "e cadastre.")
 
     def _mostrar_situacao(self, cpf, pessoa):
         """Faixa e ficha conforme a pessoa: nova, já veio, no campus ou
@@ -1803,6 +1878,10 @@ class AbaCadastro:
         texto = (f"Saída de {nomes} registrada às {momento:%H:%M}"
                  + self._com_carro(gravadas, com_veiculo, a_pe, levados)
                  + self._com_autorizacao(autorizacao))
+        crachas = [r["cracha"] for r in gravadas if r.get("cracha")]
+        if crachas:                        # (o crachá volta para a portaria)
+            texto += (". Recolha " + ("o crachá " if len(crachas) == 1
+                                      else "os crachás ") + ", ".join(crachas))
         nao_gravadas = len(recusas) + len(prontos) - len(gravadas)
         if nao_gravadas:
             texto += (f" ({nao_gravadas} já tinha(m) saída ou foi(ram) "

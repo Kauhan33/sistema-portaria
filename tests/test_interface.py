@@ -164,6 +164,10 @@ class BaseInterface(unittest.TestCase):
                              self.navegador)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # (nem o da autorização de entrada e do relatório)
+        patcher = mock.patch("portaria.impressao.webbrowser", self.navegador)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
         # "Seguir o Windows" lê o registro: nos testes o Windows está sempre
         # no claro (o resultado não depende do tema do computador) e cada
@@ -322,7 +326,7 @@ class TestCadastroComoAdmin(BaseInterface):
         self.app.registrar_saida()
         self.assertIsNotNone(converter_data(self.no_banco()[0]["saida"]))
         self.assertEqual(self.app.tabela.item(linha)["text"], "Saiu")
-        self.assertNotEqual(self.app.tabela.item(linha)["values"][-1], "—")
+        self.assertNotEqual(self.app.tabela.set(linha, "Saida"), "—")
 
         self.app.tabela.selection_set(linha)
         self.app.excluir_selecionado()
@@ -1006,7 +1010,9 @@ class TestSessao(BaseInterface):
 
     def test_menu_lateral_tem_as_paginas_do_perfil(self):
         textos = [i.cget("text") for i in self.app.itens_menu.values()]
-        self.assertEqual(textos, ["Cadastro", "Controle de acesso", "Pessoas", "Ocorrências",
+        self.assertEqual(textos, ["Cadastro", "Controle de acesso", "Pessoas", "Funcionários",
+                                  "Autorizações",
+                                  "Encomendas", "Chaves", "Ocorrências",
                                   "Painel"])               # porteiro: sem Usuários
         self.assertTrue(self.app.itens_menu[str(self.app.aba_cad)].ativo)
 
@@ -2197,7 +2203,7 @@ class TestSaidaRapida(BaseInterface):
         self.assertFalse(self.desfazer_visivel())
         self.assertIn(("paulo", "Saída desfeita"), self.acoes())
         linha = self.app.tabela.item(str(self.ids["Beto"]))
-        self.assertEqual((linha["text"], linha["values"][-1]), ("Dentro", "—"))
+        self.assertEqual((linha["text"], linha["values"][6]), ("Dentro", "—"))
 
     def test_f2_vai_para_a_saida_rapida(self):
         self.assertTrue(self.janela.bind("<F2>"))

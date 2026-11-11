@@ -294,7 +294,8 @@ class TestTrocaDeTemaSemFechar(BaseTema):
                                    "Gerar novos códigos de recuperação",
                                    "Tema: Claro",
                                    "Tema: Escuro", "Tema: Seguir o Windows",
-                                   "Sair"])
+                                   "Letra: Normal", "Letra: Grande",
+                                   "Letra: Maior", "Sair"])
         escuro = next(i for i in range(menu.index("end") + 1)
                       if menu.type(i) == "radiobutton"
                       and menu.entrycget(i, "value") == "escuro")

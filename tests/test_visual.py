@@ -238,7 +238,8 @@ class TestTelasRepaginadas(BaseInterface):
         tela = self.tela
         ordem = [tela.cpf, tela.nome, tela.celular, tela.empresa, tela.tipo,
                  tela.campo_data_entrada, tela.campo_hora_entrada,
-                 tela.pecas["placa"][1].entrada, tela.motivo.texto, tela.saida,
+                 tela.pecas["placa"][1].entrada, tela.cracha,
+                 tela.motivo.texto, tela.anfitriao, tela.saida,
                  tela.btn_cadastrar, tela.btn_limpar, tela.btn_cancelar]
         visitados, w = [], tela.cpf
         for _ in range(40):

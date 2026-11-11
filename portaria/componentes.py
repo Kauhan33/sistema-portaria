@@ -1263,7 +1263,7 @@ class ItemMenu(tk.Canvas):
     tem a pílula mais clara, texto branco e o traço vermelho UNA à esquerda."""
 
     def __init__(self, pai, texto, icone, comando, contador=""):
-        super().__init__(pai, height=px(40), bg=COR["lateral"],
+        super().__init__(pai, height=px(35), bg=COR["lateral"],
                          highlightthickness=0, bd=0, cursor="hand2", takefocus=1)
         self.texto, self.icone, self.comando = texto, icone, comando
         self.ativo = self.hover = self.focado = False

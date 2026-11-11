@@ -15,7 +15,8 @@ from .componentes import (Aviso, Botao, Cabecalho, Campo, CampoTexto, Cartao,
 from .estilo import COR, FONTE, ICONE, MARGEM, px
 from .usuarios import pode_excluir
 from .validacao import (CATEGORIAS_OCORRENCIA, MAXIMO_BUSCA, MAXIMO_OCORRENCIA,
-                        formatar_placa, validar_ocorrencia)
+                        MAXIMO_RECADO, formatar_placa, validar_ocorrencia,
+                        validar_recado)
 
 TODAS = "Todas as categorias"
 FILTROS = [TODAS] + CATEGORIAS_OCORRENCIA
@@ -83,6 +84,45 @@ class DialogoOcorrencia(Dialogo):
         return True
 
 
+class DialogoRecado(Dialogo):
+    """Recado para o próximo turno: aparece no Controle de acesso de quem
+    entrar depois, até alguém marcar como lido."""
+
+    def __init__(self, pagina):
+        self.pagina = pagina
+        app = pagina.app
+        super().__init__(app.janela, "Recado para o próximo turno",
+                         "Fica à vista no Controle de acesso até alguém "
+                         "marcar como lido.", largura=480,
+                         ao_usar=app.registrar_uso)
+        linha, _ = rotulo_campo(self.miolo, "Recado *")
+        linha.pack(fill="x", pady=(0, px(4)))
+        self.texto = CampoTexto(self.miolo, MAXIMO_RECADO, linhas=4)
+        self.texto.pack(fill="x", pady=(0, px(12)))
+        self.texto.bind_enter(self.salvar)
+        Contador(linha, self.texto).pack(side="right")
+        self.faixa = Aviso(self.miolo)
+        self.adicionar_botao("Deixar recado", self.salvar, "primario")
+        self.adicionar_botao("Cancelar", self.fechar)
+        self.abrir(confirmar=self.salvar, foco=self.texto)
+
+    def salvar(self):
+        app = self.pagina.app
+        texto = " ".join(self.texto.get().split())
+        ok, msg = validar_recado(texto)
+        if not ok:
+            self.faixa.mostrar("erro", msg)
+            self.faixa.pack(fill="x")
+            return False
+        ok, _ = app.tentar(app.banco.deixar_recado, texto, app.autor)
+        if not ok:
+            return False
+        self.fechar()
+        app.tela_cadastro.atualizar_alertas()
+        self.pagina.aviso("sucesso", "Recado deixado para o próximo turno.")
+        return True
+
+
 class AbaOcorrencias:
     def __init__(self, aba, app):
         self.aba = aba
@@ -95,7 +135,10 @@ class AbaOcorrencias:
         self.btn_nova = Botao(cab.acoes, "Nova ocorrência", self.nova,
                               "primario", icone=ICONE["mais"],
                               fundo_pai=COR["fundo"])
-        self.btn_nova.pack()
+        self.btn_nova.pack(side="right")
+        self.btn_recado = Botao(cab.acoes, "Recado de turno", self.novo_recado,
+                                "secundario", fundo_pai=COR["fundo"])
+        self.btn_recado.pack(side="right", padx=(0, px(8)))
 
         cartao = Cartao(aba, pad=0)
         cartao.pack(fill="both", expand=True, padx=px(MARGEM),
@@ -194,6 +237,10 @@ class AbaOcorrencias:
 
     def nova(self):
         self.dialogo = DialogoOcorrencia(self)
+        return self.dialogo
+
+    def novo_recado(self):
+        self.dialogo = DialogoRecado(self)
         return self.dialogo
 
     def resolver(self):

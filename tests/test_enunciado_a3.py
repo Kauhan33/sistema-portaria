@@ -202,15 +202,16 @@ class TestTela2Cadastro(BaseCadastro):
                        "Motivo da visita *", "* campos obrigatórios"):
             self.assertIn(rotulo, textos)
 
-    def test_as_tres_colunas_do_formulario_tem_a_mesma_largura(self):
+    def test_as_colunas_do_formulario_tem_a_mesma_largura(self):
         self.janela.deiconify()
         for tamanho in ("1093x536", "1180x760"):
             self.janela.geometry(tamanho)
             self.janela.update()
             tela = self.app.tela_cadastro
-            larguras = [c.winfo_width() for c in (tela.pecas["celular"][1],
-                                                  tela.pecas["placa"][1],
-                                                  tela.pecas["tipo"][1])]
+            larguras = [c.winfo_width() for c in (tela.pecas["cpf"][1],
+                                                  tela.pecas["data"][1],
+                                                  tela.pecas["hora"][1],
+                                                  tela.pecas["placa"][1])]
             self.assertLessEqual(max(larguras) - min(larguras), 14, larguras)
 
     def test_data_abre_o_calendario(self):

@@ -83,6 +83,8 @@ from tkinter import ttk
 
 from . import backup, dados, estilo, mensagens
 from .componentes import Avatar, BotaoIcone, ItemMenu, marca_cancela
+from .tela_livros import (AbaAutorizacoes, AbaChaves, AbaEncomendas,
+                          AbaFuncionarios)
 from .tela_ocorrencias import AbaOcorrencias
 from .estilo import (COR, FONTE, ICONE, LARGURA_LATERAL, PREFERENCIAS_TEMA,
                      aplicar_tema, carregar_fontes, pintar_barra_de_titulo, px)
@@ -117,7 +119,7 @@ NOMES_DO_CADASTRO = {
     "nome", "cpf", "var_cpf", "celular", "var_placa", "tipo", "entrada",
     "saida", "tabela", "busca", "lbl_pessoa", "lbl_dica_placa",
     "lbl_placa_status", "lbl_aviso", "btn_desfazer", "btn_excluir", "empresa",
-    "motivo", "filtro",
+    "motivo", "filtro", "anfitriao", "cracha",
     "campo_saida_rapida", "lbl_status", "janela_edicao", "cadastrar", "limpar",
     "registrar_saida", "registrar_saida_da_linha", "saida_rapida",
     "desfazer_saida", "editar_selecionado", "excluir_selecionado",
@@ -129,6 +131,10 @@ NOMES_DO_CADASTRO = {
 # nome do atributo -> (página onde ela mora, classe)
 PAGINAS_SOB_DEMANDA = {
     "tela_pessoas": ("aba_pessoas", AbaPessoas),
+    "tela_funcionarios": ("aba_funcionarios", AbaFuncionarios),
+    "tela_autorizacoes": ("aba_autorizacoes", AbaAutorizacoes),
+    "tela_encomendas": ("aba_encomendas", AbaEncomendas),
+    "tela_chaves": ("aba_chaves", AbaChaves),
     "tela_ocorrencias": ("aba_ocorrencias", AbaOcorrencias),
     "tela_dashboard": ("aba_dash", AbaDashboard),
     "tela_usuarios": ("aba_usuarios", AbaUsuarios),
@@ -355,6 +361,7 @@ class AppPortaria:
         self.corpo.pack(side="left", fill="both", expand=True)
 
     def mostrar_login(self, aviso="", travada=None):
+        self._usar_letra("normal")          # (cada usuário tem a sua)
         self._usar_tema(TEMA_PADRAO)        # o login segue o Windows
         self._trocar_corpo()
         self.tela_login = TelaLogin(self.corpo, self.banco, self.entrar,
@@ -367,6 +374,9 @@ class AppPortaria:
         self.tentar(self.banco.registrar_evento, usuario["login"],
                     "Entrou no sistema")
         self._usar_tema(usuario.get("tema", TEMA_PADRAO))
+        ok, letra = self.tentar(self.banco.letra_do_usuario, usuario["login"])
+        usuario["letra"] = letra if ok else "normal"
+        self._usar_letra(usuario["letra"])
         self._mostrar_sessao()
         self._voltar_da_trava(usuario)
         self.registrar_uso()
@@ -420,6 +430,7 @@ class AppPortaria:
         self.lbl_usuario.config(text=usuario["nome"])
         self.lbl_perfil.config(text=PERFIS[usuario["perfil"]])
         self.var_tema.set(usuario.get("tema", TEMA_PADRAO))
+        self.var_letra.set(usuario.get("letra", "normal"))
         self._ajustar_menu_usuario()
         self._trocar_corpo()
         self.lateral.pack(side="left", fill="y", before=self.corpo)
@@ -439,6 +450,30 @@ class AppPortaria:
         self.usuario["tema"] = preferencia
         if self._usar_tema(preferencia):
             self._remontar()
+        return True
+
+    def trocar_letra(self, letra):
+        """Menu da conta → Letra. Grava no usuário e remonta a janela no
+        tamanho novo (a sessão, a página e o formulário continuam)."""
+        ok, _ = self.tentar(self.banco.definir_letra, letra, self.autor)
+        if not ok:
+            if self.usuario:
+                self.var_letra.set(self.usuario.get("letra", "normal"))
+            return False
+        self.usuario["letra"] = letra
+        if self._usar_letra(letra):
+            self._remontar()
+        return True
+
+    def _usar_letra(self, letra):
+        """Põe em uso o tamanho da letra; se mudou, refaz os estilos e a
+        barra lateral (como na troca de tema) e devolve True."""
+        if not estilo.usar_letra(letra):
+            return False
+        self._pintar_janela()
+        self.lateral.destroy()
+        self.menu_usuario.destroy()
+        self._montar_lateral()
         return True
 
     def _usar_tema(self, preferencia):
@@ -593,7 +628,7 @@ class AppPortaria:
         self.lateral = tk.Frame(self.janela, bg=fundo, width=px(LARGURA_LATERAL))
         self.lateral.pack_propagate(False)
         marca = tk.Frame(self.lateral, bg=fundo)
-        marca.pack(fill="x", padx=px(16), pady=(px(20), px(24)))
+        marca.pack(fill="x", padx=px(16), pady=(px(16), px(14)))
         marca_cancela(marca, fundo).pack(side="left")
         textos = tk.Frame(marca, bg=fundo)
         textos.pack(side="left", padx=(px(12), 0))
@@ -665,6 +700,12 @@ class AppPortaria:
                 variable=self.var_tema,
                 command=lambda p=preferencia: self.trocar_tema(p))
         self.menu_usuario.add_separator()
+        self.var_letra = tk.StringVar(self.janela)
+        for letra, texto in estilo.NOMES_DA_LETRA.items():
+            self.menu_usuario.add_radiobutton(
+                label=f"Letra: {texto}", value=letra, variable=self.var_letra,
+                command=lambda t=letra: self.trocar_letra(t))
+        self.menu_usuario.add_separator()
         self.menu_usuario.add_command(label="Sair", command=self.sair)
 
     def _ajustar_menu_usuario(self):
@@ -714,11 +755,16 @@ class AppPortaria:
         self.aba_cad = self._nova_pagina("Cadastro", "pessoa")
         self.aba_controle = self._nova_pagina("Controle de acesso", "entrada")
         self.aba_pessoas = self._nova_pagina("Pessoas", "pessoas")
+        # os desafios extras do A3: funcionários e os livros da portaria
+        self.aba_funcionarios = self._nova_pagina("Funcionários", "usuarios")
+        self.aba_autorizacoes = self._nova_pagina("Autorizações", "autorizado")
+        self.aba_encomendas = self._nova_pagina("Encomendas", "pacote")
+        self.aba_chaves = self._nova_pagina("Chaves", "chave")
         self.aba_ocorrencias = self._nova_pagina("Ocorrências", "alerta")
         self.aba_dash = self._nova_pagina("Painel", "painel")
         self.aba_usuarios = self.aba_configuracoes = None
         if pode_gerenciar_usuarios(self.usuario):
-            self.aba_usuarios = self._nova_pagina("Usuários", "usuarios")
+            self.aba_usuarios = self._nova_pagina("Usuários", "escudo")
             self.aba_configuracoes = self._nova_pagina("Configurações", "config")
         for nome in PAGINAS_SOB_DEMANDA:       # as da sessão anterior saem
             self.__dict__.pop(nome, None)

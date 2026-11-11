@@ -1388,7 +1388,8 @@ class Banco(ModulosMixin):
         (placas) desativados e carros no estacionamento (contagens com
         índice: rápido)."""
         with self._conexao() as con:
-            pessoas, = con.execute("SELECT COUNT(*) FROM pessoas").fetchone()
+            pessoas, = con.execute("SELECT COUNT(*) FROM pessoas WHERE "
+                                   "cpf NOT LIKE 'X%'").fetchone()
             no_campus, = con.execute("SELECT COUNT(*) FROM registros "
                                      "WHERE saida = ''").fetchone()
             desativadas = dict(con.execute(
@@ -2795,7 +2796,8 @@ class Banco(ModulosMixin):
     def listar_pessoas(self):
         """Pessoas em ordem alfabética, com nº de visitas e se estão no campus."""
         with self._conexao() as con:
-            linhas = con.execute(SELECT_PESSOAS + " GROUP BY p.id "
+            linhas = con.execute(SELECT_PESSOAS + " WHERE p.cpf NOT LIKE "
+                                 "'X%' GROUP BY p.id "
                                  "ORDER BY p.nome COLLATE NOCASE").fetchall()
         return [self._pessoa(linha) for linha in linhas]
 
@@ -2832,7 +2834,9 @@ class Banco(ModulosMixin):
                 "nome COLLATE NOCASE LIMIT ?) "
                 "GROUP BY p.id ORDER BY p.nome COLLATE NOCASE",
                 (*params, int(limite))).fetchall()
-        return [self._pessoa(linha) for linha in linhas]
+        # quem foi anonimizado (LGPD) não é mais uma pessoa do cadastro
+        return [self._pessoa(linha) for linha in linhas
+                if not validacao.anonimizado(linha[1])]
 
     def visitas_da_pessoa(self, id_pessoa, limite=200):
         """Visitas da pessoa (ficha da página Pessoas), da mais recente

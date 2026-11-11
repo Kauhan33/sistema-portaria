@@ -465,7 +465,15 @@ O que ele pede, item por item, está em [`ENUNCIADO_A3.md`](ENUNCIADO_A3.md).
 
 ---
 
-## Versão 3.1 — Visitante e operação da guarita (esquema v14)
+## Versão 3.1 — Visual repaginado (sem mudança de esquema) ✅
+
+- Menu lateral grafite, um botão principal por tela (vermelho UNA), `tk.Button`
+  arredondado e `tk.Checkbutton` desenhado, Cadastro em blocos e hierarquia de
+  ações no Controle de acesso. Ver `design/PROPOSTA_DESIGN.md`, seção 11.
+
+---
+
+## Versão 3.2 — Visitante e operação da guarita (esquema v14)
 
 ### A1. Visitante completo: anfitrião, setor e crachá · M · RN50
 - Para Visitante, Prestador e Entregador, aparece uma linha extra no
@@ -513,7 +521,7 @@ O que ele pede, item por item, está em [`ENUNCIADO_A3.md`](ENUNCIADO_A3.md).
 
 ---
 
-## Versão 3.2 — Dados, relatórios e apresentação (sem mudança de esquema)
+## Versão 3.3 — Dados, relatórios e apresentação (sem mudança de esquema)
 
 ### F2. Gerador de dados fictícios · P/M
 - `python -m portaria.demo --meses 3 --banco demo.db`. Usa semente fixa e
@@ -551,7 +559,7 @@ O que ele pede, item por item, está em [`ENUNCIADO_A3.md`](ENUNCIADO_A3.md).
 
 ---
 
-## Versão 3.3 — LGPD e segurança (esquema v15)
+## Versão 3.4 — LGPD e segurança (esquema v15)
 
 ### B1. Retenção, anonimização e relatório do titular · M · RN51
 - **Retenção:** em Configurações › Privacidade, "Guardar visitas identificadas

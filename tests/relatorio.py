@@ -1212,6 +1212,47 @@ CASOS = [
          "O número de objetos gráficos do processo não cresce.",
          ["test_enunciado_a3.TestSemVazamentoDeRecursos."
           "test_usar_as_telas_nao_consome_objetos_graficos"]),
+    # --- Versão 3.1: o visual novo continua sendo Tkinter de verdade ------
+    caso("CT-110", ["RNF01", "RNF04"], POSITIVO,
+         "Botão arredondado é um tk.Button e responde a mouse e teclado",
+         "Clicar, soltar fora, Enter, Espaço e invoke() num botão do Cadastro; "
+         "desativar o botão e tentar de novo.",
+         "É um tk.Button com o fundo em imagem; aciona uma vez por clique, não "
+         "aciona soltando fora nem desativado, e o fundo acompanha o tamanho.",
+         ["test_visual.TestBotaoTk.test_e_um_tk_button_com_fundo_em_imagem",
+          "test_visual.TestBotaoTk.test_clique_aciona_uma_vez",
+          "test_visual.TestBotaoTk.test_soltar_fora_do_botao_nao_aciona",
+          "test_visual.TestBotaoTk.test_invoke_enter_e_espaco_acionam",
+          "test_visual.TestBotaoTk.test_desativado_nao_aciona_por_nenhum_caminho",
+          "test_visual.TestBotaoTk.test_fundo_acompanha_o_tamanho_do_botao"]),
+    caso("CT-111", ["RNF01", "RNF07"], POSITIVO,
+         "Uma ação principal por tela e Excluir longe das ações do dia a dia",
+         "Conferir as variantes dos botões do Cadastro, do Controle de acesso e "
+         "de Pessoas, e a posição do Excluir.",
+         "Só Cadastrar e Registrar entrada são preenchidos de vermelho; as "
+         "outras ações têm contorno ou só texto; Excluir fica à direita, "
+         "separado.",
+         ["test_visual.TestTelasRepaginadas.test_um_botao_principal_por_tela",
+          "test_visual.TestTelasRepaginadas.test_excluir_fica_longe_das_acoes_do_dia_a_dia",
+          "test_visual.TestBotaoTk.test_so_o_primario_e_preenchido_de_vermelho"]),
+    caso("CT-112", ["RNF01"], POSITIVO,
+         "Cadastro em blocos, com o Tab na ordem da tela",
+         "Percorrer o Cadastro com a tecla Tab a partir do CPF.",
+         "Bloco Pessoa (CPF, nome, telefone, empresa, tipo) e bloco Visita "
+         "(data, horário, placa, motivo, saída), nessa ordem, e depois os "
+         "botões.",
+         ["test_visual.TestTelasRepaginadas.test_tab_segue_a_ordem_da_tela_no_cadastro",
+          "test_visual.TestTelasRepaginadas.test_blocos_pessoa_e_visita"]),
+    caso("CT-113", ["RF34", "RNF07"], POSITIVO,
+         "Caixa de seleção desenhada, nos dois temas",
+         "Marcar e desmarcar Mostrar senha e Só abertas; trocar o tema.",
+         "É um tk.Checkbutton com a caixa em imagem (vermelha com o visto "
+         "quando marcada); cada tema tem a sua; o tema escuro remonta as telas "
+         "com os componentes novos.",
+         ["test_visual.TestCheckbutton.test_e_um_tk_checkbutton_com_a_caixa_desenhada",
+          "test_visual.TestCheckbutton.test_clicar_marca_e_desmarca",
+          "test_visual.TestCheckbutton.test_cada_tema_tem_as_suas_imagens",
+          "test_visual.TestTelasRepaginadas.test_tema_escuro_remonta_com_os_componentes_novos"]),
     caso_da_linguagem(
         "CT-108", "Semântico", ["RN46", "RN48"], NEGATIVO,
         "Empresa e motivo: as mesmas regras do formulário",

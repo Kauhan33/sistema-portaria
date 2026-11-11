@@ -4,9 +4,9 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
-**Versão atual: 3.0** (projeto final, Atividade A3) — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
+**Versão atual: 3.1** (projeto final, Atividade A3, com o visual repaginado) — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
 
-![Tela Controle de acesso](docs/design/final/v30_controle_claro.png)
+![Tela Controle de acesso](docs/design/final/v31_controle_claro.png)
 
 A 3.0 atende, item por item, ao **enunciado da Atividade A3**: login, cadastro e
 controle de entrada e saída em telas próprias, mais os desafios extras de
@@ -134,7 +134,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-1099 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
+1127 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
 Atividade A3 item por item** (`tests/test_enunciado_a3.py`: as três telas, os
 requisitos técnicos e os desafios extras, além de um teste de que usar as telas
 não consome os recursos do Windows), a **linguagem de
@@ -182,10 +182,11 @@ resultado não depende da hora em que eles rodam.
 python -m tests.relatorio [pasta de saída] [--sem-suite]
 ```
 
-Roda os testes automáticos ligados a cada caso (CT-01 a CT-109, positivos e
+Roda os testes automáticos ligados a cada caso (CT-01 a CT-113, positivos e
 negativos, cada um com o RF/RN, a entrada, o resultado esperado e o teste
 que o comprova; os casos da linguagem ficam na seção **"Linguagem de comandos"**,
-com a fase do analisador, e os CT-90 a CT-107 são os do enunciado do A3), marca **PASSOU** ou **FALHOU** e grava
+com a fase do analisador, os CT-90 a CT-107 são os do enunciado do A3 e os
+CT-110 a CT-113, os do visual da 3.1), marca **PASSOU** ou **FALHOU** e grava
 `relatorio_testes.html`, `.csv` e `.json` (com a matriz de rastreabilidade
 requisito × caso e o resultado da suíte completa `python -m unittest`, como
 evidência) numa pasta temporária ou na pasta pedida — nunca dentro do
@@ -193,26 +194,26 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 ## Galeria
 
-As telas `v30_*` são da versão atual (3.0), em claro e escuro, no tamanho normal
+As telas `v31_*` são da versão atual (3.1), em claro e escuro, no tamanho normal
 e num notebook 1366×768 a 125% (`_1366x670`). Dados fictícios.
 
 | | |
 |---|---|
-| ![Login](docs/design/final/v30_login_claro.png) | ![Mostrar senha](docs/design/final/v30_login_mostrar_senha_claro.png) |
+| ![Login](docs/design/final/v31_login_claro.png) | ![Mostrar senha](docs/design/final/v31_login_mostrar_senha_claro.png) |
 | **Login** — usuário, senha, logo, Entrar e Limpar | **Mostrar senha** — o Checkbutton mostra e esconde |
-| ![Campos vazios](docs/design/final/v30_login_campos_vazios_claro.png) | ![Senha errada](docs/design/final/v30_login_senha_errada_escuro.png) |
+| ![Campos vazios](docs/design/final/v31_login_campos_vazios_claro.png) | ![Senha errada](docs/design/final/v31_login_senha_errada_escuro.png) |
 | **Campos vazios** são recusados | **Dados incorretos** — a mesma mensagem para usuário ou senha |
-| ![Cadastro](docs/design/final/v30_cadastro_preenchido_claro.png) | ![Confirmação](docs/design/final/v30_cadastro_confirmacao_claro.png) |
+| ![Cadastro](docs/design/final/v31_cadastro_preenchido_claro.png) | ![Confirmação](docs/design/final/v31_cadastro_confirmacao_claro.png) |
 | **Cadastro** — empresa, data, horário, motivo; Cadastrar, Limpar e Cancelar | **Confirmação** — com o código de identificação |
-| ![Controle de acesso](docs/design/final/v30_controle_claro.png) | ![Prestadores](docs/design/final/v30_controle_prestadores_claro.png) |
+| ![Controle de acesso](docs/design/final/v31_controle_claro.png) | ![Prestadores](docs/design/final/v31_controle_prestadores_claro.png) |
 | **Controle de acesso** — pesquisa, filtro, Código, Situação e as ações | **Prestadores de serviços** — o filtro mostra a empresa e o motivo |
-| ![Pesquisa](docs/design/final/v30_controle_pesquisa_claro.png) | ![Filtro Dentro](docs/design/final/v30_controle_dentro_escuro.png) |
+| ![Pesquisa](docs/design/final/v31_controle_pesquisa_claro.png) | ![Filtro Dentro](docs/design/final/v31_controle_dentro_escuro.png) |
 | **Pesquisa** — no histórico inteiro; achar pelo código também | **Filtro "Dentro"**, no tema escuro |
-| ![Ocorrências](docs/design/final/v30_ocorrencias_selecionada_claro.png) | ![Nova ocorrência](docs/design/final/v30_nova_ocorrencia_claro.png) |
+| ![Ocorrências](docs/design/final/v31_ocorrencias_selecionada_claro.png) | ![Nova ocorrência](docs/design/final/v31_nova_ocorrencia_claro.png) |
 | **Ocorrências** — o livro da portaria | **Nova ocorrência** — categoria, descrição, CPF e placa opcionais |
-| ![Corrigir](docs/design/final/v30_corrigir_claro.png) | ![Nova pessoa](docs/design/final/v30_nova_pessoa_claro.png) |
+| ![Corrigir](docs/design/final/v31_corrigir_claro.png) | ![Nova pessoa](docs/design/final/v31_nova_pessoa_claro.png) |
 | **Corrigir registro** — agora com a empresa e o motivo | **Nova pessoa** — com a empresa |
-| ![Cadastro no notebook](docs/design/final/v30_cadastro_preenchido_escuro_1366x670.png) | ![Controle no notebook](docs/design/final/v30_controle_claro_1366x670.png) |
+| ![Cadastro no notebook](docs/design/final/v31_cadastro_preenchido_escuro_1366x670.png) | ![Controle no notebook](docs/design/final/v31_controle_claro_1366x670.png) |
 | **Notebook 1366×768**: o Cadastro cabe inteiro (tema escuro) | **Notebook 1366×768**: o Controle de acesso |
 
 <details>
@@ -308,20 +309,23 @@ Todos os prints usam dados fictícios. Mais telas em `docs/design/final/`.
 
 ## Telas e funcionalidades
 
-O visual segue o sistema de design **Guarita** (`docs/design/PROPOSTA_DESIGN.md`):
-tela calma em tons neutros, um só botão escuro por tela, e cor só quando
-importa — verde pode entrar, âmbar atenção, vermelho desativado. O vermelho da
-UNA aparece como identidade (símbolo, item ativo do menu, painel do login).
-Tudo em Tkinter puro: cantos arredondados, botões, placa e gráficos são
-desenhados no `Canvas`, os ícones são da fonte Segoe Fluent Icons e o texto
-fica nítido em telas com escala de 125% ou 150% (DPI). As três telas do
-enunciado usam `tk.Button` e `tk.Checkbutton` de verdade, com as cores do tema.
+O visual segue o sistema de design **Guarita** (`docs/design/PROPOSTA_DESIGN.md`),
+repaginado na 3.1: o **menu lateral é grafite**, separando a navegação do
+trabalho; o conteúdo é claro e calmo; e cada tela tem **um só botão principal**,
+no vermelho da UNA. As outras ações são discretas (contorno ou só texto), e o
+que apaga fica afastado. Verde é dentro, âmbar é atenção, vermelho em texto é
+erro. Tudo em Tkinter puro: cartões, placa e gráficos são desenhados no
+`Canvas`, os ícones são da fonte Segoe Fluent Icons e o texto fica nítido em
+telas com escala de 125% ou 150% (DPI). As três telas do enunciado usam
+`tk.Button` e `tk.Checkbutton` de verdade: o fundo arredondado do botão e a
+caixa de seleção são imagens geradas pelo próprio programa, sem nenhuma
+biblioteca externa.
 Num notebook 1366×768 a 125% o Cadastro cabe inteiro e o Controle de acesso
 usa linhas mais baixas para mostrar mais visitas. Prints em
 `docs/design/final/`.
 
-- **Login**: painel vermelho com o logo (uma imagem, `assets/logo_portaria.png`)
-  e o relógio da guarita; à direita, usuário, senha, a caixa **Mostrar senha**,
+- **Login**: painel grafite com o logo (uma imagem, `assets/logo_portaria.png`),
+  o braço listrado da cancela e o relógio da guarita; à direita, usuário, senha, a caixa **Mostrar senha**,
   **Entrar** e **Limpar**. Campos vazios e dados incorretos dão mensagem de erro.
   No primeiro uso, o mesmo layout cria o administrador.
 - **Modo noturno**: cada usuário escolhe o tema no menu da conta (três
@@ -345,10 +349,11 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   novos códigos de recuperação** para o administrador, o **tema** e Sair),
   o **cadeado** ("Ausentar", Ctrl+L) e o botão sair.
 - **Cadastro** (tela 2 do enunciado; **Enter** ou **Cadastrar** registra a
-  entrada): CPF, nome, telefone, placa (opcional), tipo de acesso, **empresa**,
-  **data** (com o calendário), **horário** (com o relógio), **motivo da visita**
+  entrada), em dois blocos, na ordem em que o porteiro pergunta. **Pessoa**:
+  CPF, nome, telefone, **empresa** e tipo de acesso. **Visita**: **data** (com o
+  calendário), **horário** (com o relógio), placa (opcional), **motivo da visita**
   (um `tk.Text`, com contador de até 200 caracteres) e saída (opcional, para
-  lançamento retroativo). Os obrigatórios têm `*`. **Limpar** esvazia o formulário;
+  lançamento retroativo). O Tab segue essa ordem. Os obrigatórios têm `*`. **Limpar** esvazia o formulário;
   **Cancelar** descarta e vai ao Controle de acesso. A confirmação aparece na
   faixa verde, com o **código de identificação** ("Código 007", RN48). Quem já
   veio traz a empresa do cadastro e o motivo da última visita, para conferir ou
@@ -830,6 +835,23 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**3.1** (11/11/2026) — **visual repaginado** (sem mudança no banco nem nas
+regras):
+
+- **menu lateral grafite**, conteúdo claro e **um botão principal por tela**,
+  no vermelho da UNA; ações secundárias com contorno ou só texto, e Excluir
+  afastado das ações do dia a dia;
+- os botões das telas do enunciado continuam sendo `tk.Button` e ficaram
+  arredondados como os demais (o fundo é uma imagem gerada pelo programa); a
+  caixa "Mostrar senha" continua sendo `tk.Checkbutton`, com a caixa desenhada;
+- **Cadastro em blocos** (Pessoa e Visita), com o Tab na ordem da tela;
+- **Controle de acesso** com a etiqueta do estacionamento e os contadores
+  dizendo "dentro"; campos com contorno inteiro e foco azul;
+- **login** com o painel grafite e o braço da cancela;
+- 1127 testes automatizados (os novos estão em `tests/test_visual.py`) e
+  casos CT-110 a CT-113; roteiro visível de 1.208 passos e macaco na janela
+  de verdade, sem falhas.
 
 **3.0** (06/11/2026) — **projeto final, Atividade A3** (banco v13; o banco antigo
 é migrado sozinho, com backup antes):

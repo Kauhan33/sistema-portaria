@@ -639,3 +639,44 @@ veículos), calendário e relógio, "Saiu com o veículo?", Pessoas (ficha e
 visitas), Bloqueios, Painel, Usuários, Configurações (as três seções),
 autorização do administrador, trocar senha, menu da conta, barra de título
 e a troca para o claro sem fechar (`escuro_troca_para_claro.png`).
+
+## 11. Repaginação da versão 3.1
+
+Pedido do aluno: um front end limpo e moderno, que não confunda quem usa. A
+direção escolhida por ele entre três propostas foi a de **menu escuro**.
+
+**O que mudou no sistema de design**
+
+| Antes (até a 3.0) | Agora (3.1) |
+|---|---|
+| Barra lateral clara, quase da cor do fundo | Barra **grafite** (`lateral`): a navegação se separa do trabalho |
+| Botão principal grafite | Botão principal no **vermelho da UNA** (`primario`), um por tela |
+| Botão de perigo com contorno vermelho | Contorno neutro e texto vermelho: não disputa com o principal |
+| Campo com um traço embaixo | Contorno inteiro com contraste de 3:1; com o foco, azul e mais grosso |
+| Cantos de 4 a 8 px | 8 px nos controles (`RAIO_CONTROLE`) e 12 px nos cartões (`RAIO_CARTAO`) |
+| `tk.Button` reto nas telas do enunciado | `tk.Button` com fundo arredondado em imagem (`BotaoTk`) |
+| `tk.Checkbutton` com a caixa do Windows | `tk.Checkbutton` com a caixa desenhada (`checkbutton`) |
+| Painel vermelho no login | Painel grafite, com o **braço da cancela** como assinatura |
+
+**Como as telas ficaram mais claras**
+
+- Cadastro em dois blocos, **Pessoa** e **Visita**, na ordem em que o porteiro
+  pergunta; o Tab segue a ordem da tela.
+- Controle de acesso: **Registrar entrada** é a ação principal; Registrar saída
+  e Corrigir têm contorno; Atualizar e Voltar são só texto; **Excluir** fica à
+  direita, longe das ações do dia a dia.
+- Os contadores falam a língua da tabela: "7 pessoas dentro agora".
+- Em Pessoas, o botão principal é o **Registrar entrada** da ficha; "Nova
+  pessoa" passou a secundário.
+
+**Técnica (só a biblioteca padrão)**
+
+- O fundo do `BotaoTk` é um `tk.PhotoImage` pintado pelo programa
+  (`imagem_arredondada`), com os cantos suavizados por 4x4 amostras por pixel,
+  refeito quando o botão muda de tamanho. O clique, o foco e o teclado são
+  tratados no próprio botão, e o estado desativado não usa o do Tk (que
+  pontilharia a imagem no Windows).
+- A caixa de seleção é um PNG gerado em memória (`_png_da_caixa`), com fundo
+  transparente; cada tema tem a sua.
+- Os tokens novos (`lateral_*`, `avatar_*`, `ligado`) entram na conferência de
+  contraste WCAG AA dos dois temas (`estilo.pares_de_contraste`).

@@ -378,6 +378,15 @@ Sem mudança de esquema (banco v12).
 - ✅ **RF37** — registro de prestadores de serviços (desafio extra).
 - O enunciado, item por item, está em `docs/ENUNCIADO_A3.md`.
 
+### Versão 3.1 — Visual repaginado (11/11/2026) ✅
+
+- ✅ Menu lateral grafite, botão principal vermelho (um por tela), ações
+  secundárias discretas e Excluir afastado.
+- ✅ `tk.Button` arredondado e `tk.Checkbutton` desenhado, sem biblioteca
+  externa; campos com contorno inteiro.
+- ✅ Cadastro em blocos (Pessoa e Visita) com o Tab na ordem da tela.
+- Detalhes em `docs/design/PROPOSTA_DESIGN.md`, seção 11.
+
 ## 4. Rascunho de requisitos para o Word
 
 **RF**: RF01 cadastrar entrada · RF02 registrar saída (botão, duplo clique,

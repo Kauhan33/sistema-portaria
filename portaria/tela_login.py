@@ -1,7 +1,6 @@
 """
-Tela de login, dividida em duas: à esquerda o painel vermelho UNA (o único
-lugar onde o vermelho ocupa área grande) com a cancela e o relógio da
-guarita; à direita o formulário. No primeiro uso (banco sem usuários) vira
+Tela de login, dividida em duas: à esquerda o painel grafite (a cor do menu
+lateral) com o logo, o braço listrado da cancela e o relógio da guarita; à direita o formulário. No primeiro uso (banco sem usuários) vira
 "Primeiro acesso", que cria o administrador — não existe senha padrão.
 
 O login passa por usuarios.entrar(): as tentativas erradas ficam no banco

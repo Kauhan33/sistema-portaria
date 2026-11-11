@@ -59,7 +59,8 @@ class TestBanco(BaseTemp):
     def test_inserir_e_listar_mantem_acentos_e_formato_da_tela(self):
         id_ = self.banco.inserir(registro())
         self.assertEqual(self.banco.listar(),
-                         [dict(registro(), id=id_, empresa="", motivo="")])
+                         [dict(registro(), id=id_, empresa="", motivo="",
+                               anfitriao="", cracha="")])
 
     def test_datas_ficam_em_iso_no_banco(self):
         self.banco.inserir(registro(saida="16/10/2026 09:30"))
@@ -694,7 +695,8 @@ class TestMigracao(BaseTemp):
         aviso = self.banco.importar_json(self.caminho_json)
         self.assertIn("2 registro(s)", aviso)
         self.assertEqual([{k: v for k, v in r.items()
-                           if k not in ("id", "empresa", "motivo")}
+                           if k not in ("id", "empresa", "motivo", "anfitriao",
+                                        "cracha")}
                           for r in self.banco.listar()], antigos)
         self.assertFalse(os.path.exists(self.caminho_json))
         self.assertTrue(os.path.exists(self.caminho_json + ".migrado"))
@@ -759,9 +761,33 @@ def agora_menos(**delta):
     return (datetime.now() - timedelta(**delta)).strftime(FORMATO)
 
 
+def rebaixar_para_v13(caminho):
+    """Deixa um banco como a versão 13 deixava (3.0 e 3.1): sem os módulos
+    da 3.2 (dados_modulos.py)."""
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        DROP INDEX IF EXISTS idx_cracha_em_uso;
+        DROP TABLE IF EXISTS emprestimos_chave;
+        DROP TABLE IF EXISTS chaves;
+        DROP TABLE IF EXISTS encomendas;
+        DROP TABLE IF EXISTS autorizacoes_entrada;
+        DROP TABLE IF EXISTS recados_turno;
+        ALTER TABLE registros DROP COLUMN anfitriao;
+        ALTER TABLE registros DROP COLUMN cracha;
+        ALTER TABLE pessoas DROP COLUMN matricula;
+        ALTER TABLE pessoas DROP COLUMN setor;
+        ALTER TABLE pessoas DROP COLUMN cargo;
+        ALTER TABLE auditoria DROP COLUMN hash;
+        ALTER TABLE usuarios DROP COLUMN letra;
+        UPDATE meta SET valor = 13 WHERE chave = 'versao_esquema';
+        PRAGMA user_version = 13;""")
+    con.close()
+
+
 def rebaixar_para_v12(caminho):
     """Deixa um banco como a versão 12 deixava (2.5): sem empresa, motivo
     e ocorrências (RN48 e RN49, 3.0)."""
+    rebaixar_para_v13(caminho)
     con = sqlite3.connect(caminho)
     con.executescript("""
         DROP TABLE IF EXISTS ocorrencias;

@@ -125,7 +125,11 @@ FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
 #     preenche na entrada)
 # 13 (versão 3.0, enunciado A3): empresa da pessoa e da visita, motivo da
 #     visita (RN48) e o livro de ocorrências (RN49)
-VERSAO_ESQUEMA = 13
+# 14 (versão 3.2): chaves, encomendas, autorizações de entrada, recados de
+#     turno, crachá e quem a visita procura, dados do funcionário, o elo
+#     (hash) de cada evento do histórico e o tamanho da letra do usuário
+#     (tudo em dados_modulos.py)
+VERSAO_ESQUEMA = 14
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
 REGISTRO_MUDOU = ("Este registro foi alterado em outra estação enquanto a "
@@ -225,12 +229,12 @@ SELECT p.id, p.cpf, p.nome, p.celular, p.placa, p.tipo,
        COUNT(r.id), MAX(r.entrada),
        MAX(CASE WHEN r.saida = '' THEN r.entrada END),
        (SELECT group_concat(v.placa, ' ') FROM placas_pessoa v
-        WHERE v.pessoa_id = p.id), p.empresa
+        WHERE v.pessoa_id = p.id), p.empresa, p.matricula, p.setor, p.cargo
 FROM pessoas p LEFT JOIN registros r ON r.pessoa_id = p.id
 """
 
 COLUNAS_REGISTRO = ("id, nome, cpf, celular, placa, tipo, entrada, saida, "
-                    "empresa, motivo")
+                    "empresa, motivo, anfitriao, cracha")
 # Tamanho máximo dos textos da visita, conferido antes de gravar
 TAMANHOS_DA_VISITA = (("Nome completo", "nome", MAXIMO_NOME),
                       ("CPF", "cpf", MAXIMO_CPF),
@@ -239,6 +243,8 @@ TAMANHOS_DA_VISITA = (("Nome completo", "nome", MAXIMO_NOME),
                       ("Empresa", "empresa", validacao.MAXIMO_EMPRESA),
                       ("Motivo da visita", "motivo",
                        validacao.MAXIMO_MOTIVO_VISITA),
+                      ("Quem procura", "anfitriao", validacao.MAXIMO_ANFITRIAO),
+                      ("Crachá", "cracha", validacao.MAXIMO_CRACHA),
                       ("Entrada", "entrada", MAXIMO_DATA_HORA),
                       ("Saída", "saida", MAXIMO_DATA_HORA))
 # Ações do histórico (auditoria) que passaram por cima de uma regra: o
@@ -418,10 +424,12 @@ def _exigir_tamanhos_da_visita(registro):
 
 
 def _registro(linha):
-    i, nome, cpf, cel, placa, tipo, entrada, saida, empresa, motivo = linha
+    (i, nome, cpf, cel, placa, tipo, entrada, saida, empresa, motivo,
+     anfitriao, cracha) = linha
     return {"id": i, "nome": nome, "cpf": cpf, "celular": cel,
             "placa": placa, "tipo": tipo, "entrada": de_iso(entrada),
-            "saida": de_iso(saida), "empresa": empresa, "motivo": motivo}
+            "saida": de_iso(saida), "empresa": empresa, "motivo": motivo,
+            "anfitriao": anfitriao, "cracha": cracha}
 
 
 def _estadia(linha):
@@ -950,11 +958,16 @@ def _passo_v13(banco, con, versao):
         con.execute(sql)
 
 
+# os módulos da 3.2 ficam num arquivo próprio (importado aqui, depois de
+# ErroDados e das datas, que ele usa)
+from .dados_modulos import (ModulosMixin, hash_do_evento,  # noqa: E402
+                            passo_v14)
+
 # (versão alcançada, função) em ordem; uma migração nova entra no fim.
 # Cada passo pode rodar de novo sem estragar nada (banco rebaixado).
 MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7), (8, _passo_v8),
              (9, _passo_v9), (10, _passo_v10), (11, _passo_v11),
-             (12, _passo_v12), (13, _passo_v13)]
+             (12, _passo_v12), (13, _passo_v13), (14, passo_v14)]
 
 VERSAO_MAIS_NOVA = ("Este banco de dados foi criado por uma versão mais nova "
                     "do programa.\nAtualize o programa para abrir este banco "
@@ -977,7 +990,7 @@ def _versao_gravada(con):
     return linha[0] if linha else 0
 
 
-class Banco:
+class Banco(ModulosMixin):
     def __init__(self, caminho, wal=True, relogio=None, estacao=None):
         """
         Abre (e atualiza, se preciso) o banco. `wal=False` para banco em
@@ -1420,9 +1433,11 @@ class Banco:
                 _duracao_iso(para_iso(registro["entrada"]),
                              para_iso(registro.get("saida", ""))),
                 autorizacao, registro["nome"])
+            self._conferir_cracha(con, registro)
             id_ = self._inserir(con, registro)
             self._evento(con, autor, "Cadastro de entrada",
                          f"#{id_} {registro['nome']} ({registro['tipo']})", id_)
+            self._usar_autorizacao(con, registro, id_, autor)
             if carro_ja_saiu is not None:
                 self._corrigir_carro_que_ja_saiu(con, carro_ja_saiu, registro,
                                                  id_, autor,
@@ -1450,10 +1465,12 @@ class Banco:
         _exigir_tamanhos_da_visita(r)
         cursor = con.execute(
             "INSERT INTO registros (nome, cpf, celular, placa, tipo, entrada, "
-            "saida, empresa, motivo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "saida, empresa, motivo, anfitriao, cracha) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (r["nome"], r["cpf"], r["celular"], r.get("placa", ""), r["tipo"],
              para_iso(r["entrada"]), para_iso(r.get("saida", "")),
-             r.get("empresa", ""), r.get("motivo", "")))
+             r.get("empresa", ""), r.get("motivo", ""),
+             r.get("anfitriao", ""), r.get("cracha", "")))
         id_registro = cursor.lastrowid
         con.execute("INSERT INTO pessoas (cpf, nome, celular, placa, tipo, "
                     "empresa) VALUES (?, ?, ?, ?, ?, ?) "
@@ -1570,6 +1587,12 @@ class Banco:
                 linha = con.execute("SELECT saida FROM registros WHERE id = ?",
                                     (i,)).fetchone()
                 saida_antiga = linha[0] if linha else ""
+                # o crachá desta visita já pode estar com outra pessoa: a
+                # visita volta sem ele (um crachá, uma visita aberta)
+                con.execute(
+                    "UPDATE registros SET cracha = '' WHERE id = ? AND cracha "
+                    "IN (SELECT cracha FROM registros WHERE saida = '' AND "
+                    "cracha <> '')", (i,))
                 cursor = con.execute(
                     "UPDATE registros SET saida = '' WHERE id = ? AND saida <> '' "
                     + so_esta +
@@ -1690,15 +1713,20 @@ class Banco:
                                original["celular"], original.get("placa", ""),
                                original["tipo"], para_iso(original["entrada"]),
                                para_iso(original["saida"]))
-            # empresa e motivo: sem a chave, ficam como estavam
+            self._conferir_cracha(con, novo, id_registro)
+            # empresa, motivo, quem procura e crachá: sem a chave, ficam como
+            # estavam
             cursor = con.execute(
                 "UPDATE registros SET nome = ?, cpf = ?, celular = ?, placa = ?, "
                 "tipo = ?, entrada = ?, saida = ?, "
-                "empresa = COALESCE(?, empresa), motivo = COALESCE(?, motivo) "
+                "empresa = COALESCE(?, empresa), motivo = COALESCE(?, motivo), "
+                "anfitriao = COALESCE(?, anfitriao), "
+                "cracha = COALESCE(?, cracha) "
                 "WHERE id = ?" + condicao,
                 (novo["nome"], novo["cpf"], novo["celular"], novo["placa"],
                  novo["tipo"], para_iso(novo["entrada"]), para_iso(novo["saida"]),
                  novo.get("empresa"), novo.get("motivo"),
+                 novo.get("anfitriao"), novo.get("cracha"),
                  id_registro, *como_estava))
             if not cursor.rowcount:
                 raise ErroDados(REGISTRO_MUDOU)
@@ -2754,12 +2782,13 @@ class Banco:
     @staticmethod
     def _pessoa(linha):
         (i, cpf, nome, cel, placa, tipo, visitas, ultima, aberta, todas,
-         empresa) = linha
+         empresa, matricula, setor, cargo) = linha
         # RN47: a principal (pessoas.placa) primeiro, as outras em ordem
         outras = sorted(set((todas or "").split()) - {placa})
         return {"id": i, "cpf": cpf, "nome": nome, "celular": cel,
                 "placa": placa, "placas": ([placa] if placa else []) + outras,
-                "tipo": tipo, "empresa": empresa, "visitas": visitas,
+                "tipo": tipo, "empresa": empresa, "matricula": matricula,
+                "setor": setor, "cargo": cargo, "visitas": visitas,
                 "ultima_visita": de_iso(ultima or ""),
                 "dentro_desde": de_iso(aberta or "")}
 
@@ -3253,10 +3282,25 @@ class Banco:
         """Grava no histórico dentro da mesma transação da operação.
         CPFs no detalhe são mascarados (LGPD): ***.982.247-**."""
         if autor:
+            momento = datetime.now().strftime(FORMATO_ISO_SEGUNDOS)
+            detalhe = mascarar_cpfs_no_texto(detalhe)
+            # cada evento leva o elo do anterior: mexer num evento antigo
+            # quebra a corrente (verificar_historico)
+            try:
+                anterior = con.execute("SELECT hash FROM auditoria ORDER BY "
+                                       "id DESC LIMIT 1").fetchone()
+            except sqlite3.OperationalError:
+                # migração de um banco anterior à v14 (a coluna ainda não
+                # existe): grava sem o elo; o passo da v14 encadeia tudo
+                con.execute("INSERT INTO auditoria (momento, usuario, acao, "
+                            "detalhe, registro_id) VALUES (?, ?, ?, ?, ?)",
+                            (momento, autor, acao, detalhe, registro_id))
+                return
+            elo = hash_do_evento(anterior[0] if anterior else "", momento,
+                                 autor, acao, detalhe, registro_id)
             con.execute("INSERT INTO auditoria (momento, usuario, acao, detalhe, "
-                        "registro_id) VALUES (?, ?, ?, ?, ?)",
-                        (datetime.now().strftime(FORMATO_ISO_SEGUNDOS), autor,
-                         acao, mascarar_cpfs_no_texto(detalhe), registro_id))
+                        "registro_id, hash) VALUES (?, ?, ?, ?, ?, ?)",
+                        (momento, autor, acao, detalhe, registro_id, elo))
 
     def listar_excecoes(self, desde, ate, autor):
         """

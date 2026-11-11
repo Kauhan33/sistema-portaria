@@ -57,6 +57,23 @@ MAXIMO_PLACAS_PESSOA = 5       # veículos no cadastro de uma pessoa (RN47, 2.5)
 MAXIMO_EMPRESA = 80           # empresa ou instituição (RN48, 3.0)
 MAXIMO_MOTIVO_VISITA = 200    # motivo da visita (RN48, 3.0)
 MAXIMO_OCORRENCIA = 500       # descrição da ocorrência (RN49, 3.0)
+# módulos da 3.2
+MAXIMO_CHAVE = 40             # nome da chave: "Laboratório 2"
+MAXIMO_LOCAL = 60             # onde a chave abre; setor da encomenda
+MAXIMO_REMETENTE = 80         # quem mandou a encomenda
+MAXIMO_DESCRICAO_ENCOMENDA = 200
+MAXIMO_ANFITRIAO = 60         # quem a visita procura (pessoa ou setor)
+MAXIMO_CRACHA = 3             # número do crachá: 1 a 999
+MAXIMO_MATRICULA = 20
+MAXIMO_SETOR = 60
+MAXIMO_CARGO = 60
+MAXIMO_RECADO = 500           # recado para o próximo turno
+MAXIMO_MESES_DE_GUARDA = 120  # prazo de guarda dos dados (LGPD)
+FUNCIONARIO = "Funcionário"
+# situação da autorização de entrada
+AUT_VALIDA, AUT_FUTURA = "Válida", "Aguardando"
+AUT_VENCIDA, AUT_CANCELADA = "Vencida", "Cancelada"
+MAXIMO_DIAS_AUTORIZACAO = 90  # uma autorização vale no máximo 90 dias
 MAXIMO_CODIGO = 9             # código de recuperação: K7QM-2F9X (RN38)
 MAXIMO_COMANDO = 200          # linha de comando (2.4): cabe o cadastro completo
 
@@ -145,7 +162,17 @@ def converter_data(texto):
 # ------------------------------------------------------------------
 # Formatadores (para exibir na tabela)
 # ------------------------------------------------------------------
+CPF_ANONIMIZADO = "anonimizado"
+
+
+def anonimizado(cpf):
+    """O "CPF" de quem foi anonimizado (LGPD) é um código que começa com X."""
+    return (cpf or "").startswith("X")
+
+
 def formatar_cpf(c):
+    if anonimizado(c):
+        return CPF_ANONIMIZADO
     return f"{c[:3]}.{c[3:6]}.{c[6:9]}-{c[9:]}" if len(c) == 11 else c
 
 
@@ -155,6 +182,8 @@ def mascarar_cpf(c):
     aparecem, o bastante para conferir sem expor o número inteiro.
     Aceita o CPF com ou sem pontuação: '529.982.247-25' → '***.982.247-**'.
     """
+    if anonimizado(c):
+        return CPF_ANONIMIZADO
     d = so_digitos(c or "")
     return f"***.{d[3:6]}.{d[6:9]}-**" if len(d) == 11 else ("***" if d else "")
 
@@ -192,11 +221,12 @@ def formatar_placa(p):
 # Registro completo
 # ------------------------------------------------------------------
 def normalizar(nome, cpf, celular, placa, tipo, entrada, saida, empresa=None,
-               motivo=None):
+               motivo=None, anfitriao=None, cracha=None):
     """Monta o registro como será salvo, a partir do texto digitado.
     `empresa` e `motivo` (RN48): a tela de Cadastro sempre manda os dois, e
     aí eles são obrigatórios; quem não manda (a Saída, um lançamento antigo)
-    não passa por essa checagem."""
+    não passa por essa checagem. `anfitriao` (quem a visita procura) e
+    `cracha` (3.2) são opcionais."""
     registro = {
         "nome": " ".join(nome.split()),
         "cpf": so_digitos(cpf),
@@ -211,6 +241,11 @@ def normalizar(nome, cpf, celular, placa, tipo, entrada, saida, empresa=None,
     if motivo is not None:
         # texto livre que aparece para todos: CPF digitado vai mascarado (RN14)
         registro["motivo"] = mascarar_cpfs_no_texto(" ".join(motivo.split()))
+    if anfitriao is not None:
+        registro["anfitriao"] = mascarar_cpfs_no_texto(
+            " ".join(anfitriao.split()))
+    if cracha is not None:
+        registro["cracha"] = cracha.strip().lstrip("0")
     return registro
 
 
@@ -285,6 +320,124 @@ def validar_campos(registro):
                                  MAXIMO_MOTIVO_VISITA)
         if not ok:
             return False, msg
+    ok, msg = checar_tamanho("Quem procura", registro.get("anfitriao", ""),
+                             MAXIMO_ANFITRIAO)
+    if not ok:
+        return False, msg
+    return validar_cracha(registro.get("cracha", ""))
+
+
+def validar_cracha(cracha):
+    """Crachá opcional: um número de 1 a 999."""
+    if cracha and (not cracha.isdecimal() or len(cracha) > MAXIMO_CRACHA
+                   or int(cracha) < 1):
+        return False, "Crachá inválido.\nUse o número do crachá, de 1 a 999."
+    return True, ""
+
+
+def codigo_da_pessoa(id_pessoa):
+    """Código de identificação do cadastro da pessoa: 12 -> 'P012'."""
+    return f"P{int(id_pessoa):03d}"
+
+
+# ------------------------------------------------------------------
+# Módulos da 3.2: chaves, encomendas, autorizações, funcionários, recados
+# ------------------------------------------------------------------
+def _obrigatorio(rotulo, texto, maximo, artigo="O"):
+    if not texto:
+        return False, f"{artigo} {rotulo} é obrigatóri{'a' if artigo == 'A' else 'o'}."
+    return checar_tamanho(rotulo.capitalize(), texto, maximo)
+
+
+def _primeiro_erro(*checagens):
+    for ok, msg in checagens:
+        if not ok:
+            return False, msg
+    return True, ""
+
+
+def validar_chave(nome, local):
+    return _primeiro_erro(
+        _obrigatorio("nome da chave", nome, MAXIMO_CHAVE),
+        checar_tamanho("Local", local, MAXIMO_LOCAL))
+
+
+def validar_quem_retira(nome, cpf=""):
+    """Quem pegou a chave ou a encomenda: nome completo; o CPF é opcional."""
+    if not nome:
+        return False, "Informe o nome de quem está retirando."
+    ok, msg = checar_tamanho("Nome", nome, MAXIMO_NOME)
+    if not ok:
+        return False, msg
+    if not nome_valido(nome):
+        return False, "Informe o nome completo (nome e sobrenome, só letras)."
+    if cpf and not cpf_valido(cpf):
+        return False, "CPF inválido.\nDigite os 11 números (somente números)."
+    return True, ""
+
+
+def validar_encomenda(destinatario, remetente, setor="", descricao=""):
+    return _primeiro_erro(
+        _obrigatorio("destinatário", destinatario, MAXIMO_NOME),
+        _obrigatorio("remetente", remetente, MAXIMO_REMETENTE),
+        checar_tamanho("Setor", setor, MAXIMO_LOCAL),
+        checar_tamanho("Descrição", descricao, MAXIMO_DESCRICAO_ENCOMENDA))
+
+
+def validar_autorizacao(cpf, nome, empresa, motivo, anfitriao, de, ate, hoje):
+    """Autorização de entrada: quem (CPF e nome), por quê, quem autorizou e
+    o período (datas `date`). Não começa no passado nem passa de 90 dias."""
+    if not cpf:
+        return False, "O CPF é obrigatório."
+    if not cpf_valido(cpf):
+        return False, "CPF inválido.\nDigite os 11 números (somente números)."
+    if not nome:
+        return False, "O nome da pessoa é obrigatório."
+    if not nome_valido(nome):
+        return False, "Informe o nome completo (nome e sobrenome, só letras)."
+    ok, msg = _primeiro_erro(
+        checar_tamanho("Nome completo", nome, MAXIMO_NOME),
+        checar_tamanho("Empresa", empresa, MAXIMO_EMPRESA),
+        _obrigatorio("motivo", motivo, MAXIMO_MOTIVO_VISITA),
+        _obrigatorio("nome de quem autoriza", anfitriao, MAXIMO_ANFITRIAO))
+    if not ok:
+        return False, msg
+    if ate < de:
+        return False, "A data final não pode ser anterior à inicial."
+    if ate < hoje:
+        return False, "A autorização não pode terminar no passado."
+    if (ate - de).days > MAXIMO_DIAS_AUTORIZACAO:
+        return False, (f"Uma autorização vale no máximo "
+                       f"{MAXIMO_DIAS_AUTORIZACAO} dias.")
+    return True, ""
+
+
+def validar_funcionario(matricula, setor, cargo):
+    if matricula and not matricula.replace("-", "").replace(".", "").isalnum():
+        return False, "Matrícula: use só letras, números, ponto e hífen."
+    return _primeiro_erro(
+        checar_tamanho("Matrícula", matricula, MAXIMO_MATRICULA),
+        checar_tamanho("Setor", setor, MAXIMO_SETOR),
+        checar_tamanho("Cargo", cargo, MAXIMO_CARGO))
+
+
+def validar_recado(texto):
+    if len(texto) < OCORRENCIA_MINIMA:
+        return False, f"Escreva o recado (pelo menos {OCORRENCIA_MINIMA} caracteres)."
+    return checar_tamanho("Recado", texto, MAXIMO_RECADO)
+
+
+def validar_justificativa_simples(texto):
+    if len(texto) < 10:
+        return False, "Escreva a justificativa (pelo menos 10 caracteres)."
+    return checar_tamanho("Justificativa", texto, MAXIMO_JUSTIFICATIVA)
+
+
+def validar_meses_de_guarda(meses):
+    if (not isinstance(meses, int) or isinstance(meses, bool)
+            or not 0 <= meses <= MAXIMO_MESES_DE_GUARDA):
+        return False, (f"Prazo de guarda: de 0 (guardar sempre) a "
+                       f"{MAXIMO_MESES_DE_GUARDA} meses.")
     return True, ""
 
 

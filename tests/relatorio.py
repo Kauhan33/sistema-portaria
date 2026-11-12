@@ -1253,6 +1253,229 @@ CASOS = [
           "test_visual.TestCheckbutton.test_clicar_marca_e_desmarca",
           "test_visual.TestCheckbutton.test_cada_tema_tem_as_suas_imagens",
           "test_visual.TestTelasRepaginadas.test_tema_escuro_remonta_com_os_componentes_novos"]),
+    # --- 3.2: desafios extras que faltavam e melhorias -----------------
+    caso("CT-114", ["RF41", "RN51"], POSITIVO,
+         "Chaves: entregar e devolver",
+         "Cadastrar a chave Laboratório 2; entregar a Maria Souza; devolver.",
+         "A chave aparece como emprestada, com quem está e desde quando; na "
+         "devolução volta para Na portaria e o histórico guarda os dois "
+         "momentos e quem atendeu.",
+         ["test_modulos.TestChaves.test_entregar_e_devolver",
+          "test_livros.TestChavesNaTela.test_entregar_e_devolver",
+          "test_livros.TestChavesNaTela.test_historico_e_remover",
+          "test_livros.TestChavesNaTela.test_cpf_de_quem_tem_cadastro_puxa_o_nome"]),
+    caso("CT-115", ["RN51", "RN02"], NEGATIVO,
+         "Chaves: a mesma chave não sai duas vezes",
+         "Entregar a chave que já está emprestada (inclusive por outra "
+         "estação); devolver a que está na portaria; porteiro cadastrar ou "
+         "remover chave; remover a chave emprestada.",
+         "Tudo recusado com mensagem; o próprio banco trava a segunda entrega "
+         "(índice único), mesmo sem a checagem do programa.",
+         ["test_modulos.TestChaves.test_chave_emprestada_nao_sai_de_novo",
+          "test_modulos.TestChaves.test_o_banco_trava_duas_entregas_mesmo_sem_a_checagem",
+          "test_modulos.TestChaves.test_devolver_o_que_nao_esta_emprestado_e_recusado",
+          "test_modulos.TestChaves.test_remover_so_admin_e_so_na_portaria",
+          "test_modulos.TestChaves.test_cadastro_so_do_administrador",
+          "test_livros.TestChavesNaTela.test_outra_estacao_entregou_antes",
+          "test_livros.TestChavesDoPorteiro.test_porteiro_entrega_mas_nao_cadastra_nem_remove"]),
+    caso("CT-116", ["RF40", "RN52"], POSITIVO,
+         "Encomendas: registrar a chegada e a retirada",
+         "Registrar uma encomenda dos Correios para Helena Souza; depois "
+         "informar quem retirou.",
+         "A encomenda fica Aguardando retirada (as pendentes vêm primeiro); "
+         "na retirada guarda quem levou, quando e quem atendeu.",
+         ["test_modulos.TestEncomendas.test_registrar_e_retirar",
+          "test_modulos.TestEncomendas.test_pendentes_primeiro_e_busca",
+          "test_livros.TestEncomendasNaTela.test_registrar_retirar_e_filtrar",
+          "test_livros.TestEncomendasNaTela.test_pesquisa"]),
+    caso("CT-117", ["RN52", "RN02", "RN33"], NEGATIVO,
+         "Encomendas: campos, retirada repetida e exclusão",
+         "Destinatário ou remetente vazios ou longos; retirar duas vezes; "
+         "porteiro excluir; CPF digitado na descrição.",
+         "Recusa com a mensagem do campo; a segunda retirada é recusada; só o "
+         "administrador exclui (com confirmação); o CPF da descrição é "
+         "gravado mascarado.",
+         ["test_modulos.TestEncomendas.test_campos_obrigatorios_e_limites",
+          "test_modulos.TestEncomendas.test_nao_se_retira_duas_vezes",
+          "test_modulos.TestEncomendas.test_excluir_so_administrador",
+          "test_modulos.TestEncomendas.test_cpf_na_descricao_vai_mascarado",
+          "test_livros.TestEncomendasNaTela.test_validacao_no_dialogo",
+          "test_livros.TestEncomendasNaTela.test_excluir_pede_confirmacao"]),
+    caso("CT-118", ["RF39", "RN53"], POSITIVO,
+         "Visitante autorizado: a autorização preenche o Cadastro",
+         "Criar a autorização de entrada para um CPF (hoje até depois de "
+         "amanhã); digitar esse CPF no Cadastro e cadastrar.",
+         "O Cadastro mostra \"Entrada autorizada por ...\" e já traz nome, "
+         "empresa, motivo e quem procura; a entrada conta como uso da "
+         "autorização.",
+         ["test_modulos.TestAutorizacoes.test_criar_e_situacoes",
+          "test_modulos.TestAutorizacoes.test_autorizacao_valida_do_dia",
+          "test_modulos.TestAutorizacoes.test_entrada_conta_como_uso",
+          "test_livros.TestAutorizacoesNaTela.test_criar_aparece_valida_e_selecionada",
+          "test_livros.TestAutorizacoesNaTela.test_registrar_entrada_leva_ao_cadastro_com_os_dados"]),
+    caso("CT-119", ["RF39", "RN53", "RN33"], POSITIVO,
+         "Emissão da autorização de entrada (página para imprimir)",
+         "Selecionar a autorização e escolher Emitir.",
+         "Abre no navegador a página da autorização, pronta para imprimir "
+         "(o que foi digitado aparece como texto, nunca como marcação); a "
+         "emissão fica no histórico; para o porteiro o CPF sai mascarado.",
+         ["test_modulos.TestAutorizacoes.test_emissao_fica_no_historico",
+          "test_livros.TestAutorizacoesNaTela.test_emitir_abre_a_pagina_para_imprimir",
+          "test_livros.TestAutorizacoesNaTela.test_o_que_foi_digitado_nao_vira_marcacao_na_pagina",
+          "test_livros.TestAutorizacoesDoPorteiro.test_cpf_mascarado_na_lista_e_na_pagina_impressa"]),
+    caso("CT-120", ["RN53", "RN12"], NEGATIVO,
+         "Autorização: datas, cancelamento e pessoa desativada",
+         "Validade que termina antes de começar, no passado ou acima de 90 "
+         "dias; CPF inválido; sem motivo ou sem quem autoriza; cancelar duas "
+         "vezes; autorização para um CPF desativado.",
+         "Recusa com a mensagem; a autorização cancelada ou vencida não "
+         "preenche o Cadastro; a pessoa desativada continua barrada mesmo "
+         "autorizada.",
+         ["test_modulos.TestAutorizacoes.test_validacao",
+          "test_modulos.TestAutorizacoes.test_cancelar_duas_vezes_e_recusado",
+          "test_modulos.TestAutorizacoes.test_porteiro_so_acha_o_cpf_inteiro",
+          "test_livros.TestAutorizacoesNaTela.test_o_dialogo_abre_com_hoje_e_recusa_o_que_falta",
+          "test_livros.TestAutorizacoesNaTela.test_cancelar_e_botoes",
+          "test_livros.TestAutorizacoesNaTela.test_trocar_o_cpf_limpa_o_que_veio_da_autorizacao",
+          "test_livros.TestAutorizacoesNaTela.test_pessoa_desativada_continua_barrada_mesmo_autorizada"]),
+    caso("CT-121", ["RF38", "RN54"], POSITIVO,
+         "Funcionários: matrícula, setor, cargo e o ponto de hoje",
+         "Cadastrar um funcionário com matrícula F-0142, setor e cargo; "
+         "registrar a entrada dele.",
+         "A página Funcionários lista a matrícula, o setor, o cargo e a "
+         "entrada e a saída de hoje.",
+         ["test_modulos.TestFuncionarios.test_salvar_e_listar",
+          "test_modulos.TestFuncionarios.test_ponto_de_hoje",
+          "test_livros.TestFuncionariosNaTela.test_novo_funcionario",
+          "test_livros.TestFuncionariosNaTela.test_editar_dados_e_ponto_de_hoje"]),
+    caso("CT-122", ["RN54"], NEGATIVO,
+         "Funcionários: matrícula repetida e quem não é funcionário",
+         "Matrícula de outro funcionário; matrícula com caractere inválido; "
+         "dados de funcionário para um Visitante; CPF que já tem cadastro.",
+         "Recusa com mensagem; nada é gravado.",
+         ["test_modulos.TestFuncionarios.test_matricula_nao_se_repete_e_tem_formato",
+          "test_modulos.TestFuncionarios.test_quem_nao_e_funcionario_e_recusado",
+          "test_livros.TestFuncionariosNaTela.test_validacao_e_cpf_que_ja_existe"]),
+    caso("CT-123", ["RN50"], POSITIVO,
+         "Visita com crachá e quem procura",
+         "Cadastrar a entrada com Quem procura = Diretoria e Crachá 12; "
+         "filtrar por Dentro; dar a saída.",
+         "A visita guarda os dois; o filtro Dentro mostra a coluna Crachá; a "
+         "saída lembra de recolher o crachá, que fica livre de novo.",
+         ["test_modulos.TestCrachaEAnfitriao.test_visita_guarda_quem_procura_e_o_cracha",
+          "test_modulos.TestCrachaEAnfitriao.test_cracha_volta_a_ficar_livre_na_saida",
+          "test_modulos.TestCrachaEAnfitriao.test_corrigir_mantem_ou_troca_o_cracha",
+          "test_livros.TestCrachaNoCadastro.test_cadastro_guarda_o_cracha_e_quem_procura",
+          "test_livros.TestCrachaNoCadastro.test_filtro_dentro_mostra_o_cracha_e_a_saida_pede_de_volta"]),
+    caso("CT-124", ["RN50"], NEGATIVO,
+         "O mesmo crachá não fica com duas pessoas",
+         "Entregar o crachá 12 a quem entra enquanto ele está com outra "
+         "pessoa dentro; crachá com letras ou com 4 dígitos; desfazer a saída "
+         "de quem tinha o crachá que já foi para outra pessoa.",
+         "Recusa dizendo com quem o crachá está; só números, até 3 dígitos; a "
+         "visita desfeita volta sem o crachá.",
+         ["test_modulos.TestCrachaEAnfitriao.test_cracha_nao_fica_com_duas_pessoas",
+          "test_modulos.TestCrachaEAnfitriao.test_cracha_invalido_e_limite_de_quem_procura",
+          "test_modulos.TestCrachaEAnfitriao."
+          "test_desfazer_a_saida_nao_rouba_o_cracha_de_quem_pegou_depois",
+          "test_livros.TestCrachaNoCadastro.test_cracha_em_uso_e_recusado",
+          "test_livros.TestCrachaNoCadastro.test_cracha_so_aceita_numeros_e_tres_digitos"]),
+    caso("CT-125", ["RF42", "RN33"], POSITIVO,
+         "Recado de turno (passagem de turno)",
+         "Deixar um recado em Ocorrências; abrir o Controle de acesso com "
+         "outro usuário e marcar como lido.",
+         "O recado aparece numa faixa do Controle de acesso até alguém marcar "
+         "como lido (o mais antigo primeiro); recado vazio, curto ou longo é "
+         "recusado; CPF no texto vai mascarado.",
+         ["test_modulos.TestRecados.test_deixar_listar_e_marcar_como_lido",
+          "test_modulos.TestRecados.test_recado_vazio_curto_ou_longo_e_recusado",
+          "test_modulos.TestRecados.test_cpf_no_recado_vai_mascarado",
+          "test_livros.TestRecadoDeTurno.test_recado_aparece_no_controle_ate_ser_lido",
+          "test_livros.TestRecadoDeTurno.test_o_mais_antigo_primeiro"]),
+    caso("CT-126", ["RF44", "RF43", "RN02"], POSITIVO,
+         "Painel por período, horário de pico e relatório para imprimir",
+         "No Painel, alternar Por dia / Por hora e 7 dias / 30 dias; emitir o "
+         "Relatório de um período.",
+         "O gráfico muda de período e destaca a hora de mais entradas; o "
+         "relatório abre no navegador, pronto para imprimir, e a emissão fica "
+         "no histórico; data inválida é recusada; o porteiro não tem o botão.",
+         ["test_livros.TestPainelERelatorio.test_por_dia_em_7_e_30_dias",
+          "test_livros.TestPainelERelatorio.test_por_hora_destaca_o_pico",
+          "test_livros.TestPainelERelatorio.test_grafico_desenha_nos_dois_modos_sem_erro",
+          "test_livros.TestPainelERelatorio.test_relatorio_para_imprimir",
+          "test_livros.TestPainelERelatorio.test_relatorio_recusa_data_invalida",
+          "test_livros.TestPainelDoPorteiro.test_porteiro_nao_tem_relatorio"]),
+    caso("CT-127", ["RF45", "RN57"], POSITIVO,
+         "Dados de demonstração: só o administrador",
+         "Em Configurações > Dados e privacidade, preencher com dados de "
+         "demonstração; repetir; tentar como porteiro (direto no banco).",
+         "O sistema ganha pessoas (CPFs fictícios válidos), visitas, chaves, "
+         "encomendas, autorizações e ocorrências coerentes; repetir não "
+         "duplica; o porteiro não vê a seção e o banco recusa.",
+         ["test_modulos.TestDemonstracao.test_so_administrador",
+          "test_modulos.TestDemonstracao.test_enche_o_banco_com_dados_coerentes",
+          "test_modulos.TestDemonstracao.test_rodar_de_novo_nao_duplica",
+          "test_modulos.TestDemonstracao.test_cpf_ficticio_e_valido",
+          "test_modulos.TestDemonstracao.test_carro_de_quem_esta_dentro_fica_no_estacionamento",
+          "test_livros.TestDadosEPrivacidade.test_dados_de_demonstracao",
+          "test_livros.TestDadosEPrivacidade."
+          "test_todas_as_paginas_abrem_com_os_dados_de_demonstracao"]),
+    caso("CT-128", ["RF47", "RN55", "RN02"], POSITIVO,
+         "LGPD: anonimizar uma pessoa e aplicar o prazo de guarda",
+         "Anonimizar pelo CPF, com justificativa; aplicar o prazo de 12 "
+         "meses.",
+         "Nome, CPF, telefone, placa e empresa da pessoa e das visitas dela "
+         "viram textos neutros; as visitas continuam contando no Painel; o "
+         "mesmo CPF pode voltar como pessoa nova; quem está dentro ou "
+         "desativado não é anonimizado; só o administrador.",
+         ["test_modulos.TestPrivacidade.test_anonimizar_troca_os_dados_e_mantem_a_visita",
+          "test_modulos.TestPrivacidade.test_so_administrador_e_com_justificativa",
+          "test_modulos.TestPrivacidade.test_quem_esta_dentro_ou_desativado_nao_e_anonimizado",
+          "test_modulos.TestPrivacidade.test_o_mesmo_cpf_pode_voltar_como_pessoa_nova",
+          "test_modulos.TestPrivacidade.test_prazo_de_guarda",
+          "test_modulos.TestPrivacidade.test_prazo_invalido",
+          "test_livros.TestDadosEPrivacidade.test_anonimizar_pela_tela",
+          "test_livros.TestDadosEPrivacidade.test_prazo_de_guarda_pela_tela"]),
+    caso("CT-129", ["RN55"], NEGATIVO,
+         "O que foi anonimizado não volta a ter dados pessoais",
+         "Depois de anonimizar: desfazer a saída da visita, corrigir a "
+         "visita, dar matrícula, alterar o cadastro, anonimizar de novo.",
+         "Tudo recusado: a visita continua encerrada e com os textos neutros "
+         "(caso achado pelas sequências aleatórias da 3.2).",
+         ["test_modulos.TestAnonimizadoNaoVolta.test_desfazer_a_saida_nao_reabre_a_visita",
+          "test_modulos.TestAnonimizadoNaoVolta.test_corrigir_a_visita_e_recusado",
+          "test_modulos.TestAnonimizadoNaoVolta.test_nao_vira_funcionario_de_novo",
+          "test_modulos.TestAnonimizadoNaoVolta.test_o_cadastro_nao_e_mais_alteravel",
+          "test_modulos.TestPrivacidade.test_anonimizar_duas_vezes_e_recusado"]),
+    caso("CT-130", ["RN56", "RNF05"], NEGATIVO,
+         "Histórico encadeado: alteração por fora é denunciada",
+         "Com outro programa, alterar o detalhe ou o autor de um evento do "
+         "histórico, ou apagar um evento do meio; depois Conferir histórico.",
+         "A conferência aponta o primeiro evento que não bate; sem alteração, "
+         "responde que o histórico está íntegro; eventos novos continuam a "
+         "corrente; o banco da 3.1 é encadeado na migração, sem perder nada.",
+         ["test_modulos.TestHistoricoProtegido.test_historico_integro",
+          "test_modulos.TestHistoricoProtegido.test_evento_alterado_por_fora_e_achado",
+          "test_modulos.TestHistoricoProtegido.test_evento_apagado_do_meio_e_achado",
+          "test_modulos.TestHistoricoProtegido.test_trocar_o_autor_tambem_quebra",
+          "test_modulos.TestHistoricoProtegido.test_eventos_novos_continuam_a_corrente",
+          "test_modulos.TestHistoricoProtegido.test_o_elo_depende_do_anterior",
+          "test_modulos.TestMigracaoV14.test_banco_da_3_1_ganha_os_modulos_sem_perder_nada",
+          "test_modulos.TestMigracaoV14.test_migrar_duas_vezes_nao_estraga",
+          "test_livros.TestDadosEPrivacidade.test_conferir_o_historico"]),
+    caso("CT-131", ["RF46", "RNF01"], POSITIVO,
+         "Tamanho da letra, código da pessoa e menu com onze páginas",
+         "Escolher Letra: Maior no menu do usuário; sair e entrar com outro "
+         "usuário; abrir a ficha de uma pessoa; usar a janela pequena.",
+         "A letra aumenta em todas as páginas e é de cada usuário (a tela de "
+         "login volta ao normal); a ficha mostra o código (P012); as onze "
+         "páginas do menu cabem na janela pequena.",
+         ["test_modulos.TestLetra.test_cada_usuario_tem_a_sua",
+          "test_livros.TestTamanhoDaLetra.test_letra_maior_aumenta_e_volta",
+          "test_livros.TestTamanhoDaLetra.test_e_de_cada_usuario_e_o_login_fica_normal",
+          "test_livros.TestTamanhoDaLetra.test_todas_as_paginas_abrem_com_a_letra_maior",
+          "test_livros.TestCodigoDaPessoa.test_ficha_mostra_o_codigo_do_cadastro",
+          "test_livros.TestMenuCabeNaTelaPequena.test_o_menu_com_onze_paginas_cabe_em_536_px"]),
     caso_da_linguagem(
         "CT-108", "Semântico", ["RN46", "RN48"], NEGATIVO,
         "Empresa e motivo: as mesmas regras do formulário",

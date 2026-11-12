@@ -680,3 +680,31 @@ direção escolhida por ele entre três propostas foi a de **menu escuro**.
   transparente; cada tema tem a sua.
 - Os tokens novos (`lateral_*`, `avatar_*`, `ligado`) entram na conferência de
   contraste WCAG AA dos dois temas (`estilo.pares_de_contraste`).
+
+## 12. Versão 3.2: páginas novas, letra ajustável e janela pequena
+
+- **Uma base para as páginas de lista** (`tela_livros.py`, `PaginaLista`):
+  Chaves, Encomendas, Autorizações e Funcionários têm o mesmo esqueleto —
+  título com o resumo, o botão de criar no alto, um cartão com a pesquisa e um
+  filtro, a tabela, a faixa com o detalhe da linha selecionada e as ações no
+  pé (a principal em vermelho, a que apaga ou cancela afastada à direita).
+  Quem aprende uma, sabe usar as outras.
+- **Menu com onze páginas**: os itens ficaram mais baixos para caber num
+  notebook 1366×768 a 125% sem rolagem (conferido por teste).
+- **Cadastro em quatro colunas**: Quem procura e Crachá entraram no bloco
+  Visita sem aumentar a altura do formulário.
+- **Tamanho da letra** (Normal, Grande, Maior): o fator multiplica as fontes e
+  as medidas (`estilo.usar_letra`), e as telas são remontadas, como na troca
+  de tema. No notebook 1366×768 a letra Maior aperta o Controle de acesso: é
+  uma opção para monitores maiores ou para quem precisa ler de longe.
+- **Painel**: o gráfico da direita alterna por dia ou por hora (o pico fica
+  na cor de destaque) e 7 ou 30 dias; com mais de 12 barras os rótulos são
+  espaçados.
+- **Janela pequena**: os prints de 1366×670 mostraram cortes, corrigidos e
+  travados por teste — a faixa da autorização cabe numa linha (o nome longo
+  vira reticências), o número do cartão usa a maior letra que cabe, o período
+  vira "7d / 30d" quando falta largura, a seção Dados e privacidade cabe com
+  os três avisos abertos e os diálogos novos cabem na tela.
+- **Página para imprimir** (`impressao.py`): HTML simples, em preto e branco,
+  que o navegador imprime ou salva em PDF; o texto digitado é sempre
+  escapado.

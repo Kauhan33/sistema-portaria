@@ -7,6 +7,7 @@ em Configurações; tamanho da letra.
 import sqlite3
 import tkinter as tk
 from datetime import timedelta
+from unittest import mock
 
 from portaria import estilo, impressao
 from portaria.validacao import AUT_CANCELADA, AUT_VALIDA
@@ -55,6 +56,20 @@ class TestChavesNaTela(BasePagina):
         self.assertTrue(d.salvar())
         self.assertEqual(len(self.pagina.tabela.get_children()), 2)
         self.assertIn("2 chaves", self.pagina.lbl_total.cget("text"))
+
+    def test_lista_longa_mostra_so_as_primeiras_e_avisa(self):
+        for nome in ("Auditório", "Almoxarifado", "Biblioteca"):
+            self.banco.cadastrar_chave(nome, "", "ana.admin")
+        with mock.patch("portaria.tela_livros.LIMITE_LISTA", 2):
+            self.pagina.atualizar()
+            self.assertEqual(len(self.pagina.tabela.get_children()), 2)
+            total = self.pagina.lbl_total.cget("text")
+            self.assertIn("4 chaves", total)                # conta todas
+            self.assertIn("mostrando os 2 primeiros", total)
+            self.pagina.busca.insert(0, "lab")              # a pesquisa acha
+            self.pagina.atualizar()
+            self.assertEqual(len(self.pagina.tabela.get_children()), 1)
+            self.assertNotIn("mostrando", self.pagina.lbl_total.cget("text"))
 
     def test_entregar_e_devolver(self):
         p = self.pagina

@@ -31,6 +31,9 @@ from .validacao import (AUT_CANCELADA, AUT_FUTURA, AUT_VALIDA, AUT_VENCIDA,
                         validar_funcionario, validar_quem_retira)
 
 FORMATO_DIA = "%d/%m/%Y"
+# a tabela desenha no máximo isto (um quadro com milhares de funcionários
+# travaria a tela); o total continua contando todos e a pesquisa acha o resto
+LIMITE_LISTA = 300
 
 
 class PaginaLista:
@@ -138,13 +141,17 @@ class PaginaLista:
         self.itens = itens
         selecao = self.tabela.selection()
         self.tabela.delete(*self.tabela.get_children())
-        for n, item in enumerate(itens):
+        for n, item in enumerate(itens[:LIMITE_LISTA]):
             valores, situacao, cor = self.linha(item)
             inserir_linha(self.tabela, n, valores, iid=str(item["id"]),
                           situacao=situacao, cor=cor)
         if selecao and self.tabela.exists(selecao[0]):
             self.tabela.selection_set(selecao[0])
-        self.lbl_total.config(text=self.resumo(itens))
+        resumo = self.resumo(itens)
+        if len(itens) > LIMITE_LISTA:
+            resumo += (f"  ·  mostrando os {LIMITE_LISTA} primeiros "
+                       "(refine a pesquisa)")
+        self.lbl_total.config(text=resumo)
         self._ao_selecionar()
 
     def _ao_selecionar(self):

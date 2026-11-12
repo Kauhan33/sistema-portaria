@@ -1559,13 +1559,14 @@ class Banco(ModulosMixin):
                                     (i,)).fetchone()
                 saida_antiga = linha[0] if linha else ""
                 # o crachá desta visita já pode estar com outra pessoa: a
-                # visita volta sem ele (um crachá, uma visita aberta)
-                con.execute(
-                    "UPDATE registros SET cracha = '' WHERE id = ? AND cracha "
-                    "IN (SELECT cracha FROM registros WHERE saida = '' AND "
-                    "cracha <> '')", (i,))
+                # visita volta sem ele (um crachá, uma visita aberta). A
+                # visita de quem foi anonimizado não volta: não há mais quem
+                # esteja "dentro" (RN55).
                 cursor = con.execute(
-                    "UPDATE registros SET saida = '' WHERE id = ? AND saida <> '' "
+                    "UPDATE registros SET saida = '', cracha = CASE WHEN cracha "
+                    "IN (SELECT cracha FROM registros WHERE saida = '' AND "
+                    "cracha <> '') THEN '' ELSE cracha END "
+                    "WHERE id = ? AND saida <> '' AND cpf NOT LIKE 'X%' "
                     + so_esta +
                     "AND NOT EXISTS (SELECT 1 FROM registros o "
                     "  WHERE o.cpf = registros.cpf AND o.id <> registros.id "
@@ -1659,6 +1660,10 @@ class Banco(ModulosMixin):
                                 (id_registro,)).fetchone()
             if linha is None:
                 raise ErroDados("Este registro não existe mais.")
+            if validacao.anonimizado(linha[5]):
+                # RN55: a correção devolveria dados pessoais à visita
+                raise ErroDados("Esta visita foi anonimizada e não pode mais "
+                                "ser corrigida.")
             self._conferir_desativacao(con, novo, original={
                 "cpf": linha[5], "placa": linha[4], "saida": linha[3]})
             pessoa_antiga = linha[0]
@@ -2945,7 +2950,7 @@ class Banco(ModulosMixin):
             self._conferir_autor(con, autor)
             linha = con.execute("SELECT cpf FROM pessoas WHERE id = ?",
                                 (id_pessoa,)).fetchone()
-            if linha is None:
+            if linha is None or validacao.anonimizado(linha[0]):
                 raise ErroDados("Esta pessoa não está mais cadastrada.")
             cpf = linha[0]
             atuais = {p for p, in con.execute(

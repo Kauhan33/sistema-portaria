@@ -525,7 +525,7 @@ class ModulosMixin:
         with self._conexao() as con:
             self._exigir(con, autor, so_admin=False)
             linha = con.execute("SELECT nome, tipo, matricula, setor, cargo "
-                                "FROM pessoas WHERE id = ?",
+                                "FROM pessoas WHERE id = ? AND cpf NOT LIKE 'X%'",
                                 (id_pessoa,)).fetchone()
             if linha is None:
                 raise ErroDados("Esta pessoa não existe mais.")

@@ -92,7 +92,9 @@ class Maquina:
              "tipo": self.r.choice(TIPOS_ACESSO),
              "entrada": self.quando(self.r.choice([0, 0, 5, 30])), "saida": "",
              "empresa": self.r.choice(["", "Alfa Ltda", "Clima Frio"]),
-             "motivo": self.r.choice(["", "Reunião", "Manutenção"])}
+             "motivo": self.r.choice(["", "Reunião", "Manutenção"]),
+             "anfitriao": self.r.choice(["", "Diretoria"]),
+             "cracha": self.r.choice(["", "", "", "1", "2", "3"])}
         self.banco.inserir(r, autor=self.autor(), lotado_confirmado=True)
 
     def op_saida(self):
@@ -218,6 +220,89 @@ class Maquina:
         if ids:
             self.banco.remover_autorizado(self.r.choice(ids)[0], self.autor())
 
+    # --- módulos da 3.2 ----------------------------------------------
+    def op_chave_nova(self):
+        self.banco.cadastrar_chave(
+            self.r.choice(["Laboratório 1", "Laboratório 2", "Auditório",
+                           "Almoxarifado", "", "x" * 50]),
+            self.r.choice(["", "Bloco A"]), self.autor())
+
+    def _chave(self):
+        chaves = self.sql("SELECT id FROM chaves")
+        return self.r.choice(chaves)[0] if chaves else 999
+
+    def op_chave_entregar(self):
+        self.banco.entregar_chave(
+            self._chave(), self.r.choice(NOMES + ["", "Ana"]), self.autor(),
+            self.r.choice(["", self.r.choice(CPFS), "123"]))
+
+    def op_chave_devolver(self):
+        self.banco.devolver_chave(self._chave(), self.autor())
+
+    def op_chave_remover(self):
+        self.banco.desativar_chave(self._chave(), self.autor())
+
+    def op_encomenda(self):
+        self.banco.registrar_encomenda(
+            self.r.choice(NOMES + [""]), self.r.choice(["Correios", "", "x" * 90]),
+            self.autor(), setor=self.r.choice(["", "Bloco B"]),
+            descricao=self.r.choice(["", "Caixa", "CPF 529.982.247-25"]))
+
+    def _encomenda(self):
+        encomendas = self.sql("SELECT id FROM encomendas")
+        return self.r.choice(encomendas)[0] if encomendas else 999
+
+    def op_encomenda_retirar(self):
+        self.banco.retirar_encomenda(self._encomenda(),
+                                     self.r.choice(NOMES + ["Ana"]),
+                                     self.autor(), self.r.choice(["", "123"]))
+
+    def op_encomenda_excluir(self):
+        self.banco.excluir_encomenda(self._encomenda(), self.autor())
+
+    def op_autorizacao(self):
+        dia = self.agora.date()
+        de = dia + timedelta(days=self.r.choice([-2, 0, 0, 1]))
+        ate = de + timedelta(days=self.r.choice([-1, 0, 2, 120]))
+        self.banco.criar_autorizacao(
+            self.r.choice(CPFS + ["123"]), self.r.choice(NOMES + ["Ana"]),
+            self.r.choice(["", "Alfa Ltda"]), self.r.choice(["", "Reunião"]),
+            self.r.choice(["", "Diretoria"]), de.strftime("%d/%m/%Y"),
+            ate.strftime("%d/%m/%Y"), self.autor())
+
+    def op_autorizacao_cancelar(self):
+        ids = self.sql("SELECT id FROM autorizacoes_entrada")
+        self.banco.cancelar_autorizacao(
+            self.r.choice(ids)[0] if ids else 999, self.autor())
+
+    def op_recado(self):
+        self.banco.deixar_recado(self.r.choice(["", "oi", "Portão lateral "
+                                                "fechado", "x" * 600]),
+                                 self.autor())
+
+    def op_recado_lido(self):
+        ids = self.sql("SELECT id FROM recados_turno")
+        self.banco.marcar_recado_lido(self.r.choice(ids)[0] if ids else 999,
+                                      self.autor())
+
+    def op_funcionario(self):
+        pessoas = self.sql("SELECT id FROM pessoas")
+        self.banco.salvar_funcionario(
+            self.r.choice(pessoas)[0] if pessoas else 999,
+            self.r.choice(["", "F-1", "F-2", "F 3!"]),
+            self.r.choice(["", "Secretaria"]), self.r.choice(["", "Técnico"]),
+            self.autor())
+
+    def op_anonimizar(self):
+        pessoas = self.sql("SELECT id FROM pessoas")
+        self.banco.anonimizar_pessoa(
+            self.r.choice(pessoas)[0] if pessoas else 999,
+            self.r.choice(["curta", "Pedido do titular por e-mail"]),
+            self.autor())
+
+    def op_retencao(self):
+        self.banco.aplicar_retencao(self.r.choice([0, 1, 12]), self.autor())
+
     def op_encerrar(self):
         self.banco.encerrar_pendentes(self.agora, "ana")
 
@@ -227,6 +312,11 @@ class Maquina:
         "editar_pessoa": 2, "excluir_pessoa": 1, "autorizado": 1,
         "remover_autorizado": 1, "encerrar": 1, "ocorrencia": 2,
         "resolver_ocorrencia": 1, "excluir_ocorrencia": 1,
+        "chave_nova": 1, "chave_entregar": 3, "chave_devolver": 2,
+        "chave_remover": 1, "encomenda": 2, "encomenda_retirar": 2,
+        "encomenda_excluir": 1, "autorizacao": 2, "autorizacao_cancelar": 1,
+        "recado": 1, "recado_lido": 1, "funcionario": 1, "anonimizar": 1,
+        "retencao": 1,
     }
 
     def passo(self):
@@ -256,6 +346,34 @@ class Maquina:
         teste.assertEqual(s("SELECT r.id FROM registros r JOIN pessoas p ON "
                             "p.id = r.pessoa_id WHERE p.cpf <> r.cpf"), [],
                           f"{nome}: visita ligada à pessoa de outro CPF")
+        # --- módulos da 3.2
+        teste.assertEqual(s("SELECT chave_id FROM emprestimos_chave WHERE "
+                            "devolvida_em = '' GROUP BY chave_id "
+                            "HAVING COUNT(*) > 1"), [],
+                          f"{nome}: a mesma chave com duas pessoas")
+        teste.assertEqual(s("SELECT e.id FROM emprestimos_chave e JOIN chaves c "
+                            "ON c.id = e.chave_id WHERE e.devolvida_em = '' "
+                            "AND c.ativa = 0"), [],
+                          f"{nome}: chave removida ainda emprestada")
+        teste.assertEqual(s("SELECT cracha FROM registros WHERE saida = '' AND "
+                            "cracha <> '' GROUP BY cracha HAVING COUNT(*) > 1"),
+                          [], f"{nome}: o mesmo crachá com duas pessoas")
+        teste.assertEqual(s("SELECT id FROM encomendas WHERE (retirada_em = '') "
+                            "<> (retirada_nome = '') OR descricao LIKE "
+                            "'%529.982.247-25%'"), [],
+                          f"{nome}: encomenda fora das regras")
+        teste.assertEqual(s("SELECT id FROM autorizacoes_entrada WHERE "
+                            "valida_ate < valida_de OR usos < 0 OR motivo = '' "
+                            "OR anfitriao = ''"), [],
+                          f"{nome}: autorização fora das regras")
+        teste.assertEqual(s("SELECT p.id FROM pessoas p WHERE p.cpf LIKE 'X%' "
+                            "AND (p.nome <> 'Pessoa anonimizada' OR EXISTS "
+                            "(SELECT 1 FROM registros r WHERE r.pessoa_id = "
+                            "p.id AND (r.saida = '' OR r.nome <> p.nome)))"),
+                          [], f"{nome}: anonimização pela metade")
+        teste.assertEqual(s("SELECT matricula FROM pessoas WHERE matricula <> '' "
+                            "GROUP BY matricula HAVING COUNT(*) > 1"), [],
+                          f"{nome}: matrícula repetida")
         teste.assertEqual(s("SELECT id FROM registros WHERE pessoa_id IS NULL"),
                           [], f"{nome}: visita sem pessoa")
         teste.assertEqual(s("SELECT p.id, p.placa FROM pessoas p WHERE "
@@ -274,7 +392,8 @@ class Maquina:
                                  f"{nome}: o histórico perdeu eventos")
         self.eventos = eventos
         n = self.banco.contadores()
-        teste.assertEqual(n["pessoas"], s("SELECT COUNT(*) FROM pessoas")[0][0])
+        teste.assertEqual(n["pessoas"], s("SELECT COUNT(*) FROM pessoas "
+                                          "WHERE cpf NOT LIKE 'X%'")[0][0])
         teste.assertEqual(n["no_campus"],
                           s("SELECT COUNT(*) FROM registros WHERE saida = ''")[0][0],
                           f"{nome}: contador do campus")
@@ -282,6 +401,15 @@ class Maquina:
                           f"{nome}: chave estrangeira quebrada")
         if completo:
             teste.assertEqual(s("PRAGMA integrity_check"), [("ok",)])
+            # a corrente do histórico continua inteira
+            teste.assertTrue(self.banco.verificar_historico()["integro"],
+                             f"{nome}: corrente do histórico quebrada")
+            self.banco.listar_chaves()
+            self.banco.listar_encomendas()
+            self.banco.listar_autorizacoes()
+            self.banco.listar_funcionarios()
+            self.banco.listar_recados()
+            self.banco.entradas_por_hora(self.agora.date(), 30)
             # as leituras da tela não quebram
             hoje = self.agora.date()
             self.banco.listar_movimento(hoje)

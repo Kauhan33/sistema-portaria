@@ -66,6 +66,32 @@ class TestEntradasEstranhas(unittest.TestCase):
                 texto(self.r))
             self.assertTrue(ok or msg)
 
+    def test_modulos_da_3_2(self):
+        """Chaves, encomendas, autorizações, funcionários e recados: texto
+        estranho devolve (ok, mensagem), nunca uma exceção."""
+        hoje = self.agora.date()
+        for _ in range(VOLTAS):
+            t = [texto(self.r) for _ in range(5)]
+            for nome, funcao, args in (
+                    ("validar_chave", validacao.validar_chave, t[:2]),
+                    ("validar_quem_retira", validacao.validar_quem_retira, t[:2]),
+                    ("validar_encomenda", validacao.validar_encomenda, t[:4]),
+                    ("validar_funcionario", validacao.validar_funcionario, t[:3]),
+                    ("validar_recado", validacao.validar_recado, t[:1]),
+                    ("validar_cracha", validacao.validar_cracha, t[:1]),
+                    ("validar_justificativa_simples",
+                     validacao.validar_justificativa_simples, t[:1]),
+                    ("validar_autorizacao", validacao.validar_autorizacao,
+                     (*t, hoje, hoje, hoje))):
+                ok, msg = self.sem_excecao(nome, funcao, *args)
+                self.assertTrue(ok or msg, nome)
+            self.sem_excecao("codigo anonimizado", validacao.formatar_cpf, t[0])
+            self.sem_excecao("mascarar_cpf", validacao.mascarar_cpf, t[0])
+        for meses in (None, "", "12", -1, 0, 12, 121, 1.5, True, [1]):
+            ok, msg = self.sem_excecao("validar_meses_de_guarda",
+                                       validacao.validar_meses_de_guarda, meses)
+            self.assertTrue(ok or msg)
+
     def test_campos_soltos(self):
         for _ in range(VOLTAS):
             t = texto(self.r)

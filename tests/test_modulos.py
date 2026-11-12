@@ -490,6 +490,45 @@ class TestPrivacidade(BaseRegras):
             self.banco.aplicar_retencao(0, "ana")
 
 
+class TestAnonimizadoNaoVolta(BaseRegras):
+    """Achado pelas sequências aleatórias da 3.2: depois de anonimizar,
+    nenhuma operação devolve dados pessoais à pessoa ou às visitas dela."""
+
+    def setUp(self):
+        super().setUp()
+        self.id_visita = self.banco.inserir(
+            visita(entrada="19/10/2026 08:00", saida="19/10/2026 09:00",
+                   tipo="Funcionário"), autor="paulo")
+        self.pessoa = self.banco.buscar_pessoa(ANA)["id"]
+        self.banco.anonimizar_pessoa(self.pessoa, "Pedido do titular por "
+                                     "e-mail", "ana")
+
+    def test_desfazer_a_saida_nao_reabre_a_visita(self):
+        self.assertEqual(self.banco.desfazer_saidas([self.id_visita],
+                                                    autor="paulo"), 0)
+        self.assertNotEqual(self.banco.buscar(self.id_visita)["saida"], "")
+
+    def test_corrigir_a_visita_e_recusado(self):
+        original = self.banco.buscar(self.id_visita)
+        novo = dict(original, nome="Maria Souza", cpf=ANA)
+        with self.assertRaisesRegex(dados.ErroDados, "anonimizada"):
+            self.banco.editar(self.id_visita, novo, ["nome"], "ana",
+                              original=original)
+        self.assertEqual(self.banco.buscar(self.id_visita)["nome"],
+                         "Pessoa anonimizada")
+
+    def test_nao_vira_funcionario_de_novo(self):
+        with self.assertRaisesRegex(dados.ErroDados, "não existe mais"):
+            self.banco.salvar_funcionario(self.pessoa, "F-1", "Secretaria",
+                                          "Técnica", "ana")
+
+    def test_o_cadastro_nao_e_mais_alteravel(self):
+        with self.assertRaisesRegex(dados.ErroDados, "não está mais cadastrada"):
+            self.banco.atualizar_pessoa(self.pessoa, "Maria Souza",
+                                        "31999990000", "", "Visitante",
+                                        autor="ana")
+
+
 class TestHistoricoProtegido(BaseRegras):
     def setUp(self):
         super().setUp()

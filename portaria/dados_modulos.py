@@ -741,6 +741,37 @@ class ModulosMixin:
             return len(pessoas)
 
     # --------------------------------------------------------------
+    # Painel: entradas por dia e por hora de um período
+    # --------------------------------------------------------------
+    def entradas_por_dia(self, hoje, dias):
+        """[(dia, entradas)] dos últimos `dias` dias, do mais antigo a hoje."""
+        inicio = hoje - timedelta(days=dias - 1)
+        with self._conexao() as con:
+            contagem = dict(con.execute(
+                "SELECT substr(entrada, 1, 10), COUNT(*) FROM registros "
+                "WHERE entrada >= ? AND entrada < ? GROUP BY 1",
+                (inicio.strftime(FORMATO_DIA_ISO),
+                 (hoje + timedelta(days=1)).strftime(FORMATO_DIA_ISO))))
+        return [(inicio + timedelta(days=n),
+                 contagem.get((inicio + timedelta(days=n)).strftime(
+                     FORMATO_DIA_ISO), 0)) for n in range(dias)]
+
+    def entradas_por_hora(self, hoje, dias):
+        """24 números: quantas entradas em cada hora do dia, somando os
+        últimos `dias` dias (o horário de pico é a maior)."""
+        inicio = hoje - timedelta(days=dias - 1)
+        horas = [0] * 24
+        with self._conexao() as con:
+            for hora, n in con.execute(
+                    "SELECT substr(entrada, 12, 2), COUNT(*) FROM registros "
+                    "WHERE entrada >= ? AND entrada < ? GROUP BY 1",
+                    (inicio.strftime(FORMATO_DIA_ISO),
+                     (hoje + timedelta(days=1)).strftime(FORMATO_DIA_ISO))):
+                if hora.isdecimal() and int(hora) < 24:
+                    horas[int(hora)] = n
+        return horas
+
+    # --------------------------------------------------------------
     # Histórico protegido contra alteração
     # --------------------------------------------------------------
     def verificar_historico(self):

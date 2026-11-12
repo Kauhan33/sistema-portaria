@@ -51,10 +51,15 @@ def desenhar_barras_horizontais(cv, itens):
                        fill=COR["texto_3"], font=FONTE["grafico"])
 
 
-def desenhar_barras_verticais(cv, itens):
-    """itens: lista de (rótulo, valor); o último (hoje) fica em destaque."""
+def desenhar_barras_verticais(cv, itens, destaque=None, nome_destaque="Hoje"):
+    """itens: lista de (rótulo, valor). A barra `destaque` (a última, se
+    não vier) fica na cor da marca, com `nome_destaque` embaixo. Com muitas
+    barras (30 dias, 24 horas) só a de destaque mostra o valor, e os
+    rótulos vazios não são desenhados."""
     if _vazio(cv, itens):
         return
+    destaque = len(itens) - 1 if destaque is None else destaque
+    denso = len(itens) > 12
     w, h = cv.winfo_width(), cv.winfo_height()
     maximo = max(v for _, v in itens)
     esq, topo, base = px(8), px(22), h - px(30)
@@ -65,21 +70,24 @@ def desenhar_barras_verticais(cv, itens):
     cv.create_line(esq, base, w - esq, base, fill=COR["borda_campo"])
     largura = (w - 2 * esq) / len(itens)
     for n, (rotulo, valor) in enumerate(itens):
-        hoje = n == len(itens) - 1
+        hoje = n == destaque
         cor = COR["marca"] if hoje else COR["barra"]
-        x0 = esq + n * largura + largura * 0.22
-        x1 = esq + (n + 1) * largura - largura * 0.22
-        altura = (base - topo) * valor / maximo
+        folga = 0.14 if denso else 0.22
+        x0 = esq + n * largura + largura * folga
+        x1 = esq + (n + 1) * largura - largura * folga
+        altura = (base - topo) * valor / maximo if maximo else 0
         if altura >= px(2):
-            r = px(4)
+            r = px(2 if denso else 4)
             ret_arredondado(cv, x0, base - altura, x1, base, r, cor,
                             COR["superficie"])
             if altura > r:      # só o topo é arredondado
                 cv.create_rectangle(x0, base - r, x1, base, fill=cor, width=0)
-        cv.create_text((x0 + x1) / 2, base - altura - px(10), text=str(valor),
-                       fill=COR["texto"] if hoje else COR["texto_2"],
-                       font=FONTE["grafico_valor"])
+        if hoje or not denso:
+            cv.create_text((x0 + x1) / 2, base - altura - px(10),
+                           text=str(valor),
+                           fill=COR["texto"] if hoje else COR["texto_2"],
+                           font=FONTE["grafico_valor"])
         cv.create_text((x0 + x1) / 2, base + px(15),
-                       text="Hoje" if hoje else rotulo,
+                       text=nome_destaque if hoje else rotulo,
                        fill=COR["texto"] if hoje else COR["texto_3"],
                        font=FONTE["rotulo"] if hoje else FONTE["grafico"])

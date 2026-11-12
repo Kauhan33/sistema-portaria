@@ -15,8 +15,8 @@ senha e os códigos de recuperação, ninguém mais entra como administrador).
 import tkinter as tk
 from datetime import datetime, timedelta
 
-from . import backup, horarios, mensagens
-from .componentes import (Aviso, Botao, Cabecalho, Cartao, Dialogo,
+from . import backup, horarios, impressao, mensagens
+from .componentes import (Aviso, Botao, Cabecalho, Cartao, Dialogo, Seletor,
                           campo_rotulado, plural, titulo_cartao)
 from .consultas import formatar_duracao
 from .estilo import COR, ESPACO_CARTOES, FONTE, ICONE, MARGEM, px
@@ -34,6 +34,10 @@ NUMEROS = [("dentro", "Dentro agora"), ("hoje", "Entradas hoje"),
            ("estacionamento", "No estacionamento"),
            ("excedido", "Tempo excedido")]
 ALTURA_GRAFICO = 230
+# o gráfico da direita: por dia ou por hora, em 7 ou 30 dias
+VISOES = ("Por dia", "Por hora")
+PERIODOS = {"7 dias": 7, "30 dias": 30}
+MAXIMO_NO_RELATORIO = 3000      # visitas numa página para imprimir
 FORMATO_DIA = "%d/%m/%Y"
 SO_UM_ADMIN = "Só existe 1 administrador ativo. Crie um segundo."
 
@@ -45,7 +49,8 @@ class AbaDashboard:
         self.cards = {}                            # chave -> (valor, apoio)
         self.com_veiculo = 0                       # visitas com placa (total)
         self.dados = {"tipos": [], "dias": []}     # dados prontos dos gráficos
-        self.btn_exportar = None
+        self.destaque, self.nome_destaque = None, "Hoje"
+        self.btn_exportar = self.btn_relatorio = None
         self.dialogo = None
 
         cab = Cabecalho(aba, "Painel").posicionar()
@@ -55,7 +60,12 @@ class AbaDashboard:
                                       self.abrir_exportacao, "secundario",
                                       icone=ICONE["baixar"],
                                       fundo_pai=COR["fundo"])
-            self.btn_exportar.pack()
+            self.btn_exportar.pack(side="right")
+            self.btn_relatorio = Botao(cab.acoes, "Relatório",
+                                       self.abrir_relatorio, "secundario",
+                                       icone=ICONE["imprimir"],
+                                       fundo_pai=COR["fundo"])
+            self.btn_relatorio.pack(side="right", padx=(0, px(8)))
         self.faixa_admin = Aviso(aba, fundo_pai=COR["fundo"])
         self._montar_numeros()
         self._montar_graficos()
@@ -94,18 +104,35 @@ class AbaDashboard:
         area.rowconfigure(0, weight=1)
         self.cv_tipos = self._novo_grafico(area, 0, "Pessoas por tipo de acesso",
                                            "todas as visitas")
-        self.cv_dias = self._novo_grafico(area, 1, "Entradas nos últimos 7 dias",
-                                          "hoje em destaque")
+        self.cv_dias = self._novo_grafico(area, 1, "Entradas", "hoje em destaque",
+                                          com_periodo=True)
 
-    def _novo_grafico(self, area, coluna, titulo, apoio):
+    def _novo_grafico(self, area, coluna, titulo, apoio, com_periodo=False):
         cartao = Cartao(area, pad=18)
         cartao.grid(row=0, column=coluna, sticky="nsew",
                     padx=px(ESPACO_CARTOES // 2))
         cab = tk.Frame(cartao.miolo, bg=COR["superficie"])
         cab.pack(fill="x", pady=(0, px(12)))
         titulo_cartao(cab, titulo).pack(side="left")
-        tk.Label(cab, text=apoio, font=FONTE["dica"], bg=COR["superficie"],
-                 fg=COR["texto_3"]).pack(side="right")
+        rotulo = tk.Label(cab, text=apoio, font=FONTE["dica"],
+                          bg=COR["superficie"], fg=COR["texto_3"])
+        rotulo.pack(side="right")
+        if com_periodo:
+            # por dia ou por hora (o horário de pico), em 7 ou 30 dias
+            self.lbl_apoio_dias = rotulo
+            self.seletor_periodo = Seletor(cab, tuple(PERIODOS),
+                                           lambda o: self._ao_trocar_visao(),
+                                           fundo_pai=COR["superficie"])
+            self.seletor_visao = Seletor(cab, VISOES,
+                                         lambda o: self._ao_trocar_visao(),
+                                         fundo_pai=COR["superficie"])
+            for seletor in (self.seletor_visao, self.seletor_periodo):
+                seletor.compactar()
+                seletor.pack(side="left", padx=(px(16), 0))
+            self._montando = True
+            self.seletor_visao.selecionar(VISOES[0])
+            self.seletor_periodo.selecionar("7 dias")
+            self._montando = False
         cv = tk.Canvas(cartao.miolo, bg=COR["superficie"], height=px(ALTURA_GRAFICO),
                        highlightthickness=0, bd=0)
         cv.pack(fill="both", expand=True)
@@ -139,9 +166,40 @@ class AbaDashboard:
         self.dados["tipos"] = [
             (PLURAL_TIPO.get(t, t), por_tipo[t][0], f"{por_tipo[t][1]} dentro")
             for t in TIPOS_ACESSO]
-        self.dados["dias"] = [(d.strftime("%d/%m"), n)
-                              for d, n in r["por_dia"].items()]
+        self._ler_entradas()
         self.redesenhar_graficos()
+
+    def _ao_trocar_visao(self):
+        if not self._montando:
+            self._ler_entradas()
+            self.redesenhar_graficos()
+
+    def _ler_entradas(self):
+        """O gráfico da direita: entradas por dia (hoje em destaque) ou por
+        hora (o pico em destaque), nos últimos 7 ou 30 dias."""
+        hoje = self.app.relogio().date()
+        dias = PERIODOS[self.seletor_periodo.ativa]
+        if self.seletor_visao.ativa == VISOES[1]:
+            ok, horas = self.app.tentar(self.app.banco.entradas_por_hora, hoje,
+                                        dias)
+            if not ok:
+                return
+            pico = max(range(24), key=lambda h: horas[h])
+            self.dados["dias"] = [(f"{h:02d}h" if h % 3 == 0 else "", n)
+                                  for h, n in enumerate(horas)]
+            self.destaque, self.nome_destaque = pico, f"{pico:02d}h"
+            self.lbl_apoio_dias.config(
+                text=f"pico às {pico:02d}h" if horas[pico] else "sem entradas")
+            return
+        ok, por_dia = self.app.tentar(self.app.banco.entradas_por_dia, hoje,
+                                      dias)
+        if not ok:
+            return
+        self.dados["dias"] = [
+            (d.strftime("%d/%m") if dias <= 7 or n % 5 == 0 else "", total)
+            for n, (d, total) in enumerate(por_dia)]
+        self.destaque, self.nome_destaque = None, "Hoje"
+        self.lbl_apoio_dias.config(text="hoje em destaque")
 
     def _mostrar_horarios(self):
         """Tempo excedido e saídas pendentes, com o relógio do app."""
@@ -197,7 +255,8 @@ class AbaDashboard:
 
     def redesenhar_graficos(self, event=None):
         desenhar_barras_horizontais(self.cv_tipos, self.dados["tipos"])
-        desenhar_barras_verticais(self.cv_dias, self.dados["dias"])
+        desenhar_barras_verticais(self.cv_dias, self.dados["dias"],
+                                  self.destaque, self.nome_destaque)
 
     # --------------------------------------------------------------
     # Exportar CSV (só administrador)
@@ -210,15 +269,23 @@ class AbaDashboard:
         self.dialogo = DialogoExportar(self.app)
         return self.dialogo
 
+    def abrir_relatorio(self):
+        """Relatório do período, numa página para imprimir (só administrador:
+        leva os CPFs completos, como a exportação)."""
+        if not eh_admin(self.app.usuario):
+            mensagens.erro("Acesso negado",
+                           "Somente o administrador emite o relatório.")
+            return None
+        self.dialogo = DialogoRelatorio(self.app)
+        return self.dialogo
+
 
 class DialogoExportar(Dialogo):
     """Escolha do período (com atalhos) e do arquivo para exportar."""
 
     def __init__(self, app):
         self.app = app
-        super().__init__(app.janela, "Exportar registros",
-                         "As visitas com entrada no período vão para uma "
-                         "planilha (CSV) que abre no Excel.", largura=420,
+        super().__init__(app.janela, self.TITULO, self.SUBTITULO, largura=420,
                          ao_usar=app.registrar_uso)
         hoje = app.relogio().date()
         atalhos = tk.Frame(self.miolo, bg=COR["superficie"])
@@ -240,15 +307,35 @@ class DialogoExportar(Dialogo):
         grupo.grid(row=0, column=1, sticky="ew")
         self.ate = campo.entrada
         self.faixa = Aviso(self.miolo)
-        self.faixa.mostrar("alerta", "O arquivo leva CPF e celular completos: "
-                                     "guarde-o com o mesmo cuidado do sistema.")
+        self.faixa.mostrar("alerta", self.AVISO)
         self.faixa.pack(fill="x", pady=(px(16), 0))
         self.lbl_erro = self.faixa.lbl
         self.periodo(hoje.replace(day=1), hoje)
-        self.adicionar_botao("Escolher arquivo e exportar", self.exportar,
-                             "primario")
+        self.adicionar_botao(self.BOTAO, self.confirmar, "primario")
         self.adicionar_botao("Cancelar", self.fechar)
-        self.abrir(confirmar=self.exportar, foco=self.desde)
+        self.abrir(confirmar=self.confirmar, foco=self.desde)
+
+    TITULO = "Exportar registros"
+    SUBTITULO = ("As visitas com entrada no período vão para uma planilha "
+                 "(CSV) que abre no Excel.")
+    AVISO = ("O arquivo leva CPF e celular completos: guarde-o com o mesmo "
+             "cuidado do sistema.")
+    BOTAO = "Escolher arquivo e exportar"
+
+    def confirmar(self):
+        return self.exportar()
+
+    def periodo_escolhido(self):
+        """(desde, ate) ou None, com o erro já na faixa."""
+        desde, ate = self._data(self.desde), self._data(self.ate)
+        if desde is None or ate is None:
+            self.faixa.mostrar("erro", "Data inválida. Use o formato dd/mm/aaaa.")
+            return None
+        if ate < desde:
+            self.faixa.mostrar("erro", "A data final não pode ser anterior à "
+                                       "inicial.")
+            return None
+        return desde, ate
 
     def periodo(self, desde, ate):
         for caixa, dia in ((self.desde, desde), (self.ate, ate)):
@@ -284,3 +371,39 @@ class DialogoExportar(Dialogo):
                        f"{plural(quantos, 'registro exportado', 'registros exportados')}"
                        f" para:\n{caminho}")
 
+
+class DialogoRelatorio(DialogoExportar):
+    """O mesmo período da exportação, mas o resultado é uma página para
+    imprimir (ou salvar em PDF) aberta no navegador."""
+
+    TITULO = "Relatório para imprimir"
+    SUBTITULO = ("As visitas com entrada no período, com o resumo, numa "
+                 "página que o navegador imprime ou salva em PDF.")
+    AVISO = ("O relatório leva os CPFs completos: guarde ou descarte o papel "
+             "com cuidado.")
+    BOTAO = "Abrir relatório"
+
+    def confirmar(self):
+        periodo = self.periodo_escolhido()
+        if periodo is None:
+            return None
+        desde, ate = periodo
+        app = self.app
+        ok, registros = app.tentar(app.banco.registros_do_periodo, desde, ate,
+                                   app.autor)
+        if not ok:
+            return None
+        if len(registros) > MAXIMO_NO_RELATORIO:
+            self.faixa.mostrar(
+                "erro", f"São {len(registros)} visitas: é demais para "
+                        "imprimir. Escolha um período menor ou use Exportar "
+                        "CSV.")
+            return None
+        pagina = impressao.relatorio_html(registros, desde, ate, app.exibir_cpf,
+                                          app.usuario["nome"], app.relogio())
+        caminho = impressao.abrir(pagina, "relatorio", app.janela)
+        app.tentar(app.banco.registrar_evento, app.autor, "Relatório emitido",
+                   f"{desde:%d/%m/%Y} a {ate:%d/%m/%Y}: "
+                   f"{plural(len(registros), 'visita', 'visitas')}")
+        self.fechar()
+        return caminho

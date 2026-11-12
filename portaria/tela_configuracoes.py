@@ -33,10 +33,15 @@ from .componentes import (Alternador, Aviso, Botao, Cabecalho, Campo, Cartao,
                           tabela, titulo_cartao)
 from .estilo import COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM, px
 from .horarios import DIAS_SEMANA, FORMATO_DATA
-from .validacao import MAXIMO_DESCRICAO, MAXIMO_HORA, TIPOS_ACESSO
+from .validacao import (MAXIMO_DESCRICAO, MAXIMO_HORA, MAXIMO_JUSTIFICATIVA,
+                        TIPOS_ACESSO, cpf_valido, so_digitos,
+                        validar_justificativa_simples)
 from .veiculos import MAXIMO_VAGAS, ler_vagas
 
-SECOES = ("Funcionamento", "Categorias", "Feriados e eventos", "Atalhos")
+SECAO_DADOS = "Dados e privacidade"
+SECOES = ("Funcionamento", "Categorias", "Feriados e eventos", "Atalhos",
+          SECAO_DADOS)
+MESES_DE_GUARDA_PADRAO = 12
 # Configurações › Atalhos (2.5.3): as teclas do programa, inclusive a do
 # modo didático, que não tem mais botão na tela
 ATALHOS = (
@@ -104,6 +109,7 @@ class AbaConfiguracoes:
         self._montar_categorias(self.secoes["Categorias"])
         self._montar_calendario(self.secoes["Feriados e eventos"])
         self._montar_atalhos(self.secoes["Atalhos"])
+        self._montar_dados(self.secoes[SECAO_DADOS])
         self.seletor.selecionar(SECOES[0])
         self.atualizar()
 
@@ -363,6 +369,186 @@ class AbaConfiguracoes:
                               wraplength=px(640))
             rotulo.grid(row=i, column=1, sticky="w", pady=px(6))
             self.lbl_atalhos[teclas] = rotulo
+
+    # --------------------------------------------------------------
+    # Dados e privacidade (3.2): demonstração, LGPD e histórico protegido
+    # --------------------------------------------------------------
+    def _montar_dados(self, secao):
+        secao.columnconfigure((0, 1), weight=1, uniform="d")
+        fundo = COR["superficie"]
+
+        def texto(pai, conteudo):
+            tk.Label(pai, text=conteudo, font=FONTE["corpo"], bg=fundo,
+                     fg=COR["texto_2"], justify="left", anchor="w",
+                     wraplength=px(380)).pack(anchor="w", pady=(px(6), px(10)))
+
+        esquerda = tk.Frame(secao, bg=COR["fundo"])
+        esquerda.grid(row=0, column=0, sticky="nsew",
+                      padx=(0, px(ESPACO_CARTOES // 2)))
+        cartao = Cartao(esquerda, pad=20)
+        cartao.pack(fill="x", pady=(0, px(ESPACO_CARTOES)))
+        m = cartao.miolo
+        titulo_cartao(m, "Dados de demonstração").pack(anchor="w")
+        texto(m, "Enche o sistema com pessoas, visitas, chaves, encomendas e "
+                 "ocorrências fictícias, para apresentar ou treinar. Não use "
+                 "com dados de verdade: os fictícios se misturam a eles.")
+        self.btn_demonstracao = Botao(m, "Preencher com dados fictícios",
+                                      self.preencher_demonstracao)
+        self.btn_demonstracao.pack(anchor="w")
+        self.faixa_demonstracao = Aviso(m)
+
+        cartao = Cartao(esquerda, pad=20)
+        cartao.pack(fill="x")
+        m = cartao.miolo
+        titulo_cartao(m, "Histórico protegido").pack(anchor="w")
+        texto(m, "Cada ação gravada no histórico leva um código que depende "
+                 "da ação anterior. Se alguém mudar ou apagar uma linha por "
+                 "fora do programa, a conferência acha onde foi.")
+        self.btn_historico = Botao(m, "Conferir o histórico",
+                                   self.conferir_historico, icone=ICONE["escudo"])
+        self.btn_historico.pack(anchor="w")
+        self.faixa_historico = Aviso(m)
+
+        cartao = Cartao(secao, pad=20)
+        cartao.grid(row=0, column=1, sticky="new",
+                    padx=(px(ESPACO_CARTOES // 2), 0))
+        m = cartao.miolo
+        titulo_cartao(m, "Privacidade (LGPD)").pack(anchor="w")
+        texto(m, "Anonimizar troca o nome, o CPF, o telefone, a placa e a "
+                 "empresa da pessoa e das visitas dela por textos neutros. As "
+                 "visitas continuam contando no Painel. Não tem volta.")
+        grupo, campo = campo_rotulado(m, "CPF da pessoa", "só números",
+                                      numeros=11)
+        grupo.pack(fill="x", pady=(0, px(10)))
+        self.cpf_anonimizar = campo.entrada
+        grupo, campo = campo_rotulado(m, "Justificativa", "ex.: pedido do "
+                                      "titular", maximo=MAXIMO_JUSTIFICATIVA)
+        grupo.pack(fill="x", pady=(0, px(10)))
+        self.justificativa_anonimizar = campo.entrada
+        self.btn_anonimizar = Botao(m, "Anonimizar pessoa", self.anonimizar,
+                                    "perigo")
+        self.btn_anonimizar.pack(anchor="w")
+        tk.Frame(m, bg=COR["borda"], height=1).pack(fill="x", pady=px(14))
+        linha = tk.Frame(m, bg=fundo)
+        linha.pack(fill="x")
+        grupo, campo = campo_rotulado(linha, "Prazo de guarda", "meses sem "
+                                      "visita", numeros=3, largura=120)
+        grupo.pack(side="left")
+        self.meses_guarda = campo.entrada
+        self.meses_guarda.insert(0, str(MESES_DE_GUARDA_PADRAO))
+        self.btn_prazo = Botao(linha, "Anonimizar quem passou do prazo",
+                               self.aplicar_prazo, "perigo")
+        self.btn_prazo.pack(side="left", anchor="s", padx=(px(10), 0))
+        self.faixa_privacidade = Aviso(m)
+
+    @staticmethod
+    def _dizer(faixa, tipo, texto):
+        faixa.mostrar(tipo, texto)
+        faixa.pack(fill="x", pady=(px(12), 0))
+
+    def preencher_demonstracao(self):
+        app = self.app
+        if not app.perguntar(
+                mensagens.confirmar, "Dados de demonstração",
+                "Inserir pessoas, visitas e livros FICTÍCIOS neste banco?\n\n"
+                "Use só para apresentar ou treinar: os dados fictícios se "
+                "misturam aos que já existem e não saem sozinhos."):
+            return None
+        ok, feito = app.tentar(app.banco.preencher_demonstracao, app.autor)
+        if not ok:
+            return None
+        app.recarregar_registros()
+        app.atualizar_tabela()
+        app.atualizar_contadores()
+        if not feito["pessoas"]:
+            self._dizer(self.faixa_demonstracao, "info",
+                        "Os dados de demonstração já estavam neste banco: "
+                        "nada foi repetido.")
+        else:
+            self._dizer(self.faixa_demonstracao, "sucesso",
+                        "Inseridos: " + ", ".join(
+                            f"{n} {o}" for o, n in feito.items()) + ".")
+        return feito
+
+    def conferir_historico(self):
+        ok, estado = self.app.tentar(self.app.banco.verificar_historico)
+        if not ok:
+            return None
+        if estado["integro"]:
+            self._dizer(self.faixa_historico, "sucesso",
+                        f"Histórico íntegro: {estado['total']} ações "
+                        "conferidas.")
+        else:
+            self._dizer(self.faixa_historico, "erro",
+                        "O histórico foi alterado por fora do programa: a "
+                        f"ação nº {estado['primeiro_alterado']} (ou a "
+                        "anterior) não confere. Compare com um backup.")
+        return estado
+
+    def anonimizar(self):
+        app = self.app
+        cpf = so_digitos(self.cpf_anonimizar.get())
+        justificativa = " ".join(self.justificativa_anonimizar.get().split())
+        if not cpf_valido(cpf):
+            return self._dizer(self.faixa_privacidade, "erro",
+                               "CPF inválido: confira os números.")
+        ok, msg = validar_justificativa_simples(justificativa)
+        if not ok:
+            return self._dizer(self.faixa_privacidade, "erro", msg)
+        ok, pessoa = app.tentar(app.banco.buscar_pessoa, cpf)
+        if not ok:
+            return None
+        if pessoa is None:
+            return self._dizer(self.faixa_privacidade, "erro",
+                               "Não há pessoa cadastrada com este CPF.")
+        if not app.perguntar(
+                mensagens.confirmar, "Anonimizar pessoa",
+                f"Anonimizar {pessoa['nome']} e as "
+                f"{pessoa['visitas']} visita(s) dela?\n\nO nome, o CPF, o "
+                "telefone, a placa e a empresa são trocados por textos "
+                "neutros. Não tem volta."):
+            return None
+        ok, _ = app.tentar(app.banco.anonimizar_pessoa, pessoa["id"],
+                           justificativa, app.autor)
+        if not ok:
+            return None
+        for caixa in (self.cpf_anonimizar, self.justificativa_anonimizar):
+            caixa.delete(0, tk.END)
+        app.recarregar_registros()
+        app.atualizar_tabela()
+        app.atualizar_contadores()
+        self._dizer(self.faixa_privacidade, "sucesso",
+                    "Pessoa anonimizada. A ação ficou no histórico.")
+        return True
+
+    def aplicar_prazo(self):
+        app = self.app
+        texto = self.meses_guarda.get().strip()
+        meses = int(texto) if texto.isdecimal() else -1
+        ok, quantas = app.tentar(app.banco.contar_fora_do_prazo, meses)
+        if not ok:
+            return None
+        if not meses:
+            return self._dizer(self.faixa_privacidade, "erro",
+                               "Informe o prazo em meses (de 1 a 120).")
+        if not quantas:
+            return self._dizer(self.faixa_privacidade, "info",
+                               f"Ninguém está sem visita há mais de {meses} "
+                               "meses: nada a anonimizar.")
+        if not app.perguntar(
+                mensagens.confirmar, "Prazo de guarda",
+                f"{quantas} pessoa(s) não vêm há mais de {meses} meses.\n\n"
+                "Anonimizar todas agora? Não tem volta. Quem está desativado "
+                "ou dentro fica de fora."):
+            return None
+        ok, feitas = app.tentar(app.banco.aplicar_retencao, meses, app.autor)
+        if not ok:
+            return None
+        app.atualizar_contadores()
+        self._dizer(self.faixa_privacidade, "sucesso",
+                    f"{feitas} pessoa(s) anonimizada(s). A ação ficou no "
+                    "histórico.")
+        return feitas
 
     def _montar_calendario(self, secao):
         secao.columnconfigure(0, weight=2, uniform="c")

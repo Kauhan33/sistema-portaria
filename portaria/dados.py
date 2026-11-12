@@ -84,6 +84,9 @@ from contextlib import closing, contextmanager
 from datetime import date, datetime, timedelta
 
 from . import horarios, senhas, validacao, veiculos
+from .base_dados import (FORMATO_ISO, FORMATO_ISO_SEGUNDOS,  # noqa: F401
+                         ErroDados, de_iso, para_iso)
+from .dados_modulos import ModulosMixin, hash_do_evento, passo_v14
 from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
                        conferir_autorizador, pode_editar, pode_excluir_pessoa,
                        validar_edicao_usuario)
@@ -97,8 +100,6 @@ from .validacao import (FORMATO, MAXIMO_BUSCA, MAXIMO_CELULAR, MAXIMO_CPF,
                         mascarar_cpfs_no_texto, normalizar, so_digitos,
                         validar)
 
-FORMATO_ISO = "%Y-%m-%d %H:%M"
-FORMATO_ISO_SEGUNDOS = "%Y-%m-%d %H:%M:%S"
 # 1: registros | 2: + usuarios e auditoria | 3: + pessoas
 # 4: auditoria ligada ao registro (histórico de cada visita)
 # 5: + bloqueios (CPFs e placas com acesso negado; na 2.3, as
@@ -319,17 +320,6 @@ def _autorizado(linha):
             "removido_em": de_iso(removido_em), "removido_por": removido_por}
 
 
-class ErroDados(Exception):
-    """
-    Falha ao ler ou gravar os registros. A mensagem (str) é para o usuário;
-    o erro técnico do SQLite, quando houver, fica em `detalhe` e no log.
-    """
-
-    def __init__(self, mensagem, detalhe=""):
-        super().__init__(mensagem)
-        self.detalhe = detalhe
-
-
 def configurar_log(caminho, nivel=logging.WARNING):
     """
     Grava os erros técnicos do banco num arquivo (com rotação, até 3 x 1 MB).
@@ -387,21 +377,6 @@ def _erro(erro):
     """ErroDados amigável a partir de um erro do SQLite (detalhe vai ao log)."""
     log.error("Erro do SQLite: %s: %s", type(erro).__name__, erro)
     return ErroDados(mensagem_amigavel(erro), detalhe=str(erro))
-
-
-def para_iso(texto):
-    """Formato da tela → ISO. Usa strptime de propósito: também valida."""
-    return datetime.strptime(texto, FORMATO).strftime(FORMATO_ISO) if texto else ""
-
-
-def de_iso(texto):
-    """ISO → formato da tela, fatiando o texto (19x mais rápido que strptime;
-    roda em toda linha das listagens)."""
-    if not texto:
-        return ""
-    if len(texto) != 16:
-        return datetime.strptime(texto, FORMATO_ISO).strftime(FORMATO)
-    return f"{texto[8:10]}/{texto[5:7]}/{texto[:4]} {texto[11:16]}"
 
 
 def _dia_iso(dia):
@@ -957,11 +932,6 @@ def _passo_v13(banco, con, versao):
     for sql in ESQUEMA_V13:
         con.execute(sql)
 
-
-# os módulos da 3.2 ficam num arquivo próprio (importado aqui, depois de
-# ErroDados e das datas, que ele usa)
-from .dados_modulos import (ModulosMixin, hash_do_evento,  # noqa: E402
-                            passo_v14)
 
 # (versão alcançada, função) em ordem; uma migração nova entra no fim.
 # Cada passo pode rodar de novo sem estragar nada (banco rebaixado).

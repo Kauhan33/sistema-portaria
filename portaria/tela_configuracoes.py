@@ -436,9 +436,9 @@ class AbaConfiguracoes:
         grupo.pack(side="left")
         self.meses_guarda = campo.entrada
         self.meses_guarda.insert(0, str(MESES_DE_GUARDA_PADRAO))
-        self.btn_prazo = Botao(linha, "Anonimizar quem passou do prazo",
+        self.btn_prazo = Botao(m, "Anonimizar quem passou do prazo",
                                self.aplicar_prazo, "perigo")
-        self.btn_prazo.pack(side="left", anchor="s", padx=(px(10), 0))
+        self.btn_prazo.pack(anchor="w", pady=(px(10), 0))
         self.faixa_privacidade = Aviso(m)
 
     @staticmethod

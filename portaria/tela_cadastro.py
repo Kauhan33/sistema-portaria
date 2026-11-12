@@ -1557,7 +1557,8 @@ class AbaCadastro:
 
     def _desfazer_preenchimento(self):
         """CPF trocado: apaga o que foi preenchido sozinho e não foi mexido."""
-        campos = self._campos_pessoa()
+        # (o "quem procura" pode ter vindo da autorização de entrada)
+        campos = {**self._campos_pessoa(), "anfitriao": self.anfitriao}
         for chave, valor in self._auto["campos"].items():
             if campos[chave].get() == valor:
                 self._escrever(campos[chave], "")

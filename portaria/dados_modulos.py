@@ -15,8 +15,7 @@ import random
 from datetime import date, datetime, timedelta
 
 from . import validacao
-from .dados import (FORMATO_ISO, FORMATO_ISO_SEGUNDOS, ErroDados, de_iso,
-                    para_iso)
+from .base_dados import FORMATO_ISO, ErroDados, de_iso, para_iso
 from .validacao import (FORMATO, MAXIMO_BUSCA, mascarar_cpfs_no_texto,
                         so_digitos)
 

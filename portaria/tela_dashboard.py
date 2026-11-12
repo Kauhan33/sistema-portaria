@@ -116,7 +116,8 @@ class AbaDashboard:
         titulo_cartao(cab, titulo).pack(side="left")
         rotulo = tk.Label(cab, text=apoio, font=FONTE["dica"],
                           bg=COR["superficie"], fg=COR["texto_3"])
-        rotulo.pack(side="right")
+        if not com_periodo:
+            rotulo.pack(side="right")
         if com_periodo:
             # por dia ou por hora (o horário de pico), em 7 ou 30 dias
             self.lbl_apoio_dias = rotulo
@@ -126,9 +127,12 @@ class AbaDashboard:
             self.seletor_visao = Seletor(cab, VISOES,
                                          lambda o: self._ao_trocar_visao(),
                                          fundo_pai=COR["superficie"])
-            for seletor in (self.seletor_visao, self.seletor_periodo):
-                seletor.compactar()
-                seletor.pack(side="left", padx=(px(16), 0))
+            # (o apoio "pico às 08h" vai embaixo do título, não ao lado: a
+            # linha do título já tem as duas escolhas)
+            self.seletor_visao.compactar()
+            self.seletor_visao.pack(side="left", padx=(px(16), 0))
+            self.seletor_periodo.compactar()
+            self.seletor_periodo.pack(side="right")
             self._montando = True
             self.seletor_visao.selecionar(VISOES[0])
             self.seletor_periodo.selecionar("7 dias")
@@ -215,7 +219,7 @@ class AbaDashboard:
         pendentes = contagem[horarios.SAIDA_PENDENTE]
         self._mostrar("excedido", excedidos,
                       "+ " + plural(pendentes, "saída pendente", "saídas pendentes")
-                      if pendentes else "acima do tempo permitido")
+                      if pendentes else "acima do permitido")
         self.cards["excedido"][0].config(
             fg=COR["alerta"] if excedidos else COR["texto"])
         self.cards["excedido"][1].config(

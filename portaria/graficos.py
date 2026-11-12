@@ -87,6 +87,8 @@ def desenhar_barras_verticais(cv, itens, destaque=None, nome_destaque="Hoje"):
                            text=str(valor),
                            fill=COR["texto"] if hoje else COR["texto_2"],
                            font=FONTE["grafico_valor"])
+        if denso and not hoje and abs(n - destaque) <= 1:
+            rotulo = ""             # (não encosta no rótulo do destaque)
         cv.create_text((x0 + x1) / 2, base + px(15),
                        text=nome_destaque if hoje else rotulo,
                        fill=COR["texto"] if hoje else COR["texto_3"],

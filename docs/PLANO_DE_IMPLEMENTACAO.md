@@ -14,11 +14,11 @@ As ideias estão agrupadas em versões. Cada versão é entregável sozinha.
 ## Como ler
 
 - **Esforço:** P = até meio dia · M = 1 a 2 dias · G = 3 dias ou mais, contando os testes.
-- **Esquema:** a versão do banco depois da entrega. Hoje o banco está na v10.
+- **Esquema:** a versão do banco depois da entrega. Hoje o banco está na v14.
   Toda migração é atômica (`PRAGMA user_version`) e faz um backup antes.
 - **RN nova:** a numeração continua a partir da RN35 (na 2.3 foram da RN41
-  à RN45; na 2.4, a RN46; na 2.5, a RN47; na 3.0, a RN48 e a RN49; a próxima
-  livre é a RN50).
+  à RN45; na 2.4, a RN46; na 2.5, a RN47; na 3.0, a RN48 e a RN49; na 3.2, da
+  RN50 à RN57; a próxima livre é a RN58).
 
 **O que todo item precisa ter para ser considerado pronto** (vale para todos e
 não se repete abaixo):
@@ -46,9 +46,10 @@ não se repete abaixo):
 | **2.4** ✅ | Compiladores: linha de comando | E1, E2, E4, F1 | v11 (sem mudança) | ~6 dias |
 | **2.5** ✅ | Pessoas com mais de um carro | P7, P8 | v12 | ~1 dia |
 | **2.5.1** ✅ | Revisão geral com testes por ataque | F3 | v12 (sem mudança) | ~1 dia |
-| **2.6** | Visitante e operação da guarita | A1, A4, A3, A2, A6, A5 (opcional) | v13 | ~6 dias |
-| **2.7** | Dados, relatórios e apresentação | F2, D3, C1, C2, C3 | v13 (sem mudança) | ~5 dias |
-| **2.8** | LGPD e segurança | B1, B2, B8, N09, S02 | v14 | ~4 dias |
+| **3.0** ✅ | Atividade A3 | A3-1 a A3-5 | v13 | ~3 dias |
+| **3.1** ✅ | Visual repaginado | — | v13 (sem mudança) | ~2 dias |
+| **3.2** ✅ | Todos os desafios extras e melhorias gerais | A1, A2, A3, A5, F2, C1, C2, B1, B2 e os módulos do enunciado | v14 | ~4 dias |
+| Depois | O que ficou de fora | A4, A6, D3, C3, B8, N09, S02 | — | — |
 | Extras | Se sobrar tempo | E3, E6, D1, D2, E5 | — | — |
 | Contínuo | Qualidade e entrega | F3, limpeza de código, Word da entrega | — | — |
 
@@ -64,8 +65,10 @@ não se repete abaixo):
 - **2.5** (feita em 30/10/2026) atende ao pedido do aluno: cadastrar e ver
   mais de uma placa por pessoa; a subaba "Desativadas" virou "Pessoas
   desativadas"; e corrige o fechamento do programa ao abrir essa subaba.
-- **2.6 a 2.8** podem ser feitas na ordem que a professora valorizar mais.
-  Para a apresentação, a 2.7 (modo treinamento e Painel) dá o maior efeito.
+- **3.0 e 3.1** atendem ao enunciado da Atividade A3 e repaginam o visual.
+- **3.2** (feita em 12/11/2026) juntou num só passo o que estava previsto
+  para a 2.6, a 2.7 e a 2.8, mais os desafios extras do enunciado que
+  faltavam.
 
 ---
 
@@ -473,118 +476,82 @@ O que ele pede, item por item, está em [`ENUNCIADO_A3.md`](ENUNCIADO_A3.md).
 
 ---
 
-## Versão 3.2 — Visitante e operação da guarita (esquema v14)
+## Versão 3.2 — Todos os desafios extras e melhorias gerais (esquema v14) ✅
 
-### A1. Visitante completo: anfitrião, setor e crachá · M · RN50
-- Para Visitante, Prestador e Entregador, aparece uma linha extra no
-  formulário:
-  - **Vai até:** nome ou setor, com sugestões; até 60 caracteres;
-  - **Crachá:** sugere o primeiro número livre, de 1 a 50 (faixa ajustável em
-    Configurações).
-- **Regra (RN50):**
-  - um crachá não fica com duas pessoas ao mesmo tempo;
-  - na saída, o sistema pergunta "Devolveu o crachá 07?";
-  - os crachás não devolvidos aparecem numa faixa.
-- **Banco (v14):** colunas opcionais `anfitriao` e `cracha` em
-  `registros`; `parametros.crachas` com a faixa de números.
+Feita em 12/11/2026. O banco da 3.1 (v13) é migrado sozinho, com backup antes.
 
-### A4. Lista de evacuação · P
-- Atalho **F12** em qualquer página: todos no campus, agrupados por tipo, com
-  crachá, anfitrião e os carros, e a hora em destaque.
-- Opções "Imprimir" (HTML no navegador) e "Marcar presentes".
-- CPF sempre mascarado.
+### M1. Funcionários · P/M · RF38, RN54 ✅
+- Página **Funcionários**: matrícula, setor, cargo e o ponto de hoje.
+- **Banco:** colunas `matricula`, `setor` e `cargo` em `pessoas`.
 
-### A3. Passagem de turno · M (o livro de ocorrências saiu na 3.0)
-- Ao **Sair**, aparece o "Resumo do turno" com um "Recado para o próximo
-  turno". O recado fica num cartão até alguém marcar "Lido".
-- **Banco (v14):** tabela `recados_turno`. CPF digitado no texto é mascarado.
+### M2. Autorizações de entrada · M · RF39, RN53 ✅ (era o A2)
+- Página **Autorizações**: criar, emitir (página para imprimir) e cancelar.
+- O Cadastro reconhece o CPF autorizado e preenche os dados.
+- **Banco:** tabela `autorizacoes_entrada`.
 
-### A2. Visitantes esperados · M (depois do A1)
-- O administrador agenda nome, CPF (opcional), data, hora, anfitrião e, se
-  quiser, uma **autorização antecipada** de horário, válida só naquela data.
-- A faixa mostra "3 esperados hoje".
-- Ao digitar o CPF de um esperado, os campos do A1 já vêm preenchidos.
-- **Banco (v13):** tabela `esperados`. O banco confere a autorização
-  antecipada.
+### M3. Encomendas · M · RF40, RN52 ✅ (era o A5)
+- Página **Encomendas**: chegada e retirada. **Banco:** tabela `encomendas`.
 
-### A6. Passe temporário e "liberar uma vez" · M
-- Na ficha da pessoa, o administrador cria um passe:
-  - janela especial de horário (de/até, dias da semana); ou
-  - liberação de um bloqueio uma única vez.
-- O motor de exceções de `horarios.py` aceita o passe. A liberação única some
-  depois do uso.
-- **Banco (v13):** tabela `passes`.
+### M4. Chaves · M · RF41, RN51 ✅
+- Página **Chaves**: cadastro, entrega, devolução e histórico.
+- **Banco:** tabelas `chaves` e `emprestimos_chave`, com índice único no
+  empréstimo aberto.
 
-### A5. Encomendas (opcional) · M
-- Página **Encomendas**: registrar, ver "Aguardando retirada" e
-  "Entregar a…". Também reaproveita os componentes.
+### A1. Quem procura e crachá · M · RN50 ✅
+- Dois campos opcionais no Cadastro; índice único no crachá em uso; a saída
+  lembra de recolher. **Banco:** colunas `anfitriao` e `cracha` em `registros`.
+- Ficou mais simples que o plano: sem a faixa de números em Configurações e sem
+  sugerir o primeiro crachá livre.
 
----
+### A3. Recado de turno · P · RF42 ✅
+- Botão em Ocorrências; faixa no Controle de acesso até marcar como lido.
+- **Banco:** tabela `recados_turno`.
 
-## Versão 3.3 — Dados, relatórios e apresentação (sem mudança de esquema)
+### C1 e C2. Painel e relatório · M · RF43, RF44 ✅
+- Entradas por dia ou por hora (o pico em destaque), em 7 ou 30 dias.
+- Relatório do período numa página HTML que o navegador imprime
+  (`portaria/impressao.py`); o temporário antigo é apagado ao abrir o programa.
 
-### F2. Gerador de dados fictícios · P/M
-- `python -m portaria.demo --meses 3 --banco demo.db`. Usa semente fixa e
-  sempre passa pelas funções do `Banco`, sem `INSERT` direto.
-- Os dados incluem picos às 07:00, 12:00 e 18:30, exceções, bloqueios,
-  veículos sem o dono e autorizados (V1).
+### F2. Dados de demonstração · P · RF45, RN57 ✅
+- Em Configurações › Dados e privacidade, **só o administrador** (pedido do
+  aluno). Passa pelas mesmas regras do banco; repetir não duplica.
 
-### D3. Modo treinamento · P/M (depois do F2)
-- Link no login ou `Portaria.exe --treino`. Usa um banco separado
-  (`treinamento.db`), refeito a cada abertura.
-- Uma faixa laranja fixa diz "MODO TREINAMENTO — nada aqui é real".
-- No modo treinamento não há backup.
-- Um teste garante que esse modo nunca aponta para o `portaria.db`.
+### D2 (parte). Tamanho da letra · P · RF46 ✅
+- Normal, Grande ou Maior, no menu da conta, de cada usuário.
 
-### C1. Painel com período e horário de pico · M
-- Seletor no topo do Painel: Hoje, 7 dias, 30 dias ou Período…
-- Gráfico novo: mapa de calor dia da semana × hora.
-- Gráfico novo: permanência média por tipo.
-- Todas as consultas são agregadas no SQL.
+### B1. Anonimizar e prazo de guarda · M · RF47, RN55 ✅
+- Anonimizar pelo CPF, com justificativa, e em lote pelo prazo de guarda.
+- Os backups antigos ainda têm os dados até serem apagados (os diários, em 30
+  dias): está no README.
 
-### C2. Relatórios imprimíveis (HTML → PDF pelo navegador) · M
-- Um gerador com `string.Template` serve para todos os modelos:
-  - Movimento do período;
-  - Exceções (V4);
-  - Resumo do turno (A3);
-  - Evacuação (A4);
-  - Relatório do titular (B1).
-- O arquivo temporário é apagado ao fechar o programa, e cada geração vai para
-  o histórico.
+### B2. Histórico encadeado · M · RN56 ✅
+- Coluna `hash` em `auditoria` (SHA-256 do evento e do elo anterior) e o botão
+  **Conferir**.
+- **Limite honesto:** quem tem o arquivo pode recalcular a corrente, e apagar
+  as últimas linhas não é percebido. Sem triggers.
 
-### C3. Indicadores da operação por usuário · M
-- Em Usuários, aba **Indicadores**: entradas, saídas, correções, exceções
-  pedidas e recusas por bloqueio, por usuário e período.
-- Sem ranking, para não virar vigilância de funcionário.
+### Código ✅
+- `tela_cadastro.py` dividido: o Controle de acesso foi para `tela_controle.py`.
+- Módulos novos em arquivos próprios: `dados_modulos.py`, `base_dados.py`,
+  `tela_livros.py` e `impressao.py`.
 
 ---
 
-## Versão 3.4 — LGPD e segurança (esquema v15)
+## O que ficou para depois
 
-### B1. Retenção, anonimização e relatório do titular · M · RN51
-- **Retenção:** em Configurações › Privacidade, "Guardar visitas identificadas
-  por 12 meses". Depois disso, nome, CPF, celular e placa viram "Anonimizado",
-  e a contagem do Painel continua igual.
-- **Relatório do titular:** usa o C2.
-- **Anonimizar a pedido:** exige justificativa. Não é permitido com a pessoa
-  desativada ou visita aberta.
-- **Backups:** o Word deve dizer que a anonimização chega aos backups em até
-  30 dias.
-
-### B2. Histórico à prova de adulteração · M
-- **Proteção:**
-  - triggers que recusam `UPDATE` e `DELETE` em `auditoria`;
-  - coluna `hash = sha256(hash_anterior + linha)`;
-  - "selo do dia" no nome do backup.
-- **Verificação:** em Usuários › Atividade, botão **Verificar integridade**.
-- **Limite honesto:** quem tem o arquivo pode recalcular a cadeia. O Word deve
-  explicar isso.
-
-### B8, N09 e S02
-- **B8:** migração que mascara os CPFs do histórico gravado antes da 2.0.
-- **N09:** limite de tentativas na senha atual em "Trocar minha senha".
-- **S02:** documentar no README e no Word que o banco depende das permissões
-  do Windows e do BitLocker. Não há criptografia própria sem pip.
+- **A4. Lista de evacuação** (F12): todos no campus, para imprimir.
+- **A6. Passe temporário** e "liberar uma vez".
+- **D3. Modo treinamento** com banco separado (hoje os dados de demonstração
+  entram no banco em uso).
+- **C3. Indicadores** da operação por usuário.
+- **Relatório do titular** (LGPD) e mapa de calor dia × hora no Painel.
+- **Corrigir registro** ainda não edita o crachá nem quem procura (os valores
+  são mantidos).
+- **B8:** mascarar os CPFs do histórico gravado antes da 2.0. **N09:** limite
+  de tentativas na senha atual em "Trocar minha senha". **S02:** o banco não é
+  criptografado (depende das permissões do Windows e do BitLocker).
+- **Assinatura do instalador:** o aviso do SmartScreen só some com um
+  certificado pago.
 
 ---
 
@@ -595,7 +562,7 @@ O que ele pede, item por item, está em [`ENUNCIADO_A3.md`](ENUNCIADO_A3.md).
 | E3 | Lote de comandos ("caderno" de quando o sistema caiu) | M | Depois do E1. Mostra todos os erros com linha e coluna. Pede a senha do administrador uma vez e grava tudo numa transação. |
 | E6 | Busca com linguagem de consulta → SQL parametrizado | M | Cobre a fase de geração de código. O modo didático mostra o SQL. |
 | D1 | Retorno sonoro (`winsound`) | P | Sons de "registrado", "atenção" e "desativado". Liga e desliga no menu da conta. |
-| D2 | Máscara enquanto digita, F1 com os atalhos, A−/A+ no tamanho do texto | M | Cuidado com o cursor do Tk na máscara. |
+| D2 | Máscara enquanto digita e F1 com os atalhos | M | Cuidado com o cursor do Tk na máscara. O tamanho da letra saiu na 3.2. |
 | E5 | Comando por voz | M | Opcional e exige pip e internet. CPF não pode ser ditado (LGPD). |
 
 ## Contínuo (a cada versão)

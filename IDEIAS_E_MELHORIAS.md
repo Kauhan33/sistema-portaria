@@ -387,6 +387,30 @@ Sem mudança de esquema (banco v12).
 - ✅ Cadastro em blocos (Pessoa e Visita) com o Tab na ordem da tela.
 - Detalhes em `docs/design/PROPOSTA_DESIGN.md`, seção 11.
 
+### Versão 3.2 — Todos os desafios extras e melhorias gerais (12/11/2026) ✅
+
+- ✅ **RF38 / RN54** — controle de funcionários (matrícula, setor, cargo, ponto
+  de hoje).
+- ✅ **RF39 / RN53** — visitantes autorizados e emissão da autorização de
+  entrada.
+- ✅ **RF40 / RN52** — entrega de encomendas.
+- ✅ **RF41 / RN51** — chaves entregues e devolvidas.
+- ✅ **RF42** — recado de turno. **RN50** — quem procura e crachá.
+- ✅ **RF43 / RF44** — relatório para imprimir; Painel por dia ou por hora, em
+  7 ou 30 dias.
+- ✅ **RF45 / RN57** — dados de demonstração, só para o administrador.
+- ✅ **RF46** — tamanho da letra. Código da pessoa na ficha.
+- ✅ **RF47 / RN55** — anonimizar pessoa e prazo de guarda (LGPD, S08).
+- ✅ **RN56** — histórico encadeado (S10).
+- ✅ Código: `tela_cadastro.py` dividido (`tela_controle.py`); módulos novos
+  em `dados_modulos.py`, `tela_livros.py` e `impressao.py`.
+- Achados dos testes de ataque da 3.2, corrigidos: desfazer a saída e
+  corrigir a visita de pessoa anonimizada devolviam dados a ela; no notebook
+  1366×768, a faixa da autorização, a seção Dados e privacidade, o número e o
+  período do Painel e dois diálogos saíam cortados.
+- Fora do alcance (precisa de serviço pago): certificado para o Windows não
+  mostrar o aviso do SmartScreen ao abrir o instalador.
+
 ## 4. Rascunho de requisitos para o Word
 
 **RF**: RF01 cadastrar entrada · RF02 registrar saída (botão, duplo clique,
@@ -416,7 +440,16 @@ símbolos e checagens) (2.4) · RF33 cadastrar e ver mais de uma placa por
 pessoa (2.5) · RF34 mostrar e ocultar a senha, e limpar o login (3.0) · RF35
 controle de acesso em tela própria, com filtro, Registrar entrada na lista e
 Atualizar (3.0) · RF36 registrar, resolver e excluir ocorrências (3.0) · RF37
-registrar prestadores de serviços, com empresa e motivo (3.0).
+registrar prestadores de serviços, com empresa e motivo (3.0) · RF38 controlar
+funcionários: matrícula, setor, cargo e o ponto do dia (3.2) · RF39 autorizar a
+entrada de um visitante com antecedência e emitir a autorização para imprimir
+(3.2) · RF40 registrar as encomendas recebidas e a retirada (3.2) · RF41
+controlar as chaves entregues e devolvidas (3.2) · RF42 deixar um recado para
+o próximo turno (3.2) · RF43 emitir o relatório do período para imprimir (3.2)
+· RF44 ver no Painel as entradas por dia ou por hora, em 7 ou 30 dias (3.2) ·
+RF45 preencher o sistema com dados de demonstração (admin) (3.2) · RF46
+escolher o tamanho da letra (3.2) · RF47 anonimizar uma pessoa e aplicar o
+prazo de guarda (admin) (3.2).
 
 **RNF**: RNF01 interface simples com botões identificados · RNF02 senha oculta e
 armazenada com hash · RNF03 tela principal e busca respondem na hora mesmo com
@@ -593,11 +626,47 @@ opcionais (conferidos como no Cadastro); CPF digitado na descrição é mascarad
 qualquer usuário registra e marca como resolvida; só o administrador exclui (RN02);
 registrar, resolver e excluir ficam no histórico.
 
+Novas na 3.2:
+RN50 QUEM PROCURA E CRACHÁ: opcionais na entrada; quem procura tem até 60
+caracteres; o crachá é um número de até 3 dígitos; o mesmo crachá não fica com
+duas pessoas dentro (o banco trava com índice único); na saída o sistema lembra
+de recolher; desfazer a saída devolve a visita sem o crachá se ele já estiver com
+outra pessoa.
+RN51 CHAVES: só o administrador cadastra e remove; nome obrigatório, até 40
+caracteres, sem repetir; qualquer usuário entrega (nome completo de quem leva e
+CPF opcional, válido se vier) e registra a devolução; a mesma chave não sai duas
+vezes (índice único); a chave emprestada não é removida; o histórico das entregas
+fica.
+RN52 ENCOMENDAS: destinatário e remetente obrigatórios; setor e descrição
+opcionais; CPF na descrição é mascarado; a retirada informa quem levou e acontece
+uma vez só; só o administrador exclui.
+RN53 AUTORIZAÇÃO DE ENTRADA: CPF válido, nome completo, motivo e quem autoriza
+obrigatórios; validade de até 90 dias, que não termina no passado nem antes de
+começar; vale do primeiro ao último dia; cada entrada conta como uso; cancelar
+não volta; a autorização não passa por cima da desativação (RN12), do horário nem
+de "já está dentro"; o porteiro vê o CPF mascarado, inclusive na página impressa.
+RN54 FUNCIONÁRIOS: matrícula, setor e cargo são opcionais e só de quem é do tipo
+Funcionário; a matrícula (letras, números, ponto e hífen, até 20) não se repete.
+RN55 PRIVACIDADE: só o administrador anonimiza, com justificativa de pelo menos 10
+caracteres; o nome vira
+"Pessoa anonimizada", o CPF vira um código que nunca é um CPF válido, e telefone,
+placa, empresa e motivo são apagados da pessoa e das visitas dela; as visitas
+continuam contando; quem está dentro ou desativado não é anonimizado; o prazo de
+guarda (de 1 a 120 meses sem visita) anonimiza em lote; depois de anonimizar, nada
+devolve os dados (desfazer saída, corrigir visita e alterar cadastro são
+recusados); o mesmo CPF pode voltar como pessoa nova.
+RN56 HISTÓRICO ENCADEADO: cada evento do histórico guarda um código (SHA-256) do
+próprio conteúdo e do código do evento anterior; a conferência aponta o primeiro
+evento que não bate; o banco antigo é encadeado na migração.
+RN57 DADOS DE DEMONSTRAÇÃO: só o administrador (conferido no banco); CPFs
+fictícios válidos; uma transação só; repetir não duplica.
+
 ## 5. Pendências registradas na revisão final (para a versão 2.1+)
 
 Detalhes em `docs/revisao/REVISAO_FINAL_CODIGO.md` e `REVISAO_FINAL_SEGURANCA.md`.
-- Histórico de ações com trava contra alteração (triggers/hash) — S10.
-- Prazo de retenção e "anonimizar pessoa" (LGPD) — S08.
+- ✅ Histórico de ações encadeado por hash, com conferência — S10 (3.2, RN56).
+  Continua: não há triggers; quem refaz a corrente inteira não é percebido.
+- ✅ Prazo de guarda e "anonimizar pessoa" (LGPD) — S08 (3.2, RN55).
 - Banco e backups sem criptografia: depende de permissões do Windows/BitLocker — S02.
 - ✅ Troca de senha obrigatória no primeiro acesso; redefinição pelo admin
   recusar senha igual ao login — S07 (versão 2.2, RN39).

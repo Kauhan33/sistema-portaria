@@ -4,13 +4,15 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
-**Versão atual: 3.1** (projeto final, Atividade A3, com o visual repaginado) — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
+**Versão atual: 3.2** (projeto final, Atividade A3, com todos os desafios extras) — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
 
-![Tela Controle de acesso](docs/design/final/v31_controle_claro.png)
+![Tela Controle de acesso](docs/design/final/v32_controle_claro.png)
 
-A 3.0 atende, item por item, ao **enunciado da Atividade A3**: login, cadastro e
-controle de entrada e saída em telas próprias, mais os desafios extras de
-veículos e placas, prestadores de serviços e ocorrências. O mapa de cada item
+O sistema atende, item por item, ao **enunciado da Atividade A3**: login,
+cadastro e controle de entrada e saída em telas próprias, mais os **oito
+desafios extras** — veículos e placas, prestadores de serviços, ocorrências
+e, desde a 3.2, visitantes autorizados, encomendas, funcionários, chaves e a
+emissão de autorização de entrada. O mapa de cada item
 pedido, com o teste que o comprova, está em
 [`docs/ENUNCIADO_A3.md`](docs/ENUNCIADO_A3.md).
 
@@ -134,10 +136,14 @@ logado e ativo.
 python -m unittest -v
 ```
 
-1127 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
+1240 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
 Atividade A3 item por item** (`tests/test_enunciado_a3.py`: as três telas, os
 requisitos técnicos e os desafios extras, além de um teste de que usar as telas
-não consome os recursos do Windows), a **linguagem de
+não consome os recursos do Windows), os **módulos da 3.2**
+(`tests/test_modulos.py`, as regras no banco, e `tests/test_livros.py`, as
+telas: chaves, encomendas, autorizações, funcionários, crachá, recado de
+turno, relatório, dados de demonstração, anonimização, histórico encadeado e
+tamanho da letra), a **linguagem de
 comandos** (uma classe por fase: léxico, gramática LL(1), sintático,
 semântico e a execução comparada com o formulário, além do campo, do console
 e do modo didático), validações, regras de
@@ -182,11 +188,11 @@ resultado não depende da hora em que eles rodam.
 python -m tests.relatorio [pasta de saída] [--sem-suite]
 ```
 
-Roda os testes automáticos ligados a cada caso (CT-01 a CT-113, positivos e
+Roda os testes automáticos ligados a cada caso (CT-01 a CT-131, positivos e
 negativos, cada um com o RF/RN, a entrada, o resultado esperado e o teste
 que o comprova; os casos da linguagem ficam na seção **"Linguagem de comandos"**,
-com a fase do analisador, os CT-90 a CT-107 são os do enunciado do A3 e os
-CT-110 a CT-113, os do visual da 3.1), marca **PASSOU** ou **FALHOU** e grava
+com a fase do analisador, os CT-90 a CT-107 são os do enunciado do A3, os
+CT-110 a CT-113, os do visual da 3.1, e os CT-114 a CT-131, os da 3.2), marca **PASSOU** ou **FALHOU** e grava
 `relatorio_testes.html`, `.csv` e `.json` (com a matriz de rastreabilidade
 requisito × caso e o resultado da suíte completa `python -m unittest`, como
 evidência) numa pasta temporária ou na pasta pedida — nunca dentro do
@@ -194,27 +200,42 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 ## Galeria
 
-As telas `v31_*` são da versão atual (3.1), em claro e escuro, no tamanho normal
-e num notebook 1366×768 a 125% (`_1366x670`). Dados fictícios.
+As telas `v32_*` são da versão atual (3.2), em claro e escuro, no tamanho normal
+e num notebook 1366×768 a 125% (`_1366x670`). Dados fictícios (os da 3.2 são
+os próprios **dados de demonstração** do programa).
 
 | | |
 |---|---|
-| ![Login](docs/design/final/v31_login_claro.png) | ![Mostrar senha](docs/design/final/v31_login_mostrar_senha_claro.png) |
+| ![Login](docs/design/final/v32_login_claro.png) | ![Mostrar senha](docs/design/final/v32_login_mostrar_senha_claro.png) |
 | **Login** — usuário, senha, logo, Entrar e Limpar | **Mostrar senha** — o Checkbutton mostra e esconde |
-| ![Campos vazios](docs/design/final/v31_login_campos_vazios_claro.png) | ![Senha errada](docs/design/final/v31_login_senha_errada_escuro.png) |
+| ![Campos vazios](docs/design/final/v32_login_campos_vazios_claro.png) | ![Senha errada](docs/design/final/v32_login_senha_errada_escuro.png) |
 | **Campos vazios** são recusados | **Dados incorretos** — a mesma mensagem para usuário ou senha |
-| ![Cadastro](docs/design/final/v31_cadastro_preenchido_claro.png) | ![Confirmação](docs/design/final/v31_cadastro_confirmacao_claro.png) |
+| ![Cadastro](docs/design/final/v32_cadastro_preenchido_claro.png) | ![Confirmação](docs/design/final/v32_cadastro_confirmacao_claro.png) |
 | **Cadastro** — empresa, data, horário, motivo; Cadastrar, Limpar e Cancelar | **Confirmação** — com o código de identificação |
-| ![Controle de acesso](docs/design/final/v31_controle_claro.png) | ![Prestadores](docs/design/final/v31_controle_prestadores_claro.png) |
+| ![Controle de acesso](docs/design/final/v32_controle_claro.png) | ![Prestadores](docs/design/final/v32_controle_prestadores_claro.png) |
 | **Controle de acesso** — pesquisa, filtro, Código, Situação e as ações | **Prestadores de serviços** — o filtro mostra a empresa e o motivo |
-| ![Pesquisa](docs/design/final/v31_controle_pesquisa_claro.png) | ![Filtro Dentro](docs/design/final/v31_controle_dentro_escuro.png) |
+| ![Pesquisa](docs/design/final/v32_controle_pesquisa_claro.png) | ![Filtro Dentro](docs/design/final/v32_controle_dentro_escuro.png) |
 | **Pesquisa** — no histórico inteiro; achar pelo código também | **Filtro "Dentro"**, no tema escuro |
-| ![Ocorrências](docs/design/final/v31_ocorrencias_selecionada_claro.png) | ![Nova ocorrência](docs/design/final/v31_nova_ocorrencia_claro.png) |
+| ![Ocorrências](docs/design/final/v32_ocorrencias_selecionada_claro.png) | ![Nova ocorrência](docs/design/final/v32_nova_ocorrencia_claro.png) |
 | **Ocorrências** — o livro da portaria | **Nova ocorrência** — categoria, descrição, CPF e placa opcionais |
-| ![Corrigir](docs/design/final/v31_corrigir_claro.png) | ![Nova pessoa](docs/design/final/v31_nova_pessoa_claro.png) |
+| ![Corrigir](docs/design/final/v32_corrigir_claro.png) | ![Nova pessoa](docs/design/final/v32_nova_pessoa_claro.png) |
 | **Corrigir registro** — agora com a empresa e o motivo | **Nova pessoa** — com a empresa |
-| ![Cadastro no notebook](docs/design/final/v31_cadastro_preenchido_escuro_1366x670.png) | ![Controle no notebook](docs/design/final/v31_controle_claro_1366x670.png) |
+| ![Cadastro no notebook](docs/design/final/v32_cadastro_preenchido_escuro_1366x670.png) | ![Controle no notebook](docs/design/final/v32_controle_claro_1366x670.png) |
 | **Notebook 1366×768**: o Cadastro cabe inteiro (tema escuro) | **Notebook 1366×768**: o Controle de acesso |
+| ![Visitante autorizado](docs/design/final/v32_cadastro_autorizado_claro.png) | ![Autorizações](docs/design/final/v32_autorizacoes_claro.png) |
+| **Visitante autorizado** (3.2) — o CPF traz a autorização, com quem procura e o crachá | **Autorizações** — criar, emitir para imprimir e cancelar |
+| ![Nova autorização](docs/design/final/v32_nova_autorizacao_claro.png) | ![Crachá no filtro Dentro](docs/design/final/v32_controle_dentro_cracha_escuro.png) |
+| **Nova autorização de entrada** | **Recado de turno** e a coluna **Crachá** de quem está dentro |
+| ![Chaves](docs/design/final/v32_chaves_escuro.png) | ![Histórico das chaves](docs/design/final/v32_historico_chaves_claro.png) |
+| **Chaves** — entregues e devolvidas | **Histórico das chaves** |
+| ![Encomendas](docs/design/final/v32_encomendas_claro.png) | ![Retirar encomenda](docs/design/final/v32_retirar_encomenda_claro.png) |
+| **Encomendas** — o que chegou e para quem | **Registrar retirada** — quem levou |
+| ![Funcionários](docs/design/final/v32_funcionarios_claro.png) | ![Novo funcionário](docs/design/final/v32_novo_funcionario_escuro.png) |
+| **Funcionários** — matrícula, setor, cargo e o ponto de hoje | **Novo funcionário** |
+| ![Painel: horário de pico](docs/design/final/v32_painel_pico_escuro.png) | ![Relatório para imprimir](docs/design/final/v32_relatorio_claro.png) |
+| **Painel** — entradas por hora, com o pico em destaque | **Relatório para imprimir** |
+| ![Dados e privacidade](docs/design/final/v32_config_dados_escuro.png) | ![Letra maior](docs/design/final/v32_letra_maior_claro.png) |
+| **Dados e privacidade** — demonstração, histórico protegido e LGPD | **Letra: Maior**, para quem prefere ler de longe |
 
 <details>
 <summary><b>Telas das versões anteriores</b> (recursos que continuam iguais)</summary>
@@ -341,19 +362,24 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   escura no Windows 10/11
   (`docs/design/PROPOSTA_DESIGN.md`, seção 10). As caixas de mensagem
   nativas do Windows seguem o tema do próprio Windows.
-- **Barra lateral**: Cadastro, Controle de acesso, Pessoas, Ocorrências, Painel,
-  Usuários e Configurações (as duas últimas só para o administrador), com o
+- **Barra lateral**: Cadastro, Controle de acesso, Pessoas, Funcionários,
+  Autorizações, Encomendas, Chaves, Ocorrências, Painel, Usuários e
+  Configurações (as duas últimas só para o administrador), com o
   número de pessoas cadastradas. (Até a 2.2 havia a página Bloqueios: na 2.3 ela virou
   a desativação, dentro de Pessoas.) No
   rodapé, quem está logado, o menu da conta (**Trocar minha senha**, **Gerar
-  novos códigos de recuperação** para o administrador, o **tema** e Sair),
+  novos códigos de recuperação** para o administrador, o **tema**, o **tamanho
+  da letra** — Normal, Grande ou Maior, de cada usuário (RF46) — e Sair),
   o **cadeado** ("Ausentar", Ctrl+L) e o botão sair.
 - **Cadastro** (tela 2 do enunciado; **Enter** ou **Cadastrar** registra a
   entrada), em dois blocos, na ordem em que o porteiro pergunta. **Pessoa**:
   CPF, nome, telefone, **empresa** e tipo de acesso. **Visita**: **data** (com o
   calendário), **horário** (com o relógio), placa (opcional), **motivo da visita**
-  (um `tk.Text`, com contador de até 200 caracteres) e saída (opcional, para
-  lançamento retroativo). O Tab segue essa ordem. Os obrigatórios têm `*`. **Limpar** esvazia o formulário;
+  (um `tk.Text`, com contador de até 200 caracteres), **Quem procura**, o
+  **Crachá** entregue (até 3 dígitos; o mesmo crachá não fica com duas pessoas
+  dentro, RN50) e saída (opcional, para lançamento retroativo). Quem tem uma
+  **autorização de entrada** válida hoje já vem com o nome, a empresa, o motivo
+  e quem procura, e a faixa verde diz quem autorizou. O Tab segue essa ordem. Os obrigatórios têm `*`. **Limpar** esvazia o formulário;
   **Cancelar** descarta e vai ao Controle de acesso. A confirmação aparece na
   faixa verde, com o **código de identificação** ("Código 007", RN48). Quem já
   veio traz a empresa do cadastro e o motivo da última visita, para conferir ou
@@ -367,7 +393,27 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   (administrador), **Atualizar** (relê o banco, inclusive o que outra estação
   gravou) e **Voltar** (ao Cadastro). Filtrando por **Prestador de serviço**, a
   tabela mostra a empresa e o motivo no lugar da placa e do tipo.
-- **Ocorrências** (desafio extra, RN49): o livro da portaria. **Nova ocorrência**
+- **Funcionários** (desafio extra, RF38): quem é do tipo Funcionário, com a
+  **matrícula** (não se repete), o setor, o cargo e o **ponto de hoje**
+  (entrada, saída e se está dentro). **Novo funcionário** cadastra a pessoa;
+  **Registrar entrada** leva ao Cadastro.
+- **Autorizações** (desafios extras "visitantes autorizados" e "emissão de
+  autorização de entrada", RF39): um setor avisa quem vai receber — CPF, nome,
+  empresa, motivo, quem autoriza e a validade (até 90 dias). Na chegada, o
+  Cadastro reconhece o CPF. **Emitir autorização** abre no navegador uma página
+  pronta para imprimir ou salvar em PDF; **Cancelar** vale só para as que ainda
+  não venceram. Cada entrada conta como uso, e tudo fica no histórico. A
+  autorização não passa por cima da desativação (RN12).
+- **Encomendas** (desafio extra, RF40): o que chegou (destinatário, setor,
+  remetente e descrição), com as que aguardam retirada primeiro; **Registrar
+  retirada** guarda quem levou; só o administrador exclui.
+- **Chaves** (desafio extra, RF41): o administrador cadastra as chaves da
+  portaria; qualquer usuário **entrega** (nome e, se quiser, CPF de quem leva)
+  e **registra a devolução**. A mesma chave não sai duas vezes — o próprio
+  banco trava — e **Ver histórico** mostra as entregas.
+- **Ocorrências** (desafio extra, RN49): o livro da portaria. O botão **Recado
+  de turno** (RF42) deixa um aviso para quem assume: ele aparece numa faixa do
+  Controle de acesso até alguém marcar como lido. **Nova ocorrência**
   com categoria, descrição (`tk.Text`, de 5 a 500 caracteres) e, se houver, CPF e
   placa; a lista com pesquisa, filtro por categoria e **Só abertas**; **Marcar
   como resolvida** (qualquer usuário) e **Excluir** (administrador). Tudo fica no
@@ -509,9 +555,11 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
 - **Painel**: no campus agora, entradas de hoje, permanência média,
   **veículos no estacionamento** (com os pendentes, ou o total de visitas com
   veículo, logo abaixo) e **tempo excedido** (com as saídas pendentes logo
-  abaixo); gráficos de pessoas por tipo e das entradas dos últimos 7 dias
-  (hoje em destaque). O administrador **exporta para CSV** (Excel) os registros de um
-  período.
+  abaixo); gráficos de pessoas por tipo e das **entradas por dia ou por hora**
+  (o **horário de pico** em destaque), nos últimos **7 ou 30 dias** (RF44). O
+  administrador **exporta para CSV** (Excel) os registros de um período e emite
+  o **Relatório para imprimir** (RF43): o resumo e as visitas do período numa
+  página que o navegador imprime ou salva em PDF.
 - **Usuários** (administrador): **Contas** (criar em diálogo, **editar** o
   nome e o perfil, ativar/desativar, redefinir senha) com a atividade do sistema e filtro, e
   **Exceções** (V4): tudo o que passou por cima de uma regra no período —
@@ -524,6 +572,12 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   Atualizar e Excluir (como, quem pode e o botão) está em `docs/CRUD.md`. O
   Painel é só leitura (é um relatório) e as Exceções são leitura e
   exportação (auditoria não se edita).
+- **Configurações › Dados e privacidade** (administrador): **dados de
+  demonstração** (RF45: pessoas, visitas, chaves, encomendas, autorizações e
+  ocorrências fictícias, para apresentar ou treinar; repetir não duplica),
+  **Conferir** o histórico (RN56) e a **privacidade**: anonimizar uma pessoa
+  pelo CPF, com justificativa, e anonimizar quem passou do **prazo de guarda**
+  (RF47, RN55).
 - **Configurações** (administrador): os horários de acesso, em três seções —
   **Funcionamento** (abre e fecha de cada dia da semana, minutos do aviso
   antes de fechar, o limite do lançamento retroativo, 3 h, e as **vagas do
@@ -749,6 +803,14 @@ alguém apagá-los). Trate a pasta de backups com o mesmo cuidado do banco.
   protege contra a falha do disco;
 - CSV exportado: guardar em pasta restrita e apagar quando não for mais útil.
 
+**Anonimizar e prazo de guarda (3.2):** em Configurações › Dados e
+privacidade, o administrador anonimiza uma pessoa (pedido do titular) ou todas
+as que não vêm há mais de N meses. O nome vira "Pessoa anonimizada", o CPF vira
+um código que nunca é um CPF de verdade, e o telefone, a placa, a empresa e o
+motivo das visitas dela são apagados; as visitas continuam contando no Painel.
+Quem está dentro ou desativado não é anonimizado, e nada devolve os dados
+depois (desfazer a saída e corrigir a visita são recusados).
+
 **Privacidade na tela:** o porteiro vê o CPF mascarado (`***.982.247-**`) nas
 tabelas, na ficha da página Pessoas e na janela Corrigir (o lápis do campo
 deixa digitar um CPF novo, sem mostrar o antigo). **Exceção:** em Pessoas →
@@ -778,10 +840,16 @@ danificado):
 - O banco e os backups não são criptografados pelo programa: quem consegue
   abrir a pasta lê os dados. A proteção depende das permissões do Windows e
   do BitLocker (item S02 da auditoria de segurança).
-- O histórico de ações não tem trava contra alteração: quem abre o arquivo do
-  banco com outra ferramenta consegue apagar linhas sem deixar rastro (S10).
-- Ainda não há prazo de retenção nem "anonimizar pessoa": excluir uma visita
-  não apaga o cadastro da pessoa, e os dados ficam até alguém excluí-los.
+- O histórico de ações é **encadeado** desde a 3.2 (RN56): mudar ou apagar
+  uma linha do meio com outra ferramenta é denunciado por **Conferir**. Não é
+  uma trava absoluta: quem domina o formato consegue refazer a corrente
+  inteira, e apagar as últimas linhas não é percebido. Um backup guardado
+  fora do computador continua sendo a comparação segura (S10).
+- A anonimização (3.2) troca os dados no banco em uso; os **backups antigos**
+  ainda têm os dados originais até serem apagados (os diários, em 30 dias).
+- A página impressa (autorização e relatório) é um arquivo temporário aberto no
+  navegador; o programa apaga os antigos ao abrir, mas o papel e o PDF salvo
+  ficam por conta de quem imprimiu.
 
 ## Estrutura da pasta
 
@@ -791,6 +859,9 @@ danificado):
 | `portaria/validacao.py` | Regras de CPF, celular, placa, nome, datas e verificações semânticas |
 | `portaria/horarios.py` | Regras de horário de acesso (funções puras): funcionamento, feriados, eventos, categorias, exceções, situação da visita |
 | `portaria/dados.py` | Banco SQLite (pessoas, visitas, usuários, histórico, desativações) e migrações |
+| `portaria/dados_modulos.py` | Banco dos módulos da 3.2: chaves, encomendas, autorizações, funcionários, crachá, recados, anonimização, histórico encadeado e dados de demonstração |
+| `portaria/base_dados.py` | O erro e os formatos de data que os dois arquivos do banco dividem |
+| `portaria/impressao.py` | Páginas para imprimir (autorização de entrada e relatório), abertas no navegador |
 | `portaria/consultas.py` | Busca e números do Painel (versão em Python, usada nos testes) |
 | `portaria/usuarios.py` | Perfis, permissões, login, troca de senha e códigos de recuperação |
 | `portaria/senhas.py` | Hash das senhas (PBKDF2), bloqueio progressivo e códigos de recuperação (sem importar o banco) |
@@ -803,8 +874,10 @@ danificado):
 | `portaria/interface.py` | Janela principal, barra lateral, sessão e o contrato que as telas usam |
 | `portaria/tela_login.py` | Login, primeiro acesso, "Defina sua senha", "Esqueci a senha" e a guarita travada |
 | `portaria/tela_recuperacao.py` | Códigos de recuperação (mostrar uma vez, imprimir, gerar novos) |
-| `portaria/tela_cadastro.py` | Cadastro (formulário) e Controle de acesso (Movimento), uma classe para as duas páginas |
-| `portaria/tela_ocorrencias.py` | Ocorrências: o livro da portaria (RN49) |
+| `portaria/tela_cadastro.py` | Cadastro: o formulário (tela 2 do enunciado) |
+| `portaria/tela_controle.py` | Controle de acesso: o Movimento, a pesquisa, as saídas e as faixas (tela 3 do enunciado) |
+| `portaria/tela_livros.py` | Chaves, Encomendas, Autorizações e Funcionários (uma base comum de página com lista) |
+| `portaria/tela_ocorrencias.py` | Ocorrências: o livro da portaria (RN49) e o recado de turno |
 | `portaria/tela_comando.py` | Campo Comando: realce, Tab, console e modo didático (2.4) |
 | `portaria/linguagem/` | A linguagem de comandos: `lexico.py`, `gramatica.py`, `sintatico.py`, `simbolos.py`, `semantico.py`, `executor.py`, `interpretador.py`, `erros.py` |
 | `docs/GRAMATICA_DA_LINGUAGEM.md` | A gramática da linguagem (tokens, EBNF, checagens, erros por fase) |
@@ -813,7 +886,7 @@ danificado):
 | `portaria/tela_usuarios.py` | Usuários, atividade e o relatório de exceções (só administrador) |
 | `portaria/tela_edicao.py` | Janela "Corrigir registro" com o histórico do registro |
 | `portaria/tela_autorizacao.py` | Diálogo "Autorização do administrador" (exceções de horário) |
-| `portaria/tela_configuracoes.py` | Configurações dos horários de acesso (só administrador) |
+| `portaria/tela_configuracoes.py` | Configurações dos horários de acesso e Dados e privacidade (só administrador) |
 | `portaria/tela_veiculo.py` | Perguntas "Saiu com o veículo?", "Saiu junto?" e "Vai levar o carro?" |
 | `portaria/seletor_data.py` | Calendário e relógio dos campos de data e hora (Canvas) |
 | `portaria/tela_senha.py` | Janela "Trocar minha senha" |
@@ -835,6 +908,39 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**3.2** (12/11/2026) — **todos os desafios extras do enunciado e melhorias
+gerais** (banco v14; o banco da 3.1 é migrado sozinho, com backup antes):
+
+- **desafios extras que faltavam**: **visitantes autorizados** e **emissão de
+  autorização de entrada** (página Autorizações, RF39), **entrega de
+  encomendas** (RF40), **chaves entregues e devolvidas** (RF41) e **controle
+  de funcionários** (RF38). Com veículos e placas, prestadores e ocorrências,
+  os **oito** desafios do enunciado estão atendidos;
+- **Cadastro**: **Quem procura** e **Crachá** (um crachá não fica com duas
+  pessoas; a saída lembra de recolher, RN50); o CPF de quem tem autorização
+  válida já traz os dados dela;
+- **recado de turno** (RF42): quem sai deixa um aviso, que aparece no Controle
+  de acesso até alguém marcar como lido;
+- **Painel**: entradas por dia ou **por hora** (o horário de pico), em 7 ou 30
+  dias, e o **Relatório para imprimir** (RF43, RF44);
+- **dados de demonstração** (RF45): enche o sistema com dados fictícios para
+  apresentar ou treinar — **só o administrador**, conferido de novo no banco;
+- **LGPD** (RF47, RN55): **anonimizar pessoa** e **prazo de guarda**;
+- **histórico encadeado** (RN56): cada ação leva um código que depende da
+  anterior, e **Conferir** aponta o que foi alterado por fora do programa;
+- **tamanho da letra** (RF46): Normal, Grande ou Maior, de cada usuário; a
+  ficha da pessoa mostra o **código** dela (P012);
+- **código**: `tela_cadastro.py` foi dividido (o Controle de acesso foi para
+  `tela_controle.py`) e os módulos novos ficam em arquivos próprios;
+- **testes**: 1240 testes automatizados (os novos estão em
+  `tests/test_modulos.py` e `tests/test_livros.py`), casos CT-114 a CT-131.
+  Campanha de ataque da 3.2: 48 mil operações aleatórias no banco (agora
+  também nos módulos novos), 20 mil linhas de fuzz na linguagem, 15 mil ações
+  do macaco e 1.936 passos de roteiro na janela de verdade, migração conferida
+  em cópias de um banco real e de um banco de 146 mil visitas. As sequências
+  aleatórias acharam e fecharam dois furos: desfazer a saída e corrigir a
+  visita de uma pessoa já anonimizada devolviam dados a ela.
 
 **3.1** (11/11/2026) — **visual repaginado** (sem mudança no banco nem nas
 regras):

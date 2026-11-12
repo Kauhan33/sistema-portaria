@@ -70,15 +70,30 @@ Página **Controle de acesso** do menu.
 | Banco SQLite | `portaria/dados.py` | `test_bibliotecas_pedidas` |
 | Bibliotecas Tkinter, SQLite3, Datetime e CSV | só a biblioteca padrão do Python | `test_so_biblioteca_padrao` |
 
-## Desafio extra (pelo menos 2; o sistema tem 3)
+## Desafio extra (pelo menos 2; o sistema tem os 8)
+
+Os oito desafios da lista do enunciado estão no sistema. Os três primeiros
+vieram na 3.0; os outros cinco, na 3.2 (`tests/test_modulos.py` confere as
+regras no banco e `tests/test_livros.py`, as telas).
 
 | Desafio | No sistema | Teste |
 |---|---|---|
 | **Controle de veículos e placas** | Estadia do carro, até 5 placas por pessoa, lotação, "o veículo só sai com o dono" (RN25 a RN40, RN47) | `tests/test_placas.py`, `tests/test_interface_veiculo.py` |
 | **Registro de prestadores de serviços** | Tipo "Prestador de serviço", com empresa e motivo; o filtro mostra as duas colunas (RN48) | `TestTela3Controle.test_prestador_mostra_empresa_e_motivo` |
-| **Registro de ocorrências** | Página **Ocorrências**: categoria, descrição, CPF e placa opcionais; resolver e excluir (RN49) | `TestOcorrencias`, `TestOcorrenciasNoBanco` |
+| **Registro de ocorrências** | Página **Ocorrências**: categoria, descrição, CPF e placa opcionais; resolver e excluir (RN49); e o **recado de turno** (RF42) | `TestOcorrencias`, `TestOcorrenciasNoBanco`, `TestRecados`, `TestRecadoDeTurno` |
+| **Controle de visitantes autorizados** | Página **Autorizações**: um setor avisa quem vai receber (CPF, nome, empresa, motivo, quem autoriza, validade). Na chegada, o Cadastro reconhece o CPF, preenche os dados e mostra quem autorizou; cada entrada conta como uso (RF39, RN53) | `TestAutorizacoes`, `TestAutorizacoesNaTela` |
+| **Emissão de autorização de entrada** | Botão **Emitir autorização**: página pronta para imprimir ou salvar em PDF, com número, validade e assinaturas; a emissão fica no histórico (RF39) | `TestAutorizacoes.test_emissao_fica_no_historico`, `TestAutorizacoesNaTela.test_emitir_abre_a_pagina_para_imprimir` |
+| **Controle de entrega de encomendas** | Página **Encomendas**: registrar o que chegou (destinatário, setor, remetente, descrição) e a retirada (quem levou e quando) (RF40, RN52) | `TestEncomendas`, `TestEncomendasNaTela` |
+| **Controle de funcionários** | Página **Funcionários**: matrícula (não se repete), setor, cargo e o ponto de hoje (entrada, saída, dentro) (RF38, RN54) | `TestFuncionarios`, `TestFuncionariosNaTela` |
+| **Controle de chaves entregues e devolvidas** | Página **Chaves**: cadastro das chaves, entrega (quem levou), devolução e histórico; a mesma chave não sai duas vezes (RF41, RN51) | `TestChaves`, `TestChavesNaTela`, `TestChavesDoPorteiro` |
 
 ## Além do enunciado
+
+Na 3.2 entraram também: **Quem procura** e **Crachá** no Cadastro (RN50), o
+**Painel** por dia ou por hora em 7 ou 30 dias e o **relatório para imprimir**
+(RF43, RF44), os **dados de demonstração** só para o administrador (RF45,
+RN57), o **tamanho da letra** (RF46), a **anonimização** e o **prazo de
+guarda** da LGPD (RF47, RN55) e o **histórico encadeado** (RN56).
 
 A relação com a disciplina de Compiladores continua: o campo **Comando** entende
 uma linguagem com análise léxica, sintática e semântica

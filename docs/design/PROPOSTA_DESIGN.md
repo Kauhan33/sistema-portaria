@@ -705,6 +705,6 @@ direção escolhida por ele entre três propostas foi a de **menu escuro**.
   vira reticências), o número do cartão usa a maior letra que cabe, o período
   vira "7d / 30d" quando falta largura, a seção Dados e privacidade cabe com
   os três avisos abertos e os diálogos novos cabem na tela.
-- **Página para imprimir** (`impressao.py`): HTML simples, em preto e branco,
-  que o navegador imprime ou salva em PDF; o texto digitado é sempre
-  escapado.
+- **Página para imprimir** (`impressao.py`): HTML simples e sóbrio (texto
+  escuro e a faixa listrada da cancela no alto), que o navegador imprime ou
+  salva em PDF; o texto digitado é sempre escapado.

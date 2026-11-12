@@ -94,6 +94,7 @@ GRADE = {
     "saida": (8, 3, 1),
 }
 COLUNAS_DO_FORMULARIO = 4
+LIMITE_ANFITRIAO_NA_FAIXA = 24     # o resto do nome vira reticências
 LINHA_VISITA, LINHA_BOTOES = 5, 10
 
 
@@ -227,8 +228,7 @@ class AbaCadastro(ControleMixin):
         self.contador_motivo.pack(side="right")
         # 3.2: quem a visita procura e o crachá entregue (opcionais)
         self.anfitriao = self._peca("anfitriao", "Quem procura",
-                                    Campo(form, maximo=MAXIMO_ANFITRIAO),
-                                    "opcional")
+                                    Campo(form, maximo=MAXIMO_ANFITRIAO))
         self.cracha = self._peca("cracha", "Crachá",
                                  Campo(form, numeros=MAXIMO_CRACHA), "opcional")
         self.saida = self._peca("saida", "Saída", self._campo_data(form),
@@ -781,10 +781,13 @@ class AbaCadastro(ControleMixin):
                 self._escrever(campo, a[chave])
                 automaticos[chave] = campo.get()
         if self.aviso_pessoa.tipo in ("info", "sucesso"):
+            # curta, para caber numa linha também na janela pequena
+            quem = a["anfitriao"]
+            if len(quem) > LIMITE_ANFITRIAO_NA_FAIXA:
+                quem = quem[:LIMITE_ANFITRIAO_NA_FAIXA - 1].rstrip() + "…"
             self._situacao(
-                "sucesso", f"Entrada autorizada por {a['anfitriao']} "
-                           f"(autorização nº {a['id']:03d}). Confira os dados "
-                           "e cadastre.")
+                "sucesso", f"Entrada autorizada por {quem} "
+                           f"(autorização nº {a['id']:03d}).")
 
     def _mostrar_situacao(self, cpf, pessoa):
         """Faixa e ficha conforme a pessoa: nova, já veio, no campus ou

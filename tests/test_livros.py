@@ -283,6 +283,35 @@ class TestAutorizacoesNaTela(BasePagina):
         self.assertEqual(len(self.no_banco()), 1)
         self.assertEqual(self.banco.buscar_autorizacao(id_)["usos"], 1)
 
+    def test_faixa_da_autorizacao_cabe_numa_linha_na_tela_pequena(self):
+        """O nome longo de quem autorizou vira reticências: a faixa não
+        quebra em duas linhas e não empurra o Cadastrar para fora (1366x768
+        de notebook = 1093x536 px lógicos)."""
+        d = self.pagina.novo()
+        d.cpf.insert(0, ANA)
+        d.nome.insert(0, "Ana Silva")
+        d.anfitriao.insert(0, "Coordenação de Engenharia de Computação e "
+                              "Sistemas")
+        d.motivo.insert(0, "Reunião sobre o contrato")
+        self.assertTrue(d.salvar())
+        app = self.app
+        self.janela.deiconify()
+        self.janela.geometry("1093x536")
+        app.ir_para(app.aba_cad)
+        app.cpf.insert(0, ANA)
+        self.janela.update()
+        texto = app.lbl_pessoa.cget("text")
+        self.assertIn("Entrada autorizada por Coordenação de Engenhar…", texto)
+        self.assertLessEqual(len(texto), 75)
+        self.assertEqual(app.anfitriao.get(), "Coordenação de Engenharia de "
+                                              "Computação e Sistemas")
+        tela = app.tela_cadastro
+        base = self.janela.winfo_rooty() + 536
+        for botao in (tela.btn_cadastrar, tela.btn_limpar, tela.btn_cancelar):
+            self.assertTrue(botao.winfo_ismapped())
+            self.assertLessEqual(botao.winfo_rooty() + botao.winfo_height(),
+                                 base)
+
     def test_trocar_o_cpf_limpa_o_que_veio_da_autorizacao(self):
         self.criar()
         app = self.app
@@ -559,6 +588,25 @@ class TestDadosEPrivacidade(BasePagina):
     def setUp(self):
         super().setUp()
         self.pagina.seletor.selecionar("Dados e privacidade")
+
+    def test_cabe_na_tela_pequena_com_os_tres_avisos(self):
+        cfg = self.pagina
+        self.janela.deiconify()
+        self.janela.geometry("1093x536")
+        cfg.preencher_demonstracao()
+        cfg.conferir_historico()
+        cfg.anonimizar()                          # CPF vazio: aviso de erro
+        self.janela.update()
+        base = self.janela.winfo_rooty() + 536
+        direita = self.janela.winfo_rootx() + 1093
+        for peca in (cfg.faixa_demonstracao, cfg.faixa_historico,
+                     cfg.faixa_privacidade, cfg.btn_prazo, cfg.btn_anonimizar,
+                     cfg.btn_demonstracao, cfg.btn_historico):
+            self.assertTrue(peca.winfo_ismapped(), peca)
+            self.assertLessEqual(peca.winfo_rooty() + peca.winfo_height(),
+                                 base, peca)
+            self.assertLessEqual(peca.winfo_rootx() + peca.winfo_width(),
+                                 direita, peca)
 
     def test_dados_de_demonstracao(self):
         cfg = self.pagina

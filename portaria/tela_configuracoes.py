@@ -378,38 +378,48 @@ class AbaConfiguracoes:
         fundo = COR["superficie"]
 
         def texto(pai, conteudo):
-            tk.Label(pai, text=conteudo, font=FONTE["corpo"], bg=fundo,
-                     fg=COR["texto_2"], justify="left", anchor="w",
-                     wraplength=px(380)).pack(anchor="w", pady=(px(6), px(10)))
+            """Parágrafo que quebra na largura do cartão (janela pequena)."""
+            rotulo = tk.Label(pai, text=conteudo, font=FONTE["corpo"], bg=fundo,
+                              fg=COR["texto_2"], justify="left", anchor="w",
+                              wraplength=px(380))
+            rotulo.pack(fill="x", pady=(px(4), px(10)))
+            rotulo.bind("<Configure>", lambda e: rotulo.config(
+                wraplength=max(e.width - px(4), px(120))))
+            return rotulo
 
         esquerda = tk.Frame(secao, bg=COR["fundo"])
         esquerda.grid(row=0, column=0, sticky="nsew",
                       padx=(0, px(ESPACO_CARTOES // 2)))
-        cartao = Cartao(esquerda, pad=20)
+        def cabecalho(pai, titulo, rotulo, comando, icone=None):
+            """Título à esquerda e o botão do cartão à direita (uma linha a
+            menos: a seção cabe na janela pequena)."""
+            linha = tk.Frame(pai, bg=fundo)
+            linha.pack(fill="x")
+            titulo_cartao(linha, titulo).pack(side="left")
+            botao = Botao(linha, rotulo, comando, icone=icone)
+            botao.pack(side="right")
+            return botao
+
+        cartao = Cartao(esquerda, pad=16)
         cartao.pack(fill="x", pady=(0, px(ESPACO_CARTOES)))
         m = cartao.miolo
-        titulo_cartao(m, "Dados de demonstração").pack(anchor="w")
-        texto(m, "Enche o sistema com pessoas, visitas, chaves, encomendas e "
-                 "ocorrências fictícias, para apresentar ou treinar. Não use "
-                 "com dados de verdade: os fictícios se misturam a eles.")
-        self.btn_demonstracao = Botao(m, "Preencher com dados fictícios",
-                                      self.preencher_demonstracao)
-        self.btn_demonstracao.pack(anchor="w")
+        self.btn_demonstracao = cabecalho(
+            m, "Dados de demonstração", "Preencher", self.preencher_demonstracao)
+        texto(m, "Enche o sistema com pessoas, visitas e livros fictícios, "
+                 "para apresentar ou treinar.")
         self.faixa_demonstracao = Aviso(m)
 
-        cartao = Cartao(esquerda, pad=20)
+        cartao = Cartao(esquerda, pad=16)
         cartao.pack(fill="x")
         m = cartao.miolo
-        titulo_cartao(m, "Histórico protegido").pack(anchor="w")
-        texto(m, "Cada ação gravada no histórico leva um código que depende "
-                 "da ação anterior. Se alguém mudar ou apagar uma linha por "
-                 "fora do programa, a conferência acha onde foi.")
-        self.btn_historico = Botao(m, "Conferir o histórico",
-                                   self.conferir_historico, icone=ICONE["escudo"])
-        self.btn_historico.pack(anchor="w")
+        self.btn_historico = cabecalho(
+            m, "Histórico protegido", "Conferir", self.conferir_historico,
+            ICONE["escudo"])
+        texto(m, "Cada ação leva um código que depende da anterior: o que "
+                 "for mudado por fora do programa é denunciado.")
         self.faixa_historico = Aviso(m)
 
-        cartao = Cartao(secao, pad=20)
+        cartao = Cartao(secao, pad=16)
         cartao.grid(row=0, column=1, sticky="new",
                     padx=(px(ESPACO_CARTOES // 2), 0))
         m = cartao.miolo
@@ -417,34 +427,38 @@ class AbaConfiguracoes:
         texto(m, "Anonimizar troca o nome, o CPF, o telefone, a placa e a "
                  "empresa da pessoa e das visitas dela por textos neutros. As "
                  "visitas continuam contando no Painel. Não tem volta.")
-        grupo, campo = campo_rotulado(m, "CPF da pessoa", "só números",
-                                      numeros=11)
-        grupo.pack(fill="x", pady=(0, px(10)))
+        # CPF e justificativa na mesma linha: a seção cabe na janela pequena
+        linha = tk.Frame(m, bg=fundo)
+        linha.pack(fill="x", pady=(0, px(10)))
+        linha.columnconfigure(1, weight=1)
+        grupo, campo = campo_rotulado(linha, "CPF da pessoa", numeros=11,
+                                      largura=130)
+        grupo.grid(row=0, column=0, sticky="w", padx=(0, px(10)))
         self.cpf_anonimizar = campo.entrada
-        grupo, campo = campo_rotulado(m, "Justificativa", "ex.: pedido do "
-                                      "titular", maximo=MAXIMO_JUSTIFICATIVA)
-        grupo.pack(fill="x", pady=(0, px(10)))
+        grupo, campo = campo_rotulado(linha, "Justificativa",
+                                      maximo=MAXIMO_JUSTIFICATIVA)
+        grupo.grid(row=0, column=1, sticky="ew")
         self.justificativa_anonimizar = campo.entrada
         self.btn_anonimizar = Botao(m, "Anonimizar pessoa", self.anonimizar,
                                     "perigo")
         self.btn_anonimizar.pack(anchor="w")
-        tk.Frame(m, bg=COR["borda"], height=1).pack(fill="x", pady=px(14))
+        tk.Frame(m, bg=COR["borda"], height=1).pack(fill="x", pady=px(12))
         linha = tk.Frame(m, bg=fundo)
-        linha.pack(fill="x")
-        grupo, campo = campo_rotulado(linha, "Prazo de guarda", "meses sem "
-                                      "visita", numeros=3, largura=120)
+        linha.pack(fill="x", pady=(0, px(6)))
+        grupo, campo = campo_rotulado(linha, "Prazo de guarda", "meses",
+                                      numeros=3, largura=130)
         grupo.pack(side="left")
         self.meses_guarda = campo.entrada
         self.meses_guarda.insert(0, str(MESES_DE_GUARDA_PADRAO))
-        self.btn_prazo = Botao(m, "Anonimizar quem passou do prazo",
+        self.btn_prazo = Botao(linha, "Anonimizar fora do prazo",
                                self.aplicar_prazo, "perigo")
-        self.btn_prazo.pack(anchor="w", pady=(px(10), 0))
+        self.btn_prazo.pack(side="left", anchor="s", padx=(px(10), 0))
         self.faixa_privacidade = Aviso(m)
 
     @staticmethod
     def _dizer(faixa, tipo, texto):
         faixa.mostrar(tipo, texto)
-        faixa.pack(fill="x", pady=(px(12), 0))
+        faixa.pack(fill="x", pady=(px(2), 0))
 
     def preencher_demonstracao(self):
         app = self.app
@@ -462,8 +476,7 @@ class AbaConfiguracoes:
         app.atualizar_contadores()
         if not feito["pessoas"]:
             self._dizer(self.faixa_demonstracao, "info",
-                        "Os dados de demonstração já estavam neste banco: "
-                        "nada foi repetido.")
+                        "Já estavam neste banco: nada foi repetido.")
         else:
             self._dizer(self.faixa_demonstracao, "sucesso",
                         "Inseridos: " + ", ".join(

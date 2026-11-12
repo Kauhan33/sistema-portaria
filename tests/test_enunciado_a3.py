@@ -18,7 +18,7 @@ from unittest import mock
 import portaria
 from portaria import dados, horarios
 from portaria.componentes import BotaoTk, CampoTexto
-from portaria.tela_cadastro import COLUNAS_PRESTADOR, COLUNAS_VISIVEIS, FILTROS
+from portaria.tela_controle import COLUNAS_PRESTADOR, COLUNAS_VISIVEIS, FILTROS
 from portaria.validacao import (CATEGORIAS_OCORRENCIA, FORMATO, MAXIMO_EMPRESA,
                                 MAXIMO_MOTIVO_VISITA, TIPOS_ACESSO)
 
@@ -496,7 +496,7 @@ class TestTela3Controle(BaseCadastro):
         """Uma visita antiga aparece mesmo com muitas visitas mais novas."""
         antiga = self.banco.inserir(dict(VISITA_ANTIGA, placa="", nome="Ana Velha",
                                          cpf=CARLA, tipo="Professor"), autor="ana.admin")
-        with mock.patch("portaria.tela_cadastro.LIMITE_BUSCA", 1):
+        with mock.patch("portaria.tela_controle.LIMITE_BUSCA", 1):
             self.entrar()                   # "ana", mais nova e Visitante
             self.tela.filtro.set("Professor")
             self.buscar("ana")

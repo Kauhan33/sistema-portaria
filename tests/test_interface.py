@@ -732,7 +732,7 @@ class TestDashboard(BaseInterface):
         self.assertEqual(self.valor("estacionamento"), "0")
         self.assertEqual(self.apoio("estacionamento"), "1 visita com veículo")
         self.assertEqual(self.valor("permanencia"), "5h 00min")
-        self.assertEqual(self.apoio("permanencia"), "em 1 visita encerrada")
+        self.assertEqual(self.apoio("permanencia"), "em 1 visita")
         self.assertIn("2 registros desde o início",
                       self.app.tela_dashboard.lbl_subtitulo.cget("text"))
         # os seis cartões por tipo viraram o gráfico "Pessoas por tipo"

@@ -572,6 +572,80 @@ class TestPainelERelatorio(BasePagina):
         d.fechar()
 
 
+class TestPainelNaTelaPequena(BasePagina):
+    """Achado nos prints de 1366x670: o número comprido e o período saíam
+    cortados no cartão estreito."""
+    PAGINA = "dash"
+
+    def setUp(self):
+        super().setUp()
+        self.janela.deiconify()
+
+    def test_numero_comprido_usa_letra_menor_e_cabe(self):
+        painel = self.pagina
+        valor, _ = painel.cards["permanencia"]
+        self.janela.geometry("1093x536")
+        valor.config(text="23h 59min")
+        self.janela.update()
+        painel._caber("permanencia")
+        self.janela.update()
+        self.assertLessEqual(valor.winfo_reqwidth(), valor.master.winfo_width())
+        self.assertNotEqual(painel.fonte_do_numero["permanencia"],
+                            estilo.FONTE["kpi"])
+        valor.config(text="5min")
+        painel._caber("permanencia")
+        self.assertEqual(painel.fonte_do_numero["permanencia"],
+                         estilo.FONTE["kpi"])
+
+    def test_periodo_abrevia_quando_falta_largura(self):
+        painel = self.pagina
+        rotulo = painel.seletor_periodo.itens["30 dias"][0]
+        self.janela.geometry("1400x700")
+        self.janela.update()
+        self.assertEqual(rotulo.cget("text"), "30 dias")
+        self.janela.geometry("1093x536")
+        self.janela.update()
+        cab = painel._cab_entradas
+        if cab.winfo_width() < painel._largura_do_cab:
+            self.assertEqual(rotulo.cget("text"), "30d")
+        direita = cab.winfo_rootx() + cab.winfo_width()
+        self.assertLessEqual(painel.seletor_periodo.winfo_rootx()
+                             + painel.seletor_periodo.winfo_reqwidth(), direita)
+        painel.seletor_periodo.selecionar("30 dias")      # a escolha continua
+        self.assertEqual(len(painel.dados["dias"]), 30)
+
+
+class TestDialogosCabemNoNotebook(BasePagina):
+    """Os diálogos da 3.2 cabem em 1366x768 (536 px lógicos menos a barra)."""
+
+    def test_altura_e_largura(self):
+        app = self.app
+        self.banco.cadastrar_chave("Laboratório 2", "", "ana.admin")
+        self.banco.registrar_encomenda("Ana Silva", "Correios", "ana.admin")
+        abrir = []
+        for aba, tela, metodos in (
+                ("chaves", "tela_chaves", ("novo", "entregar", "ver_historico")),
+                ("encomendas", "tela_encomendas", ("novo", "retirar")),
+                ("autorizacoes", "tela_autorizacoes", ("novo",)),
+                ("funcionarios", "tela_funcionarios", ("novo",)),
+                ("ocorrencias", "tela_ocorrencias", ("novo_recado",)),
+                ("dash", "tela_dashboard", ("abrir_relatorio",))):
+            app.ir_para(getattr(app, "aba_" + aba))
+            pagina = getattr(app, tela)
+            if aba in ("chaves", "encomendas"):
+                pagina.atualizar()
+                primeira(pagina)
+            abrir += [(tela, m, getattr(pagina, m)) for m in metodos]
+        for tela, nome, metodo in abrir:
+            with self.subTest(dialogo=f"{tela}.{nome}"):
+                d = metodo()
+                self.assertIsNotNone(d)
+                d.janela.update()
+                self.assertLessEqual(d.janela.winfo_reqheight(), 536 - 30)
+                self.assertLessEqual(d.janela.winfo_reqwidth(), 1093)
+                d.fechar()
+
+
 class TestPainelDoPorteiro(BasePagina):
     PAGINA = "dash"
     entrar_como = "porteiro"

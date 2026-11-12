@@ -14,6 +14,7 @@ senha e os códigos de recuperação, ninguém mais entra como administrador).
 
 import tkinter as tk
 from datetime import datetime, timedelta
+from tkinter import font as tkfont
 
 from . import backup, horarios, impressao, mensagens
 from .componentes import (Aviso, Botao, Cabecalho, Cartao, Dialogo, Seletor,
@@ -75,6 +76,7 @@ class AbaDashboard:
     # Montagem
     # --------------------------------------------------------------
     def _montar_numeros(self):
+        self.fonte_do_numero = {}        # só os que saíram da letra normal
         self.linha_numeros = linha = tk.Frame(self.aba, bg=COR["fundo"])
         linha.pack(fill="x", padx=px(MARGEM - ESPACO_CARTOES // 2))
         linha.columnconfigure(tuple(range(len(NUMEROS))), weight=1,
@@ -95,6 +97,24 @@ class AbaDashboard:
                              fg=COR["texto_3"])
             apoio.pack(anchor="w", side="bottom")
             self.cards[chave] = (valor, apoio)
+            m.bind("<Configure>", lambda e, c=chave: self._caber(c), add="+")
+
+    def _caber(self, chave):
+        """Número comprido ("3h 10min") em cartão estreito (janela pequena):
+        usa a maior letra que cabe, em vez de cortar o texto."""
+        valor, _ = self.cards[chave]
+        largura = valor.master.winfo_width()
+        if largura <= 1:
+            return
+        normal = FONTE["kpi_destaque" if chave == NUMEROS[0][0] else "kpi"]
+        escolhida = normal
+        for fonte in (normal, FONTE["numero"], FONTE["corpo_semi"]):
+            escolhida = fonte
+            if tkfont.Font(font=fonte).measure(valor.cget("text")) <= largura:
+                break
+        if self.fonte_do_numero.get(chave, normal) != escolhida:
+            self.fonte_do_numero[chave] = escolhida
+            valor.config(font=escolhida)
 
     def _montar_graficos(self):
         area = tk.Frame(self.aba, bg=COR["fundo"])
@@ -133,6 +153,8 @@ class AbaDashboard:
             self.seletor_visao.pack(side="left", padx=(px(16), 0))
             self.seletor_periodo.compactar()
             self.seletor_periodo.pack(side="right")
+            self._cab_entradas, self._largura_do_cab = cab, None
+            cab.bind("<Configure>", self._ajustar_periodo, add="+")
             self._montando = True
             self.seletor_visao.selecionar(VISOES[0])
             self.seletor_periodo.selecionar("7 dias")
@@ -160,7 +182,7 @@ class AbaDashboard:
         self._mostrar("hoje", r["entradas_hoje"], hoje.strftime(FORMATO_DIA))
         if r["permanencia_media"] is not None:
             self._mostrar("permanencia", formatar_duracao(r["permanencia_media"]),
-                          f"em {plural(r['saidas'], 'visita encerrada', 'visitas encerradas')}")
+                          f"em {plural(r['saidas'], 'visita', 'visitas')}")
         else:
             self._mostrar("permanencia", "—", "sem saídas registradas")
         self.com_veiculo = r["com_veiculo"]
@@ -172,6 +194,22 @@ class AbaDashboard:
             for t in TIPOS_ACESSO]
         self._ler_entradas()
         self.redesenhar_graficos()
+
+    def _ajustar_periodo(self, event=None):
+        """Cartão estreito (janela pequena): "7 dias / 30 dias" vira
+        "7d / 30d", em vez de sair cortado."""
+        cab = self._cab_entradas
+        if self._largura_do_cab is None:        # medida com os nomes inteiros
+            cab.update_idletasks()
+            self._largura_do_cab = px(8) + sum(
+                w.winfo_reqwidth() for w in cab.winfo_children()
+                if w.winfo_manager()) + px(16)
+        curto = cab.winfo_width() < self._largura_do_cab
+        if curto != getattr(self, "periodo_curto", None):
+            self.periodo_curto = curto
+            for nome in PERIODOS:
+                self.seletor_periodo.definir_texto(
+                    nome, nome.replace(" dias", "d") if curto else nome)
 
     def _ao_trocar_visao(self):
         if not self._montando:
@@ -256,6 +294,7 @@ class AbaDashboard:
     def _mostrar(self, chave, valor, apoio):
         self.cards[chave][0].config(text=str(valor))
         self.cards[chave][1].config(text=apoio)
+        self._caber(chave)
 
     def redesenhar_graficos(self, event=None):
         desenhar_barras_horizontais(self.cv_tipos, self.dados["tipos"])

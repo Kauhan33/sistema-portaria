@@ -299,7 +299,8 @@ class DialogoHistoricoChaves(Dialogo):
         super().__init__(app.janela, "Histórico das chaves",
                          "As 200 entregas mais recentes.", largura=700,
                          ao_usar=app.registrar_uso)
-        quadro, self.tabela = tabela(self.miolo, self.COLUNAS, altura=10)
+        # 8 linhas: o diálogo cabe na tela de notebook (1366x768)
+        quadro, self.tabela = tabela(self.miolo, self.COLUNAS, altura=8)
         quadro.pack(fill="both", expand=True)
         ok, historico = app.tentar(app.banco.historico_de_chaves)
         for n, h in enumerate(historico if ok else []):
@@ -681,13 +682,17 @@ class DialogoFuncionario(DialogoSimples):
                                       coluna=1, numeros=11).entrada
             self.nome = self.campo("Nome completo *",
                                    maximo=MAXIMO_NOME).entrada
-            self.empresa = self.campo("Empresa *", "ex.: a própria universidade",
-                                      maximo=MAXIMO_EMPRESA).entrada
-        self.matricula = self.campo("Matrícula", "opcional", juntas=1,
+            # 4 linhas (e não 5): o diálogo cabe na tela de notebook
+            self.empresa = self.campo("Empresa *", "ex.: a universidade",
+                                      juntas=1, maximo=MAXIMO_EMPRESA).entrada
+        self.matricula = self.campo("Matrícula", "opcional",
+                                    juntas=1 if f is None else 2,
+                                    coluna=1 if f is None else 0,
                                     maximo=MAXIMO_MATRICULA).entrada
-        self.setor = self.campo("Setor", "opcional", juntas=1, coluna=1,
+        self.setor = self.campo("Setor", "opcional", juntas=1,
                                 maximo=MAXIMO_SETOR).entrada
-        self.cargo = self.campo("Cargo", "opcional", maximo=MAXIMO_CARGO).entrada
+        self.cargo = self.campo("Cargo", "opcional", juntas=1, coluna=1,
+                                maximo=MAXIMO_CARGO).entrada
         if f is not None:
             for caixa, chave in ((self.matricula, "matricula"),
                                  (self.setor, "setor"), (self.cargo, "cargo")):

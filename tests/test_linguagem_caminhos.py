@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from portaria.linguagem.executor import (MOSTRAR_NO_CONSOLE, quem_esta_dentro,
                                          situacao_do_veiculo)
 from portaria.linguagem.semantico import AVISO
-from portaria.validacao import FORMATO, formatar_cpf
+from portaria.validacao import FORMATO, formatar_cpf, usa_campo
 
 from .test_interface import BaseInterface
 from .test_linguagem import BETO, CARLA, DUDA, NOVO, BaseBanco
@@ -22,7 +22,8 @@ def checagem(analise, descricao):
 class TestBuscarNoBanco(BaseBanco):
     def visita(self, dia, tipo="Aluno"):
         entrada = datetime.combine(dia, datetime.min.time()).replace(hour=9)
-        self.banco.inserir({"empresa": "UNA", "motivo": "Aula", "nome": "Rui Lima", "cpf": NOVO,
+        self.banco.inserir({"empresa": "", "motivo": "Aula" if usa_campo(tipo, "motivo") else "",
+                            "nome": "Rui Lima", "cpf": NOVO,
                             "celular": "31987654321", "placa": "",
                             "tipo": tipo, "entrada": entrada.strftime(FORMATO),
                             "saida": (entrada + timedelta(hours=1))
@@ -93,7 +94,7 @@ class TestCaminhosDoSemantico(BaseBanco):
     def test_saida_com_o_carro_que_pode_retirar(self):
         """RN35: Beto está a pé e pode retirar o carro de Carla."""
         self.banco.adicionar_autorizado(CARLA, BETO, "Beto Rocha", None, "ana")
-        self.banco.inserir({"empresa": "UNA", "motivo": "Aula", "nome": "Beto Rocha", "cpf": BETO,
+        self.banco.inserir({"empresa": "", "motivo": "Aula", "nome": "Beto Rocha", "cpf": BETO,
                             "celular": "31987651234", "placa": "",
                             "tipo": "Visitante", "entrada": "21/10/2026 09:00",
                             "saida": ""}, autor="ana")
@@ -102,7 +103,7 @@ class TestCaminhosDoSemantico(BaseBanco):
         visita = a.plano.dados["registros"][0]["id"]
         self.assertIn(visita, a.plano.dados["levados"])
         # quem não está na lista não leva (RN32)
-        self.banco.inserir({"empresa": "UNA", "motivo": "Aula", "nome": "Duda Martins", "cpf": DUDA,
+        self.banco.inserir({"empresa": "", "motivo": "", "nome": "Duda Martins", "cpf": DUDA,
                             "celular": "31987654321", "placa": "",
                             "tipo": "Professor", "entrada": "21/10/2026 09:50",
                             "saida": ""}, autor="ana")
@@ -112,7 +113,7 @@ class TestCaminhosDoSemantico(BaseBanco):
     def test_cadastrar_cpf_desativado_pede_confirmacao(self):
         self.banco.desativar("cpf", NOVO, "fraude no cadastro", "ana")
         a = self.analisar(f'cadastrar {NOVO} visitante nome "Rui Lima" '
-                          "cel 31987651234 empresa \"Alfa\"")
+                          "cel 31987651234")
         self.assertEqual(checagem(a, "CPF ativo").estado, AVISO)
         self.assertIn("fraude no cadastro", a.plano.dados["confirmar"])
 
@@ -145,7 +146,7 @@ class TestBuscarPelaTela(BaseInterface):
         dias = [inicio + timedelta(days=i) for i in range(210)]
         dias += [datetime(2025, 1, d, 9, 0) for d in (5, 15, 25)]
         for e in dias:
-            self.banco.inserir({"empresa": "UNA", "motivo": "Aula", "nome": "Ana Souza", "cpf": "52998224725",
+            self.banco.inserir({"empresa": "", "motivo": "Aula", "nome": "Ana Souza", "cpf": "52998224725",
                                 "celular": "31987654321", "placa": "",
                                 "tipo": "Visitante", "entrada": e.strftime(FORMATO),
                                 "saida": (e + timedelta(hours=2)).strftime(FORMATO)},
@@ -154,7 +155,7 @@ class TestBuscarPelaTela(BaseInterface):
         self.assertIn("3 visitas encontradas", texto)
 
     def test_desativar_quem_esta_no_campus_pelo_comando(self):
-        self.banco.inserir({"empresa": "UNA", "motivo": "Aula", "nome": "Ana Souza", "cpf": "52998224725",
+        self.banco.inserir({"empresa": "", "motivo": "Aula", "nome": "Ana Souza", "cpf": "52998224725",
                             "celular": "31987654321", "placa": "",
                             "tipo": "Visitante",
                             "entrada": (self.app.relogio() - timedelta(hours=1))

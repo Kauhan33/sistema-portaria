@@ -20,7 +20,7 @@ from .usuarios import eh_admin, pode_editar
 from .validacao import (FORMATO_EXIBICAO, MAXIMO_EMPRESA,
                         MAXIMO_MOTIVO_VISITA, MAXIMO_NOME, TIPOS_ACESSO,
                         checar_desativacao_correcao, mascarar_cpf, normalizar,
-                        validar)
+                        usa_campo, validar)
 
 SEM_HISTORICO = {"momento": "—", "usuario": "—", "acao": "Sem histórico",
                  "detalhe": "registro anterior ao histórico"}
@@ -58,6 +58,7 @@ class JanelaEdicao(Dialogo):
             campo.grid(row=linha + 1, column=coluna, columnspan=juntas,
                        sticky="ew", pady=(0, px(12)), padx=espaco)
             campo.var.set(valor or "")      # valor do banco, sem passar pela digitação
+            campo.rotulo = frame
             return campo
 
         # Q04: CPF, telefone e placa com as mesmas restrições do Cadastro.
@@ -77,17 +78,23 @@ class JanelaEdicao(Dialogo):
         campo_placa = novo("Placa", 2, 0, r.get("placa", ""), "opcional",
                            placa=True)
         self.var_placa, self.caixa_placa = campo_placa.var, campo_placa.entrada
-        self.tipo = novo("Tipo de acesso", 2, 1, r["tipo"],
-                         opcoes=TIPOS_ACESSO).entrada
+        campo_tipo = novo("Tipo de acesso", 2, 1, r["tipo"],
+                          opcoes=TIPOS_ACESSO)
+        self.tipo = campo_tipo.entrada
         self.entrada = novo("Entrada", 2, 2, r["entrada"], FORMATO_EXIBICAO,
                             seletor="data_hora", relogio=self.app.relogio).entrada
         self.saida = novo("Saída", 2, 3, r["saida"], "vazio = dentro",
                           seletor="data_hora", relogio=self.app.relogio).entrada
-        # RN48: empresa e motivo também se corrigem
-        self.empresa = novo("Empresa", 0, 4, r.get("empresa", ""),
-                            maximo=MAXIMO_EMPRESA).entrada
-        self.motivo = novo("Motivo", 2, 4, r.get("motivo", ""),
-                           maximo=MAXIMO_MOTIVO_VISITA).entrada
+        # RN48: empresa e motivo também se corrigem, e só aparecem para o
+        # tipo de acesso que os usa
+        self.campo_empresa = novo("Empresa", 0, 4, r.get("empresa", ""),
+                                  maximo=MAXIMO_EMPRESA)
+        self.empresa = self.campo_empresa.entrada
+        self.campo_motivo = novo("Motivo", 2, 4, r.get("motivo", ""),
+                                 maximo=MAXIMO_MOTIVO_VISITA)
+        self.motivo = self.campo_motivo.entrada
+        campo_tipo.var.trace_add("write", self._mostrar_campos_do_tipo)
+        self._mostrar_campos_do_tipo()
         self.cpf.config(font=FONTE["cpf"])
 
     def _montar_historico(self):
@@ -136,16 +143,32 @@ class JanelaEdicao(Dialogo):
         self.cpf.config(validate="key")
         self.cpf.focus_set()
 
+    def _mostrar_campos_do_tipo(self, *args):
+        tipo = self.tipo.get()
+        for chave, campo in (("empresa", self.campo_empresa),
+                             ("motivo", self.campo_motivo)):
+            visivel = usa_campo(tipo, chave)
+            for widget in (campo.rotulo, campo):
+                widget.grid() if visivel else widget.grid_remove()
+
     def salvar(self):
         cpf = self.original["cpf"] if self.cpf_oculto else self.cpf.get()
         novo = normalizar(self.nome.get(), cpf, self.celular.get(),
                           self.var_placa.get(), self.tipo.get(),
                           self.entrada.get(), self.saida.get())
         # empresa e motivo só são obrigatórios se a visita já tinha (uma
-        # visita antiga, sem eles, continua podendo ser corrigida)
+        # visita antiga, sem eles, continua podendo ser corrigida), e só
+        # para o tipo que os usa (RN48): quem passa a usar informa; quem
+        # deixa de usar perde o seu (fica no histórico)
+        tipo, antes = novo["tipo"], self.original["tipo"]
         for chave, campo in (("empresa", self.empresa), ("motivo", self.motivo)):
             valor = " ".join(campo.get().split())
-            if valor or self.original.get(chave):
+            if not usa_campo(tipo, chave):
+                if usa_campo(antes, chave) and self.original.get(chave):
+                    novo[chave] = ""
+                continue
+            if (valor or self.original.get(chave)
+                    or not usa_campo(antes, chave)):
                 novo[chave] = valor
         alteracoes = descrever_alteracoes(self.original, novo)
         if not alteracoes:

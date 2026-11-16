@@ -674,7 +674,8 @@ class DialogoFuncionario(DialogoSimples):
             f"{f['nome']}: matrícula, setor e cargo." if f else
             "Cadastra a pessoa como Funcionário. A entrada não é registrada.",
             "Salvar" if f else "Cadastrar", largura=480)
-        self.cpf = self.nome = self.celular = self.empresa = None
+        self.cpf = self.nome = self.celular = None
+        # (sem Empresa: ela é só do prestador de serviço, RN48)
         if f is None:
             self.cpf = self.campo("CPF *", "só números", juntas=1,
                                   numeros=11).entrada
@@ -682,12 +683,7 @@ class DialogoFuncionario(DialogoSimples):
                                       coluna=1, numeros=11).entrada
             self.nome = self.campo("Nome completo *",
                                    maximo=MAXIMO_NOME).entrada
-            # 4 linhas (e não 5): o diálogo cabe na tela de notebook
-            self.empresa = self.campo("Empresa *", "ex.: a universidade",
-                                      juntas=1, maximo=MAXIMO_EMPRESA).entrada
         self.matricula = self.campo("Matrícula", "opcional",
-                                    juntas=1 if f is None else 2,
-                                    coluna=1 if f is None else 0,
                                     maximo=MAXIMO_MATRICULA).entrada
         self.setor = self.campo("Setor", "opcional", juntas=1,
                                 maximo=MAXIMO_SETOR).entrada
@@ -712,7 +708,7 @@ class DialogoFuncionario(DialogoSimples):
         else:
             pessoa = normalizar(self.nome.get(), self.cpf.get(),
                                 self.celular.get(), "", FUNCIONARIO, "", "",
-                                empresa=self.empresa.get())
+                                empresa="")
             ok, msg = validar_campos(pessoa)
             if not ok:
                 return self.erro(msg)

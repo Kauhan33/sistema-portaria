@@ -1092,8 +1092,8 @@ CASOS = [
           "test_enunciado_a3.TestTela1Login.test_usuario_que_nao_existe_da_a_mesma_mensagem"]),
     caso("CT-93", ["RF01", "RN48"], POSITIVO,
          "Cadastro completo: salva no SQLite, gera o código e confirma",
-         "Preencher nome, CPF, telefone, tipo, empresa, data, horário e motivo "
-         "e clicar em Cadastrar.",
+         "Preencher nome, CPF, telefone, tipo (prestador de serviço), empresa, "
+         "data, horário e motivo e clicar em Cadastrar.",
          "A visita e a empresa ficam no banco; a faixa verde confirma com o "
          "código (\"Código 001\"), cada cadastro tem o seu, e o formulário "
          "fica limpo.",
@@ -1132,7 +1132,8 @@ CASOS = [
           "test_enunciado_a3.TestTela2Cadastro.test_cpf_no_motivo_vai_mascarado_na_tela_do_porteiro"]),
     caso("CT-98", ["RN48"], POSITIVO,
          "Quem já veio traz a empresa e o motivo; cadastro antigo completa",
-         "Digitar o CPF de quem já veio; de quem veio antes da 3.0, sem empresa.",
+         "Digitar o CPF de um prestador que já veio; de um que veio antes da "
+         "3.0, sem empresa.",
          "Os campos vêm preenchidos. O cadastro antigo pede a empresa e o "
          "motivo uma vez e fica completo.",
          ["test_enunciado_a3.TestTela2Cadastro.test_cpf_de_quem_ja_veio_traz_empresa_e_ultimo_motivo",
@@ -1238,9 +1239,10 @@ CASOS = [
     caso("CT-112", ["RNF01"], POSITIVO,
          "Cadastro em blocos, com o Tab na ordem da tela",
          "Percorrer o Cadastro com a tecla Tab a partir do CPF.",
-         "Bloco Pessoa (CPF, nome, telefone, empresa, tipo) e bloco Visita "
-         "(data, horário, placa, motivo, saída), nessa ordem, e depois os "
-         "botões.",
+         "Bloco Pessoa (CPF, nome, telefone, tipo e, para o prestador, a "
+         "empresa) e bloco Visita (data, horário, placa, saída e, para quem "
+         "vem de fora, motivo e quem procura), nessa ordem, e depois os "
+         "botões; o Tab pula os campos que o tipo não usa.",
          ["test_visual.TestTelasRepaginadas.test_tab_segue_a_ordem_da_tela_no_cadastro",
           "test_visual.TestTelasRepaginadas.test_blocos_pessoa_e_visita"]),
     caso("CT-113", ["RF34", "RNF07"], POSITIVO,
@@ -1356,30 +1358,42 @@ CASOS = [
          ["test_modulos.TestFuncionarios.test_matricula_nao_se_repete_e_tem_formato",
           "test_modulos.TestFuncionarios.test_quem_nao_e_funcionario_e_recusado",
           "test_livros.TestFuncionariosNaTela.test_validacao_e_cpf_que_ja_existe"]),
-    caso("CT-123", ["RN50"], POSITIVO,
-         "Visita com crachá e quem procura",
-         "Cadastrar a entrada com Quem procura = Diretoria e Crachá 12; "
-         "filtrar por Dentro; dar a saída.",
-         "A visita guarda os dois; o filtro Dentro mostra a coluna Crachá; a "
-         "saída lembra de recolher o crachá, que fica livre de novo.",
-         ["test_modulos.TestCrachaEAnfitriao.test_visita_guarda_quem_procura_e_o_cracha",
-          "test_modulos.TestCrachaEAnfitriao.test_cracha_volta_a_ficar_livre_na_saida",
-          "test_modulos.TestCrachaEAnfitriao.test_corrigir_mantem_ou_troca_o_cracha",
-          "test_livros.TestCrachaNoCadastro.test_cadastro_guarda_o_cracha_e_quem_procura",
-          "test_livros.TestCrachaNoCadastro.test_filtro_dentro_mostra_o_cracha_e_a_saida_pede_de_volta"]),
-    caso("CT-124", ["RN50"], NEGATIVO,
-         "O mesmo crachá não fica com duas pessoas",
-         "Entregar o crachá 12 a quem entra enquanto ele está com outra "
-         "pessoa dentro; crachá com letras ou com 4 dígitos; desfazer a saída "
-         "de quem tinha o crachá que já foi para outra pessoa.",
-         "Recusa dizendo com quem o crachá está; só números, até 3 dígitos; a "
-         "visita desfeita volta sem o crachá.",
-         ["test_modulos.TestCrachaEAnfitriao.test_cracha_nao_fica_com_duas_pessoas",
-          "test_modulos.TestCrachaEAnfitriao.test_cracha_invalido_e_limite_de_quem_procura",
-          "test_modulos.TestCrachaEAnfitriao."
-          "test_desfazer_a_saida_nao_rouba_o_cracha_de_quem_pegou_depois",
-          "test_livros.TestCrachaNoCadastro.test_cracha_em_uso_e_recusado",
-          "test_livros.TestCrachaNoCadastro.test_cracha_so_aceita_numeros_e_tres_digitos"]),
+    caso("CT-123", ["RN48", "RN50", "RF01"], POSITIVO,
+         "Cada tipo de acesso mostra só os seus campos",
+         "Escolher cada tipo de acesso no Cadastro; cadastrar um prestador e "
+         "um professor; registrar pelo Controle a entrada de um professor; "
+         "abrir Nova pessoa e Corrigir.",
+         "Aluno, professor e funcionário: só os campos comuns. Visitante e "
+         "entregador: mais motivo e quem procura. Prestador: mais empresa. O "
+         "que foi digitado volta se o tipo voltar; o professor entra sem "
+         "motivo; Nova pessoa e Corrigir seguem a mesma regra; não há crachá.",
+         ["test_livros.TestCamposPorTipoNoCadastro.test_cada_tipo_mostra_os_seus_campos",
+          "test_livros.TestCamposPorTipoNoCadastro.test_prestador_grava_empresa_motivo_e_quem_procura",
+          "test_livros.TestCamposPorTipoNoCadastro.test_o_que_foi_digitado_volta_se_o_tipo_voltar",
+          "test_livros.TestCamposPorTipoNoCadastro.test_registrar_entrada_de_aluno_nao_pede_motivo",
+          "test_livros.TestCamposPorTipoNoCadastro.test_corrigir_mostra_os_campos_do_tipo",
+          "test_livros.TestCamposPorTipoNoCadastro.test_nova_pessoa_so_pede_empresa_ao_prestador",
+          "test_livros.TestCamposPorTipoNoCadastro.test_sem_cracha",
+          "test_modulos.TestCamposPorTipo.test_a_tabela_dos_campos",
+          "test_modulos.TestCamposPorTipo.test_cada_tipo_grava_com_os_seus_campos",
+          "test_modulos.TestCamposPorTipo.test_mandar_o_campo_escondido_sem_valor_nao_atrapalha"]),
+    caso("CT-124", ["RN48", "RN50"], NEGATIVO,
+         "Campo que o tipo não usa, ou obrigatório do tipo em branco",
+         "Direto no banco: empresa para aluno ou visitante, motivo para "
+         "professor, quem procura para funcionário; prestador sem empresa; "
+         "visitante sem motivo; trocar o tipo na correção; Nova pessoa "
+         "visitante com empresa.",
+         "Tudo recusado com a mensagem do campo; a visita que muda de tipo "
+         "perde os campos que o tipo novo não usa; o campo escondido na tela "
+         "não vai para o banco.",
+         ["test_modulos.TestCamposPorTipo.test_campo_que_o_tipo_nao_usa_e_recusado_pelo_banco",
+          "test_modulos.TestCamposPorTipo.test_obrigatorios_do_tipo",
+          "test_modulos.TestCamposPorTipo."
+          "test_trocar_o_tipo_na_correcao_apaga_os_campos_que_ele_nao_usa",
+          "test_modulos.TestCamposPorTipo.test_o_cadastro_da_pessoa_so_guarda_a_empresa_do_prestador",
+          "test_modulos.TestCamposPorTipo.test_limite_de_quem_procura",
+          "test_livros.TestCamposPorTipoNoCadastro.test_o_campo_escondido_nao_vai_para_o_banco",
+          "test_enunciado_a3.TestTela2Cadastro.test_cada_campo_obrigatorio"]),
     caso("CT-125", ["RF42", "RN33"], POSITIVO,
          "Recado de turno (passagem de turno)",
          "Deixar um recado em Ocorrências; abrir o Controle de acesso com "
@@ -1476,14 +1490,26 @@ CASOS = [
           "test_livros.TestTamanhoDaLetra.test_todas_as_paginas_abrem_com_a_letra_maior",
           "test_livros.TestCodigoDaPessoa.test_ficha_mostra_o_codigo_do_cadastro",
           "test_livros.TestMenuCabeNaTelaPequena.test_o_menu_com_onze_paginas_cabe_em_536_px"]),
+    caso("CT-132", ["RF34", "RNF02"], POSITIVO,
+         "Olho no campo de senha",
+         "No login, clicar no olho do canto direito do campo de senha; "
+         "desmarcar Mostrar senha; clicar em Limpar.",
+         "O olho mostra a senha e vira olho cortado; a caixa Mostrar senha "
+         "acompanha (e vice-versa); Limpar esconde de novo.",
+         ["test_livros.TestOlhoDaSenha.test_olho_e_checkbutton_andam_juntos",
+          "test_enunciado_a3.TestTela1Login.test_senha_comeca_escondida_e_o_checkbutton_mostra"]),
     caso_da_linguagem(
         "CT-108", "Semântico", ["RN46", "RN48"], NEGATIVO,
         "Empresa e motivo: as mesmas regras do formulário",
-        "entrada de CPF novo sem empresa; cadastrar com empresa vazia.",
-        "Recusa, como o formulário; nada é gravado.",
+        "entrada de prestador novo sem empresa; cadastrar prestador com "
+        "empresa vazia; empresa ou motivo para um professor.",
+        "Recusa, como o formulário (a empresa é só do prestador e o motivo, "
+        "de quem vem de fora); nada é gravado.",
         ["test_enunciado_a3.TestLinguagemComEmpresaEMotivo."
          "test_entrada_nova_sem_empresa_e_recusada_como_no_formulario",
-         "test_enunciado_a3.TestLinguagemComEmpresaEMotivo.test_empresa_vazia_e_recusada"]),
+         "test_enunciado_a3.TestLinguagemComEmpresaEMotivo.test_empresa_vazia_e_recusada",
+         "test_enunciado_a3.TestLinguagemComEmpresaEMotivo."
+         "test_empresa_e_motivo_de_quem_nao_usa_sao_recusados"]),
     caso_da_linguagem(
         "CT-109", "Execução", ["RN46", "RN48"], POSITIVO,
         "Empresa e motivo pela linguagem",

@@ -61,11 +61,12 @@ from .tela_comando import PainelComando
 from .tela_veiculo import (A_PE, COM_CARRO, entrar_com_outro_carro,
                            ENTRAR_COM_SENHA, JA_SAIU, OUTRO_CARRO,
                            vai_entrar_de_carro)
-from .validacao import (checar_desativacao, codigo_da_visita, cpf_valido,
+from .validacao import (CAMPOS_VARIAVEIS, checar_desativacao, codigo_da_visita, cpf_valido,
                         formatar_cpf, formatar_placa, FORMATO,
-                        MAXIMO_ANFITRIAO, MAXIMO_CRACHA, MAXIMO_EMPRESA,
+                        MAXIMO_ANFITRIAO, MAXIMO_EMPRESA,
                         MAXIMO_MOTIVO_VISITA, MAXIMO_NOME, normalizar,
                         PLACA_OBRIGATORIA, placa_valida, so_digitos,
+                        usa_campo,
                         TIPOS_ACESSO, validar)
 from .veiculos import esta_lotado, regra_lotado
 from .tela_controle import ControleMixin, ESPACOS, FILTRO_TODOS, LISTAS, _px
@@ -77,21 +78,22 @@ ALTURA_CADASTRO = 660       # abaixo disso o Cadastro usa menos respiro
 # Posição (linha, coluna, colunas ocupadas) de cada campo do Cadastro, com o
 # rótulo na linha de cima. Dois blocos, na ordem em que o porteiro pergunta:
 # a Pessoa (quem é) e a Visita (quando, com qual carro e por quê). A ordem
-# daqui é também a ordem do Tab.
+# daqui é também a ordem do Tab. Empresa, motivo e quem procura dependem
+# do tipo de acesso (RN48, validacao.CAMPOS_DO_TIPO): só aparecem para quem
+# os usa, e por isso a Empresa vem depois do tipo.
 GRADE = {
     "cpf": (0, 0, 1),
     "nome": (0, 1, 2),
     "celular": (0, 3, 1),
-    "empresa": (3, 0, 2),
-    "tipo": (3, 2, 2),
+    "tipo": (3, 0, 2),
+    "empresa": (3, 2, 2),
     # linha 5: o título do bloco Visita
     "data": (6, 0, 1),
     "hora": (6, 1, 1),
     "placa": (6, 2, 1),
-    "cracha": (6, 3, 1),
+    "saida": (6, 3, 1),
     "motivo": (8, 0, 2),
-    "anfitriao": (8, 2, 1),
-    "saida": (8, 3, 1),
+    "anfitriao": (8, 2, 2),
 }
 COLUNAS_DO_FORMULARIO = 4
 LIMITE_ANFITRIAO_NA_FAIXA = 24     # o resto do nome vira reticências
@@ -226,11 +228,10 @@ class AbaCadastro(ControleMixin):
         linha_motivo = self.pecas["motivo"][0]
         self.contador_motivo = Contador(linha_motivo, self.campo_motivo)
         self.contador_motivo.pack(side="right")
-        # 3.2: quem a visita procura e o crachá entregue (opcionais)
+        # 3.2: quem a visita procura (opcional)
         self.anfitriao = self._peca("anfitriao", "Quem procura",
-                                    Campo(form, maximo=MAXIMO_ANFITRIAO))
-        self.cracha = self._peca("cracha", "Crachá",
-                                 Campo(form, numeros=MAXIMO_CRACHA), "opcional")
+                                    Campo(form, maximo=MAXIMO_ANFITRIAO),
+                                    "opcional")
         self.saida = self._peca("saida", "Saída", self._campo_data(form),
                                 "se já saiu")
 
@@ -253,9 +254,27 @@ class AbaCadastro(ControleMixin):
 
         self._montar_ficha()
         self._posicionar_formulario()
+        # RN48: empresa, motivo e quem procura aparecem conforme o tipo
+        self.pecas["tipo"][1].var.trace_add("write",
+                                            self._mostrar_campos_do_tipo)
+        self._mostrar_campos_do_tipo()
         # Liga o preenchimento automático e os alertas só depois de tudo montado
         self.var_cpf.trace_add("write", self._ao_digitar_cpf)
         self.var_placa.trace_add("write", self._ao_digitar_placa)
+
+    def _mostrar_campos_do_tipo(self, *args):
+        """Mostra só os campos que o tipo de acesso usa (RN48): empresa,
+        motivo e quem procura. O que estava digitado fica guardado e volta
+        se o tipo voltar; sem tipo escolhido, nenhum deles aparece."""
+        tipo = self.tipo.get()
+        for chave in CAMPOS_VARIAVEIS:
+            rotulo, campo = self.pecas[chave]
+            if usa_campo(tipo, chave):
+                rotulo.grid()
+                campo.grid()
+            else:
+                rotulo.grid_remove()
+                campo.grid_remove()
 
     def _peca(self, chave, texto, campo, apoio=""):
         """Rótulo + campo do formulário (posicionados depois, pela GRADE)."""
@@ -402,13 +421,15 @@ class AbaCadastro(ControleMixin):
         if event is not None and not self._esta_visivel():
             return  # Enter só registra na página Cadastro
         self.acompanhar_relogio()      # Entrada intocada = o agora exato
+        tipo = self.tipo.get()
+        # só o que o tipo usa (os campos escondidos não vão para o banco)
+        variaveis = {chave: (getattr(self, chave).get()
+                             if usa_campo(tipo, chave) else "")
+                     for chave in CAMPOS_VARIAVEIS}
         registro = normalizar(self.nome.get(), self.cpf.get(),
                               self.celular.get(), self.var_placa.get(),
-                              self.tipo.get(), self.entrada.get(),
-                              self.saida.get(), empresa=self.empresa.get(),
-                              motivo=self.motivo.get(),
-                              anfitriao=self.anfitriao.get(),
-                              cracha=self.cracha.get())
+                              tipo, self.entrada.get(), self.saida.get(),
+                              **variaveis)
         texto = self.registrar_entrada(registro, self._placa_sugerida(),
                                        (self._auto or {}).get("pessoa_id"),
                                        self._digitar_outro_carro)
@@ -507,9 +528,7 @@ class AbaCadastro(ControleMixin):
         texto = (f"{SUCESSO_CADASTRO} Entrada de "
                  f"{registro['nome'].split()[0]} às {hora}"
                  + self._com_autorizacao(autorizacao)
-                 + f" Código {codigo_da_visita(id_visita)}."
-                 + (f" Crachá {registro['cracha']}."
-                    if registro.get("cracha") else ""))
+                 + f" Código {codigo_da_visita(id_visita)}.")
         self.avisar(texto)
         return texto
 
@@ -672,7 +691,6 @@ class AbaCadastro(ControleMixin):
         self.empresa.delete(0, tk.END)
         self.motivo.delete(0, tk.END)
         self.anfitriao.delete(0, tk.END)
-        self.cracha.delete(0, tk.END)
         self._escrever_entrada_agora()
         self.saida.delete(0, tk.END)
         self.cpf.focus()
@@ -707,8 +725,7 @@ class AbaCadastro(ControleMixin):
 
     def _campos_digitaveis(self):
         return {**self._campos_pessoa(), "cpf": self.var_cpf,
-                "saida": self.saida, "anfitriao": self.anfitriao,
-                "cracha": self.cracha}
+                "saida": self.saida, "anfitriao": self.anfitriao}
 
     def preencher_pessoa(self, pessoa):
         """Começa uma nova entrada para a pessoa (usado pela página Pessoas)."""

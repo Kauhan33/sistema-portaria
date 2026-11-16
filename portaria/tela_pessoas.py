@@ -56,7 +56,7 @@ from .usuarios import (eh_admin, pode_excluir_pessoa,
                        pode_gerenciar_desativacoes)
 from .validacao import (DESATIVADO, MAXIMO_BUSCA, MAXIMO_EMPRESA, MAXIMO_MOTIVO,
                         codigo_da_pessoa,
-                        MAXIMO_NOME,
+                        MAXIMO_NOME, pede_empresa,
                         O_QUE, TIPOS_ACESSO, converter_data, cpf_valido,
                         formatar_celular, formatar_desativacao,
                         formatar_placa, normalizar, normalizar_desativacao,
@@ -757,8 +757,9 @@ class AbaPessoas:
         self.lbl_visitas.config(text=str(p["visitas"]))
         self.lbl_ultima.config(text=(p["ultima_visita"] or "—")[:5])
         self.lbl_contato.config(
-            text="  ·  ".join(t for t in (formatar_celular(p["celular"]), p["tipo"],
-                                          p.get("empresa")) if t))
+            text="  ·  ".join(t for t in (
+                formatar_celular(p["celular"]), p["tipo"],
+                p.get("empresa") if pede_empresa(p["tipo"]) else "") if t))
         desativacao = self.desativacoes.get(p["cpf"])
         if desativacao:
             self._faixa("erro", descrever_desativacao(desativacao))
@@ -1319,9 +1320,15 @@ class DialogoPessoa(Dialogo):
 
         c = campo("CPF", 0, 0, apoio="só números", numeros=11)
         self.cpf, self.var_cpf = c.entrada, c.var
-        self.tipo = campo("Tipo de acesso", 0, 1, opcoes=TIPOS_ACESSO).entrada
-        self.nome = campo("Nome completo", 1, 0, maximo=MAXIMO_NOME).entrada
-        self.empresa = campo("Empresa", 1, 1, maximo=MAXIMO_EMPRESA).entrada
+        campo_tipo = campo("Tipo de acesso", 0, 1, opcoes=TIPOS_ACESSO)
+        self.tipo = campo_tipo.entrada
+        campo_nome = campo("Nome completo", 1, 0, maximo=MAXIMO_NOME)
+        self.nome, self.grupo_nome = campo_nome.entrada, campo_nome.master
+        # RN48: a Empresa só aparece para o prestador de serviço (sem ela,
+        # o nome ocupa a linha toda)
+        campo_empresa = campo("Empresa", 1, 1, maximo=MAXIMO_EMPRESA)
+        self.empresa, self.grupo_empresa = (campo_empresa.entrada,
+                                            campo_empresa.master)
         self.celular = campo("Telefone", 2, 0, apoio="celular com DDD",
                              numeros=11).entrada
         c = campo("Placas", 2, 1, apoio="Enter adiciona", placa=True)
@@ -1347,10 +1354,20 @@ class DialogoPessoa(Dialogo):
             self.celular.insert(0, pessoa["celular"])
             self.tipo.set(pessoa["tipo"])
             self.empresa.insert(0, pessoa.get("empresa", ""))
+        campo_tipo.var.trace_add("write", self._mostrar_empresa)
+        self._mostrar_empresa()
         self.adicionar_botao("Cadastrar" if nova else "Salvar alterações",
                              self.salvar, "primario")
         self.adicionar_botao("Cancelar", self.fechar)
         self.abrir(confirmar=self.salvar, foco=self.cpf if nova else self.nome)
+
+    def _mostrar_empresa(self, *args):
+        if pede_empresa(self.tipo.get()):
+            self.grupo_nome.grid_configure(columnspan=1, padx=(0, px(10)))
+            self.grupo_empresa.grid()
+        else:
+            self.grupo_empresa.grid_remove()
+            self.grupo_nome.grid_configure(columnspan=2, padx=0)
 
     def _mostrar_faixa(self, tipo, texto):
         self.faixa.mostrar(tipo, texto)
@@ -1450,11 +1467,15 @@ class DialogoPessoa(Dialogo):
         if not ok:
             self._mostrar_faixa("erro", msg)
             return False
-        # empresa obrigatória (RN48); um cadastro antigo, sem ela, ainda pode
-        # ter o telefone corrigido sem preencher a empresa
-        empresa = self.empresa.get()
-        if self.pessoa is not None and not empresa.strip() and \
-                not self.pessoa.get("empresa"):
+        # RN48: a empresa é obrigatória só para o prestador de serviço (um
+        # cadastro antigo de prestador, sem ela, ainda pode ter o telefone
+        # corrigido); para os outros tipos ela não aparece nem muda
+        tipo = self.tipo.get()
+        empresa = self.empresa.get() if pede_empresa(tipo) else ""
+        if self.pessoa is not None and (
+                not pede_empresa(tipo)
+                or (not empresa.strip() and not self.pessoa.get("empresa")
+                    and pede_empresa(self.pessoa["tipo"]))):
             empresa = None
         dados = normalizar(self.nome.get(), cpf, self.celular.get(),
                            placas[0] if placas else "", self.tipo.get(), "", "",

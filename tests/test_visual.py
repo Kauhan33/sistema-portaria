@@ -236,10 +236,12 @@ class TestTelasRepaginadas(BaseInterface):
 
     def test_tab_segue_a_ordem_da_tela_no_cadastro(self):
         tela = self.tela
-        ordem = [tela.cpf, tela.nome, tela.celular, tela.empresa, tela.tipo,
+        tela.tipo.set("Prestador de serviço")      # o tipo com mais campos
+        tela.aba.update()                          # (os campos aparecem)
+        ordem = [tela.cpf, tela.nome, tela.celular, tela.tipo, tela.empresa,
                  tela.campo_data_entrada, tela.campo_hora_entrada,
-                 tela.pecas["placa"][1].entrada, tela.cracha,
-                 tela.motivo.texto, tela.anfitriao, tela.saida,
+                 tela.pecas["placa"][1].entrada, tela.saida,
+                 tela.motivo.texto, tela.anfitriao,
                  tela.btn_cadastrar, tela.btn_limpar, tela.btn_cancelar]
         visitados, w = [], tela.cpf
         for _ in range(40):
@@ -256,7 +258,7 @@ class TestTelasRepaginadas(BaseInterface):
         self.assertEqual(tela.titulo_visita.cget("text"), "Visita")
         y = lambda w: w.winfo_rooty()                       # noqa: E731
         self.assertLess(y(tela.titulo_form), y(tela.cpf))
-        self.assertLess(y(tela.empresa), y(tela.titulo_visita))
+        self.assertLess(y(tela.tipo), y(tela.titulo_visita))
         self.assertLess(y(tela.titulo_visita), y(tela.campo_data_entrada))
         self.assertLess(y(tela.motivo.texto), y(tela.btn_cadastrar))
 

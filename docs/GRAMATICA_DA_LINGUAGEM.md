@@ -40,7 +40,7 @@ Excluir), além das consultas da guarita.
 | `entrada` | `entrada 529.982.247-25 aluno placa ABC1D23` | Registra a entrada (Criar visita) | todos |
 | `saida` | `saida 52998224725` · `saida placa ABC1D23` · `saida 52998224725 sem carro` | Registra a saída da pessoa ou do carro | todos |
 | *(implícito)* | `52998224725` · `ABC1D23` | Só o CPF ou só a placa equivale a `saida`, como na Saída rápida de hoje | todos |
-| `cadastrar` | `cadastrar 111.444.777-35 visitante nome "Bruno Almeida" cel 31987651234 empresa "Alfa Ltda"` | Nova pessoa, sem entrada (RN41, o "Cadastrar" do enunciado) | todos |
+| `cadastrar` | `cadastrar 111.444.777-35 prestador nome "Bruno Almeida" cel 31987651234 empresa "Alfa Ltda"` | Nova pessoa, sem entrada (RN41, o "Cadastrar" do enunciado) | todos |
 | `editar` | `editar 11144477735 cel 31999990000 tipo professor` · `editar 11144477735 placa NEY4829 sem placa ABC1D23` | Muda nome, celular ou tipo; inclui (`placa`) ou tira (`sem placa`) carros (RN47, 2.5) | todos |
 | `excluir` | `excluir 11144477735` | Exclui o cadastro de quem nunca teve visita (RN42) | admin |
 | `desativar` | `desativar 11144477735 motivo "agressão ao porteiro"` · `desativar placa ABC1D23 motivo "..."` | Pessoa ou veículo desativado não entra (RN12) | admin |
@@ -101,7 +101,7 @@ opcao_sai  = "placa" PLACA                 (* com qual carro, RN40 *)
 implicito  = cpf | PLACA ;                 (* = saida *)
 
 cadastrar  = "cadastrar" cpf TIPO "nome" TEXTO "cel" NUMERO
-             "empresa" TEXTO
+             [ "empresa" TEXTO ]           (* só o prestador, RN48 *)
              { "placa" PLACA } ;           (* até 5 carros, RN47 *)
 editar     = "editar" cpf campo { campo } ;
 campo      = "nome" TEXTO | "cel" NUMERO | "tipo" TIPO | "empresa" TEXTO

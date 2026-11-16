@@ -141,7 +141,7 @@ class TestEntradaDeCarroOuAPe(BaseInterface):
         self.assertEqual(self.ultima()["placa"], "")
 
     def test_sem_placa_cadastrada_nao_pergunta(self):
-        self.banco.inserir({"nome": "Ana Silva", "cpf": ANA, "empresa": "UNA",
+        self.banco.inserir({"nome": "Ana Silva", "cpf": ANA, "empresa": "",
                             "motivo": "Aula",
                             "celular": "31987654321", "placa": "",
                             "tipo": "Visitante", "entrada": "15/10/2026 08:00",

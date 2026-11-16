@@ -23,8 +23,8 @@ from portaria.validacao import FORMATO, converter_data
 VISITA_ANTIGA = {"nome": "Beto Rocha", "cpf": "11144477735",
                  "celular": "31933334444", "placa": "QWE1234",
                  "tipo": "Professor", "entrada": "15/10/2026 07:00",
-                 "saida": "15/10/2026 12:00", "empresa": "UNA",
-                 "motivo": "Aula"}
+                 "saida": "15/10/2026 12:00", "empresa": "",
+                 "motivo": ""}
 
 
 # Relógio fixo do app nos testes: uma quarta-feira às 10:00, com o campus
@@ -501,11 +501,13 @@ class TestTelaPequena(BaseInterface):
         """Enunciado do A3: todos os campos e botões à vista em 1366x768."""
         tela = self.app.tela_cadastro
         self.app.ir_para(self.app.aba_cad)
+        # o prestador de serviço é o tipo com mais campos (RN48)
+        tela.tipo.set("Prestador de serviço")
         self.tamanho(self.PEQUENA)
         self.janela.update()
         base = self.janela.winfo_rooty() + 536
         for campo in (tela.cpf, tela.nome, tela.celular, tela.tipo, tela.empresa,
-                      tela.motivo, tela.saida, tela.btn_cadastrar,
+                      tela.motivo, tela.anfitriao, tela.saida, tela.btn_cadastrar,
                       tela.btn_limpar, tela.btn_cancelar):
             self.assertTrue(campo.winfo_ismapped(), campo)
             self.assertLessEqual(campo.winfo_rooty() + campo.winfo_height(),
@@ -1595,7 +1597,7 @@ class TestAbaPessoas(BaseInterface):
         self.assertEqual(self.aba.lbl_visitas.cget("text"), "1")
         self.assertEqual(self.aba.desenho_placa.texto, "QWE1234")
         self.assertEqual(self.aba.lbl_contato.cget("text"),
-                         "(31) 93333-4444  ·  Professor  ·  UNA")
+                         "(31) 93333-4444  ·  Professor")
 
     def test_editar_abre_o_dialogo_preenchido_com_o_cpf_fixo(self):
         self.selecionar(self.beto)
@@ -1974,7 +1976,8 @@ class TestHistoricoEOrdemNaPaginaPessoas(BaseInterface):
         super().setUp()
         self.banco.inserir(dict(VISITA_ANTIGA))                  # 15/10, de carro
         self.banco.inserir(dict(VISITA_ANTIGA, celular="31900001111", placa="",
-                                tipo="Visitante", entrada="16/10/2026 09:00",
+                                tipo="Visitante", motivo="Reunião",
+                                entrada="16/10/2026 09:00",
                                 saida="17/10/2026 08:00"))
         self.banco.inserir(dict(VISITA_ANTIGA, placa="", tipo="Professor",
                                 entrada=ha_uma_hora(), saida=""))

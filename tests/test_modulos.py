@@ -312,64 +312,107 @@ class TestFuncionarios(BaseRegras):
                          ("19/10/2026 09:50", ""))
 
 
-class TestCrachaEAnfitriao(BaseRegras):
-    def test_visita_guarda_quem_procura_e_o_cracha(self):
-        id_ = self.banco.inserir(visita(anfitriao="Coordenação", cracha="7"),
-                                 autor="paulo")
-        r = self.banco.buscar(id_)
-        self.assertEqual((r["anfitriao"], r["cracha"]), ("Coordenação", "7"))
-        self.assertEqual(self.banco.crachas_em_uso(), ["7"])
+class TestCamposPorTipo(BaseRegras):
+    """RN48 (3.3): cada tipo de acesso tem os seus campos. Quem é da casa
+    (aluno, professor, funcionário) não informa empresa, motivo nem quem
+    procura; visitante e entregador informam motivo (obrigatório) e quem
+    procura; o prestador de serviço também a empresa (obrigatória). O banco
+    confere, mesmo sem passar pela tela."""
 
-    def test_cracha_nao_fica_com_duas_pessoas(self):
-        self.banco.inserir(visita(cracha="7"), autor="paulo")
-        with self.assertRaises(dados.ErroDados) as erro:
-            self.banco.inserir(visita(cpf=BETO, nome="Beto Rocha", cracha="7"),
-                               autor="paulo")
-        self.assertIn("O crachá 7 está com", str(erro.exception))
-        self.assertEqual(len(self.banco.listar()), 1)
+    def test_a_tabela_dos_campos(self):
+        self.assertEqual(validacao.CAMPOS_DO_TIPO, {
+            "Aluno": (), "Professor": (), "Funcionário": (),
+            "Visitante": ("motivo", "anfitriao"),
+            "Entregador": ("motivo", "anfitriao"),
+            "Prestador de serviço": ("empresa", "motivo", "anfitriao")})
+        self.assertEqual(set(validacao.CAMPOS_DO_TIPO),
+                         set(validacao.TIPOS_ACESSO))
 
-    def test_cracha_volta_a_ficar_livre_na_saida(self):
-        id_ = self.banco.inserir(visita(cracha="7"), autor="paulo")
-        self.banco.registrar_saidas([id_], "19/10/2026 09:30", autor="paulo")
-        self.assertEqual(self.banco.crachas_em_uso(), [])
-        self.banco.inserir(visita(cpf=BETO, nome="Beto Rocha", cracha="7",
-                                  entrada="19/10/2026 09:40"), autor="paulo")
+    def test_cada_tipo_grava_com_os_seus_campos(self):
+        valores = {"empresa": "Alfa Ltda", "motivo": "Reunião",
+                   "anfitriao": "Coordenação"}
+        cpfs = (ANA, BETO, CARLA, "11122233396", "12345678909",
+                "98765432100")
+        for cpf, tipo in zip(cpfs, validacao.TIPOS_ACESSO):
+            with self.subTest(tipo=tipo):
+                campos = {c: valores[c]
+                          for c in validacao.CAMPOS_DO_TIPO[tipo]}
+                id_ = self.banco.inserir(visita(cpf=cpf, tipo=tipo, **campos),
+                                         autor="paulo")
+                r = self.banco.buscar(id_)
+                for campo in validacao.CAMPOS_VARIAVEIS:
+                    self.assertEqual(r[campo], campos.get(campo, ""), campo)
 
-    def test_desfazer_a_saida_nao_rouba_o_cracha_de_quem_pegou_depois(self):
-        id_ = self.banco.inserir(visita(cracha="7"), autor="paulo")
-        self.banco.registrar_saidas([id_], "19/10/2026 09:30", autor="paulo")
-        self.banco.inserir(visita(cpf=BETO, nome="Beto Rocha", cracha="7",
-                                  entrada="19/10/2026 09:40"), autor="paulo")
-        self.banco.desfazer_saidas([id_], autor="paulo")
-        self.assertEqual(self.banco.buscar(id_)["cracha"], "")
-        self.assertEqual(self.banco.crachas_em_uso(), ["7"])
+    def test_campo_que_o_tipo_nao_usa_e_recusado_pelo_banco(self):
+        for tipo, campo in (("Aluno", "empresa"), ("Professor", "motivo"),
+                            ("Funcionário", "anfitriao"),
+                            ("Visitante", "empresa"),
+                            ("Entregador", "empresa")):
+            with self.subTest(tipo=tipo, campo=campo), \
+                    self.assertRaises(dados.ErroDados) as erro:
+                self.banco.inserir(visita(tipo=tipo, **{campo: "Algo"}),
+                                   autor="paulo")
+            self.assertIn("não é informad" if campo != "empresa"
+                          else "só é informada", str(erro.exception))
+        self.assertEqual(self.banco.listar(), [])
 
-    def test_cracha_invalido_e_limite_de_quem_procura(self):
-        for mudanca in ({"cracha": "abc"}, {"cracha": "1000"},
-                        {"anfitriao": "x" * 61}):
-            r = validacao.normalizar("Ana Silva", ANA, "31987654321", "",
-                                     "Aluno", "19/10/2026 09:00", "",
-                                     **{"anfitriao": "", "cracha": "",
-                                        **mudanca})
-            with self.subTest(mudanca=mudanca):
-                self.assertFalse(validacao.validar_campos(r)[0])
-        self.assertEqual(validacao.normalizar(
-            "Ana Silva", ANA, "31987654321", "", "Aluno", "19/10/2026 09:00",
-            "", cracha=" 007 ")["cracha"], "7")
+    def test_obrigatorios_do_tipo(self):
+        with self.assertRaisesRegex(dados.ErroDados, "empresa é obrigatória"):
+            self.banco.inserir(visita(tipo="Prestador de serviço", empresa="",
+                                      motivo="Reparo"), autor="paulo")
+        for tipo in ("Visitante", "Entregador", "Prestador de serviço"):
+            with self.subTest(tipo=tipo), \
+                    self.assertRaisesRegex(dados.ErroDados, "motivo"):
+                self.banco.inserir(visita(tipo=tipo, empresa="Alfa" if tipo
+                                          == "Prestador de serviço" else "",
+                                          motivo=""), autor="paulo")
+        id_ = self.banco.inserir(visita(tipo="Visitante", motivo="Reunião"),
+                                 autor="paulo")         # quem procura: opcional
+        self.assertEqual(self.banco.buscar(id_)["anfitriao"], "")
 
-    def test_corrigir_mantem_ou_troca_o_cracha(self):
-        id_ = self.banco.inserir(visita(cracha="7"), autor="ana")
-        outra = self.banco.inserir(visita(cpf=BETO, nome="Beto Rocha",
-                                          cracha="8"), autor="ana")
+    def test_limite_de_quem_procura(self):
+        r = validacao.normalizar("Ana Silva", ANA, "31987654321", "",
+                                 "Visitante", "19/10/2026 09:00", "",
+                                 motivo="Reunião", anfitriao="x" * 61)
+        self.assertFalse(validacao.validar_campos(r)[0])
+
+    def test_trocar_o_tipo_na_correcao_apaga_os_campos_que_ele_nao_usa(self):
+        id_ = self.banco.inserir(visita(tipo="Prestador de serviço",
+                                        empresa="Clima Frio",
+                                        motivo="Ar-condicionado",
+                                        anfitriao="Manutenção"), autor="ana")
         original = self.banco.buscar(id_)
-        novo = dict(original, nome="João Avila")
-        novo.pop("cracha")                              # sem a chave: fica
-        self.banco.editar(id_, novo, ["Nome"], "ana", original=original)
-        self.assertEqual(self.banco.buscar(id_)["cracha"], "7")
-        with self.assertRaises(dados.ErroDados):        # o 8 está com o Beto
-            self.banco.editar(id_, dict(self.banco.buscar(id_), cracha="8"),
-                              ["Crachá"], "ana")
-        del outra
+        self.banco.editar(id_, dict(original, tipo="Aluno", empresa="",
+                                    motivo="", anfitriao=""),
+                          ["Tipo"], "ana", original=original)
+        r = self.banco.buscar(id_)
+        self.assertEqual((r["tipo"], r["empresa"], r["motivo"],
+                          r["anfitriao"]), ("Aluno", "", "", ""))
+        with self.assertRaisesRegex(dados.ErroDados, "empresa é obrigatória"):
+            self.banco.editar(id_, dict(r, tipo="Prestador de serviço",
+                                        empresa="", motivo="Reparo"),
+                              ["Tipo"], "ana")
+
+    def test_mandar_o_campo_escondido_sem_valor_nao_atrapalha(self):
+        """A tela manda empresa, motivo e quem procura vazios para quem
+        não os usa: é o caso normal, não um erro."""
+        id_ = self.banco.inserir(visita(tipo="Aluno", empresa="", motivo="",
+                                        anfitriao=""), autor="paulo")
+        self.assertEqual(self.banco.buscar(id_)["tipo"], "Aluno")
+
+    def test_o_cadastro_da_pessoa_so_guarda_a_empresa_do_prestador(self):
+        with self.assertRaisesRegex(dados.ErroDados, "só é informada"):
+            self.banco.cadastrar_pessoa(BETO, "Beto Rocha", "31987654321", "",
+                                        "Visitante", "ana", empresa="Alfa")
+        self.banco.cadastrar_pessoa(BETO, "Beto Rocha", "31987654321", "",
+                                    "Prestador de serviço", "ana",
+                                    empresa="Alfa")
+        self.assertEqual(self.banco.buscar_pessoa(BETO)["empresa"], "Alfa")
+        with self.assertRaisesRegex(dados.ErroDados, "obrigatória"):
+            self.banco.atualizar_pessoa(
+                self.banco.buscar_pessoa(BETO)["id"], "Beto Rocha",
+                "31987654321", "", "Prestador de serviço", autor="ana",
+                empresa="")
 
 
 class TestRecados(BaseRegras):
@@ -409,7 +452,8 @@ class TestPrivacidade(BaseRegras):
         super().setUp()
         self.visita = self.banco.inserir(
             visita(entrada="19/10/2026 08:00", saida="19/10/2026 09:00",
-                   empresa="Alfa", motivo="Reunião", placa="ABC1D23"),
+                   tipo="Prestador de serviço", empresa="Alfa",
+                   motivo="Reunião", placa="ABC1D23"),
             autor="paulo")
         self.pessoa = self.banco.buscar_pessoa(ANA)["id"]
 

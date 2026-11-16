@@ -28,7 +28,7 @@ from .tela_veiculo import (A_PE, COM_CARRO, com_qual_carro, JUNTO, LEVA,
 from .usuarios import eh_admin, pode_editar, pode_excluir
 from .validacao import (checar_saida, codigo_da_visita, formatar_celular,
                         formatar_placa, FORMATO, MAXIMO_BUSCA, normalizar,
-                        TIPOS_ACESSO)
+                        pede_empresa, TIPOS_ACESSO, usa_campo)
 from .veiculos import esta_lotado, ordem_dos_carros, texto_lotacao
 SEGUNDOS_PARA_DESFAZER = 10
 SAIDA_JA_FEITA = ("Essa visita já tinha saída ou foi excluída em outra "
@@ -39,7 +39,7 @@ COLUNAS = [("Nome", "Nome", 110, "w"), ("CPF", "CPF", 116, "w"),
            ("Tipo", "Tipo de acesso", 152, "w"),
            ("Entrada", "Entrada", 126, "w"), ("Saida", "Saída", 126, "w"),
            ("Codigo", "Código", 72, "center"), ("Empresa", "Empresa", 150, "w"),
-           ("Motivo", "Motivo", 190, "w"), ("Cracha", "Crachá", 126, "w"),
+           ("Motivo", "Motivo", 190, "w"),
            ("Anfitriao", "Quem procura", 150, "w")]
 # o celular, a empresa e o motivo continuam nos values, mas não aparecem
 COLUNAS_VISIVEIS = ("Codigo", "Nome", "CPF", "Placa", "Tipo", "Entrada", "Saida")
@@ -47,8 +47,6 @@ COLUNAS_VISIVEIS = ("Codigo", "Nome", "CPF", "Placa", "Tipo", "Entrada", "Saida"
 # mostra a empresa e o motivo no lugar da placa e do tipo
 COLUNAS_PRESTADOR = ("Codigo", "Nome", "CPF", "Empresa", "Motivo", "Entrada",
                      "Saida")
-# quem está dentro não tem saída: no lugar dela, o crachá que a pessoa levou
-COLUNAS_DENTRO = ("Codigo", "Nome", "CPF", "Placa", "Tipo", "Entrada", "Cracha")
 FILTRO_TODOS = "Todos"
 FILTROS = [FILTRO_TODOS, horarios.NO_CAMPUS, horarios.SAIU] + TIPOS_ACESSO
 PRESTADOR = "Prestador de serviço"
@@ -332,10 +330,8 @@ class ControleMixin:
                 return
         else:
             registros = self._filtrados(self.app.registros)
-        mostrar_colunas(self.tabela, {
-            PRESTADOR: COLUNAS_PRESTADOR,
-            horarios.NO_CAMPUS: COLUNAS_DENTRO}.get(self.filtro.get(),
-                                                    COLUNAS_VISIVEIS))
+        mostrar_colunas(self.tabela, COLUNAS_PRESTADOR
+                        if self.filtro.get() == PRESTADOR else COLUNAS_VISIVEIS)
         selecao = self.tabela.selection()
         self.tabela.delete(*self.tabela.get_children())
         self.mostrados = {}
@@ -354,7 +350,6 @@ class ControleMixin:
                 codigo_da_visita(r["id"]),
                 r.get("empresa") or "—",
                 r.get("motivo") or "—",
-                r.get("cracha") or "—",
                 r.get("anfitriao") or "—"), iid=str(r["id"]),
                 situacao=situacao, cor=cor,
                 tags=(destaque,) if destaque else (), zebra=not destaque)
@@ -643,8 +638,9 @@ class ControleMixin:
         """
         Botão Registrar entrada do Controle: a pessoa escolhida na lista
         (localizada pela pesquisa) entra de novo, com o horário de agora e os
-        dados do cadastro. Quem está dentro é recusado (RN05). Falta empresa
-        ou motivo (cadastro antigo): abre o Cadastro já preenchido.
+        dados do cadastro. Quem está dentro é recusado (RN05). Falta um
+        campo que o tipo usa (RN48: o motivo de quem vem de fora, a empresa
+        do prestador de serviço): abre o Cadastro já preenchido.
         """
         selecao = self.tabela.selection()
         if len(selecao) != 1:
@@ -658,13 +654,19 @@ class ControleMixin:
         if not ok:
             return
         p = pessoa or visita
-        empresa = p.get("empresa") or visita.get("empresa", "")
-        motivo = visita.get("motivo", "")
-        if not empresa or not motivo:
+        prestador = pede_empresa(p.get("tipo"))      # RN48
+        com_motivo = usa_campo(p.get("tipo"), "motivo")
+        empresa = ((p.get("empresa") or visita.get("empresa", ""))
+                   if prestador else "")
+        motivo = visita.get("motivo", "") if com_motivo else ""
+        if (prestador and not empresa) or (com_motivo and not motivo):
             self.app.preencher_pessoa(p)
-            (self.empresa if not self.empresa.get() else self.motivo).focus_set()
-            self._situacao("alerta", "Cadastro antigo: informe a empresa e o "
-                                     "motivo da visita para registrar a entrada.")
+            falta_empresa = prestador and not self.empresa.get()
+            (self.empresa if falta_empresa else self.motivo).focus_set()
+            self._situacao("alerta", "Cadastro antigo: informe "
+                           + ("a empresa e o motivo" if falta_empresa
+                              else "o motivo")
+                           + " da visita para registrar a entrada.")
             return
         placa = p.get("placa", "")
         if placa and self._carro_no_estacionamento(placa) is not None:
@@ -1004,10 +1006,6 @@ class ControleMixin:
         texto = (f"Saída de {nomes} registrada às {momento:%H:%M}"
                  + self._com_carro(gravadas, com_veiculo, a_pe, levados)
                  + self._com_autorizacao(autorizacao))
-        crachas = [r["cracha"] for r in gravadas if r.get("cracha")]
-        if crachas:                        # (o crachá volta para a portaria)
-            texto += (". Recolha " + ("o crachá " if len(crachas) == 1
-                                      else "os crachás ") + ", ".join(crachas))
         nao_gravadas = len(recusas) + len(prontos) - len(gravadas)
         if nao_gravadas:
             texto += (f" ({nao_gravadas} já tinha(m) saída ou foi(ram) "

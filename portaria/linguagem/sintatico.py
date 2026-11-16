@@ -351,7 +351,9 @@ class AnalisadorSintatico:
 
     def _cadastrar(self):
         """cadastrar = "cadastrar" cpf TIPO "nome" TEXTO "cel" NUMERO
-                       "empresa" TEXTO { "placa" PLACA } ;"""
+                       [ "empresa" TEXTO ] { "placa" PLACA } ;
+        (a empresa é só do prestador de serviço: quem confere é o
+        semântico, RN48)"""
         comando = self._avancar()
         ex = "Ex.: " + exemplo("cadastrar")
         cpf = self._cpf("cadastrar")
@@ -359,13 +361,15 @@ class AnalisadorSintatico:
         opcoes = [Opcao(self._palavra("nome", ex),
                         [self._esperar(TEXTO, "nome", ex)]),
                   Opcao(self._palavra("cel", ex),
-                        [self._esperar(NUMERO, "cel", ex)]),
-                  Opcao(self._palavra("empresa", ex),
-                        [self._esperar(TEXTO, "empresa", ex)])]
+                        [self._esperar(NUMERO, "cel", ex)])]
+        if self._eh("empresa"):
+            e = self._avancar()
+            opcoes.append(Opcao(e, [self._esperar(TEXTO, "empresa", ex)]))
         while self._eh("placa"):          # RN47: um "placa" por carro
             p = self._avancar()
             opcoes.append(Opcao(p, [self._esperar(PLACA, "placa")]))
-        self.esperado = '"placa" ou o fim da linha'
+        self.esperado = ('"placa" ou o fim da linha' if len(opcoes) > 2
+                         else '"empresa", "placa" ou o fim da linha')
         return ComandoCadastrar(comando, cpf, tipo, opcoes)
 
     def _editar(self):

@@ -27,7 +27,8 @@ from datetime import datetime, timedelta
 
 from portaria import dados
 from portaria.senhas import gerar_hash
-from portaria.validacao import CATEGORIAS_OCORRENCIA, FORMATO, TIPOS_ACESSO
+from portaria.validacao import (CATEGORIAS_OCORRENCIA, FORMATO, TIPOS_ACESSO,
+                                usa_campo)
 
 PASSOS = int(os.environ.get("PORTARIA_PASSOS", "250"))
 SEMENTES = (1, 2, 3)
@@ -88,13 +89,21 @@ class Maquina:
                               + (pessoa["placas"] if pessoa else []))
         nome = pessoa["nome"] if pessoa and self.r.random() < 0.8 \
             else self.r.choice(NOMES)
+        tipo = self.r.choice(TIPOS_ACESSO)
+        # RN48: quase sempre os campos do tipo; às vezes um que ele não usa
+        # (o banco recusa)
+        variaveis = {campo: ((self.r.choice(valores)
+                              if self.r.random() < 0.9 else "")
+                             if usa_campo(tipo, campo) or self.r.random() < 0.05
+                             else "")
+                     for campo, valores in (
+                         ("empresa", ["Alfa Ltda", "Clima Frio"]),
+                         ("motivo", ["Reunião", "Manutenção"]),
+                         ("anfitriao", ["", "Diretoria"]))}
         r = {"nome": nome, "cpf": c, "celular": "31987654321", "placa": placa,
-             "tipo": self.r.choice(TIPOS_ACESSO),
+             "tipo": tipo,
              "entrada": self.quando(self.r.choice([0, 0, 5, 30])), "saida": "",
-             "empresa": self.r.choice(["", "Alfa Ltda", "Clima Frio"]),
-             "motivo": self.r.choice(["", "Reunião", "Manutenção"]),
-             "anfitriao": self.r.choice(["", "Diretoria"]),
-             "cracha": self.r.choice(["", "", "", "1", "2", "3"])}
+             **variaveis}
         self.banco.inserir(r, autor=self.autor(), lotado_confirmado=True)
 
     def op_saida(self):
@@ -160,10 +169,13 @@ class Maquina:
 
     def op_cadastrar(self):
         placas = self.r.sample(PLACAS, self.r.randint(0, 3))
+        tipo = self.r.choice(TIPOS_ACESSO)
         self.banco.cadastrar_pessoa(self.r.choice(CPFS), self.r.choice(NOMES),
-                                    "31999998888", placas,
-                                    self.r.choice(TIPOS_ACESSO), self.autor(),
-                                    empresa=self.r.choice([None, "Alfa Ltda"]))
+                                    "31999998888", placas, tipo, self.autor(),
+                                    empresa=self.r.choice(
+                                        [None, "Alfa Ltda"]
+                                        if usa_campo(tipo, "empresa")
+                                        or self.r.random() < 0.1 else [None]))
 
     def op_ocorrencia(self):
         self.banco.registrar_ocorrencia(
@@ -355,9 +367,13 @@ class Maquina:
                             "ON c.id = e.chave_id WHERE e.devolvida_em = '' "
                             "AND c.ativa = 0"), [],
                           f"{nome}: chave removida ainda emprestada")
-        teste.assertEqual(s("SELECT cracha FROM registros WHERE saida = '' AND "
-                            "cracha <> '' GROUP BY cracha HAVING COUNT(*) > 1"),
-                          [], f"{nome}: o mesmo crachá com duas pessoas")
+        # RN48: nenhuma visita guarda um campo que o tipo dela não usa
+        for campo in ("empresa", "motivo", "anfitriao"):
+            tipos = [t for t in TIPOS_ACESSO if not usa_campo(t, campo)]
+            teste.assertEqual(s(f"SELECT id FROM registros WHERE {campo} <> '' "
+                                f"AND tipo IN ({', '.join('?' * len(tipos))})",
+                                tuple(tipos)), [],
+                              f"{nome}: {campo} em visita de quem não o usa")
         teste.assertEqual(s("SELECT id FROM encomendas WHERE (retirada_em = '') "
                             "<> (retirada_nome = '') OR descricao LIKE "
                             "'%529.982.247-25%'"), [],

@@ -40,7 +40,7 @@ opcao_sai  = "placa" PLACA                 (* com qual carro, RN40 *)
 implicito  = cpf | PLACA ;                 (* = saida *)
 
 cadastrar  = "cadastrar" cpf TIPO "nome" TEXTO "cel" NUMERO
-             "empresa" TEXTO
+             [ "empresa" TEXTO ]           (* só o prestador, RN48 *)
              { "placa" PLACA } ;           (* até 5 carros, RN47 *)
 editar     = "editar" cpf campo { campo } ;
 campo      = "nome" TEXTO | "cel" NUMERO | "tipo" TIPO | "empresa" TEXTO
@@ -67,7 +67,7 @@ EXEMPLOS = {
     "entrada": 'entrada 529.982.247-25 aluno placa ABC1D23',
     "saida": "saida 52998224725 · saida placa ABC1D23 · "
              "saida 52998224725 sem carro",
-    "cadastrar": 'cadastrar 111.444.777-35 visitante nome "Bruno Almeida" '
+    "cadastrar": 'cadastrar 111.444.777-35 prestador nome "Bruno Almeida" '
                  'cel 31987651234 empresa "Alfa Ltda"',
     "editar": "editar 11144477735 cel 31999990000 tipo professor · "
               "editar 11144477735 placa NEY4829 sem placa ABC1D23",

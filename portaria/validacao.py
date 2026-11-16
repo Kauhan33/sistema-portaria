@@ -16,6 +16,20 @@ FORMATO_EXIBICAO = "dd/mm/aaaa hh:mm"  # mostrado para o usuário
 ANO_MINIMO = 2000                      # antes disso é erro de digitação
 TIPOS_ACESSO = ["Aluno", "Professor", "Funcionário", "Visitante",
                 "Entregador", "Prestador de serviço"]
+PRESTADOR = "Prestador de serviço"     # o único tipo que informa a empresa
+# RN48 (3.3): os campos da visita que cada tipo de acesso usa, além dos de
+# todos (CPF, nome, telefone, tipo, data, horário, placa e saída). O
+# formulário mostra só estes; quem é da casa não informa motivo nem quem
+# procura, e a empresa é só do prestador de serviço.
+CAMPOS_DO_TIPO = {
+    "Aluno": (),
+    "Professor": (),
+    "Funcionário": (),
+    "Visitante": ("motivo", "anfitriao"),
+    "Entregador": ("motivo", "anfitriao"),
+    PRESTADOR: ("empresa", "motivo", "anfitriao"),
+}
+CAMPOS_VARIAVEIS = ("empresa", "motivo", "anfitriao")
 
 # Mude para True se a placa também for obrigatória
 PLACA_OBRIGATORIA = False
@@ -63,7 +77,6 @@ MAXIMO_LOCAL = 60             # onde a chave abre; setor da encomenda
 MAXIMO_REMETENTE = 80         # quem mandou a encomenda
 MAXIMO_DESCRICAO_ENCOMENDA = 200
 MAXIMO_ANFITRIAO = 60         # quem a visita procura (pessoa ou setor)
-MAXIMO_CRACHA = 3             # número do crachá: 1 a 999
 MAXIMO_MATRICULA = 20
 MAXIMO_SETOR = 60
 MAXIMO_CARGO = 60
@@ -221,12 +234,13 @@ def formatar_placa(p):
 # Registro completo
 # ------------------------------------------------------------------
 def normalizar(nome, cpf, celular, placa, tipo, entrada, saida, empresa=None,
-               motivo=None, anfitriao=None, cracha=None):
+               motivo=None, anfitriao=None):
     """Monta o registro como será salvo, a partir do texto digitado.
-    `empresa` e `motivo` (RN48): a tela de Cadastro sempre manda os dois, e
-    aí eles são obrigatórios; quem não manda (a Saída, um lançamento antigo)
-    não passa por essa checagem. `anfitriao` (quem a visita procura) e
-    `cracha` (3.2) são opcionais."""
+    `empresa` e `motivo` (RN48): a tela de Cadastro sempre manda os dois;
+    cada tipo de acesso usa só os seus (CAMPOS_DO_TIPO): o motivo é
+    obrigatório para quem o usa e a empresa, só do prestador de serviço.
+    Quem não manda (a Saída, um lançamento antigo) não passa por essa
+    checagem. `anfitriao` (quem a visita procura) é opcional."""
     registro = {
         "nome": " ".join(nome.split()),
         "cpf": so_digitos(cpf),
@@ -244,9 +258,45 @@ def normalizar(nome, cpf, celular, placa, tipo, entrada, saida, empresa=None,
     if anfitriao is not None:
         registro["anfitriao"] = mascarar_cpfs_no_texto(
             " ".join(anfitriao.split()))
-    if cracha is not None:
-        registro["cracha"] = cracha.strip().lstrip("0")
     return registro
+
+
+def usa_campo(tipo, campo):
+    """O tipo de acesso usa este campo da visita? (RN48, CAMPOS_DO_TIPO)"""
+    return campo in CAMPOS_DO_TIPO.get(tipo, ())
+
+
+def pede_empresa(tipo):
+    """RN48: só o prestador de serviço informa a empresa."""
+    return usa_campo(tipo, "empresa")
+
+
+def validar_campo_do_tipo(tipo, campo, valor):
+    """(ok, mensagem) de empresa, motivo ou quem procura para o tipo de
+    acesso: quem usa o campo segue as regras dele (empresa e motivo são
+    obrigatórios); quem não usa não pode informá-lo."""
+    valor = " ".join((valor or "").split())
+    rotulo, maximo = {"empresa": ("Empresa", MAXIMO_EMPRESA),
+                      "motivo": ("Motivo da visita", MAXIMO_MOTIVO_VISITA),
+                      "anfitriao": ("Quem procura", MAXIMO_ANFITRIAO)}[campo]
+    if usa_campo(tipo, campo):
+        if not valor and campo == "empresa":
+            return False, "A empresa é obrigatória para prestador de serviço."
+        if not valor and campo == "motivo":
+            return False, "O motivo da visita é obrigatório."
+        return checar_tamanho(rotulo, valor, maximo)
+    if valor:
+        if campo == "empresa":
+            return False, "A empresa só é informada para prestador de serviço."
+        return False, (f"{rotulo} não é informado para "
+                       f"{(tipo or 'este tipo').lower()}.")
+    return True, ""
+
+
+def validar_empresa(tipo, empresa):
+    """(ok, mensagem): o prestador de serviço informa a empresa (até
+    MAXIMO_EMPRESA caracteres); os outros tipos não informam."""
+    return validar_campo_do_tipo(tipo, "empresa", empresa)
 
 
 def _normalizar_data(texto):
@@ -306,32 +356,14 @@ def validar_campos(registro):
     if registro["tipo"] not in TIPOS_ACESSO:  # VERIFICAÇÃO SEMÂNTICA 1
         return False, "Selecione um tipo de acesso válido."
 
-    # RN48: só quando a tela manda (ver normalizar)
-    if "empresa" in registro:
-        if not registro["empresa"]:
-            return False, "A empresa é obrigatória."
-        ok, msg = checar_tamanho("Empresa", registro["empresa"], MAXIMO_EMPRESA)
-        if not ok:
-            return False, msg
-    if "motivo" in registro:
-        if not registro["motivo"]:
-            return False, "O motivo da visita é obrigatório."
-        ok, msg = checar_tamanho("Motivo da visita", registro["motivo"],
-                                 MAXIMO_MOTIVO_VISITA)
-        if not ok:
-            return False, msg
-    ok, msg = checar_tamanho("Quem procura", registro.get("anfitriao", ""),
-                             MAXIMO_ANFITRIAO)
-    if not ok:
-        return False, msg
-    return validar_cracha(registro.get("cracha", ""))
-
-
-def validar_cracha(cracha):
-    """Crachá opcional: um número de 1 a 999."""
-    if cracha and (not cracha.isdecimal() or len(cracha) > MAXIMO_CRACHA
-                   or int(cracha) < 1):
-        return False, "Crachá inválido.\nUse o número do crachá, de 1 a 999."
+    # RN48: empresa, motivo e quem procura, só quando a tela manda (ver
+    # normalizar) e conforme o tipo de acesso (CAMPOS_DO_TIPO)
+    for campo in CAMPOS_VARIAVEIS:
+        if campo in registro:
+            ok, msg = validar_campo_do_tipo(registro["tipo"], campo,
+                                            registro[campo])
+            if not ok:
+                return False, msg
     return True, ""
 
 

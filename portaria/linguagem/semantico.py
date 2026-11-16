@@ -35,7 +35,9 @@ from .. import horarios
 from ..usuarios import eh_admin, pode_excluir_pessoa, pode_gerenciar_desativacoes
 from ..validacao import (FORMATO, MAXIMO_PLACAS_PESSOA, checar_desativacao,
                          checar_saida, cpf_valido, formatar_placa, normalizar,
-                         validar, validar_campos, validar_desativacao,
+                         pede_empresa, usa_campo, validar,
+                         validar_campos,
+                         validar_desativacao,
                          validar_placas)
 from ..veiculos import esta_lotado, regra_lotado
 from .erros import SEMANTICO, ErroDeAnalise
@@ -52,8 +54,7 @@ OK, ERRO, AVISO, PERGUNTA, AUTORIZACAO = ("ok", "erro", "aviso", "pergunta",
 CONFLITOS = (("placa", "sem carro"), ("as", "em"))
 PERIODOS_EM_DIAS = {"hoje": 0, "ontem": 1, "semana": 6, "mes": 29}
 EXEMPLO_NOVA = ('entrada {cpf} visitante nome "Bruno Almeida" '
-                'cel 31987651234'
-                'empresa "Alfa Ltda" motivo "Reunião"')
+                'cel 31987651234 motivo "Reunião"')
 
 
 @dataclass
@@ -189,10 +190,31 @@ class AnalisadorSemantico:
         cel = opcoes["cel"].valor.valor if "cel" in opcoes else None
         empresa = opcoes["empresa"].valor.valor if "empresa" in opcoes else None
         motivo = opcoes["motivo"].valor.valor if "motivo" in opcoes else None
+        # RN48: cada tipo de acesso usa os seus campos — a empresa é só do
+        # prestador de serviço e o motivo, de quem vem de fora (o tipo é o
+        # do comando ou, sem ele, o do cadastro)
+        tipo_final = tipo or (pessoa or {}).get("tipo", "")
+        com_empresa = pede_empresa(tipo_final)
+        com_motivo = usa_campo(tipo_final, "motivo")
+        for campo, usa, de_quem in (
+                ("empresa", com_empresa, "do prestador de serviço"),
+                ("motivo", com_motivo,
+                 "de visitante, entregador e prestador de serviço")):
+            if campo in opcoes:
+                self._exigir(usa or not tipo_final,
+                             f"{campo.capitalize()} só {de_quem}", "RN48",
+                             f"{tipo_final} não informa {campo}: ele é só "
+                             f"{de_quem}." if campo == "motivo" else
+                             f"{tipo_final} não informa empresa: ela é só "
+                             f"{de_quem}.", opcoes[campo],
+                             f"tire a opção {campo}.")
         if pessoa is None:
             faltam = [o for o, v in (("o tipo", tipo), ("o nome", nome),
-                                     ("o telefone", cel), ("a empresa", empresa),
-                                     ("o motivo", motivo)) if not v]
+                                     ("o telefone", cel),
+                                     ("a empresa", empresa if com_empresa
+                                      else "-"),
+                                     ("o motivo", motivo if com_motivo
+                                      else "-")) if not v]
             self._exigir(not faltam, "CPF novo traz o cadastro completo",
                          "RN01", "CPF não cadastrado: informe "
                          + ", ".join(faltam[:-1])
@@ -211,9 +233,14 @@ class AnalisadorSemantico:
         p = pessoa or {}
         # como o formulário (RN48): a empresa vem do cadastro e o motivo, da
         # última visita; o que faltar é pedido logo antes de gravar
-        empresa = empresa if empresa is not None else p.get("empresa", "")
-        motivo = (motivo if motivo is not None
-                  else self.s.ultimo_motivo(p) if p else "")
+        if not com_empresa:
+            empresa = ""
+        elif empresa is None:
+            empresa = p.get("empresa", "")
+        if not com_motivo:
+            motivo = ""
+        elif motivo is None:
+            motivo = self.s.ultimo_motivo(p) if p else ""
         # a placa, como o formulário: digitada, "sem carro" (a pé) ou a do
         # cadastro (aí a pergunta "vai entrar de carro?", RN34), a não ser
         # que o carro dela já esteja no estacionamento (entra a pé)
@@ -267,13 +294,16 @@ class AnalisadorSemantico:
             self._exigir(momento <= self.agora, "Entrada não está no futuro",
                          "RN07", "a entrada não pode estar no futuro.",
                          quando)
-        faltam = [o for o, v in (("a empresa", empresa), ("o motivo", motivo))
+        faltam = [o for o, v in (("a empresa", empresa if com_empresa
+                                  else "-"),
+                                 ("o motivo", motivo if com_motivo else "-"))
                   if not (v or "").strip()]
-        self._exigir(not faltam, "Empresa e motivo informados", "RN48",
-                     "informe " + " e ".join(faltam) + "."
+        self._exigir(not faltam, "Campos do tipo de acesso informados",
+                     "RN48", "informe " + " e ".join(faltam) + "."
                      if faltam else "", no.cpf,
-                     f'Ex.: entrada {self._texto_cpf(cpf)} empresa "Alfa Ltda" '
-                     'motivo "Reunião"')
+                     f"Ex.: entrada {self._texto_cpf(cpf)} "
+                     + ('empresa "Alfa Ltda" ' if com_empresa else "")
+                     + 'motivo "Reunião"')
         ok, msg = validar(registro, self.s.visitas(cpf), self.agora)
         self._exigir(ok, "Registro completo: campos e período (validar)",
                      "RN01, RN05, RN06, RN07", self._uma_linha(msg),
@@ -541,9 +571,16 @@ class AnalisadorSemantico:
         placas = self._placas(
             [o for o in carros if o.nome == "placa"],
             [o for o in carros if o.nome == "sem placa"], pessoa["placas"])
-        # cadastro antigo, sem empresa: pode mudar o resto sem informá-la
-        empresa = (novo["empresa"] if novo["empresa"] or "empresa" in campos
-                   else None)
+        # cadastro antigo, sem empresa: pode mudar o resto sem informá-la;
+        # e só o prestador de serviço informa a empresa (RN48)
+        if "empresa" in campos:
+            empresa = novo["empresa"]
+        elif not pede_empresa(novo["tipo"]):
+            empresa = None
+        else:
+            empresa = novo["empresa"] or None
+            if empresa is None and pessoa["tipo"] != novo["tipo"]:
+                empresa = ""        # virou prestador: a empresa é pedida
         dados = normalizar(novo["nome"], cpf, novo["celular"],
                            placas[0] if placas else "", novo["tipo"], "", "",
                            empresa=empresa)

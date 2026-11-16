@@ -245,7 +245,6 @@ TAMANHOS_DA_VISITA = (("Nome completo", "nome", MAXIMO_NOME),
                       ("Motivo da visita", "motivo",
                        validacao.MAXIMO_MOTIVO_VISITA),
                       ("Quem procura", "anfitriao", validacao.MAXIMO_ANFITRIAO),
-                      ("Crachá", "cracha", validacao.MAXIMO_CRACHA),
                       ("Entrada", "entrada", MAXIMO_DATA_HORA),
                       ("Saída", "saida", MAXIMO_DATA_HORA))
 # Ações do histórico (auditoria) que passaram por cima de uma regra: o
@@ -1404,7 +1403,13 @@ class Banco(ModulosMixin):
                 _duracao_iso(para_iso(registro["entrada"]),
                              para_iso(registro.get("saida", ""))),
                 autorizacao, registro["nome"])
-            self._conferir_cracha(con, registro)
+            # RN48: empresa, motivo e quem procura conforme o tipo
+            for campo in validacao.CAMPOS_VARIAVEIS:
+                if campo in registro:
+                    ok, msg = validacao.validar_campo_do_tipo(
+                        registro["tipo"], campo, registro[campo])
+                    if not ok:
+                        raise ErroDados(msg)
             id_ = self._inserir(con, registro)
             self._evento(con, autor, "Cadastro de entrada",
                          f"#{id_} {registro['nome']} ({registro['tipo']})", id_)
@@ -1434,20 +1439,24 @@ class Banco(ModulosMixin):
         A visita vai primeiro: se ela for recusada, a pessoa nem é tocada.
         """
         _exigir_tamanhos_da_visita(r)
+        # RN48: cada tipo guarda só os seus campos (empresa, motivo e quem
+        # procura), mesmo que alguém mande os outros
+        empresa, motivo, anfitriao = (
+            r.get(c, "") if validacao.usa_campo(r["tipo"], c) else ""
+            for c in validacao.CAMPOS_VARIAVEIS)
         cursor = con.execute(
             "INSERT INTO registros (nome, cpf, celular, placa, tipo, entrada, "
             "saida, empresa, motivo, anfitriao, cracha) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (r["nome"], r["cpf"], r["celular"], r.get("placa", ""), r["tipo"],
              para_iso(r["entrada"]), para_iso(r.get("saida", "")),
-             r.get("empresa", ""), r.get("motivo", ""),
-             r.get("anfitriao", ""), r.get("cracha", "")))
+             empresa, motivo, anfitriao, ""))
         id_registro = cursor.lastrowid
         con.execute("INSERT INTO pessoas (cpf, nome, celular, placa, tipo, "
                     "empresa) VALUES (?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT (cpf) DO NOTHING",
                     (r["cpf"], r["nome"], r["celular"], r.get("placa", ""),
-                     r["tipo"], r.get("empresa", "")))
+                     r["tipo"], empresa))
         pessoa = con.execute("SELECT id FROM pessoas WHERE cpf = ?",
                              (r["cpf"],)).fetchone()[0]
         con.execute("UPDATE registros SET pessoa_id = ? WHERE id = ?",
@@ -1473,7 +1482,8 @@ class Banco(ModulosMixin):
             "ORDER BY entrada DESC, id DESC LIMIT 1", (pessoa,)).fetchone()[0]
         if mais_recente == id_registro:
             placa = r.get("placa", "")
-            empresa = r.get("empresa", "")
+            empresa = (r.get("empresa") or ""
+                       if validacao.pede_empresa(r["tipo"]) else "")
             con.execute(
                 "UPDATE pessoas SET nome = ?, celular = ?, tipo = ?, "
                 "placa = CASE WHEN ? <> '' THEN ? ELSE placa END, "
@@ -1558,10 +1568,10 @@ class Banco(ModulosMixin):
                 linha = con.execute("SELECT saida FROM registros WHERE id = ?",
                                     (i,)).fetchone()
                 saida_antiga = linha[0] if linha else ""
-                # o crachá desta visita já pode estar com outra pessoa: a
-                # visita volta sem ele (um crachá, uma visita aberta). A
-                # visita de quem foi anonimizado não volta: não há mais quem
-                # esteja "dentro" (RN55).
+                # um crachá gravado pela 3.2 pode já estar com outra visita
+                # aberta: a desfeita volta sem ele (o índice único continua
+                # no banco). A visita de quem foi anonimizado não volta: não
+                # há mais quem esteja "dentro" (RN55).
                 cursor = con.execute(
                     "UPDATE registros SET saida = '', cracha = CASE WHEN cracha "
                     "IN (SELECT cracha FROM registros WHERE saida = '' AND "
@@ -1689,9 +1699,19 @@ class Banco(ModulosMixin):
                                original["celular"], original.get("placa", ""),
                                original["tipo"], para_iso(original["entrada"]),
                                para_iso(original["saida"]))
-            self._conferir_cracha(con, novo, id_registro)
-            # empresa, motivo, quem procura e crachá: sem a chave, ficam como
-            # estavam
+            # RN48: empresa, motivo e quem procura conforme o tipo; a visita
+            # que muda de tipo perde os campos que o tipo novo não usa
+            for campo in validacao.CAMPOS_VARIAVEIS:
+                if novo.get(campo) is not None:
+                    ok, msg = validacao.validar_campo_do_tipo(
+                        novo["tipo"], campo, novo[campo])
+                    if not ok:
+                        raise ErroDados(msg)
+            empresa, motivo, anfitriao = (
+                novo.get(c) if validacao.usa_campo(novo["tipo"], c) else ""
+                for c in validacao.CAMPOS_VARIAVEIS)
+            # empresa, motivo e quem procura: sem a chave, ficam como estavam
+            # (o crachá saiu na 3.3: a coluna ficou, sem uso)
             cursor = con.execute(
                 "UPDATE registros SET nome = ?, cpf = ?, celular = ?, placa = ?, "
                 "tipo = ?, entrada = ?, saida = ?, "
@@ -1701,8 +1721,7 @@ class Banco(ModulosMixin):
                 "WHERE id = ?" + condicao,
                 (novo["nome"], novo["cpf"], novo["celular"], novo["placa"],
                  novo["tipo"], para_iso(novo["entrada"]), para_iso(novo["saida"]),
-                 novo.get("empresa"), novo.get("motivo"),
-                 novo.get("anfitriao"), novo.get("cracha"),
+                 empresa, motivo, anfitriao, None,
                  id_registro, *como_estava))
             if not cursor.rowcount:
                 raise ErroDados(REGISTRO_MUDOU)
@@ -1711,7 +1730,7 @@ class Banco(ModulosMixin):
                         "empresa) VALUES (?, ?, ?, ?, ?, ?) "
                         "ON CONFLICT (cpf) DO NOTHING",
                         (novo["cpf"], novo["nome"], novo["celular"],
-                         novo["placa"], novo["tipo"], novo.get("empresa", "")))
+                         novo["placa"], novo["tipo"], empresa or ""))
             pessoa = con.execute("SELECT id FROM pessoas WHERE cpf = ?",
                                  (novo["cpf"],)).fetchone()[0]
             con.execute("UPDATE registros SET pessoa_id = ? WHERE id = ?",
@@ -2943,7 +2962,8 @@ class Banco(ModulosMixin):
         `placa`: a lista inteira de placas (RN47; a 1ª é a principal) ou
         uma só (fica só ela). Placa tirada do cadastro: quem podia
         retirar aquele carro dela sai da lista (remoção lógica).
-        `empresa` None: continua a que estava."""
+        `empresa` None: continua a que estava (RN48: só o prestador de
+        serviço informa a empresa)."""
         _exigir_tamanhos_da_visita({"nome": nome, "celular": celular,
                                     "empresa": empresa or ""})
         with self._conexao() as con:
@@ -2957,9 +2977,12 @@ class Banco(ModulosMixin):
                 "SELECT placa FROM placas_pessoa WHERE pessoa_id = ?",
                 (id_pessoa,))}
             placas = self._placas_do_cadastro(placa, len(atuais))
-            ok, msg = validacao.validar_campos(
-                {"nome": nome, "cpf": cpf, "celular": celular,
-                 "placa": placas[0] if placas else "", "tipo": tipo})
+            dados = {"nome": nome, "cpf": cpf, "celular": celular,
+                     "placa": placas[0] if placas else "", "tipo": tipo}
+            if empresa is not None:
+                dados["empresa"] = " ".join(empresa.split())
+                empresa = dados["empresa"]
+            ok, msg = validacao.validar_campos(dados)
             if not ok:
                 raise ErroDados(msg)
             con.execute("UPDATE pessoas SET nome = ?, celular = ?, placa = ?, "

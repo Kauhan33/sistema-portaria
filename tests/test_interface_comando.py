@@ -399,7 +399,7 @@ class TestComandoAbreOsDialogos(BaseComando):
         comando abre a autorização do administrador e, com a senha, grava a
         exceção como o formulário."""
         texto = (f'entrada {ANA} visitante nome "Ana Silva" '
-                 "cel 31987654321 empresa \"Alfa\" motivo \"Visita\" em 18/10/2026 09:00")
+                 "cel 31987654321 motivo \"Visita\" em 18/10/2026 09:00")
         self.comando(texto)                               # cancela
         self.assertEqual(len(self.autorizacoes), 1)
         self.assertEqual(self.no_banco(), [])
@@ -414,12 +414,14 @@ class TestComandoAbreOsDialogos(BaseComando):
         Prestador?" (Não = nada gravado)."""
         self.banco.inserir(dict(VISITA_ANTIGA))
         self.msg.askyesno.return_value = False
-        self.comando(f"entrada {BETO} prestador sem carro")
+        self.comando(f'entrada {BETO} prestador empresa "Alfa Ltda" '
+                     'motivo "Manutenção" sem carro')
         titulo = self.msg.askyesno.call_args[0][0]
         self.assertEqual(titulo, "Tipo diferente do cadastro")
         self.assertEqual(len(self.no_banco()), 1)
         self.msg.askyesno.return_value = True
-        self.comando(f"entrada {BETO} prestador sem carro")
+        self.comando(f'entrada {BETO} prestador empresa "Alfa Ltda" '
+                     'motivo "Manutenção" sem carro')
         self.assertEqual(self.no_banco()[-1]["tipo"], "Prestador de serviço")
 
     def test_desativado_vai_ao_historico(self):
@@ -473,7 +475,7 @@ class TestExecucaoIgualAoFormulario(BaseComando):
         self.preencher(placa="ABC1D23")
         self.app.cadastrar()
         self.comando('entrada 529.982.247-25 visitante nome "Ana Silva" '
-                     "cel 31987654321 empresa \"Alfa\" motivo \"Visita\" placa ABC1D23", self.app2)
+                     "cel 31987654321 motivo \"Visita\" placa ABC1D23", self.app2)
         self.assertIn("Registro cadastrado com sucesso!",
                       self.resposta(self.app2))
         self.comparar()
@@ -507,7 +509,7 @@ class TestExecucaoIgualAoFormulario(BaseComando):
         self.app.entrada.insert(0, "18/10/2026 09:00")
         self.app.cadastrar()
         self.comando(f'entrada {ANA} visitante nome "Ana Silva" '
-                     "cel 31987654321 empresa \"Alfa\" motivo \"Visita\" em 18/10/2026 09:00", self.app2)
+                     "cel 31987654321 motivo \"Visita\" em 18/10/2026 09:00", self.app2)
         self.assertEqual(len(self.autorizacoes), 2)
         self.comparar()
 
@@ -536,7 +538,7 @@ class TestExecucaoIgualAoFormulario(BaseComando):
         pessoas.abrir_ficha(self.banco.buscar_pessoa(NOVO))
         self.assertTrue(pessoas.excluir_selecionada())
         for texto in (f'cadastrar {NOVO} visitante nome "Rui Lima" '
-                      "cel 31987651234 empresa \"Alfa\"",
+                      "cel 31987651234",
                       f"editar {NOVO} cel 31999990000 tipo professor",
                       f'desativar {NOVO} motivo "agressão ao porteiro"',
                       f"reativar {NOVO}", f"excluir {NOVO}"):
@@ -565,7 +567,7 @@ class TestExecucaoIgualAoFormulario(BaseComando):
         d.caixa_placa.insert(0, "QWE1E34")
         self.assertTrue(d.salvar())
         for texto in (f'cadastrar {NOVO} visitante nome "Rui Lima" '
-                      "cel 31987651234 empresa \"Alfa\" placa ABC1D23 placa NEY4829",
+                      "cel 31987651234 placa ABC1D23 placa NEY4829",
                       f"editar {NOVO} sem placa NEY4829 placa QWE1E34"):
             self.comando(texto, self.app2)
             self.assertNotIn("[", self.resposta(self.app2), texto)
@@ -579,7 +581,7 @@ class TestExecucaoIgualAoFormulario(BaseComando):
     def test_cadastrar_atualiza_a_pagina_pessoas(self):
         pessoas = self.app.tela_pessoas
         self.comando(f'cadastrar {NOVO} visitante nome "Rui Lima" '
-                     "cel 31987651234 empresa \"Alfa\"")
+                     "cel 31987651234")
         self.assertIn("Pessoa cadastrada: Rui Lima", self.resposta())
         nomes = [pessoas.tabela.item(i, "values")[0]
                  for i in pessoas.tabela.get_children()]

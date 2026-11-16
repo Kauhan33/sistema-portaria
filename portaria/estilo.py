@@ -395,6 +395,8 @@ ICONE = {
     "chave": chr(0xE8D7), "mais_opcoes": chr(0xE712),
     "config": chr(0xE713), "escudo": chr(0xEA18), "calendario": chr(0xE787),
     "autorizado": chr(0xE930), "pacote": chr(0xE7B8), "imprimir": chr(0xE749),
+    # campo de senha (3.3): olho = mostrar; olho cortado = esconder
+    "olho": chr(0xE890), "olho_cortado": chr(0xED1A),
 }
 
 # ----------------------------------------------------------------------

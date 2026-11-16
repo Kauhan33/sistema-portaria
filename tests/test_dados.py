@@ -60,7 +60,7 @@ class TestBanco(BaseTemp):
         id_ = self.banco.inserir(registro())
         self.assertEqual(self.banco.listar(),
                          [dict(registro(), id=id_, empresa="", motivo="",
-                               anfitriao="", cracha="")])
+                               anfitriao="", cracha="")])   # (cracha: sem uso)
 
     def test_datas_ficam_em_iso_no_banco(self):
         self.banco.inserir(registro(saida="16/10/2026 09:30"))

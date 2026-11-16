@@ -27,7 +27,7 @@ from .componentes import (Aviso, BotaoTk, Campo, checkbutton,
                           data_por_extenso, imagem_do_logo, link, marca_cancela)
 from .dados import ErroDados, log
 from .tela_recuperacao import mostrar_codigos
-from .estilo import COR, FONTE, px
+from .estilo import COR, FONTE, ICONE, px
 from .usuarios import (SENHA_MINIMA, definir_senha_inicial, entrar,
                        gerar_codigos_recuperacao, gerar_hash, normalizar_login,
                        precisa_trocar_senha, recuperar_senha,
@@ -52,6 +52,7 @@ class TelaLogin:
         self.relogio = relogio or datetime.now
         self.campos = []                 # caixas de texto, na ordem da tela
         self.senhas = []                 # as caixas de senha do formulário
+        self.olhos = []                  # o ícone de olho de cada uma
         self.var_mostrar = tk.BooleanVar(pai, False)   # "Mostrar senha"
         self.primeiro_acesso = False
         self.formulario = None           # "entrar", "primeiro_acesso"...
@@ -90,6 +91,7 @@ class TelaLogin:
             w.destroy()
         self.campos = []
         self.senhas = []
+        self.olhos = []
         self.var_mostrar.set(False)
         self.formulario = nome
         self._titulo(titulo, subtitulo)
@@ -132,10 +134,21 @@ class TelaLogin:
 
     def mostrar_senha(self):
         """Checkbutton "Mostrar senha": mostra ou esconde o que foi digitado
-        (RNF02: começa escondido, e cada formulário novo volta a esconder)."""
-        sinal = "" if self.var_mostrar.get() else "•"
+        (RNF02: começa escondido, e cada formulário novo volta a esconder).
+        O olho no canto do campo acompanha: olho = clique para mostrar;
+        olho cortado = clique para esconder."""
+        visivel = self.var_mostrar.get()
+        sinal = "" if visivel else "•"
         for caixa in self.senhas:
             caixa.config(show=sinal)
+        for olho in self.olhos:
+            olho.config(text=ICONE["olho_cortado" if visivel else "olho"])
+
+    def alternar_pelo_olho(self):
+        """Clique no olho do campo de senha: o mesmo que marcar ou desmarcar
+        "Mostrar senha" (as duas formas ficam sempre iguais)."""
+        self.var_mostrar.set(not self.var_mostrar.get())
+        self.mostrar_senha()
 
     def limpar(self):
         """Botão Limpar: esvazia o formulário, esconde a senha e o erro."""
@@ -315,11 +328,17 @@ class TelaLogin:
         if apoio:
             tk.Label(linha, text=apoio, font=FONTE["dica"], bg=fundo,
                      fg=COR["texto_3"]).pack(side="left", padx=(px(8), 0))
-        campo = Campo(self.miolo, senha=senha, maximo=maximo)
+        if senha:      # olho no canto direito: mostra e esconde a senha
+            campo = Campo(self.miolo, senha=True, maximo=maximo,
+                          icone=ICONE["olho"],
+                          acao_icone=self.alternar_pelo_olho)
+        else:
+            campo = Campo(self.miolo, maximo=maximo)
         campo.pack(fill="x", pady=(0, px(16)))
         self.campos.append(campo.entrada)
         if senha:
             self.senhas.append(campo.entrada)
+            self.olhos.append(campo.lbl_icone)
         return campo.entrada
 
     def _mostrar(self, tipo, texto):

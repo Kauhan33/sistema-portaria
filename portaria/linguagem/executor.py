@@ -28,6 +28,7 @@ from .. import horarios, mensagens
 from ..usuarios import eh_admin
 from ..dados import REATIVADA
 from ..validacao import (DESATIVADO, FORMATO, O_QUE, formatar_celular,
+                         pede_empresa,
                          formatar_desativacao, formatar_placa)
 from .gramatica import EXEMPLOS, FAZ, SO_ADMIN, regras_de
 from .lexico import COMANDOS
@@ -252,7 +253,8 @@ def situacao_da_pessoa(d, exibir_cpf, quando):
         return Resposta(INFO, texto)
     linhas = [f"CPF {exibir_cpf(cpf)} · {pessoa['tipo']} · telefone "
               f"{formatar_celular(pessoa['celular'])}"
-              + (f" · {pessoa['empresa']}" if pessoa.get("empresa") else "")]
+              + (f" · {pessoa['empresa']}" if pessoa.get("empresa")
+                 and pede_empresa(pessoa["tipo"]) else "")]
     if d["abertas"]:
         texto = (f"{pessoa['nome']} está no campus desde "
                  f"{quando(d['abertas'][0]['entrada'])}")

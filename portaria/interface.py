@@ -119,7 +119,7 @@ NOMES_DO_CADASTRO = {
     "nome", "cpf", "var_cpf", "celular", "var_placa", "tipo", "entrada",
     "saida", "tabela", "busca", "lbl_pessoa", "lbl_dica_placa",
     "lbl_placa_status", "lbl_aviso", "btn_desfazer", "btn_excluir", "empresa",
-    "motivo", "filtro", "anfitriao", "cracha",
+    "motivo", "filtro", "anfitriao",
     "campo_saida_rapida", "lbl_status", "janela_edicao", "cadastrar", "limpar",
     "registrar_saida", "registrar_saida_da_linha", "saida_rapida",
     "desfazer_saida", "editar_selecionado", "excluir_selecionado",

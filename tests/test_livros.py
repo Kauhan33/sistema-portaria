@@ -1,6 +1,6 @@
 """
 As telas da versão 3.2: Funcionários, Autorizações (com a emissão), Encomendas
-e Chaves; quem procura, crachá e autorização no Cadastro; recado de turno;
+e Chaves; campos por tipo de acesso e autorização no Cadastro; recado de turno;
 Painel por período; relatório; privacidade, histórico e dados de demonstração
 em Configurações; tamanho da letra.
 """
@@ -355,7 +355,7 @@ class TestFuncionariosNaTela(BasePagina):
 
     def novo(self, **mudancas):
         campos = {"cpf": ANA, "celular": "31987654321", "nome": "Ana Silva",
-                  "empresa": "UNA", "matricula": "F-0012",
+                  "matricula": "F-0012",
                   "setor": "Secretaria", "cargo": "Assistente"}
         campos.update(mudancas)
         d = self.pagina.novo()
@@ -373,12 +373,11 @@ class TestFuncionariosNaTela(BasePagina):
                          ("F-0012", "Secretaria"))
         pessoa = self.banco.buscar_pessoa(ANA)
         self.assertEqual((pessoa["tipo"], pessoa["empresa"]),
-                         ("Funcionário", "UNA"))
+                         ("Funcionário", ""))
 
     def test_validacao_e_cpf_que_ja_existe(self):
         for mudanca, trecho in (({"cpf": "12345678900"}, "CPF"),
                                 ({"nome": "Ana"}, "nome"),
-                                ({"empresa": ""}, "empresa"),
                                 ({"matricula": "F 12!"}, "Matrícula")):
             with self.subTest(mudanca=mudanca):
                 d = self.novo(**{k: "" for k in mudanca})
@@ -421,55 +420,151 @@ class TestFuncionariosNaTela(BasePagina):
         self.assertEqual(len(self.pagina.tabela.get_children()), 1)
 
 
-class TestCrachaNoCadastro(BaseInterface):
-    def preencher_tudo(self, cpf=ANA, nome="Ana Silva", cracha="7",
-                       anfitriao="Coordenação"):
-        self.preencher(nome=nome, cpf=cpf)
-        self.app.cracha.insert(0, cracha)
-        self.app.anfitriao.insert(0, anfitriao)
+class TestCamposPorTipoNoCadastro(BaseInterface):
+    """RN48 (3.3): o Cadastro mostra só os campos que o tipo de acesso usa."""
 
-    def test_cadastro_guarda_o_cracha_e_quem_procura(self):
-        self.preencher_tudo()
+    def visiveis(self):
+        tela = self.app.tela_cadastro
+        self.janela.update_idletasks()
+        return {chave for chave in ("empresa", "motivo", "anfitriao")
+                if tela.pecas[chave][1].winfo_manager()}
+
+    def test_cada_tipo_mostra_os_seus_campos(self):
+        self.assertEqual(self.visiveis(), set())          # sem tipo escolhido
+        for tipo, esperado in (
+                ("Aluno", set()), ("Professor", set()),
+                ("Funcionário", set()),
+                ("Visitante", {"motivo", "anfitriao"}),
+                ("Entregador", {"motivo", "anfitriao"}),
+                ("Prestador de serviço", {"empresa", "motivo", "anfitriao"})):
+            with self.subTest(tipo=tipo):
+                self.app.tipo.set(tipo)
+                self.assertEqual(self.visiveis(), esperado)
+        self.app.limpar()
+        self.assertEqual(self.visiveis(), set())
+
+    def test_o_campo_escondido_nao_vai_para_o_banco(self):
+        self.preencher(tipo="Prestador de serviço")
+        self.app.anfitriao.insert(0, "Coordenação")
+        self.app.tipo.set("Aluno")                 # trocou de ideia
         self.app.cadastrar()
         r = self.no_banco()[0]
-        self.assertEqual((r["cracha"], r["anfitriao"]), ("7", "Coordenação"))
-        self.assertIn("Crachá 7.", self.app.lbl_pessoa.cget("text"))
-        self.assertEqual((self.app.cracha.get(), self.app.anfitriao.get()),
-                         ("", ""))
+        self.assertEqual((r["tipo"], r["empresa"], r["motivo"],
+                          r["anfitriao"]), ("Aluno", "", "", ""))
 
-    def test_cracha_em_uso_e_recusado(self):
-        self.preencher_tudo()
+    def test_prestador_grava_empresa_motivo_e_quem_procura(self):
+        self.preencher(tipo="Prestador de serviço")
+        self.app.anfitriao.insert(0, "Coordenação")
         self.app.cadastrar()
-        self.preencher_tudo(cpf=BETO, nome="Beto Rocha")
-        self.app.cadastrar()
-        self.assertEqual(len(self.no_banco()), 1)
-        self.assertIn("O crachá 7 está com",
-                      self.msg.showerror.call_args[0][1])
+        r = self.no_banco()[0]
+        self.assertEqual((r["empresa"], r["motivo"], r["anfitriao"]),
+                         ("Empresa Teste", "Reunião", "Coordenação"))
+        self.assertNotIn("Crachá", self.app.lbl_pessoa.cget("text"))
 
-    def test_cracha_so_aceita_numeros_e_tres_digitos(self):
-        self.app.cracha.insert(0, "12ab345")
-        self.assertEqual(self.app.cracha.get(), "")
-        self.app.cracha.insert(0, "123")
-        self.app.cracha.insert(tk.END, "4")
-        self.assertEqual(self.app.cracha.get(), "123")
+    def test_o_que_foi_digitado_volta_se_o_tipo_voltar(self):
+        self.app.tipo.set("Prestador de serviço")
+        self.app.empresa.insert(0, "Clima Frio")
+        self.app.tipo.set("Aluno")
+        self.app.tipo.set("Prestador de serviço")
+        self.assertEqual(self.app.empresa.get(), "Clima Frio")
 
-    def test_filtro_dentro_mostra_o_cracha_e_a_saida_pede_de_volta(self):
-        self.preencher_tudo()
-        self.app.cadastrar()
+    def test_sem_cracha(self):
+        """O crachá saiu na 3.3: nem campo, nem coluna, nem aviso."""
         tela = self.app.tela_cadastro
+        self.assertFalse(hasattr(tela, "cracha"))
+        self.assertNotIn("cracha", tela.pecas)
+        self.preencher()
+        self.app.cadastrar()
         self.app.ir_para(self.app.aba_controle)
         tela.filtro.set("Dentro")
         tela.atualizar_tabela()
-        self.assertIn("Cracha", tela.tabela["displaycolumns"])
-        self.assertNotIn("Saida", tela.tabela["displaycolumns"])
-        linha = tela.tabela.get_children()[0]
-        self.assertEqual(tela.tabela.set(linha, "Cracha"), "7")
-        tela.tabela.selection_set(linha)
-        tela.btn_saida.invoke()
-        self.assertIn("Recolha o crachá 7", tela.lbl_aviso.cget("text"))
-        tela.filtro.set("Todos")
-        tela.atualizar_tabela()
+        self.assertNotIn("Cracha", tela.tabela["columns"])
         self.assertIn("Saida", tela.tabela["displaycolumns"])
+        tela.tabela.selection_set(tela.tabela.get_children()[0])
+        tela.btn_saida.invoke()
+        self.assertNotIn("crachá", tela.lbl_aviso.cget("text").lower())
+
+    def test_corrigir_mostra_os_campos_do_tipo(self):
+        self.preencher(tipo="Prestador de serviço")
+        self.app.cadastrar()
+        tela = self.app.tela_cadastro
+        self.app.ir_para(self.app.aba_controle)
+        tela.tabela.selection_set(tela.tabela.get_children()[0])
+        tela.editar_selecionado()
+        janela = tela.janela_edicao
+        janela.janela.update_idletasks()
+        self.assertTrue(janela.campo_empresa.winfo_manager())
+        self.assertTrue(janela.campo_motivo.winfo_manager())
+        janela.tipo.set("Aluno")
+        janela.janela.update_idletasks()
+        self.assertFalse(janela.campo_empresa.winfo_manager())
+        self.assertFalse(janela.campo_motivo.winfo_manager())
+        janela.salvar()
+        r = self.no_banco()[0]
+        self.assertEqual((r["tipo"], r["empresa"], r["motivo"]),
+                         ("Aluno", "", ""))
+
+    def test_nova_pessoa_so_pede_empresa_ao_prestador(self):
+        self.app.ir_para(self.app.aba_pessoas)
+        d = self.app.tela_pessoas.nova_pessoa()
+        d.janela.update_idletasks()
+        self.assertFalse(d.grupo_empresa.winfo_manager())
+        self.assertEqual(int(d.grupo_nome.grid_info()["columnspan"]), 2)
+        d.tipo.set("Prestador de serviço")
+        d.janela.update_idletasks()
+        self.assertTrue(d.grupo_empresa.winfo_manager())
+        self.assertEqual(int(d.grupo_nome.grid_info()["columnspan"]), 1)
+        d.cpf.insert(0, ANA)
+        d.nome.insert(0, "Ana Silva")
+        d.celular.insert(0, "31987654321")
+        self.assertFalse(d.salvar())                   # falta a empresa
+        self.assertIn("empresa", d.faixa.lbl.cget("text").lower())
+        d.empresa.insert(0, "Clima Frio")
+        self.assertTrue(d.salvar())
+        self.assertEqual(self.banco.buscar_pessoa(ANA)["empresa"], "Clima Frio")
+
+    def test_registrar_entrada_de_aluno_nao_pede_motivo(self):
+        """Pelo Controle de acesso, quem é da casa entra sem motivo."""
+        self.banco.inserir(dict(VISITA_ANTIGA, placa=""), autor="ana.admin")
+        tela = self.app.tela_cadastro
+        self.app.ir_para(self.app.aba_controle)
+        self.buscar("beto")
+        tela.tabela.selection_set(tela.tabela.get_children()[0])
+        tela.btn_entrada_controle.invoke()
+        abertas = [r for r in self.no_banco() if not r["saida"]]
+        self.assertEqual(len(abertas), 1)
+        self.assertEqual((abertas[0]["tipo"], abertas[0]["motivo"]),
+                         ("Professor", ""))
+
+
+class TestOlhoDaSenha(BaseInterface):
+    """3.3: o olho no canto do campo de senha mostra e esconde, junto com a
+    caixa "Mostrar senha" (que o enunciado pede)."""
+
+    def login(self):
+        from portaria.tela_login import TelaLogin
+        janela = tk.Toplevel(self.janela)
+        self.addCleanup(janela.destroy)
+        return TelaLogin(janela, self.banco, ao_entrar=lambda u: None)
+
+    def test_olho_e_checkbutton_andam_juntos(self):
+        tela = self.login()
+        self.assertTrue(tela.senhas)
+        self.assertEqual(len(tela.olhos), len(tela.senhas))
+        olho = tela.olhos[0]
+        self.assertEqual(olho.cget("text"), estilo.ICONE["olho"])
+        self.assertEqual(str(olho.cget("cursor")), "hand2")
+        olho.master.usar_icone()                        # o clique no olho
+        self.assertTrue(tela.var_mostrar.get())
+        self.assertEqual(tela.senhas[0].cget("show"), "")
+        self.assertEqual(olho.cget("text"), estilo.ICONE["olho_cortado"])
+        tela.chk_mostrar.invoke()                       # desmarca a caixa
+        self.assertEqual(tela.senhas[0].cget("show"), "•")
+        self.assertEqual(olho.cget("text"), estilo.ICONE["olho"])
+        olho.master.usar_icone()
+        tela.limpar()                                   # Limpar esconde de novo
+        self.assertEqual(tela.senhas[0].cget("show"), "•")
+        self.assertEqual(olho.cget("text"), estilo.ICONE["olho"])
 
 
 class TestRecadoDeTurno(BaseInterface):

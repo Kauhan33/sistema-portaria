@@ -90,7 +90,8 @@ ESQUEMA_V14 = [
         lido_em  TEXT NOT NULL DEFAULT '',
         lido_por TEXT NOT NULL DEFAULT ''
     )""",
-    # o crachá só fica com uma visita aberta por vez
+    # o crachá só fica com uma visita aberta por vez (3.2; o campo saiu na
+    # 3.3, mas a coluna e o índice ficam, para não mexer no esquema)
     """CREATE UNIQUE INDEX IF NOT EXISTS idx_cracha_em_uso
         ON registros (cracha) WHERE saida = '' AND cracha <> ''""",
 ]
@@ -576,27 +577,6 @@ class ModulosMixin:
                 in linhas]
 
     # --------------------------------------------------------------
-    # Crachá (uma visita aberta por crachá)
-    # --------------------------------------------------------------
-    @staticmethod
-    def _conferir_cracha(con, registro, id_visita=None):
-        cracha = registro.get("cracha") or ""
-        if not cracha or registro.get("saida"):
-            return
-        linha = con.execute("SELECT nome FROM registros WHERE cracha = ? AND "
-                            "saida = '' AND id IS NOT ?",
-                            (cracha, id_visita)).fetchone()
-        if linha:
-            raise ErroDados(f"O crachá {cracha} está com {linha[0]}.\n"
-                            "Escolha outro crachá.")
-
-    def crachas_em_uso(self):
-        with self._conexao() as con:
-            return [c for c, in con.execute(
-                "SELECT cracha FROM registros WHERE saida = '' AND cracha <> '' "
-                "ORDER BY CAST(cracha AS INTEGER)")]
-
-    # --------------------------------------------------------------
     # Recados de turno
     # --------------------------------------------------------------
     def deixar_recado(self, texto, autor):
@@ -793,26 +773,26 @@ class ModulosMixin:
     # Dados de demonstração (fictícios), só para apresentar o sistema
     # --------------------------------------------------------------
     PESSOAS_DE_DEMONSTRACAO = (
-        # (base do CPF, nome, tipo, empresa, placa, motivo)
-        (390533447, "Carla Nogueira", "Professor", "UNA", "BRA2E19",
-         "Aula de Compiladores"),
-        (111444777, "Bruno Almeida", "Professor", "UNA", "", "Banca de TCC"),
-        (168995350, "Diego Ramos", "Aluno", "UNA", "QWE1D23", "Aula"),
-        (529982247, "Mariana Costa", "Aluno", "UNA", "", "Biblioteca"),
-        (714287938, "Rafael Lima", "Funcionário", "UNA", "RST4A56",
-         "Expediente"),
-        (284759163, "Helena Souza", "Funcionário", "UNA", "", "Expediente"),
+        # (base do CPF, nome, tipo, empresa, placa, motivo); a empresa é
+        # só do prestador de serviço (RN48)
+        # (quem é da casa não informa motivo)
+        (390533447, "Carla Nogueira", "Professor", "", "BRA2E19", ""),
+        (111444777, "Bruno Almeida", "Professor", "", "", ""),
+        (168995350, "Diego Ramos", "Aluno", "", "QWE1D23", ""),
+        (529982247, "Mariana Costa", "Aluno", "", "", ""),
+        (714287938, "Rafael Lima", "Funcionário", "", "RST4A56", ""),
+        (284759163, "Helena Souza", "Funcionário", "", "", ""),
         (453178287, "Lucas Pereira", "Prestador de serviço", "NetFibra", "",
          "Reparo na rede do bloco B"),
         (862883667, "Hélio Prado", "Prestador de serviço", "Clima Frio Ltda",
          "JKL4M56", "Manutenção do ar-condicionado"),
-        (635241789, "Júlia Martins", "Visitante", "Beta Consultoria", "",
+        (635241789, "Júlia Martins", "Visitante", "", "",
          "Visita técnica ao laboratório"),
-        (741852963, "Otávio Reis", "Visitante", "Alfa Ltda", "NEY4829",
+        (741852963, "Otávio Reis", "Visitante", "", "NEY4829",
          "Reunião com a coordenação"),
-        (456123789, "Lara Duarte", "Entregador", "Rápido Entregas", "",
+        (456123789, "Lara Duarte", "Entregador", "", "",
          "Entrega de material de escritório"),
-        (987654321, "Fábio Melo", "Aluno", "UNA", "", "Prova"),
+        (987654321, "Fábio Melo", "Aluno", "", "", ""),
     )
 
     def preencher_demonstracao(self, autor):

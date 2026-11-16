@@ -19,6 +19,7 @@ import portaria
 from portaria import dados, horarios
 from portaria.componentes import BotaoTk, CampoTexto
 from portaria.tela_controle import COLUNAS_PRESTADOR, COLUNAS_VISIVEIS, FILTROS
+from portaria.validacao import usa_campo
 from portaria.validacao import (CATEGORIAS_OCORRENCIA, FORMATO, MAXIMO_EMPRESA,
                                 MAXIMO_MOTIVO_VISITA, TIPOS_ACESSO)
 
@@ -162,7 +163,7 @@ class TestPrimeiroAcessoComCheckbutton(BaseInterface):
 
 class BaseCadastro(BaseInterface):
     def preencher_tudo(self, cpf=ANA, nome="Ana Silva", celular="31987654321",
-                       tipo="Visitante", empresa="Alfa Ltda", motivo="Reunião",
+                       tipo="Visitante", empresa="", motivo="Reunião",
                        placa=""):
         app = self.app
         for campo, valor in ((app.cpf, cpf), (app.nome, nome),
@@ -232,7 +233,7 @@ class TestTela2Cadastro(BaseCadastro):
 
     def test_cada_campo_obrigatorio(self):
         casos = {"nome": "nome", "celular": "telefone", "tipo": "tipo",
-                 "empresa": "empresa", "motivo": "motivo"}
+                 "motivo": "motivo"}
         for campo, trecho in casos.items():
             with self.subTest(campo=campo):
                 self.msg.reset_mock()
@@ -241,9 +242,17 @@ class TestTela2Cadastro(BaseCadastro):
                 self.app.tela_cadastro.btn_cadastrar.invoke()
                 self.assertEqual(self.no_banco(), [])
                 self.assertIn(trecho, self.erro().lower())
+        # RN48: a empresa é obrigatória para o prestador de serviço
+        with self.subTest(campo="empresa do prestador"):
+            self.msg.reset_mock()
+            self.app.limpar()
+            self.preencher_tudo(tipo=PRESTADOR, empresa="")
+            self.app.tela_cadastro.btn_cadastrar.invoke()
+            self.assertEqual(self.no_banco(), [])
+            self.assertIn("empresa", self.erro().lower())
 
     def test_so_espacos_nao_contam(self):
-        self.preencher_tudo(empresa="    ", motivo="  \n  ")
+        self.preencher_tudo(tipo=PRESTADOR, empresa="    ", motivo="  \n  ")
         self.app.tela_cadastro.btn_cadastrar.invoke()
         self.assertEqual(self.no_banco(), [])
         self.assertIn("empresa", self.erro().lower())
@@ -275,14 +284,14 @@ class TestTela2Cadastro(BaseCadastro):
                 self.msg.showerror.assert_called()
 
     def test_salva_tudo_no_sqlite(self):
-        self.preencher_tudo()
+        self.preencher_tudo(tipo=PRESTADOR, empresa="Alfa Ltda")
         self.app.tela_cadastro.btn_cadastrar.invoke()
         con = sqlite3.connect(self.caminho_db)
         linha = con.execute("SELECT nome, cpf, celular, tipo, empresa, motivo "
                             "FROM registros").fetchone()
         pessoa = con.execute("SELECT empresa FROM pessoas").fetchone()
         con.close()
-        self.assertEqual(linha, ("Ana Silva", ANA, "31987654321", "Visitante",
+        self.assertEqual(linha, ("Ana Silva", ANA, "31987654321", PRESTADOR,
                                  "Alfa Ltda", "Reunião"))
         self.assertEqual(pessoa, ("Alfa Ltda",))
 
@@ -331,23 +340,26 @@ class TestTela2Cadastro(BaseCadastro):
         self.assertEqual(self.app.abas.select(), str(self.app.aba_controle))
 
     def test_cpf_de_quem_ja_veio_traz_empresa_e_ultimo_motivo(self):
-        self.banco.inserir(dict(VISITA_ANTIGA, empresa="UNA", motivo="Aula"))
+        self.banco.inserir(dict(VISITA_ANTIGA, tipo=PRESTADOR,
+                                empresa="Clima Frio", motivo="Manutenção"))
         self.app.cpf.insert(0, BETO)
         self.assertEqual(self.app.nome.get(), "Beto Rocha")
-        self.assertEqual(self.app.empresa.get(), "UNA")
-        self.assertEqual(self.app.motivo.get(), "Aula")
+        self.assertEqual(self.app.empresa.get(), "Clima Frio")
+        self.assertEqual(self.app.motivo.get(), "Manutenção")
 
     def test_cadastro_antigo_sem_empresa_pede_para_completar(self):
-        self.banco.inserir(dict(VISITA_ANTIGA, empresa="", motivo=""))
+        # cadastro antigo (antes da 3.0): a visita não tinha empresa nem motivo
+        self.banco.inserir({k: v for k, v in dict(VISITA_ANTIGA, tipo=PRESTADOR)
+                            .items() if k not in ("empresa", "motivo")})
         self.app.cpf.insert(0, BETO)
         self.app.tela_cadastro.btn_cadastrar.invoke()
         self.assertEqual(len(self.no_banco()), 1)
         self.assertIn("empresa", self.erro().lower())
-        self.app.empresa.insert(0, "UNA")
-        self.app.motivo.insert(0, "Aula")
+        self.app.empresa.insert(0, "Clima Frio")
+        self.app.motivo.insert(0, "Manutenção")
         self.app.tela_cadastro.btn_cadastrar.invoke()
         self.assertEqual(len(self.no_banco()), 2)
-        self.assertEqual(self.banco.buscar_pessoa(BETO)["empresa"], "UNA")
+        self.assertEqual(self.banco.buscar_pessoa(BETO)["empresa"], "Clima Frio")
 
     def test_motivo_tem_limite_e_contador(self):
         tela = self.app.tela_cadastro
@@ -385,7 +397,8 @@ class TestTela2Cadastro(BaseCadastro):
             with self.subTest(texto=texto):
                 self.app.limpar()
                 self.banco.excluir_todos = None
-                self.preencher_tudo(motivo=texto, empresa=texto)
+                self.preencher_tudo(motivo=texto, empresa=texto,
+                                    tipo=PRESTADOR)
                 self.app.cadastrar()
                 ultimo = self.no_banco()[-1]
                 self.assertEqual((ultimo["motivo"], ultimo["empresa"]),
@@ -414,7 +427,12 @@ class TestTela3Controle(BaseCadastro):
         self.app.ir_para(self.app.aba_controle)
 
     def entrar(self, cpf=ANA, nome="Ana Silva", tipo="Visitante", saida="",
-               empresa="Alfa Ltda", motivo="Reunião", entrada=None):
+               empresa=None, motivo=None, entrada=None):
+        # RN48: cada tipo com os seus campos
+        if empresa is None:
+            empresa = "Alfa Ltda" if usa_campo(tipo, "empresa") else ""
+        if motivo is None:
+            motivo = "Reunião" if usa_campo(tipo, "motivo") else ""
         return self.banco.inserir(
             {"nome": nome, "cpf": cpf, "celular": "31987654321", "placa": "",
              "tipo": tipo, "entrada": entrada or agora_menos(30), "saida": saida,
@@ -460,7 +478,8 @@ class TestTela3Controle(BaseCadastro):
 
     def test_pesquisa_localiza_por_nome_cpf_e_empresa(self):
         self.entrar()
-        self.entrar(cpf=BETO, nome="Beto Rocha", empresa="Beta Serviços")
+        self.entrar(cpf=BETO, nome="Beto Rocha", tipo=PRESTADOR,
+                    empresa="Beta Serviços")
         self.tela.atualizar()
         for texto, esperado in (("beto", "Beto Rocha"), (ANA, "Ana Silva"),
                                 ("beta serv", "Beto Rocha")):
@@ -509,7 +528,7 @@ class TestTela3Controle(BaseCadastro):
             self.assertEqual([n for _, n in self.linhas()], ["Ana Silva"])
 
     def test_formulario_e_filtro_sobrevivem_a_troca_de_tema(self):
-        self.preencher_tudo()
+        self.preencher_tudo(tipo=PRESTADOR, empresa="Alfa Ltda")
         self.tela.filtro.set("Saiu")
         self.app.trocar_tema("escuro")
         tela = self.app.tela_cadastro
@@ -550,7 +569,10 @@ class TestTela3Controle(BaseCadastro):
 
     def test_registrar_entrada_com_horario_automatico(self):
         ontem = (AGORA - timedelta(days=1)).strftime(FORMATO)
-        anterior = self.banco.inserir(dict(VISITA_ANTIGA, placa=""), autor="ana.admin")
+        anterior = self.banco.inserir(dict(VISITA_ANTIGA, placa="", tipo=PRESTADOR,
+                                           empresa="Clima Frio",
+                                           motivo="Manutenção"),
+                                      autor="ana.admin")
         self.tela.atualizar()
         self.buscar("beto")
         self.tela.tabela.selection_set(str(anterior))
@@ -559,8 +581,8 @@ class TestTela3Controle(BaseCadastro):
         visitas = [r for r in self.no_banco() if not r["saida"]]
         self.assertEqual(len(visitas), 1)
         self.assertEqual(visitas[0]["entrada"], AGORA.strftime(FORMATO))
-        self.assertEqual(visitas[0]["empresa"], "UNA")
-        self.assertEqual(visitas[0]["motivo"], "Aula")
+        self.assertEqual(visitas[0]["empresa"], "Clima Frio")
+        self.assertEqual(visitas[0]["motivo"], "Manutenção")
 
     def test_impede_segunda_entrada_sem_saida(self):
         aberta = self.entrar()
@@ -575,8 +597,9 @@ class TestTela3Controle(BaseCadastro):
         self.assertEqual(self.no_banco(), [])
 
     def test_registrar_entrada_com_cadastro_antigo_abre_o_cadastro(self):
-        antiga = self.banco.inserir(dict(VISITA_ANTIGA, empresa="", motivo="",
-                                         placa=""), autor="ana.admin")
+        antiga = self.banco.inserir(
+            {k: v for k, v in dict(VISITA_ANTIGA, placa="", tipo=PRESTADOR)
+             .items() if k not in ("empresa", "motivo")}, autor="ana.admin")
         self.tela.atualizar()
         self.buscar("beto")
         self.tela.tabela.selection_set(str(antiga))
@@ -836,38 +859,56 @@ class TestLinguagemComEmpresaEMotivo(BaseCadastro):
         return tela.comando
 
     def test_entrada_nova_com_tudo(self):
-        self.comando(f'entrada {ANA} visitante nome "Ana Silva" cel 31987654321 '
+        self.comando(f'entrada {ANA} prestador nome "Ana Silva" cel 31987654321 '
                      'empresa "Alfa Ltda" motivo "Reunião"')
         r = self.no_banco()[0]
         self.assertEqual((r["empresa"], r["motivo"]), ("Alfa Ltda", "Reunião"))
 
     def test_entrada_nova_sem_empresa_e_recusada_como_no_formulario(self):
-        self.comando(f'entrada {ANA} visitante nome "Ana Silva" cel 31987654321')
+        self.comando(f'entrada {ANA} prestador nome "Ana Silva" cel 31987654321 '
+                     'motivo "Reunião"')
         self.assertEqual(self.no_banco(), [])
 
     def test_quem_ja_veio_reaproveita_empresa_e_motivo(self):
-        self.banco.inserir(dict(VISITA_ANTIGA, placa=""))
+        self.banco.inserir(dict(VISITA_ANTIGA, placa="", tipo=PRESTADOR,
+                                empresa="Clima Frio", motivo="Manutenção"))
         self.comando(f"entrada {BETO}")
         aberta = [r for r in self.no_banco() if not r["saida"]][0]
-        self.assertEqual((aberta["empresa"], aberta["motivo"]), ("UNA", "Aula"))
+        self.assertEqual((aberta["empresa"], aberta["motivo"]),
+                         ("Clima Frio", "Manutenção"))
 
     def test_motivo_novo_troca_o_da_ultima_visita(self):
-        self.banco.inserir(dict(VISITA_ANTIGA, placa=""))
+        self.banco.inserir(dict(VISITA_ANTIGA, placa="", tipo="Visitante",
+                                motivo="Reunião"))
         self.comando(f'entrada {BETO} motivo "Banca de TCC"')
         aberta = [r for r in self.no_banco() if not r["saida"]][0]
         self.assertEqual(aberta["motivo"], "Banca de TCC")
 
     def test_cadastrar_e_editar_empresa(self):
-        self.comando(f'cadastrar {CARLA} professor nome "Carla Nogueira" '
-                     'cel 31987654321 empresa "UNA"')
-        self.assertEqual(self.banco.buscar_pessoa(CARLA)["empresa"], "UNA")
+        self.comando(f'cadastrar {CARLA} prestador nome "Carla Nogueira" '
+                     'cel 31987654321 empresa "Clima Frio"')
+        self.assertEqual(self.banco.buscar_pessoa(CARLA)["empresa"], "Clima Frio")
         self.comando(f'editar {CARLA} empresa "Alfa Ltda"')
         self.assertEqual(self.banco.buscar_pessoa(CARLA)["empresa"], "Alfa Ltda")
 
     def test_empresa_vazia_e_recusada(self):
-        self.comando(f'cadastrar {CARLA} professor nome "Carla Nogueira" '
+        self.comando(f'cadastrar {CARLA} prestador nome "Carla Nogueira" '
                      'cel 31987654321 empresa ""')
         self.assertIsNone(self.banco.buscar_pessoa(CARLA))
+
+    def test_empresa_e_motivo_de_quem_nao_usa_sao_recusados(self):
+        """RN48 (3.3): o professor não informa empresa nem motivo."""
+        self.comando(f'cadastrar {CARLA} professor nome "Carla Nogueira" '
+                     'cel 31987654321 empresa "UNA"')
+        self.assertIsNone(self.banco.buscar_pessoa(CARLA))
+        self.comando(f'entrada {CARLA} professor nome "Carla Nogueira" '
+                     'cel 31987654321 motivo "Aula"')
+        self.assertEqual(self.no_banco(), [])
+        self.comando(f'entrada {CARLA} professor nome "Carla Nogueira" '
+                     'cel 31987654321')
+        r = self.no_banco()[0]
+        self.assertEqual((r["tipo"], r["empresa"], r["motivo"]),
+                         ("Professor", "", ""))
 
     def test_editar_cadastro_antigo_sem_informar_empresa(self):
         self.banco.cadastrar_pessoa(CARLA, "Carla Nogueira", "31987654321", "",

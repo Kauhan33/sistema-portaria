@@ -395,7 +395,8 @@ Sem mudança de esquema (banco v12).
   entrada.
 - ✅ **RF40 / RN52** — entrega de encomendas.
 - ✅ **RF41 / RN51** — chaves entregues e devolvidas.
-- ✅ **RF42** — recado de turno. **RN50** — quem procura e crachá.
+- ✅ **RF42** — recado de turno. **RN50** — quem procura e crachá (o
+  crachá saiu na 3.3).
 - ✅ **RF43 / RF44** — relatório para imprimir; Painel por dia ou por hora, em
   7 ou 30 dias.
 - ✅ **RF45 / RN57** — dados de demonstração, só para o administrador.
@@ -410,6 +411,13 @@ Sem mudança de esquema (banco v12).
   período do Painel e dois diálogos saíam cortados.
 - Fora do alcance (precisa de serviço pago): certificado para o Windows não
   mostrar o aviso do SmartScreen ao abrir o instalador.
+
+### Versão 3.3 — Campos por tipo de acesso (16/11/2026) ✅
+
+- ✅ **RN48** reescrita: cada tipo de acesso tem os seus campos (a empresa é só
+  do prestador de serviço; motivo e quem procura, só de quem vem de fora).
+- ✅ Crachá removido (pedido do aluno: não era necessário).
+- ✅ Olho no campo de senha do login, junto com "Mostrar senha".
 
 ## 4. Rascunho de requisitos para o Word
 
@@ -615,23 +623,28 @@ correção de uma visita, a placa antiga sai dos carros da pessoa se nenhuma out
 visita dela usou essa placa (2.5.1).
 
 Novas na 3.0 (Atividade A3):
-RN48 CADASTRO COMPLETO: toda entrada nova informa empresa (até 80 caracteres) e
-motivo da visita (até 200); o motivo é um texto livre, gravado numa linha só e com
-CPF mascarado (RN14); o código de identificação é o número da visita com 3 dígitos
-("007"); data e horário são campos separados; quem já veio reaproveita a empresa do
-cadastro e o motivo da última visita; um cadastro antigo, sem esses dados, completa
-na próxima entrada (e pode ser corrigido sem eles).
+RN48 CAMPOS DE CADA TIPO DE ACESSO (reescrita na 3.3): além dos campos de todos
+(CPF, nome, telefone, tipo, data, horário, placa e saída), visitante e entregador
+informam o motivo da visita (obrigatório, até 200 caracteres) e quem procuram
+(opcional); o prestador de serviço informa também a empresa (obrigatória, até 80);
+aluno, professor e funcionário não informam nenhum dos três. O formulário mostra só
+esses campos; o campo escondido não vai para o banco, e o banco recusa o campo que
+o tipo não usa (inclusive pela linguagem de comandos). O motivo é um texto livre,
+gravado numa linha só e com CPF mascarado (RN14); o código de identificação é o
+número da visita com 3 dígitos ("007"); data e horário são campos separados; quem
+já veio reaproveita a empresa do cadastro e o motivo da última visita; um cadastro
+antigo, sem esses dados, completa na próxima entrada (e pode ser corrigido sem
+eles); a visita que muda de tipo na correção perde os campos que o tipo novo não
+usa (fica no histórico).
 RN49 OCORRÊNCIAS: categoria da lista, descrição de 5 a 500 caracteres, CPF e placa
 opcionais (conferidos como no Cadastro); CPF digitado na descrição é mascarado;
 qualquer usuário registra e marca como resolvida; só o administrador exclui (RN02);
 registrar, resolver e excluir ficam no histórico.
 
 Novas na 3.2:
-RN50 QUEM PROCURA E CRACHÁ: opcionais na entrada; quem procura tem até 60
-caracteres; o crachá é um número de até 3 dígitos; o mesmo crachá não fica com
-duas pessoas dentro (o banco trava com índice único); na saída o sistema lembra
-de recolher; desfazer a saída devolve a visita sem o crachá se ele já estiver com
-outra pessoa.
+RN50 QUEM PROCURA: opcional, até 60 caracteres, só para visitante, entregador e
+prestador de serviço (RN48); CPF digitado vai mascarado. (Na 3.2 a regra também
+tinha o crachá, removido na 3.3 a pedido do aluno.)
 RN51 CHAVES: só o administrador cadastra e remove; nome obrigatório, até 40
 caracteres, sem repetir; qualquer usuário entrega (nome completo de quem leva e
 CPF opcional, válido se vier) e registra a devolução; a mesma chave não sai duas

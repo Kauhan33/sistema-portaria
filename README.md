@@ -4,9 +4,9 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
-**Versão atual: 3.2** (projeto final, Atividade A3, com todos os desafios extras) — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
+**Versão atual: 3.3** (projeto final, Atividade A3, com todos os desafios extras) — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
 
-![Tela Controle de acesso](docs/design/final/v32_controle_claro.png)
+![Tela Controle de acesso](docs/design/final/v33_controle_claro.png)
 
 O sistema atende, item por item, ao **enunciado da Atividade A3**: login,
 cadastro e controle de entrada e saída em telas próprias, mais os **oito
@@ -136,14 +136,15 @@ logado e ativo.
 python -m unittest -v
 ```
 
-1240 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
+1248 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
 Atividade A3 item por item** (`tests/test_enunciado_a3.py`: as três telas, os
 requisitos técnicos e os desafios extras, além de um teste de que usar as telas
 não consome os recursos do Windows), os **módulos da 3.2**
 (`tests/test_modulos.py`, as regras no banco, e `tests/test_livros.py`, as
-telas: chaves, encomendas, autorizações, funcionários, crachá, recado de
-turno, relatório, dados de demonstração, anonimização, histórico encadeado e
-tamanho da letra), a **linguagem de
+telas: chaves, encomendas, autorizações, funcionários, os campos de cada
+tipo de acesso, recado de turno, relatório, dados de demonstração,
+anonimização, histórico encadeado, tamanho da letra e o olho do campo de
+senha), a **linguagem de
 comandos** (uma classe por fase: léxico, gramática LL(1), sintático,
 semântico e a execução comparada com o formulário, além do campo, do console
 e do modo didático), validações, regras de
@@ -200,41 +201,43 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 ## Galeria
 
-As telas `v32_*` são da versão atual (3.2), em claro e escuro, no tamanho normal
-e num notebook 1366×768 a 125% (`_1366x670`). Dados fictícios (os da 3.2 são
+As telas `v33_*` são da versão atual (3.3), em claro e escuro, no tamanho normal
+e num notebook 1366×768 a 125% (`_1366x670`). Dados fictícios (os das páginas da 3.2 são
 os próprios **dados de demonstração** do programa).
 
 | | |
 |---|---|
-| ![Login](docs/design/final/v32_login_claro.png) | ![Mostrar senha](docs/design/final/v32_login_mostrar_senha_claro.png) |
-| **Login** — usuário, senha, logo, Entrar e Limpar | **Mostrar senha** — o Checkbutton mostra e esconde |
-| ![Campos vazios](docs/design/final/v32_login_campos_vazios_claro.png) | ![Senha errada](docs/design/final/v32_login_senha_errada_escuro.png) |
+| ![Login](docs/design/final/v33_login_claro.png) | ![Mostrar senha](docs/design/final/v33_login_olho_aberto_claro.png) |
+| **Login** — usuário, senha, logo, Entrar e Limpar | **Mostrar senha** — o olho no campo e o Checkbutton, juntos (3.3) |
+| ![Campos vazios](docs/design/final/v33_login_campos_vazios_claro.png) | ![Senha errada](docs/design/final/v33_login_senha_errada_escuro.png) |
 | **Campos vazios** são recusados | **Dados incorretos** — a mesma mensagem para usuário ou senha |
-| ![Cadastro](docs/design/final/v32_cadastro_preenchido_claro.png) | ![Confirmação](docs/design/final/v32_cadastro_confirmacao_claro.png) |
-| **Cadastro** — empresa, data, horário, motivo; Cadastrar, Limpar e Cancelar | **Confirmação** — com o código de identificação |
-| ![Controle de acesso](docs/design/final/v32_controle_claro.png) | ![Prestadores](docs/design/final/v32_controle_prestadores_claro.png) |
+| ![Cadastro do aluno](docs/design/final/v33_cadastro_aluno_claro.png) | ![Cadastro do visitante](docs/design/final/v33_cadastro_preenchido_claro.png) |
+| **Cadastro do aluno** (3.3) — só os campos comuns | **Cadastro do visitante** — mais o motivo e quem procura |
+| ![Cadastro do prestador](docs/design/final/v33_cadastro_prestador_escuro.png) | ![Confirmação](docs/design/final/v33_cadastro_confirmacao_claro.png) |
+| **Cadastro do prestador de serviço** — mais a empresa | **Confirmação** — com o código de identificação |
+| ![Controle de acesso](docs/design/final/v33_controle_claro.png) | ![Prestadores](docs/design/final/v33_controle_prestadores_claro.png) |
 | **Controle de acesso** — pesquisa, filtro, Código, Situação e as ações | **Prestadores de serviços** — o filtro mostra a empresa e o motivo |
-| ![Pesquisa](docs/design/final/v32_controle_pesquisa_claro.png) | ![Filtro Dentro](docs/design/final/v32_controle_dentro_escuro.png) |
+| ![Pesquisa](docs/design/final/v33_controle_pesquisa_claro.png) | ![Filtro Dentro](docs/design/final/v33_controle_dentro_escuro.png) |
 | **Pesquisa** — no histórico inteiro; achar pelo código também | **Filtro "Dentro"**, no tema escuro |
-| ![Ocorrências](docs/design/final/v32_ocorrencias_selecionada_claro.png) | ![Nova ocorrência](docs/design/final/v32_nova_ocorrencia_claro.png) |
+| ![Ocorrências](docs/design/final/v33_ocorrencias_selecionada_claro.png) | ![Nova ocorrência](docs/design/final/v33_nova_ocorrencia_claro.png) |
 | **Ocorrências** — o livro da portaria | **Nova ocorrência** — categoria, descrição, CPF e placa opcionais |
-| ![Corrigir](docs/design/final/v32_corrigir_claro.png) | ![Nova pessoa](docs/design/final/v32_nova_pessoa_claro.png) |
+| ![Corrigir](docs/design/final/v33_corrigir_claro.png) | ![Nova pessoa](docs/design/final/v33_nova_pessoa_claro.png) |
 | **Corrigir registro** — agora com a empresa e o motivo | **Nova pessoa** — com a empresa |
-| ![Cadastro no notebook](docs/design/final/v32_cadastro_preenchido_escuro_1366x670.png) | ![Controle no notebook](docs/design/final/v32_controle_claro_1366x670.png) |
+| ![Cadastro no notebook](docs/design/final/v33_cadastro_preenchido_escuro_1366x670.png) | ![Controle no notebook](docs/design/final/v33_controle_claro_1366x670.png) |
 | **Notebook 1366×768**: o Cadastro cabe inteiro (tema escuro) | **Notebook 1366×768**: o Controle de acesso |
-| ![Visitante autorizado](docs/design/final/v32_cadastro_autorizado_claro.png) | ![Autorizações](docs/design/final/v32_autorizacoes_claro.png) |
-| **Visitante autorizado** (3.2) — o CPF traz a autorização, com quem procura e o crachá | **Autorizações** — criar, emitir para imprimir e cancelar |
-| ![Nova autorização](docs/design/final/v32_nova_autorizacao_claro.png) | ![Crachá no filtro Dentro](docs/design/final/v32_controle_dentro_cracha_escuro.png) |
-| **Nova autorização de entrada** | **Recado de turno** e a coluna **Crachá** de quem está dentro |
-| ![Chaves](docs/design/final/v32_chaves_escuro.png) | ![Histórico das chaves](docs/design/final/v32_historico_chaves_claro.png) |
+| ![Visitante autorizado](docs/design/final/v33_cadastro_autorizado_claro.png) | ![Autorizações](docs/design/final/v33_autorizacoes_claro.png) |
+| **Visitante autorizado** (3.2) — o CPF traz a autorização, com o motivo e quem procura | **Autorizações** — criar, emitir para imprimir e cancelar |
+| ![Nova autorização](docs/design/final/v33_nova_autorizacao_claro.png) | ![Recado de turno](docs/design/final/v33_controle_dentro_recado_escuro.png) |
+| **Nova autorização de entrada** | **Recado de turno** no Controle de acesso, com o filtro Dentro |
+| ![Chaves](docs/design/final/v33_chaves_escuro.png) | ![Histórico das chaves](docs/design/final/v33_historico_chaves_claro.png) |
 | **Chaves** — entregues e devolvidas | **Histórico das chaves** |
-| ![Encomendas](docs/design/final/v32_encomendas_claro.png) | ![Retirar encomenda](docs/design/final/v32_retirar_encomenda_claro.png) |
+| ![Encomendas](docs/design/final/v33_encomendas_claro.png) | ![Retirar encomenda](docs/design/final/v33_retirar_encomenda_claro.png) |
 | **Encomendas** — o que chegou e para quem | **Registrar retirada** — quem levou |
-| ![Funcionários](docs/design/final/v32_funcionarios_claro.png) | ![Novo funcionário](docs/design/final/v32_novo_funcionario_escuro.png) |
+| ![Funcionários](docs/design/final/v33_funcionarios_claro.png) | ![Novo funcionário](docs/design/final/v33_novo_funcionario_escuro.png) |
 | **Funcionários** — matrícula, setor, cargo e o ponto de hoje | **Novo funcionário** |
-| ![Painel: horário de pico](docs/design/final/v32_painel_pico_escuro.png) | ![Relatório para imprimir](docs/design/final/v32_relatorio_claro.png) |
+| ![Painel: horário de pico](docs/design/final/v33_painel_pico_escuro.png) | ![Relatório para imprimir](docs/design/final/v33_relatorio_claro.png) |
 | **Painel** — entradas por hora, com o pico em destaque | **Relatório para imprimir** |
-| ![Dados e privacidade](docs/design/final/v32_config_dados_escuro.png) | ![Letra maior](docs/design/final/v32_letra_maior_claro.png) |
+| ![Dados e privacidade](docs/design/final/v33_config_dados_escuro.png) | ![Letra maior](docs/design/final/v33_letra_maior_claro.png) |
 | **Dados e privacidade** — demonstração, histórico protegido e LGPD | **Letra: Maior**, para quem prefere ler de longe |
 
 <details>
@@ -346,8 +349,9 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
 `docs/design/final/`.
 
 - **Login**: painel grafite com o logo (uma imagem, `assets/logo_portaria.png`),
-  o braço listrado da cancela e o relógio da guarita; à direita, usuário, senha, a caixa **Mostrar senha**,
-  **Entrar** e **Limpar**. Campos vazios e dados incorretos dão mensagem de erro.
+  o braço listrado da cancela e o relógio da guarita; à direita, usuário, senha
+  (com o **olho** no canto direito do campo, 3.3: mostra e esconde, e vira olho
+  cortado), a caixa **Mostrar senha** (ligada ao olho), **Entrar** e **Limpar**. Campos vazios e dados incorretos dão mensagem de erro.
   No primeiro uso, o mesmo layout cria o administrador.
 - **Modo noturno**: cada usuário escolhe o tema no menu da conta (três
   pontos no rodapé da barra lateral): **Tema: Claro**, **Tema: Escuro** ou
@@ -373,17 +377,27 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   o **cadeado** ("Ausentar", Ctrl+L) e o botão sair.
 - **Cadastro** (tela 2 do enunciado; **Enter** ou **Cadastrar** registra a
   entrada), em dois blocos, na ordem em que o porteiro pergunta. **Pessoa**:
-  CPF, nome, telefone, **empresa** e tipo de acesso. **Visita**: **data** (com o
-  calendário), **horário** (com o relógio), placa (opcional), **motivo da visita**
-  (um `tk.Text`, com contador de até 200 caracteres), **Quem procura**, o
-  **Crachá** entregue (até 3 dígitos; o mesmo crachá não fica com duas pessoas
-  dentro, RN50) e saída (opcional, para lançamento retroativo). Quem tem uma
+  CPF, nome, telefone e tipo de acesso. **Visita**: **data** (com o
+  calendário), **horário** (com o relógio), placa (opcional) e saída
+  (opcional, para lançamento retroativo). **Só aparecem os campos que o tipo de
+  acesso usa** (RN48, desde a 3.3):
+
+  | Tipo de acesso | Campos a mais |
+  |---|---|
+  | Aluno, Professor, Funcionário | nenhum |
+  | Visitante, Entregador | **motivo da visita** (obrigatório) e **Quem procura** (opcional) |
+  | Prestador de serviço | **empresa** (obrigatória), motivo e Quem procura |
+
+  O motivo é um `tk.Text`, com contador de até 200 caracteres. Trocar o tipo
+  esconde ou mostra os campos na hora; o que foi digitado volta se o tipo
+  voltar, e o campo escondido não vai para o banco. Quem tem uma
   **autorização de entrada** válida hoje já vem com o nome, a empresa, o motivo
-  e quem procura, e a faixa verde diz quem autorizou. O Tab segue essa ordem. Os obrigatórios têm `*`. **Limpar** esvazia o formulário;
+  e quem procura, e a faixa verde diz quem autorizou. O Tab segue essa ordem e
+  pula o que está escondido. Os obrigatórios têm `*`. **Limpar** esvazia o formulário;
   **Cancelar** descarta e vai ao Controle de acesso. A confirmação aparece na
   faixa verde, com o **código de identificação** ("Código 007", RN48). Quem já
-  veio traz a empresa do cadastro e o motivo da última visita, para conferir ou
-  trocar.
+  veio traz a empresa do cadastro e o motivo da última visita (se o tipo dele
+  usa), para conferir ou trocar.
 - **Controle de acesso** (tela 3 do enunciado; é onde fica o campo **Comando**):
   a **pesquisa** (nome, CPF, telefone, placa, tipo, empresa ou código), o **filtro**
   (Todos, Dentro, Saiu ou um tipo de acesso), a tabela (Situação "Dentro" ou
@@ -859,7 +873,7 @@ danificado):
 | `portaria/validacao.py` | Regras de CPF, celular, placa, nome, datas e verificações semânticas |
 | `portaria/horarios.py` | Regras de horário de acesso (funções puras): funcionamento, feriados, eventos, categorias, exceções, situação da visita |
 | `portaria/dados.py` | Banco SQLite (pessoas, visitas, usuários, histórico, desativações) e migrações |
-| `portaria/dados_modulos.py` | Banco dos módulos da 3.2: chaves, encomendas, autorizações, funcionários, crachá, recados, anonimização, histórico encadeado e dados de demonstração |
+| `portaria/dados_modulos.py` | Banco dos módulos da 3.2: chaves, encomendas, autorizações, funcionários, recados, anonimização, histórico encadeado e dados de demonstração |
 | `portaria/base_dados.py` | O erro e os formatos de data que os dois arquivos do banco dividem |
 | `portaria/impressao.py` | Páginas para imprimir (autorização de entrada e relatório), abertas no navegador |
 | `portaria/consultas.py` | Busca e números do Painel (versão em Python, usada nos testes) |
@@ -909,6 +923,27 @@ danificado):
 
 ## Versões
 
+**3.3** (16/11/2026) — **cada tipo de acesso com os seus campos** (pedido do
+aluno; sem mudança no esquema do banco):
+
+- **campos por tipo de acesso** (RN48): o Cadastro mostra só o que o tipo usa.
+  Aluno, professor e funcionário: só os campos comuns. Visitante e
+  entregador: mais o motivo (obrigatório) e Quem procura. Prestador de
+  serviço: mais a **empresa** (obrigatória). A regra fica numa tabela só
+  (`validacao.CAMPOS_DO_TIPO`) e vale também em Corrigir registro, Nova
+  pessoa e Editar, Novo funcionário (sem empresa), Registrar entrada do
+  Controle de acesso, na linguagem de comandos (o `cadastrar` passou a ter a
+  empresa opcional na gramática) e no banco, que recusa o campo que o tipo não
+  usa;
+- **crachá removido**: o campo, a coluna do filtro Dentro e o "Recolha o
+  crachá" saíram (a coluna continua no banco, sem uso);
+- **olho no campo de senha**: no login, um olho no canto direito mostra e
+  esconde a senha (vira olho cortado), junto com a caixa "Mostrar senha", que
+  o enunciado pede;
+- **testes**: 1248 testes automatizados e 132 casos de teste (CT-123 e
+  CT-124 passaram a ser os dos campos por tipo; CT-132 é o olho); campanha de
+  ataque de novo, sem falhas.
+
 **3.2** (12/11/2026) — **todos os desafios extras do enunciado e melhorias
 gerais** (banco v14; o banco da 3.1 é migrado sozinho, com backup antes):
 
@@ -917,9 +952,8 @@ gerais** (banco v14; o banco da 3.1 é migrado sozinho, com backup antes):
   encomendas** (RF40), **chaves entregues e devolvidas** (RF41) e **controle
   de funcionários** (RF38). Com veículos e placas, prestadores e ocorrências,
   os **oito** desafios do enunciado estão atendidos;
-- **Cadastro**: **Quem procura** e **Crachá** (um crachá não fica com duas
-  pessoas; a saída lembra de recolher, RN50); o CPF de quem tem autorização
-  válida já traz os dados dela;
+- **Cadastro**: **Quem procura** e **Crachá** (o crachá saiu na 3.3); o CPF
+  de quem tem autorização válida já traz os dados dela;
 - **recado de turno** (RF42): quem sai deixa um aviso, que aparece no Controle
   de acesso até alguém marcar como lido;
 - **Painel**: entradas por dia ou **por hora** (o horário de pico), em 7 ou 30

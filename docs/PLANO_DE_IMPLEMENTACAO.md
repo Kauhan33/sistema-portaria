@@ -537,6 +537,20 @@ Feita em 12/11/2026. O banco da 3.1 (v13) é migrado sozinho, com backup antes.
 
 ---
 
+## Versão 3.3 — Campos por tipo de acesso (sem mudança de esquema) ✅
+
+Feita em 16/11/2026, a pedido do aluno.
+
+- **RN48 reescrita:** a tabela `validacao.CAMPOS_DO_TIPO` diz o que cada tipo
+  usa além dos campos comuns: nada para aluno, professor e funcionário; motivo
+  e quem procura para visitante e entregador; empresa, motivo e quem procura
+  para o prestador de serviço. Tela, linguagem e banco seguem a mesma tabela.
+- **Crachá removido** (a coluna `registros.cracha` e o índice ficam, sem uso,
+  para não mexer no esquema).
+- **Olho no campo de senha** do login, ligado à caixa "Mostrar senha".
+
+---
+
 ## O que ficou para depois
 
 - **A4. Lista de evacuação** (F12): todos no campus, para imprimir.
@@ -545,8 +559,7 @@ Feita em 12/11/2026. O banco da 3.1 (v13) é migrado sozinho, com backup antes.
   entram no banco em uso).
 - **C3. Indicadores** da operação por usuário.
 - **Relatório do titular** (LGPD) e mapa de calor dia × hora no Painel.
-- **Corrigir registro** ainda não edita o crachá nem quem procura (os valores
-  são mantidos).
+- **Corrigir registro** ainda não edita quem procura (o valor é mantido).
 - **B8:** mascarar os CPFs do histórico gravado antes da 2.0. **N09:** limite
   de tentativas na senha atual em "Trocar minha senha". **S02:** o banco não é
   criptografado (depende das permissões do Windows e do BitLocker).

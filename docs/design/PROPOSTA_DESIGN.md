@@ -692,7 +692,7 @@ direção escolhida por ele entre três propostas foi a de **menu escuro**.
 - **Menu com onze páginas**: os itens ficaram mais baixos para caber num
   notebook 1366×768 a 125% sem rolagem (conferido por teste).
 - **Cadastro em quatro colunas**: Quem procura e Crachá entraram no bloco
-  Visita sem aumentar a altura do formulário.
+  Visita sem aumentar a altura do formulário (o crachá saiu na 3.3).
 - **Tamanho da letra** (Normal, Grande, Maior): o fator multiplica as fontes e
   as medidas (`estilo.usar_letra`), e as telas são remontadas, como na troca
   de tema. No notebook 1366×768 a letra Maior aperta o Controle de acesso: é
@@ -708,3 +708,17 @@ direção escolhida por ele entre três propostas foi a de **menu escuro**.
 - **Página para imprimir** (`impressao.py`): HTML simples e sóbrio (texto
   escuro e a faixa listrada da cancela no alto), que o navegador imprime ou
   salva em PDF; o texto digitado é sempre escapado.
+
+## 13. Versão 3.3: só os campos de cada tipo
+
+- **Menos campos na tela:** o Cadastro mostra só o que o tipo de acesso usa.
+  Para aluno, professor e funcionário (a maioria das entradas) o bloco Visita
+  fica com data, horário, placa e saída; motivo e quem procura aparecem para
+  quem vem de fora, e a empresa, só para o prestador de serviço. A linha do
+  tipo de acesso ganhou a Empresa à direita, porque ela depende do tipo.
+- **Nada se perde ao trocar o tipo:** esconder não apaga o que foi digitado;
+  se o tipo voltar, o texto volta. O Tab pula os campos escondidos.
+- **Olho no campo de senha:** o ícone de olho (Segoe Fluent Icons, `E890`)
+  fica no canto direito do campo; com a senha à mostra vira o olho cortado
+  (`ED1A`). Ele e a caixa "Mostrar senha" (pedida pelo enunciado) são o mesmo
+  controle: mexer em um muda o outro.

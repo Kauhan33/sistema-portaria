@@ -89,7 +89,12 @@ regras no banco e `tests/test_livros.py`, as telas).
 
 ## Além do enunciado
 
-Na 3.2 entraram também: **Quem procura** e **Crachá** no Cadastro (RN50), o
+Na 3.3 o Cadastro passou a mostrar **só os campos de cada tipo de acesso**
+(RN48: a empresa é do prestador de serviço; motivo e quem procura, de quem vem
+de fora), o crachá saiu e o login ganhou o **olho** no campo de senha, junto
+com a caixa "Mostrar senha".
+
+Na 3.2 entraram também: **Quem procura** no Cadastro (RN50), o
 **Painel** por dia ou por hora em 7 ou 30 dias e o **relatório para imprimir**
 (RF43, RF44), os **dados de demonstração** só para o administrador (RF45,
 RN57), o **tamanho da letra** (RF46), a **anonimização** e o **prazo de

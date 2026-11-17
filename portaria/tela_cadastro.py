@@ -165,7 +165,7 @@ class AbaCadastro(ControleMixin):
         cursor até ele; só o CPF ou a placa continuam dando a saída)."""
         self.cabecalho_cadastro = Cabecalho(
             self.aba, "Cadastro",
-            "Cadastro de pessoas que terão acesso à portaria").posicionar()
+            "Registre aqui a entrada de quem chega à portaria").posicionar()
         cab = Cabecalho(self.aba_controle, "Controle de acesso").posicionar()
         self.cabecalho = cab
         self.lbl_no_campus = tk.Label(cab.linha, font=FONTE["corpo_semi"],

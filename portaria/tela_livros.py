@@ -802,6 +802,17 @@ class AbaFuncionarios(PaginaLista):
         return self.dialogo
 
     def registrar_entrada(self):
+        """3.4: o funcionário entra direto, com o horário de agora (ele não
+        informa motivo nem empresa, RN48): não precisa passar pelo Cadastro.
+        As regras são as mesmas do Controle de acesso (horário, carro)."""
         f = self.selecionado()
-        if f is not None and not f["dentro_desde"]:
-            self.app.preencher_pessoa({"cpf": f["cpf"]})
+        if f is None or f["dentro_desde"]:
+            return None
+        ok, pessoa = self.app.tentar(self.app.banco.buscar_pessoa, f["cpf"])
+        if not ok or pessoa is None:
+            return None
+        texto = self.app.tela_cadastro.registrar_entrada_da_pessoa(pessoa)
+        self.atualizar()
+        if texto:
+            self.aviso("sucesso", texto)
+        return texto

@@ -1654,10 +1654,14 @@ class TestAbaPessoas(BaseInterface):
         self.assertEqual(self.app.nome.get(), "Beto Rocha")
 
     def test_quem_esta_no_campus_nao_ganha_outra_entrada(self):
+        """3.4: para quem está no campus, o botão da ficha é a saída."""
         self.selecionar(self.ana)
+        self.assertEqual(self.aba.btn_entrada.texto, "Registrar saída")
         self.aba.registrar_entrada()
-        self.assertIn("já está no campus", self.msg.showwarning.call_args[0][1])
-        self.assertEqual(self.app.cpf.get(), "")
+        self.assertEqual(self.app.cpf.get(), "")          # não foi ao Cadastro
+        self.assertEqual([r for r in self.banco.listar_por_cpf("52998224725")
+                          if not r["saida"]], [])         # saiu
+        self.assertEqual(self.aba.btn_entrada.texto, "Registrar entrada")
 
     def test_acao_sem_selecao_avisa(self):
         self.assertIsNone(self.aba.editar())

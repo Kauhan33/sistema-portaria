@@ -771,7 +771,12 @@ class AbaPessoas:
             self.btn_desativar.definir_texto(
                 *(("Reativar", "secundario") if desativacao
                   else ("Desativar", "perigo")))
-        self.btn_entrada.definir_ativo(desativacao is None)
+        # 3.4: quem está no campus não "entra" de novo: o botão principal
+        # da ficha vira a saída
+        self.btn_entrada.definir_texto("Registrar saída" if p["dentro_desde"]
+                                       else "Registrar entrada")
+        self.btn_entrada.definir_ativo(desativacao is None
+                                       or bool(p["dentro_desde"]))
         if not mesma or self.placa_da_ficha not in p["placas"]:
             self.placa_da_ficha = p["placa"] or next(iter(p["placas"]), "")
         self._mostrar_carros(p)
@@ -1003,11 +1008,9 @@ class AbaPessoas:
         if not self._exigir_selecao():
             return
         p = self.selecionada
-        if p["dentro_desde"]:
-            mensagens.aviso(
-                "Atenção", f"{p['nome']} já está no campus desde "
-                           f"{p['dentro_desde']}.\nRegistre a saída na página "
-                           "Controle de acesso.")
+        if p["dentro_desde"]:                 # o botão diz "Registrar saída"
+            self.app.tela_cadastro._saida_de(p["cpf"])
+            self.recarregar_ficha()
             return
         self.app.preencher_pessoa(p)
 

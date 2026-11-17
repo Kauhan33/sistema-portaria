@@ -795,6 +795,11 @@ class ModulosMixin:
         (987654321, "Fábio Melo", "Aluno", "", "", ""),
     )
 
+    FUNCIONARIOS_DE_DEMONSTRACAO = {
+        714287938: ("F-0087", "Manutenção", "Técnico"),
+        284759163: ("F-0142", "Secretaria", "Assistente administrativa"),
+    }
+
     def preencher_demonstracao(self, autor):
         """
         Enche o banco com dados FICTÍCIOS para apresentar o sistema (só
@@ -846,6 +851,14 @@ class ModulosMixin:
                     saida = entrada + timedelta(minutes=10)
                 self._visita_de_demonstracao(con, p, entrada, saida, autor)
                 feito["visitas"] += 1
+            # os funcionários fictícios com matrícula, setor e cargo (3.4)
+            for base, (mat, setor, cargo) in                     self.FUNCIONARIOS_DE_DEMONSTRACAO.items():
+                if any(p["cpf"] == cpf_ficticio(base) for p in novas):
+                    con.execute(
+                        "UPDATE pessoas SET matricula = ?, setor = ?, cargo = ? "
+                        "WHERE cpf = ? AND NOT EXISTS (SELECT 1 FROM pessoas "
+                        "WHERE matricula = ?)",
+                        (mat, setor, cargo, cpf_ficticio(base), mat))
             agora_iso = agora.strftime(FORMATO_ISO)
             for nome, local in (("Laboratório 2", "Bloco B, 1º andar"),
                                 ("Auditório", "Bloco A"),

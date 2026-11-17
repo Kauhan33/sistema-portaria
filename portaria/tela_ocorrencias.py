@@ -120,6 +120,7 @@ class DialogoRecado(Dialogo):
         self.fechar()
         app.tela_cadastro.atualizar_alertas()
         self.pagina.aviso("sucesso", "Recado deixado para o próximo turno.")
+        app.avisar("Recado deixado para o próximo turno.")   # (menu da conta)
         return True
 
 

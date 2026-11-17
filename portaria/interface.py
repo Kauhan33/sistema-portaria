@@ -103,6 +103,7 @@ from .validacao import formatar_cpf, mascarar_cpf
 TECLAS_DA_SESSAO = ("<Return>", "<KP_Enter>", "<F2>", "<Control-k>",
                     "<Control-K>", "<Control-l>", "<Control-L>",
                     "<Control-D>")
+ITEM_RECADO = "Recado para o próximo turno"
 ITEM_CODIGOS = "Gerar novos códigos de recuperação"
 GUARITA_TRAVADA = "Guarita travada"
 GUARITA_DESTRAVADA = "Guarita destravada"
@@ -706,6 +707,8 @@ class AppPortaria:
                 label=f"Letra: {texto}", value=letra, variable=self.var_letra,
                 command=lambda t=letra: self.trocar_letra(t))
         self.menu_usuario.add_separator()
+        self.menu_usuario.add_command(label=ITEM_RECADO,
+                                      command=self.deixar_recado)
         self.menu_usuario.add_command(label="Sair", command=self.sair)
 
     def _ajustar_menu_usuario(self):
@@ -734,6 +737,19 @@ class AppPortaria:
         finally:
             self.menu_usuario.grab_release()
 
+    def _divisoria_do_menu(self):
+        """Fio fino entre os grupos do menu: o dia a dia da portaria, os
+        livros (funcionários, autorizações, encomendas, chaves e
+        ocorrências) e a gestão (Painel, Usuários e Configurações)."""
+        tk.Frame(self.menu, bg=COR["lateral_borda"], height=1).pack(
+            fill="x", padx=px(12), pady=px(5))
+
+    def deixar_recado(self):
+        """Menu da conta → "Recado para o próximo turno" (3.4: à mão na
+        hora de sair; também fica em Ocorrências)."""
+        from .tela_ocorrencias import DialogoRecado
+        return DialogoRecado(self.tela_ocorrencias)
+
     def _nova_pagina(self, titulo, icone):
         aba = tk.Frame(self.abas, bg=COR["fundo"])
         self.abas.add(aba, text=titulo)
@@ -755,12 +771,14 @@ class AppPortaria:
         self.aba_cad = self._nova_pagina("Cadastro", "pessoa")
         self.aba_controle = self._nova_pagina("Controle de acesso", "entrada")
         self.aba_pessoas = self._nova_pagina("Pessoas", "pessoas")
+        self._divisoria_do_menu()       # 3.4: o menu em três grupos
         # os desafios extras do A3: funcionários e os livros da portaria
         self.aba_funcionarios = self._nova_pagina("Funcionários", "usuarios")
         self.aba_autorizacoes = self._nova_pagina("Autorizações", "autorizado")
         self.aba_encomendas = self._nova_pagina("Encomendas", "pacote")
         self.aba_chaves = self._nova_pagina("Chaves", "chave")
         self.aba_ocorrencias = self._nova_pagina("Ocorrências", "alerta")
+        self._divisoria_do_menu()
         self.aba_dash = self._nova_pagina("Painel", "painel")
         self.aba_usuarios = self.aba_configuracoes = None
         if pode_gerenciar_usuarios(self.usuario):

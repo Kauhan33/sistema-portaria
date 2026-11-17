@@ -402,16 +402,21 @@ class TestFuncionariosNaTela(BasePagina):
         self.assertTrue(d.salvar())
         linha = self.pagina.tabela.get_children()[0]
         self.assertEqual(self.pagina.tabela.set(linha, "cargo"), "Coordenadora")
-        # registrar entrada: abre o Cadastro com a pessoa
+        # registrar entrada (3.4): entra direto, sem passar pelo Cadastro
         primeira(self.pagina)
-        self.pagina.registrar_entrada()
         app = self.app
-        self.assertEqual(app.abas.select(), str(app.aba_cad))
-        self.assertEqual(app.nome.get(), "Ana Silva")
-        app.motivo.insert(0, "Expediente")
-        app.cadastrar()
-        app.ir_para(app.aba_funcionarios)
+        texto = self.pagina.registrar_entrada()
+        self.assertEqual(app.abas.select(), str(app.aba_funcionarios))
+        self.assertIn("Registro cadastrado com sucesso!", texto)
+        self.assertIn("Registro cadastrado com sucesso!",
+                      self.pagina.faixa.lbl.cget("text"))
         self.assertEqual(self.pagina.tabela.item(linha)["text"], "Dentro")
+        r = [v for v in self.no_banco() if not v["saida"]][0]
+        self.assertEqual((r["tipo"], r["motivo"], r["empresa"]),
+                         ("Funcionário", "", ""))
+        primeira(self.pagina)                  # quem está dentro não entra
+        self.assertEqual(self.pagina.btn_entrada.cget("state"), "disabled")
+        self.assertIsNone(self.pagina.registrar_entrada())
         self.assertEqual(self.pagina.tabela.set(linha, "entrada"),
                          AGORA.strftime("%H:%M"))
         primeira(self.pagina)
@@ -535,6 +540,99 @@ class TestCamposPorTipoNoCadastro(BaseInterface):
         self.assertEqual(len(abertas), 1)
         self.assertEqual((abertas[0]["tipo"], abertas[0]["motivo"]),
                          ("Professor", ""))
+
+
+class TestRevisaoDeUso(BaseInterface):
+    """3.4 (revisão geral): o sistema não oferece o que daria erro e encurta
+    os caminhos do dia a dia."""
+
+    def entrar(self, cpf, nome, tipo="Aluno", saida=""):
+        return self.app.banco.inserir(
+            {"nome": nome, "cpf": cpf, "celular": "31987654321", "placa": "",
+             "tipo": tipo, "entrada": (AGORA - timedelta(minutes=30))
+             .strftime("%d/%m/%Y %H:%M"), "saida": saida}, autor="ana.admin")
+
+    def test_botoes_do_controle_seguem_a_linha_escolhida(self):
+        dentro = self.entrar(ANA, "Ana Silva")
+        saiu = self.entrar(BETO, "Beto Rocha",
+                           saida=AGORA.strftime("%d/%m/%Y %H:%M"))
+        tela = self.app.tela_cadastro
+        self.app.ir_para(self.app.aba_controle)
+        tela.atualizar_tabela()
+        estado = lambda b: str(b.cget("state"))              # noqa: E731
+        # nada escolhido: tudo ativo (o clique explica o que fazer)
+        self.assertEqual(estado(tela.btn_entrada_controle), "normal")
+        tela.tabela.selection_set(str(dentro))
+        tela.ajustar_botoes_da_selecao()
+        self.assertEqual(estado(tela.btn_entrada_controle), "disabled")
+        self.assertEqual(estado(tela.btn_saida), "normal")
+        tela.tabela.selection_set(str(saiu))
+        tela.ajustar_botoes_da_selecao()
+        self.assertEqual(estado(tela.btn_entrada_controle), "normal")
+        self.assertEqual(estado(tela.btn_saida), "disabled")
+        tela.tabela.selection_set((str(dentro), str(saiu)))
+        tela.ajustar_botoes_da_selecao()
+        self.assertEqual(estado(tela.btn_saida), "normal")      # uma dentro
+        self.assertEqual(estado(tela.btn_corrigir), "disabled")  # duas linhas
+        self.assertEqual(estado(tela.btn_entrada_controle), "disabled")
+        tela.tabela.selection_set(())
+        tela.ajustar_botoes_da_selecao()
+        self.assertEqual(estado(tela.btn_corrigir), "normal")
+
+    def test_linha_antiga_de_quem_ja_esta_dentro_nao_oferece_entrada(self):
+        antiga = self.entrar(ANA, "Ana Silva", saida=(
+            AGORA - timedelta(minutes=20)).strftime("%d/%m/%Y %H:%M"))
+        self.app.banco.inserir(
+            {"nome": "Ana Silva", "cpf": ANA, "celular": "31987654321",
+             "placa": "", "tipo": "Aluno",
+             "entrada": (AGORA - timedelta(minutes=10)).strftime(
+                 "%d/%m/%Y %H:%M"), "saida": ""}, autor="ana.admin")
+        tela = self.app.tela_cadastro
+        self.app.ir_para(self.app.aba_controle)
+        tela.atualizar()
+        self.assertIn(str(antiga), tela.tabela.get_children())
+        tela.tabela.selection_set(str(antiga))
+        tela.ajustar_botoes_da_selecao()
+        self.assertEqual(str(tela.btn_entrada_controle.cget("state")),
+                         "disabled")
+
+    def test_recado_pelo_menu_da_conta(self):
+        menu = self.app.menu_usuario
+        rotulos = [menu.entrycget(i, "label") for i in
+                   range(menu.index("end") + 1) if menu.type(i) == "command"]
+        self.assertIn("Recado para o próximo turno", rotulos)
+        d = self.app.deixar_recado()
+        d.texto.insert(0, "Portão lateral fechado até amanhã.")
+        self.assertTrue(d.salvar())
+        self.assertEqual(self.app.banco.listar_recados(so_nao_lidos=True)[0]
+                         ["texto"], "Portão lateral fechado até amanhã.")
+
+    def test_menu_em_tres_grupos(self):
+        filhos = self.app.menu.winfo_children()
+        divisorias = [i for i, w in enumerate(filhos)
+                      if not hasattr(w, "texto")]
+        textos = [getattr(w, "texto", "|") for w in filhos]
+        self.assertEqual(len(divisorias), 2)
+        self.assertEqual(textos[:4], ["Cadastro", "Controle de acesso",
+                                      "Pessoas", "|"])
+        self.assertEqual(textos[textos.index("Ocorrências") + 1], "|")
+
+    def test_subtitulo_do_cadastro_diz_o_que_a_tela_faz(self):
+        textos = self.textos(self.app.aba_cad) if hasattr(self, "textos") \
+            else []
+        cab = self.app.tela_cadastro.cabecalho_cadastro
+        todos = " ".join(str(w.cget("text")) for w in cab.winfo_children()
+                         + [x for w in cab.winfo_children()
+                            for x in w.winfo_children()]
+                         if "text" in w.keys())
+        self.assertIn("entrada", (" ".join(textos) + todos).lower())
+
+    def test_demonstracao_traz_funcionarios_com_matricula(self):
+        self.app.banco.preencher_demonstracao("ana.admin")
+        funcionarios = {f["nome"]: f for f in
+                        self.app.banco.listar_funcionarios()}
+        self.assertEqual(funcionarios["Rafael Lima"]["matricula"], "F-0087")
+        self.assertEqual(funcionarios["Helena Souza"]["setor"], "Secretaria")
 
 
 class TestOlhoDaSenha(BaseInterface):

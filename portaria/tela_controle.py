@@ -232,6 +232,9 @@ class ControleMixin:
             m, COLUNAS, situacao="Situação", mostrar=COLUNAS_VISIVEIS,
             selecao="extended", largura_situacao=LARGURA_SITUACAO)
         self.tabela.bind("<Double-1>", self._ao_duplo_clique)
+        # 3.4: o botão que não serve para a linha escolhida fica apagado
+        self.tabela.bind("<<TreeviewSelect>>",
+                         lambda e: self.ajustar_botoes_da_selecao(), add="+")
         self.quadro_veiculos, self.tabela_veiculos = tabela(
             m, COLUNAS_VEICULOS, situacao="Situação",
             largura_situacao=LARGURA_SITUACAO_VEICULO)
@@ -272,6 +275,7 @@ class ControleMixin:
             botao.pack(side="left", padx=(0 if i == 0 else px(8), 0))
         quadro = self.quadro_pessoas if pessoas else self.quadro_veiculos
         quadro.pack(fill="both", expand=True, padx=px(12))
+        self.ajustar_botoes_da_selecao()
         if hasattr(self, "lbl_status"):
             self._mostrar_status()
 
@@ -634,6 +638,30 @@ class ControleMixin:
         """Botão Voltar do Controle: de volta ao Cadastro."""
         self.app.ir_para(self.aba)
 
+    def ajustar_botoes_da_selecao(self):
+        """3.4: com linhas escolhidas, só fica ativo o que faz sentido para
+        elas — "Registrar entrada" para uma pessoa que não está no campus,
+        "Registrar saída" se alguma delas está dentro, "Corrigir" para uma
+        linha só. Sem nada escolhido, os botões ficam ativos e o clique
+        explica o que fazer."""
+        if getattr(self, "lista", LISTAS[0]) != LISTAS[0]:
+            self.btn_saida.definir_ativo(True)     # veículos: sai pela placa
+            return
+        escolhidas = [r for r in (self.mostrados.get(int(i))
+                                  for i in self.tabela.selection()) if r]
+        botoes = [self.btn_entrada_controle, self.btn_saida, self.btn_corrigir]
+        if not escolhidas:
+            for botao in botoes:
+                botao.definir_ativo(True)
+            return
+        abertas = [r for r in escolhidas if not r["saida"]]
+        uma = len(escolhidas) == 1
+        dentro = uma and any(r["cpf"] == escolhidas[0]["cpf"] and not r["saida"]
+                             for r in self.mostrados.values())
+        self.btn_entrada_controle.definir_ativo(uma and not dentro)
+        self.btn_saida.definir_ativo(bool(abertas))
+        self.btn_corrigir.definir_ativo(uma)
+
     def registrar_entrada_selecionada(self):
         """
         Botão Registrar entrada do Controle: a pessoa escolhida na lista
@@ -653,6 +681,14 @@ class ControleMixin:
         ok, pessoa = self.app.tentar(self.app.banco.buscar_pessoa, visita["cpf"])
         if not ok:
             return
+        return self.registrar_entrada_da_pessoa(pessoa, visita)
+
+    def registrar_entrada_da_pessoa(self, pessoa, visita=None):
+        """Entrada de agora com os dados do cadastro (Controle de acesso e
+        Funcionários): sem perguntar nada que o tipo não usa. Falta um campo
+        que o tipo usa (cadastro antigo): abre o Cadastro já preenchido.
+        Devolve o texto da confirmação (ou None)."""
+        visita = visita or {}
         p = pessoa or visita
         prestador = pede_empresa(p.get("tipo"))      # RN48
         com_motivo = usa_campo(p.get("tipo"), "motivo")
@@ -678,8 +714,9 @@ class ControleMixin:
         def outro_carro():
             self.app.preencher_pessoa(p)
             self._digitar_outro_carro()
-        self.registrar_entrada(registro, placa, p.get("id") if pessoa else None,
-                               outro_carro)
+        return self.registrar_entrada(registro, placa,
+                                      p.get("id") if pessoa else None,
+                                      outro_carro)
 
     def _saida_de(self, cpf):
         """Link "Registrar saída" da faixa: dá saída na visita aberta."""

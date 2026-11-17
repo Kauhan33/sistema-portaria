@@ -4,7 +4,7 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
-**Versão atual: 3.4** (projeto final, Atividade A3, com todos os desafios extras) — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
+**Versão atual: 3.5** (projeto final, Atividade A3, com todos os desafios extras) — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
 
 ![Tela Controle de acesso](docs/design/final/v34_controle_claro.png)
 
@@ -136,15 +136,16 @@ logado e ativo.
 python -m unittest -v
 ```
 
-1257 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
+1358 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
 Atividade A3 item por item** (`tests/test_enunciado_a3.py`: as três telas, os
 requisitos técnicos e os desafios extras, além de um teste de que usar as telas
 não consome os recursos do Windows), os **módulos da 3.2**
 (`tests/test_modulos.py`, as regras no banco, e `tests/test_livros.py`, as
 telas: chaves, encomendas, autorizações, funcionários, os campos de cada
 tipo de acesso, recado de turno, relatório, dados de demonstração,
-anonimização, histórico encadeado, tamanho da letra e o olho do campo de
-senha), a **linguagem de
+anonimização, histórico encadeado, tamanho da letra, o olho do campo de
+senha, o entregador que só deixa a encomenda pelo Cadastro e a página
+Aparência), a **linguagem de
 comandos** (uma classe por fase: léxico, gramática LL(1), sintático,
 semântico e a execução comparada com o formulário, além do campo, do console
 e do modo didático), validações, regras de
@@ -172,7 +173,8 @@ passar pela tela e a migração de um banco v10 com dados), duas estações ao m
 tempo (correção com a linha desatualizada, saídas e Encerrar o dia em
 paralelo), histórico de visitas e ordenação na página Pessoas, o
 **calendário e o relógio** dos campos de data, o **modo noturno** (contraste
-WCAG AA de todos os pares de cor dos dois temas, tema de cada usuário,
+WCAG AA de todos os pares de cor dos dois temas e das 18 combinações de
+cor da página Aparência, tema de cada usuário,
 "Seguir o Windows" com o registro simulado, troca sem fechar o programa
 mantendo sessão, página e formulário), banco de dados, histórico,
 migrações, busca, backup, exportação, Painel e a própria tela (preenche campos
@@ -189,11 +191,11 @@ resultado não depende da hora em que eles rodam.
 python -m tests.relatorio [pasta de saída] [--sem-suite]
 ```
 
-Roda os testes automáticos ligados a cada caso (CT-01 a CT-131, positivos e
+Roda os testes automáticos ligados a cada caso (CT-01 a CT-145, positivos e
 negativos, cada um com o RF/RN, a entrada, o resultado esperado e o teste
 que o comprova; os casos da linguagem ficam na seção **"Linguagem de comandos"**,
 com a fase do analisador, os CT-90 a CT-107 são os do enunciado do A3, os
-CT-110 a CT-113, os do visual da 3.1, e os CT-114 a CT-131, os da 3.2), marca **PASSOU** ou **FALHOU** e grava
+CT-110 a CT-113, os do visual da 3.1, os CT-114 a CT-131, os da 3.2, e os seguintes, os da 3.3 em diante), marca **PASSOU** ou **FALHOU** e grava
 `relatorio_testes.html`, `.csv` e `.json` (com a matriz de rastreabilidade
 requisito × caso e o resultado da suíte completa `python -m unittest`, como
 evidência) numa pasta temporária ou na pasta pedida — nunca dentro do
@@ -201,12 +203,21 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 ## Galeria
 
-As telas `v34_*` são da versão atual (3.4), em claro e escuro, no tamanho normal
+As telas `v35_*` mostram as novidades da versão atual (3.5); as `v34_*`, as
+telas que não mudaram, em claro e escuro, no tamanho normal
 e num notebook 1366×768 a 125% (`_1366x670`). Dados fictícios (os das páginas da 3.2 são
 os próprios **dados de demonstração** do programa).
 
 | | |
 |---|---|
+| ![Cadastro do entregador](docs/design/final/v35_cadastro_entregador.png) | ![Entregador que vai entrar](docs/design/final/v35_cadastro_entregador_vai_entrar.png) |
+| **Entregador** (3.5) — só a entrega: o formulário vira o da encomenda | **Vai entrar na unidade** — o cadastro da pessoa volta |
+| ![Aparência](docs/design/final/v35_aparencia.png) | ![Barra lateral vermelha](docs/design/final/v35_aparencia_vermelha.png) |
+| **Aparência** (3.5) — barra lateral, botões, tema e letra, cada opção com prévia | **Barra lateral vermelha** |
+| ![Barra branca e botões azuis](docs/design/final/v35_cadastro_branca_azul.png) | ![Tema escuro, barra vermelha e botões azuis](docs/design/final/v35_aparencia_escuro_vermelha_azul.png) |
+| **Barra branca e botões azuis**, no Cadastro | **Tema escuro** com a barra vermelha e os botões azuis |
+| ![Botões brancos](docs/design/final/v35_cadastro_botao_branco.png) | ![Histórico com o carro](docs/design/final/v35_pessoas_historico_carro.png) |
+| **Botões brancos**, com contorno escuro no tema claro | **Pessoas › Visitas** (3.5) — como entrou e saiu; aqui, com o carro de outra pessoa |
 | ![Login](docs/design/final/v34_login_claro.png) | ![Mostrar senha](docs/design/final/v34_login_olho_aberto_claro.png) |
 | **Login** — usuário, senha, logo, Entrar e Limpar | **Mostrar senha** — o olho no campo e o Checkbutton, juntos (3.3) |
 | ![Campos vazios](docs/design/final/v34_login_campos_vazios_claro.png) | ![Senha errada](docs/design/final/v34_login_senha_errada_escuro.png) |
@@ -238,7 +249,7 @@ os próprios **dados de demonstração** do programa).
 | ![Painel: horário de pico](docs/design/final/v34_painel_pico_escuro.png) | ![Relatório para imprimir](docs/design/final/v34_relatorio_claro.png) |
 | **Painel** — entradas por hora, com o pico em destaque | **Relatório para imprimir** |
 | ![Dados e privacidade](docs/design/final/v34_config_dados_escuro.png) | ![Letra maior](docs/design/final/v34_letra_maior_claro.png) |
-| **Dados e privacidade** — demonstração, histórico protegido e LGPD | **Letra: Maior**, para quem prefere ler de longe |
+| **Dados e privacidade** — demonstração, histórico protegido e LGPD | **Letra Maior** (página Aparência), para quem prefere ler de longe |
 
 <details>
 <summary><b>Telas das versões anteriores</b> (recursos que continuam iguais)</summary>
@@ -336,7 +347,8 @@ Todos os prints usam dados fictícios. Mais telas em `docs/design/final/`.
 O visual segue o sistema de design **Guarita** (`docs/design/PROPOSTA_DESIGN.md`),
 repaginado na 3.1: o **menu lateral é grafite**, separando a navegação do
 trabalho; o conteúdo é claro e calmo; e cada tela tem **um só botão principal**,
-no vermelho da UNA. As outras ações são discretas (contorno ou só texto), e o
+no vermelho da UNA (desde a 3.5, cada usuário pode trocar essa cor e a do menu
+na página Aparência). As outras ações são discretas (contorno ou só texto), e o
 que apaga fica afastado. Verde é dentro, âmbar é atenção, vermelho em texto é
 erro. Tudo em Tkinter puro: cartões, placa e gráficos são desenhados no
 `Canvas`, os ícones são da fonte Segoe Fluent Icons e o texto fica nítido em
@@ -353,10 +365,9 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   (com o **olho** no canto direito do campo, 3.3: mostra e esconde, e vira olho
   cortado), a caixa **Mostrar senha** (ligada ao olho), **Entrar** e **Limpar**. Campos vazios e dados incorretos dão mensagem de erro.
   No primeiro uso, o mesmo layout cria o administrador.
-- **Modo noturno**: cada usuário escolhe o tema no menu da conta (três
-  pontos no rodapé da barra lateral): **Tema: Claro**, **Tema: Escuro** ou
-  **Tema: Seguir o Windows** (lê no Windows se os aplicativos estão no modo
-  escuro). A troca acontece na hora, **sem fechar o programa**: a sessão
+- **Modo noturno**: cada usuário escolhe o tema na página **Aparência** (3.5;
+  até a 3.4 era no menu da conta): **Claro**, **Escuro** ou **Do Windows** (lê
+  no Windows se os aplicativos estão no modo escuro). A troca acontece na hora, **sem fechar o programa**: a sessão
   continua, a página aberta também, e o que estava digitado no Cadastro
   volta para o lugar (janelas abertas, como Corrigir, são fechadas). A
   escolha fica gravada no usuário e vale nos próximos logins dele; a tela de
@@ -366,16 +377,32 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   escura no Windows 10/11
   (`docs/design/PROPOSTA_DESIGN.md`, seção 10). As caixas de mensagem
   nativas do Windows seguem o tema do próprio Windows.
+- **Aparência** (3.5; último item do menu lateral, para todos os perfis, e
+  também no menu da conta, "Aparência (cores, tema e letra)"): cada usuário
+  deixa o sistema do seu jeito. São quatro escolhas, e cada opção é um cartão
+  com uma prévia desenhada: a **barra lateral** (grafite — a de sempre —,
+  vermelha ou branca), os **botões principais** (vermelhos — os de sempre —,
+  azuis ou brancos), o **tema** (claro, escuro ou do Windows) e o **tamanho da
+  letra** (normal, grande ou maior, RF46). Um clique aplica na hora e fica
+  gravado no usuário: vale nos próximos logins, em qualquer computador.
+  **Restaurar o padrão** volta tudo (grafite, vermelho, tema do Windows e letra
+  normal). A tela de login continua com as cores de sempre, porque é da
+  estação, não de um usuário. As 18 combinações (2 temas × 3 barras × 3
+  botões) passam no contraste WCAG AA. O botão branco ganha contorno escuro no
+  tema claro, para não sumir no cartão; com os botões azuis, a caixa marcada e
+  o dia escolhido no calendário também ficam azuis.
 - **Barra lateral**, em três grupos separados por um fio (3.4): o dia a dia
   (Cadastro, Controle de acesso, Pessoas), os livros da portaria
   (Funcionários, Autorizações, Encomendas, Chaves, Ocorrências) e a gestão
-  (Painel e, só para o administrador, Usuários e Configurações), com o
-  número de pessoas cadastradas. (Até a 2.2 havia a página Bloqueios: na 2.3 ela virou
+  (Painel e, só para o administrador, Usuários e Configurações) e, por
+  último, a **Aparência** (3.5, de todos), com o número de pessoas
+  cadastradas. Em tela baixa (notebook 1366×768) os itens ficam um pouco mais
+  baixos (30 px em vez de 35), e as doze páginas do administrador cabem. (Até a 2.2 havia a página Bloqueios: na 2.3 ela virou
   a desativação, dentro de Pessoas.) No
   rodapé, quem está logado, o menu da conta (**Trocar minha senha**, **Gerar
-  novos códigos de recuperação** para o administrador, o **tema**, o **tamanho
-  da letra** — Normal, Grande ou Maior, de cada usuário (RF46) —, o
-  **Recado para o próximo turno** (3.4) e Sair),
+  novos códigos de recuperação** para o administrador, **Aparência (cores,
+  tema e letra)** — na 3.5 esse item substituiu os seis de tema e de letra —,
+  o **Recado para o próximo turno** (3.4) e Sair),
   o **cadeado** ("Ausentar", Ctrl+L) e o botão sair.
 - **Cadastro** (tela 2 do enunciado; **Enter** ou **Cadastrar** registra a
   entrada), em dois blocos, na ordem em que o porteiro pergunta. **Pessoa**:
@@ -387,7 +414,7 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   | Tipo de acesso | Campos a mais |
   |---|---|
   | Aluno, Professor, Funcionário | nenhum |
-  | Visitante, Entregador | **motivo da visita** (obrigatório) e **Quem procura** (opcional) |
+  | Visitante, Entregador (o que vai entrar, 3.5) | **motivo da visita** (obrigatório) e **Quem procura** (opcional) |
   | Prestador de serviço | **empresa** (obrigatória), motivo e Quem procura |
 
   O motivo é um `tk.Text`, com contador de até 200 caracteres. Trocar o tipo
@@ -400,6 +427,15 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   faixa verde, com o **código de identificação** ("Código 007", RN48). Quem já
   veio traz a empresa do cadastro e o motivo da última visita (se o tipo dele
   usa), para conferir ou trocar.
+
+  **Entregador** (3.5): quase sempre ele só deixa a entrega. Com esse tipo, o
+  formulário vira o da **encomenda** — **destinatário**, **remetente**,
+  **bloco ou setor** (opcional) e **descrição** — e o botão vira **Registrar
+  encomenda**: ela vai para o livro de Encomendas, aguardando retirada, sem
+  cadastrar a pessoa. Se ele precisar entrar na unidade, o porteiro marca
+  **Vai entrar na unidade** e o cadastro normal volta (CPF, nome, telefone,
+  motivo e quem procura). Quem chega pelo CPF, pela ficha de Pessoas ou por
+  uma autorização já vem com a marca ligada.
 - **Controle de acesso** (tela 3 do enunciado; é onde fica o campo **Comando**):
   a **pesquisa** (nome, CPF, telefone, placa, tipo, empresa ou código), o **filtro**
   (Todos, Dentro, Saiu ou um tipo de acesso), a tabela (Situação "Dentro" ou
@@ -427,9 +463,11 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   pronta para imprimir ou salvar em PDF; **Cancelar** vale só para as que ainda
   não venceram. Cada entrada conta como uso, e tudo fica no histórico. A
   autorização não passa por cima da desativação (RN12).
-- **Encomendas** (desafio extra, RF40): o que chegou (destinatário, setor,
-  remetente e descrição), com as que aguardam retirada primeiro; **Registrar
-  retirada** guarda quem levou; só o administrador exclui.
+- **Encomendas** (desafio extra, RF40): o que chegou (destinatário, bloco ou
+  setor, remetente e descrição; a coluna se chama **Bloco** desde a 3.5), com
+  as que aguardam retirada primeiro; **Registrar retirada** guarda quem levou;
+  só o administrador exclui. Desde a 3.5 o porteiro também registra a
+  encomenda pelo **Cadastro**, com o tipo Entregador.
 - **Chaves** (desafio extra, RF41): o administrador cadastra as chaves da
   portaria; qualquer usuário **entrega** (nome e, se quiser, CPF de quem leva)
   e **registra a devolução**. A mesma chave não sai duas vezes — o próprio
@@ -568,8 +606,12 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   **Desativar** / Reativar e **Excluir** (só quem nunca teve visita; com
   histórico, o botão explica que é preciso desativar); e duas seções —
   **Visitas** (o histórico dela, da mais recente para a mais antiga:
-  entrada, saída, duração, tipo, placa e situação, com o nome e o celular da
-  época quando eram outros) e **Veículo** ("Quem pode retirar" o carro da
+  entrada, saída, duração, tipo e situação, com o nome e o celular da
+  época quando eram outros; desde a 3.5, também **como entrou e saiu**:
+  "Entrou de carro (BRA2E19) · saiu de carro", "Entrou de carro (BRA2E19) ·
+  saiu a pé, o carro ficou no estacionamento", "Entrou a pé · saiu a pé" ou,
+  para quem levou o carro de outra pessoa (RN35), "Entrou a pé · saiu com o
+  carro RIO3F45, de Carla Souza") e **Veículo** ("Quem pode retirar" o carro da
   placa dela, com validade opcional; Adicionar e Validade — o porteiro só
   com o dono no campus — e Remover; e, para o administrador, "Desativar
   placa"). Quem tem mais de um carro (RN47) tem a linha **Carro**, um botão
@@ -882,7 +924,7 @@ danificado):
 | `portaria/validacao.py` | Regras de CPF, celular, placa, nome, datas e verificações semânticas |
 | `portaria/horarios.py` | Regras de horário de acesso (funções puras): funcionamento, feriados, eventos, categorias, exceções, situação da visita |
 | `portaria/dados.py` | Banco SQLite (pessoas, visitas, usuários, histórico, desativações) e migrações |
-| `portaria/dados_modulos.py` | Banco dos módulos da 3.2: chaves, encomendas, autorizações, funcionários, recados, anonimização, histórico encadeado e dados de demonstração |
+| `portaria/dados_modulos.py` | Banco dos módulos da 3.2: chaves, encomendas, autorizações, funcionários, recados, anonimização, histórico encadeado e dados de demonstração; e a aparência de cada usuário (3.5) |
 | `portaria/base_dados.py` | O erro e os formatos de data que os dois arquivos do banco dividem |
 | `portaria/impressao.py` | Páginas para imprimir (autorização de entrada e relatório), abertas no navegador |
 | `portaria/consultas.py` | Busca e números do Painel (versão em Python, usada nos testes) |
@@ -891,7 +933,7 @@ danificado):
 | `portaria/veiculos.py` | Quem pode retirar o veículo (RN35) e lotação do estacionamento (RN37) — funções puras |
 | `portaria/excecoes.py` | Relatório de exceções: tipo, pessoa, quem autorizou e quem operava (funções puras) |
 | `portaria/backup.py` | Backup do banco e exportação para CSV |
-| `portaria/estilo.py` | Tokens do design: cores dos temas claro e escuro, fontes, ícones, medidas, escala (DPI), estilos ttk e contraste |
+| `portaria/estilo.py` | Tokens do design: cores dos temas claro e escuro e das opções da Aparência (3.5), fontes, ícones, medidas, escala (DPI), estilos ttk e contraste |
 | `portaria/componentes.py` | Peças de tela: cartão, botões, campo, faixa de aviso, placa, tabela, diálogo |
 | `portaria/mensagens.py` | Caixas de mensagem e "Salvar como" |
 | `portaria/interface.py` | Janela principal, barra lateral, sessão e o contrato que as telas usam |
@@ -913,6 +955,7 @@ danificado):
 | `portaria/tela_veiculo.py` | Perguntas "Saiu com o veículo?", "Saiu junto?" e "Vai levar o carro?" |
 | `portaria/seletor_data.py` | Calendário e relógio dos campos de data e hora (Canvas) |
 | `portaria/tela_senha.py` | Janela "Trocar minha senha" |
+| `portaria/tela_aparencia.py` | Página Aparência (3.5): cor da barra lateral e dos botões, tema e letra, cada opção com prévia |
 | `docs/design/` | Proposta de design, protótipo e prints (antes, protótipo e final) |
 | `docs/ENUNCIADO_A3.md` | O enunciado da Atividade A3, item por item, com o teste de cada um |
 | `docs/CRUD.md` | Matriz CRUD: cada página e aba × Criar, Ler, Atualizar e Excluir |
@@ -931,6 +974,33 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**3.5** (17/11/2026) — **entregador, histórico do carro e Aparência** (pedidos
+do aluno; banco v16, migrado sozinho, com backup antes):
+
+- **entregador integrado às Encomendas**: no Cadastro, com o tipo
+  "Entregador", o formulário vira o da encomenda (destinatário, remetente,
+  bloco opcional e descrição) e o botão vira **Registrar encomenda**. Ela vai
+  para o livro de Encomendas, aguardando retirada, sem cadastrar a pessoa
+  (quase sempre o entregador só deixa a entrega). Só se ele precisar entrar
+  na unidade o porteiro marca **Vai entrar na unidade**, e o cadastro normal
+  volta. Na página Encomendas, "Setor" virou "Bloco ou setor" (a coluna,
+  "Bloco");
+- **histórico da pessoa com o carro**: em Pessoas › ficha › Visitas, cada
+  visita diz como a pessoa entrou e saiu ("Entrou de carro (BRA2E19) · saiu a
+  pé, o carro ficou no estacionamento"); quem saiu com o carro de outra pessoa
+  (RN35) mostra a placa e o dono. Sem mudança no banco: vem da estadia do
+  carro;
+- **página Aparência** (no fim do menu lateral, para todos os perfis, e no
+  menu da conta): a cor da barra lateral (grafite, vermelha ou branca), a dos
+  botões principais (vermelhos, azuis ou brancos), o tema e o tamanho da
+  letra, cada opção com uma prévia desenhada. Um clique aplica na hora e fica
+  gravado no usuário (colunas novas `usuarios.lateral` e `usuarios.botoes`);
+  "Restaurar o padrão" volta tudo. A tela de login continua com as cores de
+  sempre. As 18 combinações passam no contraste WCAG AA;
+- **menu que cabe**: com a Aparência, o administrador tem doze páginas; em
+  tela baixa (notebook 1366×768) os itens ficam um pouco mais baixos;
+- **testes**: 1358 testes automatizados e 145 casos de teste.
 
 **3.4** (17/11/2026) — **revisão geral de uso** (o que não fazia sentido foi
 corrigido e os caminhos do dia a dia ficaram mais curtos; banco v15, migrado

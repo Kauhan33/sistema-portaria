@@ -737,3 +737,44 @@ direção escolhida por ele entre três propostas foi a de **menu escuro**.
 - **Autorização em quatro colunas:** tipo e empresa lado a lado, e quem
   autoriza junto das datas, para o diálogo do prestador caber no notebook.
 
+## 15. Versão 3.5: Aparência e a encomenda no Cadastro
+
+- **Página Aparência em cartões com prévia:** quatro grupos em duas colunas
+  (Barra lateral e Botões principais em cima; Tema e Tamanho da letra
+  embaixo). Cada opção é um cartão desenhado no Canvas (`OpcaoVisual`) com uma
+  prévia: para a barra e o tema, uma janelinha com a barra, o símbolo, três
+  itens e um cartão com o botão principal; para os botões, um "Salvar" na cor;
+  para o tema do Windows, metade clara e metade escura; para a letra, "Aa" no
+  tamanho. A escolhida tem contorno escuro e o visto no canto. O porteiro vê o
+  resultado antes de escolher. Tab leva o foco; Espaço ou Enter escolhem. Um
+  clique grava e remonta a janela, como na troca de tema.
+- **Tokens do botão separados do primário:** o botão principal passou a usar
+  `botao`, `botao_hover`, `botao_press`, `botao_texto`, `botao_borda`,
+  `botao_dica` e `botao_foco`. Sem escolha, eles copiam o `primario`. O azul
+  troca o próprio `primario`, então vale para todo destaque (botão, caixa
+  marcada, dia escolhido no calendário). O branco troca só os `botao_*`: uma
+  caixa marcada ou um dia escolhido em branco sumiriam. No tema claro o botão
+  branco tem contorno escuro (`botao_borda`), para não sumir no cartão; no
+  botão azul, o anel de foco fica escuro no tema claro e branco no escuro
+  (`botao_foco`), porque o azul do foco não se veria nele.
+- **Barra lateral por cima do tema:** cada cor troca só os `lateral_*` e os do
+  avatar (`estilo.LATERAIS`). Tokens novos: `lateral_simbolo` e
+  `lateral_simbolo_traco` (na barra vermelha o símbolo fica branco, com a
+  cancela vermelha) e `lateral_contorno` (a barra branca do tema claro ganha um
+  fio à direita, para se separar do conteúdo).
+- **Contraste das 18 combinações:** 2 temas × 3 barras × 3 botões, todas no
+  WCAG AA. `estilo.pares_de_contraste` ganhou o texto do botão sobre as três
+  cores dele (normal, mouse em cima e pressionado), a dica sobre o botão e a
+  cancela sobre o símbolo. O login continua com a barra padrão: ele é da
+  estação, não de um usuário.
+- **Menu compacto:** com a Aparência no fim, o administrador tem doze páginas.
+  Em tela baixa os itens ficam com 30 px em vez de 35 e os fios entre os grupos,
+  com menos respiro; em tela alta tudo volta ao normal.
+- **A encomenda no Cadastro:** com o tipo Entregador (sem "Vai entrar na
+  unidade"), o mesmo cartão troca de conteúdo: o bloco "Pessoa" vira "Entrega",
+  "Visita" vira "Encomenda", a ficha da direita sai, a faixa azul explica o que
+  fazer (com o ícone de pacote) e o botão principal vira "Registrar
+  encomenda". Destinatário e remetente ficam à esquerda; bloco e descrição, à
+  direita. A caixa "Vai entrar na unidade" ocupa o lugar da empresa (que o
+  entregador não tem), e o Tab passa por ela logo depois do tipo.
+

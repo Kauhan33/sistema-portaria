@@ -14,7 +14,7 @@ As ideias estão agrupadas em versões. Cada versão é entregável sozinha.
 ## Como ler
 
 - **Esforço:** P = até meio dia · M = 1 a 2 dias · G = 3 dias ou mais, contando os testes.
-- **Esquema:** a versão do banco depois da entrega. Hoje o banco está na v15.
+- **Esquema:** a versão do banco depois da entrega. Hoje o banco está na v16.
   Toda migração é atômica (`PRAGMA user_version`) e faz um backup antes.
 - **RN nova:** a numeração continua a partir da RN35 (na 2.3 foram da RN41
   à RN45; na 2.4, a RN46; na 2.5, a RN47; na 3.0, a RN48 e a RN49; na 3.2, da
@@ -49,6 +49,9 @@ não se repete abaixo):
 | **3.0** ✅ | Atividade A3 | A3-1 a A3-5 | v13 | ~3 dias |
 | **3.1** ✅ | Visual repaginado | — | v13 (sem mudança) | ~2 dias |
 | **3.2** ✅ | Todos os desafios extras e melhorias gerais | A1, A2, A3, A5, F2, C1, C2, B1, B2 e os módulos do enunciado | v14 | ~4 dias |
+| **3.3** ✅ | Campos por tipo de acesso | — | v14 (sem mudança) | ~1 dia |
+| **3.4** ✅ | Revisão geral de uso | — | v15 | ~1 dia |
+| **3.5** ✅ | Entregador, histórico do carro e Aparência | — | v16 | ~1 dia |
 | Depois | O que ficou de fora | A4, A6, D3, C3, B8, N09, S02 | — | — |
 | Extras | Se sobrar tempo | E3, E6, D1, D2, E5 | — | — |
 | Contínuo | Qualidade e entrega | F3, limpeza de código, Word da entrega | — | — |
@@ -563,6 +566,35 @@ faz, e deixar o mais simples possível de entender e usar").
   (v15); a empresa segue a RN48; o Cadastro já vem com o tipo.
 - **Mais claro:** menu em três grupos; subtítulo do Cadastro; demonstração com
   matrícula, setor e cargo.
+
+---
+
+## Versão 3.5 — Entregador, histórico do carro e Aparência (esquema v16) ✅
+
+Feita em 17/11/2026, a pedido do aluno.
+
+- **Entregador integrado às Encomendas:** no Cadastro, o tipo Entregador mostra
+  o formulário da encomenda (destinatário, remetente, bloco opcional e
+  descrição), e "Registrar encomenda" grava pelo mesmo
+  `Banco.registrar_encomenda` da página Encomendas (RN52), sem cadastrar a
+  pessoa nem abrir visita. "Vai entrar na unidade" volta ao cadastro normal;
+  quem chega pelo CPF, pela ficha ou por uma autorização já vem com a marca.
+  Na página Encomendas, "Setor" virou "Bloco ou setor" (a coluna, "Bloco").
+- **Histórico da pessoa com o carro:** cada visita diz como a pessoa entrou e
+  saiu (`tela_pessoas.descrever_veiculo`). Sem mudança no banco:
+  `Banco._carros_das_visitas` lê a estadia do carro
+  (`estadias_veiculo.registro_saida_id`) e mostra o dono quando o carro era de
+  outra pessoa (RN35). Visitas com placa de antes da estadia do carro (esquema
+  v8) aparecem como "saiu de carro".
+- **Página Aparência** (`tela_aparencia.py`): barra lateral, botões
+  principais, tema e letra, cada opção com prévia. A escolha fica no usuário:
+  colunas `usuarios.lateral` e `usuarios.botoes` (v16, `passo_v16`);
+  `definir_aparencia` não vai para o histórico, como o tema e a letra. No menu
+  da conta, um item só ("Aparência (cores, tema e letra)") no lugar dos seis de
+  tema e letra. Contraste WCAG AA conferido nas 18 combinações.
+- **Menu que cabe:** com a Aparência, o administrador tem doze páginas; em tela
+  baixa os itens do menu ficam com 30 px em vez de 35
+  (`_ajustar_menu_a_altura`) e cabem no notebook 1366×768.
 
 ---
 

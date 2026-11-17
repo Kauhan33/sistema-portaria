@@ -22,12 +22,12 @@ listas.
 | **Pessoas › Pessoas desativadas** | **Admin** — **Desativar CPF** (lista) ou ficha › **Desativar**, com motivo (RN12) | **Todos** — nome (ou "(sem cadastro)"), CPF, motivo, quando e quem; **Mostrar reativadas** | **Admin** — **Reativar** (lista ou ficha); o motivo não se edita: reative e desative de novo (os dois ficam no histórico) | Não se apaga: reativar encerra a desativação, que fica guardada (quem e quando) |
 | **Pessoas › Veículos desativados** | **Admin** — **Desativar placa** (lista) ou ficha › Veículo › **Desativar placa** | **Todos** — placa, pessoa dona, motivo, quando e quem; **Mostrar reativados** | **Admin** — **Reativar** (lista) ou ficha › **Reativar placa** | Não se apaga (como acima) |
 | **Pessoas › ficha › Veículo** (quem pode retirar o carro, RN35) | **Todos** — **Adicionar** (porteiro só com o dono no campus; admin a qualquer hora) | **Todos** — lista da placa (nome, CPF, validade) | **Todos** — **Validade** (RN45; mesma permissão de Adicionar) | **Todos** — **Remover** (remoção lógica, com histórico: remover só diminui a permissão) |
-| **Pessoas › ficha › Visitas** | — (a visita nasce no Cadastro) | **Todos** — histórico da pessoa | Pelo **Controle de acesso › Corrigir** | Pelo **Controle de acesso › Excluir** (Admin) |
+| **Pessoas › ficha › Visitas** | — (a visita nasce no Cadastro) | **Todos** — histórico da pessoa, com como entrou e saiu (de carro, a pé ou com o carro de outra pessoa, 3.5) | Pelo **Controle de acesso › Corrigir** | Pelo **Controle de acesso › Excluir** (Admin) |
 | **Ocorrências** (RN49) | **Todos** — **Nova ocorrência** (categoria, descrição, CPF e placa opcionais) | **Todos** — lista com pesquisa, filtro por categoria e "Só abertas" | **Todos** — **Marcar como resolvida** (o texto não muda: é um livro) | **Admin** — **Excluir**, com confirmação e no histórico |
 | **Ocorrências › Recado de turno** (RF42) | **Todos** — **Recado de turno** (5 a 500 caracteres) | **Todos** — faixa no Controle de acesso, o mais antigo primeiro | **Todos** — **Marcar como lido** (o texto não muda) | — (fica no banco como lido) |
 | **Funcionários** (RF38, RN54) | **Todos** — **Novo funcionário** (cadastra a pessoa do tipo Funcionário, com matrícula, setor e cargo) | **Todos** — quadro com pesquisa, "Só quem está dentro" e o ponto de hoje | **Todos** — **Dados do funcionário** (matrícula, setor, cargo) | Pela página **Pessoas › Excluir** (Admin, RN42) |
 | **Autorizações** (RF39, RN53) | **Todos** — **Nova autorização** (CPF, nome, tipo de acesso — visitante, entregador ou prestador —, empresa só do prestador, quem autoriza, validade de até 90 dias, motivo) | **Todos** — lista com pesquisa e "Só válidas hoje" (porteiro: CPF mascarado); **Emitir autorização** (página para imprimir) | **Todos** — **Cancelar autorização** (as que não venceram; não volta) | — (a autorização cancelada continua na lista: é um registro) |
-| **Encomendas** (RF40, RN52) | **Todos** — **Nova encomenda** (destinatário, setor, remetente, descrição) | **Todos** — lista com pesquisa e "Só aguardando retirada" | **Todos** — **Registrar retirada** (quem levou; uma vez só) | **Admin** — **Excluir** (com confirmação) |
+| **Encomendas** (RF40, RN52) | **Todos** — **Nova encomenda** (destinatário, bloco ou setor, remetente, descrição) ou, no **Cadastro**, o tipo **Entregador** sem "Vai entrar na unidade" (3.5) | **Todos** — lista com pesquisa e "Só aguardando retirada" | **Todos** — **Registrar retirada** (quem levou; uma vez só) | **Admin** — **Excluir** (com confirmação) |
 | **Chaves** (RF41, RN51) | **Admin** — **Nova chave** (nome e local) | **Todos** — lista com pesquisa e "Só emprestadas"; **Ver histórico** | **Todos** — **Entregar chave** e **Registrar devolução** | **Admin** — **Remover** (só a que está na portaria; o histórico fica) |
 | **Painel** | — | **Todos** — números do dia, gráficos por dia ou por hora (7 ou 30 dias) e horários; **Exportar CSV** e **Relatório** para imprimir (Admin) | — | — |
 | **Usuários › Contas** | **Admin** — **Novo usuário** | **Admin** — lista de contas e a **Atividade** (histórico, com filtro) | **Admin** — **Editar** (nome e perfil; RN43), **Redefinir senha** (RN39), **Ativar**; cada um troca a própria senha (menu da conta) | **Admin** — **Desativar** (não apaga: o login identifica quem fez cada ação no histórico; RN08 garante um admin ativo) |
@@ -37,6 +37,7 @@ listas.
 | **Configurações › Feriados** | **Admin** — **Adicionar** | **Admin** — lista | **Admin** — **Editar** (a linha volta aos campos; o botão vira **Salvar alteração**; RN44) | **Admin** — **Remover** |
 | **Configurações › Dados e privacidade** (RF45, RF47) | **Admin** — **Preencher** com dados de demonstração (fictícios; repetir não duplica) | **Admin** — **Conferir** o histórico encadeado (RN56) | **Admin** — **Anonimizar pessoa** (CPF e justificativa) e **Anonimizar fora do prazo** (RN55; não volta) | — (anonimizar não apaga a visita: troca os dados pessoais) |
 | **Configurações › Eventos** | **Admin** — **Adicionar** | **Admin** — lista | **Admin** — **Editar** (RN44) | **Admin** — **Remover** |
+| **Aparência** (RF46, 3.5) | — (as escolhas sempre existem; o padrão é grafite, vermelho, tema do Windows e letra normal) | **Todos** — as próprias escolhas, marcadas nos cartões | **Todos** — um clique no cartão; **Restaurar o padrão** (cada um muda só as suas) | — |
 
 ## CRUD também pela linguagem de comandos (2.4)
 
@@ -90,6 +91,8 @@ pelos botões (a gramática aprovada não tem esses comandos).
   não entra mais (RN09) e pode ser reativada.
 - **Desativações** não se apagam pelo mesmo motivo: reativar guarda quem
   reativou e quando.
+- **Aparência** é preferência de cada usuário (como o tema e a letra): só se
+  lê e se atualiza, e não vai para o histórico.
 - **Veículos (estadias)** e **Visitas da ficha** não têm botões próprios de
   criar e excluir: nascem e somem com a visita (Cadastro e Controle de acesso).
 - **Configurações › Funcionamento e Categorias** são parâmetros fixos (um

@@ -412,6 +412,18 @@ Sem mudança de esquema (banco v12).
 - Fora do alcance (precisa de serviço pago): certificado para o Windows não
   mostrar o aviso do SmartScreen ao abrir o instalador.
 
+### Versão 3.5 — Entregador, histórico do carro e Aparência (17/11/2026) ✅
+
+- ✅ Entregador integrado às Encomendas: no Cadastro, o tipo Entregador mostra
+  o formulário da encomenda e "Registrar encomenda"; "Vai entrar na unidade"
+  volta ao cadastro da pessoa (RN52).
+- ✅ Histórico da pessoa diz como ela entrou e saiu (de carro, a pé, com o
+  carro de outra pessoa — RN35), sem mudança no banco.
+- ✅ Página Aparência: cor da barra lateral e dos botões, tema e letra, com
+  prévia; gravado no usuário (banco v16, RF46). Contraste WCAG AA nas 18
+  combinações.
+- ✅ Menu lateral mais baixo em tela baixa: as doze páginas cabem no notebook.
+
 ### Versão 3.4 — Revisão geral de uso (17/11/2026) ✅
 
 - ✅ Botões do Controle de acesso seguem a linha escolhida (nada que daria
@@ -443,7 +455,7 @@ acesso: funcionamento, categorias, feriados e eventos (admin) · RF16 autorizar
 exceção de horário (admin) · RF17 encerrar o dia (admin) · RF18 alertar tempo
 excedido, saída pendente e fechamento próximo · RF19 registrar a entrada e a
 saída do veículo separadas da pessoa (estacionamento) · RF20 ver o histórico
-de visitas de cada pessoa · RF21 escolher datas e horas num calendário e
+de visitas de cada pessoa (com como ela entrou e saiu, 3.5) · RF21 escolher datas e horas num calendário e
 relógio · RF22 recuperar a senha do administrador com um código de uso único
 (2.2) · RF23 cadastrar quem pode retirar o veículo de uma pessoa (2.2) · RF24
 travar a guarita ("Ausentar") (2.2) · RF26 escolher com qual carro a pessoa sai
@@ -460,12 +472,14 @@ Atualizar (3.0) · RF36 registrar, resolver e excluir ocorrências (3.0) · RF37
 registrar prestadores de serviços, com empresa e motivo (3.0) · RF38 controlar
 funcionários: matrícula, setor, cargo e o ponto do dia (3.2) · RF39 autorizar a
 entrada de um visitante com antecedência e emitir a autorização para imprimir
-(3.2) · RF40 registrar as encomendas recebidas e a retirada (3.2) · RF41
+(3.2) · RF40 registrar as encomendas recebidas e a retirada (3.2; também pelo
+Cadastro, com o tipo Entregador, 3.5) · RF41
 controlar as chaves entregues e devolvidas (3.2) · RF42 deixar um recado para
 o próximo turno (3.2) · RF43 emitir o relatório do período para imprimir (3.2)
 · RF44 ver no Painel as entradas por dia ou por hora, em 7 ou 30 dias (3.2) ·
 RF45 preencher o sistema com dados de demonstração (admin) (3.2) · RF46
-escolher o tamanho da letra (3.2) · RF47 anonimizar uma pessoa e aplicar o
+escolher o tamanho da letra (3.2) e, na página Aparência, a cor da barra lateral
+e dos botões principais e o tema (3.5) · RF47 anonimizar uma pessoa e aplicar o
 prazo de guarda (admin) (3.2).
 
 **RNF**: RNF01 interface simples com botões identificados · RNF02 senha oculta e
@@ -562,7 +576,8 @@ BRA2E19 de Carla?" — Sim, leva o carro / Não), registrado como "Veículo saiu
 autorizado" (quem cadastrou e quando); nos outros casos vale a RN32. O porteiro só
 cadastra com o dono no campus naquele momento; o administrador, a qualquer hora;
 qualquer usuário remove (remoção lógica, com histórico). Tudo conferido também no
-banco · RN36 dentro da janela de aviso antes de fechar, a faixa "N carros com o dono
+banco. Desde a 3.5 o histórico de quem levou o carro mostra a placa e o dono
+("Entrou a pé · saiu com o carro RIO3F45, de Carla Souza") · RN36 dentro da janela de aviso antes de fechar, a faixa "N carros com o dono
 fora do campus — fechamento às HH:MM", com o link para a lista de veículos; some
 quando o carro sai ou o dono volta · RN37 lotação: com vagas definidas em
 Configurações (0 = sem controle, até 4 dígitos), o cabeçalho mostra "Estacionamento
@@ -644,7 +659,9 @@ número da visita com 3 dígitos ("007"); data e horário são campos separados;
 já veio reaproveita a empresa do cadastro e o motivo da última visita; um cadastro
 antigo, sem esses dados, completa na próxima entrada (e pode ser corrigido sem
 eles); a visita que muda de tipo na correção perde os campos que o tipo novo não
-usa (fica no histórico).
+usa (fica no histórico). Desde a 3.5, o entregador que só deixa a entrega não é
+cadastrado: o Cadastro registra a encomenda (RN52); com "Vai entrar na unidade",
+vale esta regra.
 RN49 OCORRÊNCIAS: categoria da lista, descrição de 5 a 500 caracteres, CPF e placa
 opcionais (conferidos como no Cadastro); CPF digitado na descrição é mascarado;
 qualquer usuário registra e marca como resolvida; só o administrador exclui (RN02);
@@ -659,9 +676,12 @@ caracteres, sem repetir; qualquer usuário entrega (nome completo de quem leva e
 CPF opcional, válido se vier) e registra a devolução; a mesma chave não sai duas
 vezes (índice único); a chave emprestada não é removida; o histórico das entregas
 fica.
-RN52 ENCOMENDAS: destinatário e remetente obrigatórios; setor e descrição
-opcionais; CPF na descrição é mascarado; a retirada informa quem levou e acontece
-uma vez só; só o administrador exclui.
+RN52 ENCOMENDAS: destinatário e remetente obrigatórios; bloco (ou setor) e
+descrição opcionais; CPF na descrição é mascarado; a retirada informa quem levou e
+acontece uma vez só; só o administrador exclui. Desde a 3.5 a encomenda também é
+registrada pelo Cadastro: com o tipo Entregador e sem "Vai entrar na unidade", o
+formulário é o da encomenda, o entregador não é cadastrado e nenhuma visita é
+aberta; as regras e a gravação são as mesmas da página Encomendas.
 RN53 AUTORIZAÇÃO DE ENTRADA: CPF válido, nome completo, tipo de acesso
 (visitante, entregador ou prestador de serviço, desde a 3.4), motivo e quem
 autoriza obrigatórios; a empresa segue a RN48 (só do prestador, e obrigatória

@@ -83,11 +83,17 @@ regras no banco e `tests/test_livros.py`, as telas).
 | **Registro de ocorrências** | Página **Ocorrências**: categoria, descrição, CPF e placa opcionais; resolver e excluir (RN49); e o **recado de turno** (RF42) | `TestOcorrencias`, `TestOcorrenciasNoBanco`, `TestRecados`, `TestRecadoDeTurno` |
 | **Controle de visitantes autorizados** | Página **Autorizações**: um setor avisa quem vai receber (CPF, nome, empresa, motivo, quem autoriza, validade). Na chegada, o Cadastro reconhece o CPF, preenche os dados e mostra quem autorizou; cada entrada conta como uso (RF39, RN53) | `TestAutorizacoes`, `TestAutorizacoesNaTela` |
 | **Emissão de autorização de entrada** | Botão **Emitir autorização**: página pronta para imprimir ou salvar em PDF, com número, validade e assinaturas; a emissão fica no histórico (RF39) | `TestAutorizacoes.test_emissao_fica_no_historico`, `TestAutorizacoesNaTela.test_emitir_abre_a_pagina_para_imprimir` |
-| **Controle de entrega de encomendas** | Página **Encomendas**: registrar o que chegou (destinatário, setor, remetente, descrição) e a retirada (quem levou e quando) (RF40, RN52) | `TestEncomendas`, `TestEncomendasNaTela` |
+| **Controle de entrega de encomendas** | Página **Encomendas**: registrar o que chegou (destinatário, bloco ou setor, remetente, descrição) e a retirada (quem levou e quando); desde a 3.5, também pelo Cadastro, com o tipo Entregador (RF40, RN52) | `TestEncomendas`, `TestEncomendasNaTela` |
 | **Controle de funcionários** | Página **Funcionários**: matrícula (não se repete), setor, cargo e o ponto de hoje (entrada, saída, dentro) (RF38, RN54) | `TestFuncionarios`, `TestFuncionariosNaTela` |
 | **Controle de chaves entregues e devolvidas** | Página **Chaves**: cadastro das chaves, entrega (quem levou), devolução e histórico; a mesma chave não sai duas vezes (RF41, RN51) | `TestChaves`, `TestChavesNaTela`, `TestChavesDoPorteiro` |
 
 ## Além do enunciado
+
+Na 3.5 o entregador que só deixa a entrega passou a registrar a **encomenda**
+pelo próprio Cadastro (sem cadastrar a pessoa), o histórico da pessoa diz como
+ela entrou e saiu (de carro, a pé ou com o carro de outra pessoa) e a nova
+página **Aparência** deixa cada usuário escolher a cor da barra lateral e dos
+botões, o tema e o tamanho da letra.
 
 Na 3.4 a revisão geral de uso deixou apagado o que daria erro (por exemplo,
 "Registrar entrada" para quem já está dentro), fez o funcionário entrar direto

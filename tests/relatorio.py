@@ -1498,6 +1498,46 @@ CASOS = [
          "acompanha (e vice-versa); Limpar esconde de novo.",
          ["test_livros.TestOlhoDaSenha.test_olho_e_checkbutton_andam_juntos",
           "test_enunciado_a3.TestTela1Login.test_senha_comeca_escondida_e_o_checkbutton_mostra"]),
+    caso("CT-133", ["RF02", "RF35", "RNF01"], POSITIVO,
+         "O sistema não oferece o que daria erro",
+         "No Controle de acesso, escolher uma pessoa que está dentro, uma que "
+         "saiu e as duas; abrir a ficha de quem está no campus em Pessoas.",
+         "Para quem está dentro, \"Registrar entrada\" fica apagado e "
+         "\"Registrar saída\" ativo (e o contrário para quem saiu); com duas "
+         "linhas, \"Corrigir\" fica apagado; sem nada escolhido, o clique "
+         "explica o que fazer. Na ficha de quem está dentro, o botão vira "
+         "\"Registrar saída\" e dá a saída ali mesmo.",
+         ["test_livros.TestRevisaoDeUso.test_botoes_do_controle_seguem_a_linha_escolhida",
+          "test_livros.TestRevisaoDeUso."
+          "test_linha_antiga_de_quem_ja_esta_dentro_nao_oferece_entrada",
+          "test_interface.TestAbaPessoas.test_quem_esta_no_campus_nao_ganha_outra_entrada"]),
+    caso("CT-134", ["RF38", "RF42", "RNF01"], POSITIVO,
+         "Caminhos mais curtos no dia a dia",
+         "Registrar a entrada de um funcionário pela página Funcionários; "
+         "deixar um recado pelo menu da conta; olhar o menu lateral.",
+         "O funcionário entra direto, sem passar pelo Cadastro (a confirmação "
+         "aparece na própria página); o recado vai para o Controle de acesso; "
+         "o menu fica em três grupos (dia a dia, livros da portaria, gestão); "
+         "os dados de demonstração trazem os funcionários com matrícula.",
+         ["test_livros.TestFuncionariosNaTela.test_editar_dados_e_ponto_de_hoje",
+          "test_livros.TestRevisaoDeUso.test_recado_pelo_menu_da_conta",
+          "test_livros.TestRevisaoDeUso.test_menu_em_tres_grupos",
+          "test_livros.TestRevisaoDeUso.test_subtitulo_do_cadastro_diz_o_que_a_tela_faz",
+          "test_livros.TestRevisaoDeUso.test_demonstracao_traz_funcionarios_com_matricula"]),
+    caso("CT-135", ["RF39", "RN53", "RN48"], POSITIVO,
+         "Autorização de entrada com o tipo de acesso",
+         "Criar a autorização de um prestador (com a empresa) e a de um "
+         "visitante; registrar a entrada do prestador; tentar empresa para "
+         "visitante, prestador sem empresa e tipo Aluno; abrir um banco da "
+         "3.3.",
+         "O diálogo mostra a empresa só para o prestador; o Cadastro já vem "
+         "com o tipo e os campos certos; os casos errados são recusados; o "
+         "banco da 3.3 é atualizado e a autorização que tinha empresa vira de "
+         "prestador.",
+         ["test_modulos.TestAutorizacoes.test_tipo_de_acesso_e_empresa",
+          "test_livros.TestAutorizacoesNaTela.test_empresa_so_aparece_para_o_prestador",
+          "test_livros.TestAutorizacoesNaTela.test_registrar_entrada_leva_ao_cadastro_com_os_dados",
+          "test_modulos.TestMigracaoV15.test_banco_da_3_3_ganha_o_tipo_da_autorizacao"]),
     caso_da_linguagem(
         "CT-108", "Semântico", ["RN46", "RN48"], NEGATIVO,
         "Empresa e motivo: as mesmas regras do formulário",

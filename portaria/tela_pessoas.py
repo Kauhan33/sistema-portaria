@@ -160,6 +160,37 @@ def descrever_desativacao(d):
     return texto
 
 
+def descrever_veiculo(r):
+    """3.5: como a pessoa entrou e saiu, numa linha. Ex.: "Entrou de carro
+    (BRA2E19) · saiu a pé, o carro ficou no estacionamento"; "Entrou a pé ·
+    saiu com o carro RIO3F45, de Carla Souza" (levou o carro de outra
+    pessoa, RN35)."""
+    if str(r.get("cpf", "")).startswith("X"):        # anonimizada (LGPD)
+        return "Dados do veículo apagados (pessoa anonimizada)"
+    placa = r.get("placa", "")
+    entrou = (f"Entrou de carro ({formatar_placa(placa)})" if placa
+              else "Entrou a pé")
+    if not r.get("saida"):
+        return entrou
+    carro = r.get("saiu_com")
+    if carro is None and placa and not r.get("com_estadia", True):
+        saiu = "saiu de carro"         # antes da v8 o carro saía com a pessoa
+    elif carro is None:
+        saiu = "saiu a pé"
+        if placa and r.get("carro_ficou"):
+            saiu += ", o carro ficou no estacionamento"
+    elif str(carro["cpf"]).startswith("X"):       # o dono foi anonimizado
+        saiu = "saiu com o carro de outra pessoa"
+    elif carro["cpf"] != r.get("cpf"):
+        saiu = (f"saiu com o carro {formatar_placa(carro['placa'])}, de "
+                f"{carro['nome']}")
+    elif carro["placa"] == placa:
+        saiu = "saiu de carro"
+    else:
+        saiu = f"saiu com o carro {formatar_placa(carro['placa'])}"
+    return f"{entrou} · {saiu}"
+
+
 def texto_das_placas(p):
     """Coluna Placa da lista: a principal e quantas mais a pessoa tem
     ("ABC1D23 +1", RN47); "—" sem veículo."""
@@ -909,8 +940,10 @@ class AbaPessoas:
             t.insert(tk.END, f"\t{v['duracao']}\n", "detalhe")
             t.insert(tk.END, f"{v['entrada']}  {chr(0x2192)}  {v['saida']}\n",
                      "datas")
-            t.insert(tk.END, f"{v['tipo']}  ·  {v['placa'] or 'a pé'}\n",
-                     "detalhe")
+            t.insert(tk.END, f"{v['tipo']}\n", "detalhe")
+            # 3.5: como entrou e como saiu (de carro, a pé, com o carro de
+            # outra pessoa)
+            t.insert(tk.END, f"{v['veiculo']}\n", "detalhe")
             if v["como"]:
                 t.insert(tk.END, f"Registrado como {v['como']}\n", "como")
         t.config(state="disabled")
@@ -941,6 +974,7 @@ class AbaPessoas:
         return {"id": r["id"], "entrada": r["entrada"], "saida": saida,
                 "duracao": tempo, "tipo": r["tipo"],
                 "placa": formatar_placa(r["placa"]), "situacao": situacao,
+                "veiculo": descrever_veiculo(r),
                 "como": " · ".join(diferentes)}
 
     def _faixa(self, tipo, texto):

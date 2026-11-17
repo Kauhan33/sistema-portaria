@@ -413,7 +413,7 @@ class DialogoEncomenda(DialogoSimples):
                          largura=480)
         self.destinatario = self.campo("Destinatário *", "pessoa ou setor",
                                        juntas=1, maximo=MAXIMO_NOME).entrada
-        self.setor = self.campo("Setor ou bloco", "opcional", juntas=1,
+        self.setor = self.campo("Bloco ou setor", "opcional", juntas=1,
                                 coluna=1, maximo=MAXIMO_LOCAL).entrada
         self.remetente = self.campo("Remetente *", "quem mandou ou a "
                                     "transportadora",
@@ -450,8 +450,8 @@ class AbaEncomendas(PaginaLista):
     COLUNAS = [("numero", "Nº", 50, "center"),
                ("recebida", "Recebida em", 124, "w"),
                ("destinatario", "Destinatário", 180, "w"),
-               ("setor", "Setor", 110, "w"), ("remetente", "Remetente", 140, "w"),
-               ("retirada", "Retirada por", 150, "w")]
+               ("setor", "Bloco", 110, "w"), ("remetente", "Remetente", 170, "w"),
+               ("retirada", "Retirada por", 120, "w")]
     AGUARDANDO, RETIRADA = "Aguardando retirada", "Retirada"
 
     def acoes(self, rodape):

@@ -31,8 +31,8 @@ from .validacao import (MAXIMO_LOGIN, MAXIMO_NOME, MAXIMO_SENHA,
                         checar_tamanho, converter_data, nome_valido)
 
 PERFIS = {"admin": "Administrador", "porteiro": "Porteiro"}
-# Tema escolhido por cada usuário (menu da conta). "sistema" = seguir o
-# Windows. Os textos do menu ficam em estilo.PREFERENCIAS_TEMA.
+# Tema escolhido por cada usuário (página Aparência, 3.5). "sistema" =
+# seguir o Windows. Os nomes de cada um ficam em estilo.PREFERENCIAS_TEMA.
 TEMAS = ("claro", "escuro", "sistema")
 TEMA_PADRAO = "sistema"
 SENHA_MINIMA = 8

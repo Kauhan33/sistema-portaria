@@ -29,6 +29,15 @@ QUEM PODE RETIRAR (RN35): quem está na lista da placa e sai a pé ouve
 "Vai levar o carro BRA2E19 de Carla?" (na saída pelo CPF, pelo Movimento
 ou pela placa) e leva o carro sem senha; o Desfazer devolve os dois.
 
+ENTREGADOR (3.5): quase sempre ele só deixa a entrega na portaria e nem é
+cadastrado. Com o tipo "Entregador", o formulário vira o da encomenda
+(destinatário, remetente, bloco opcional e descrição) e o botão,
+"Registrar encomenda": ela vai para o livro de Encomendas, aguardando
+retirada. Só se ele precisar entrar na unidade o porteiro marca "Vai
+entrar na unidade" e o cadastro da pessoa volta (CPF, nome, telefone,
+motivo...). Quem chega pelo CPF, pela ficha ou por uma autorização já vem
+com essa marca: é alguém que vai entrar.
+
 Regras de horário (horarios.py): entrada fora do horário da categoria,
 retroativa antiga ou visita acima de 24 h é uma EXCEÇÃO e pede a
 autorização do administrador (tela_autorizacao.py). A situação de cada
@@ -52,8 +61,8 @@ import tkinter as tk
 
 from . import horarios, mensagens
 from .componentes import (Aviso, BotaoTk, Cabecalho, Campo, CampoTexto,
-                          Cartao, Chip, Contador, Placa, rotulo_campo,
-                          titulo_cartao)
+                          Cartao, Chip, Contador, Placa, checkbutton,
+                          rotulo_campo, titulo_cartao)
 from .dados import ENTRADA_RECUSADA
 from .estilo import COR, CORES_TIPO, FONTE, ICONE, MARGEM, px
 from .tela_autorizacao import autorizar_excecao
@@ -63,10 +72,11 @@ from .tela_veiculo import (A_PE, COM_CARRO, entrar_com_outro_carro,
                            vai_entrar_de_carro)
 from .validacao import (CAMPOS_VARIAVEIS, checar_desativacao, codigo_da_visita, cpf_valido,
                         formatar_cpf, formatar_placa, FORMATO,
-                        MAXIMO_ANFITRIAO, MAXIMO_EMPRESA,
+                        MAXIMO_ANFITRIAO, MAXIMO_DESCRICAO_ENCOMENDA,
+                        MAXIMO_EMPRESA, MAXIMO_LOCAL, MAXIMO_REMETENTE,
                         MAXIMO_MOTIVO_VISITA, MAXIMO_NOME, normalizar,
                         PLACA_OBRIGATORIA, placa_valida, so_digitos,
-                        usa_campo,
+                        usa_campo, validar_encomenda,
                         TIPOS_ACESSO, validar)
 from .veiculos import esta_lotado, regra_lotado
 from .tela_controle import ControleMixin, ESPACOS, FILTRO_TODOS, LISTAS, _px
@@ -74,6 +84,12 @@ from .tela_controle import ControleMixin, ESPACOS, FILTRO_TODOS, LISTAS, _px
 DICA_CPF = "Digite o CPF primeiro: quem já veio tem os dados preenchidos."
 SUCESSO_CADASTRO = "Registro cadastrado com sucesso!"   # texto do enunciado
 DICA_PLACA = "obrigatória" if PLACA_OBRIGATORIA else "opcional"
+ENTREGADOR = "Entregador"
+DICA_ENTREGA = ("Só a entrega: informe para quem é e quem mandou (ela vai "
+                "para Encomendas). Se ele precisar entrar, marque ao lado.")
+VAI_ENTRAR = "Vai entrar na unidade"
+# 3.5: o que o formulário mostra para o entregador que só deixa a entrega
+CAMPOS_DA_ENCOMENDA = ("destinatario", "bloco", "remetente", "descricao")
 ALTURA_CADASTRO = 660       # abaixo disso o Cadastro usa menos respiro
 # Posição (linha, coluna, colunas ocupadas) de cada campo do Cadastro, com o
 # rótulo na linha de cima. Dois blocos, na ordem em que o porteiro pergunta:
@@ -94,6 +110,11 @@ GRADE = {
     "saida": (6, 3, 1),
     "motivo": (8, 0, 2),
     "anfitriao": (8, 2, 2),
+    # 3.5: a encomenda do entregador que não vai entrar (no lugar da visita)
+    "destinatario": (6, 0, 2),
+    "bloco": (6, 2, 2),
+    "remetente": (8, 0, 2),
+    "descricao": (8, 2, 2),
 }
 COLUNAS_DO_FORMULARIO = 4
 LIMITE_ANFITRIAO_NA_FAIXA = 24     # o resto do nome vira reticências
@@ -147,6 +168,9 @@ class AbaCadastro(ControleMixin):
         self.lista = LISTAS[0]              # lista mostrada no Movimento
         self._dia_mostrado = None           # o "hoje" da última leitura
         self.ultimo_aviso = ""              # o último texto de avisar()
+        self._tipo_mostrado = ""            # o tipo da última arrumação
+        self._em_entrega = False            # formulário da encomenda?
+        self._situacao_anterior = None      # a faixa de antes dele
 
         self._montar_cabecalho()
         self._montar_alertas()
@@ -234,6 +258,25 @@ class AbaCadastro(ControleMixin):
                                     "opcional")
         self.saida = self._peca("saida", "Saída", self._campo_data(form),
                                 "se já saiu")
+        # 3.5: o entregador que só deixa a entrega (vai para Encomendas)
+        self.destinatario = self._peca("destinatario", "Destinatário *",
+                                       Campo(form, maximo=MAXIMO_NOME),
+                                       "pessoa ou setor")
+        self.bloco = self._peca("bloco", "Bloco ou setor",
+                                Campo(form, maximo=MAXIMO_LOCAL), "opcional")
+        self.remetente = self._peca("remetente", "Remetente *",
+                                    Campo(form, maximo=MAXIMO_REMETENTE),
+                                    "quem mandou ou a transportadora")
+        self.campo_descricao = CampoTexto(form, MAXIMO_DESCRICAO_ENCOMENDA)
+        self.descricao = self._peca("descricao", "Descrição",
+                                    self.campo_descricao, "opcional")
+        self.descricao.bind_enter(self.cadastrar)
+        Contador(self.pecas["descricao"][0], self.campo_descricao).pack(
+            side="right")
+        self.var_entra = tk.BooleanVar(self.aba, False)
+        self.lbl_entra, _ = rotulo_campo(form, "O entregador vai entrar?")
+        self.chk_entra = checkbutton(form, VAI_ENTRAR, self.var_entra,
+                                     self._mostrar_campos_do_tipo)
 
         # Faixa de situação da pessoa (neutra, nova, já veio, dentro,
         # desativada) e os botões do enunciado: Cadastrar, Limpar e Cancelar
@@ -262,19 +305,66 @@ class AbaCadastro(ControleMixin):
         self.var_cpf.trace_add("write", self._ao_digitar_cpf)
         self.var_placa.trace_add("write", self._ao_digitar_placa)
 
+    def so_entrega(self):
+        """3.5: entregador que só deixa a entrega (não vai entrar)."""
+        return self.tipo.get() == ENTREGADOR and not self.var_entra.get()
+
     def _mostrar_campos_do_tipo(self, *args):
         """Mostra só os campos que o tipo de acesso usa (RN48): empresa,
         motivo e quem procura. O que estava digitado fica guardado e volta
-        se o tipo voltar; sem tipo escolhido, nenhum deles aparece."""
+        se o tipo voltar; sem tipo escolhido, nenhum deles aparece.
+        Entregador (3.5): sem "Vai entrar na unidade", o formulário é o da
+        encomenda. Quem escolhe Entregador com o CPF ou o nome já digitado
+        está cadastrando alguém que vai entrar: a marca vem ligada."""
         tipo = self.tipo.get()
-        for chave in CAMPOS_VARIAVEIS:
-            rotulo, campo = self.pecas[chave]
-            if usa_campo(tipo, chave):
-                rotulo.grid()
-                campo.grid()
+        if args and tipo == ENTREGADOR and self._tipo_mostrado != ENTREGADOR:
+            self.var_entra.set(bool(so_digitos(self.var_cpf.get())
+                                    or self.nome.get().strip()))
+        self._tipo_mostrado = tipo
+        entrega = self.so_entrega()
+        for chave, (rotulo, campo) in self.pecas.items():
+            if chave == "tipo":
+                mostrar = True
+            elif chave in CAMPOS_DA_ENCOMENDA:
+                mostrar = entrega
+            elif chave in CAMPOS_VARIAVEIS:
+                mostrar = usa_campo(tipo, chave) and not entrega
             else:
-                rotulo.grid_remove()
-                campo.grid_remove()
+                mostrar = not entrega
+            for peca in (rotulo, campo):
+                if mostrar:
+                    peca.grid()
+                else:
+                    peca.grid_remove()
+        for peca in (self.lbl_entra, self.chk_entra):
+            if tipo == ENTREGADOR:
+                peca.grid()
+            else:
+                peca.grid_remove()
+        self._mostrar_modo_entrega(entrega)
+
+    def _mostrar_modo_entrega(self, entrega):
+        """Títulos, botão, ficha da pessoa e a faixa do formulário da
+        encomenda (e de volta ao da pessoa)."""
+        self.titulo_form.config(text="Entrega" if entrega else "Pessoa")
+        self.titulo_visita.config(text="Encomenda" if entrega else "Visita")
+        self.btn_cadastrar.definir_texto("Registrar encomenda" if entrega
+                                         else "Cadastrar")
+        if entrega and self.ficha.winfo_manager():
+            self.ficha.pack_forget()
+            self.divisor_ficha.pack_forget()
+        elif not entrega and not self.ficha.winfo_manager():
+            self.ficha.pack(side="right", fill="y", before=self.form)
+            self.divisor_ficha.pack(side="right", fill="y", padx=px(20),
+                                    before=self.form)
+        if entrega and not self._em_entrega:
+            self._situacao_anterior = (self.aviso_pessoa.tipo,
+                                       self.aviso_pessoa.lbl.cget("text"))
+            self.aviso_pessoa.mostrar("info", DICA_ENTREGA, icone=ICONE["pacote"])
+        elif not entrega and self._em_entrega:
+            tipo, texto = self._situacao_anterior or ("neutro", DICA_CPF)
+            self._situacao(tipo, texto or DICA_CPF)
+        self._em_entrega = entrega
 
     def _peca(self, chave, texto, campo, apoio=""):
         """Rótulo + campo do formulário (posicionados depois, pela GRADE)."""
@@ -306,7 +396,8 @@ class AbaCadastro(ControleMixin):
         for chave, (rotulo, campo) in self.pecas.items():
             linha, coluna, juntas = GRADE[chave]
             # quem manda na largura é a grade (colunas iguais), não o texto
-            caixa = campo.texto if chave == "motivo" else campo.entrada
+            caixa = (campo.texto if isinstance(campo, CampoTexto)
+                     else campo.entrada)
             caixa.config(width=1)
             rotulo.grid(row=linha, column=coluna, columnspan=juntas, sticky="ew",
                         pady=(0, px(4)),
@@ -316,6 +407,13 @@ class AbaCadastro(ControleMixin):
                        padx=(0, px(12) if coluna + juntas < n else 0))
         for chave in GRADE:                 # o Tab segue a ordem da tela
             self.pecas[chave][1].lift()
+        # "O entregador vai entrar?" fica no lugar da Empresa (que ele não
+        # tem) e o Tab passa por ela logo depois do tipo
+        self.lbl_entra.grid(row=3, column=2, columnspan=2, sticky="ew",
+                            pady=(0, px(4)))
+        self.chk_entra.grid(row=4, column=2, columnspan=2, sticky="w",
+                            pady=(0, px(8)))
+        self.chk_entra.lift(self.pecas["tipo"][1])
         self.titulo_form.pack(side="left")
         self.aviso_pessoa.grid(in_=self.form, row=2, column=0,
                                columnspan=COLUNAS_DO_FORMULARIO, sticky="ew",
@@ -420,6 +518,9 @@ class AbaCadastro(ControleMixin):
     def cadastrar(self, event=None):
         if event is not None and not self._esta_visivel():
             return  # Enter só registra na página Cadastro
+        if self.so_entrega():
+            self.registrar_encomenda()
+            return
         self.acompanhar_relogio()      # Entrada intocada = o agora exato
         tipo = self.tipo.get()
         # só o que o tipo usa (os campos escondidos não vão para o banco)
@@ -438,6 +539,32 @@ class AbaCadastro(ControleMixin):
             # enunciado: mensagem de confirmação depois de salvar, na tela
             # em que a pessoa está (com o código de identificação)
             self._situacao("sucesso", texto)
+
+    def registrar_encomenda(self):
+        """3.5: o entregador que só deixa a entrega não é cadastrado: a
+        encomenda vai para o livro de Encomendas, aguardando retirada
+        (as mesmas regras e o mesmo banco da página Encomendas). Devolve o
+        número da encomenda ou None."""
+        campos = [" ".join(c.get().split()) for c in
+                  (self.destinatario, self.remetente, self.bloco,
+                   self.descricao)]
+        ok, msg = validar_encomenda(*campos)
+        if not ok:
+            mensagens.erro("Dados inválidos", msg)
+            return None
+        destinatario, remetente, bloco, descricao = campos
+        ok, numero = self.app.tentar(self.app.banco.registrar_encomenda,
+                                     destinatario, remetente, self.app.autor,
+                                     setor=bloco, descricao=descricao)
+        if not ok:
+            return None
+        texto = f"Encomenda nº {numero:03d} para {destinatario} registrada."
+        self.limpar()
+        self._situacao("sucesso", texto, "Ver encomendas",
+                       lambda: self.app.ir_para(self.app.aba_encomendas),
+                       icone=ICONE["pacote"])
+        self.avisar(texto)
+        return numero
 
     def cancelar(self):
         """Botão Cancelar do Cadastro: descarta o que foi digitado e vai ao
@@ -683,6 +810,10 @@ class AbaCadastro(ControleMixin):
 
     def limpar(self):
         self._auto = None
+        self.var_entra.set(False)
+        for campo in (self.destinatario, self.bloco, self.remetente,
+                      self.descricao):
+            campo.delete(0, tk.END)
         self.nome.delete(0, tk.END)
         self.var_cpf.set("")
         self.celular.delete(0, tk.END)
@@ -706,6 +837,7 @@ class AbaCadastro(ControleMixin):
         estado["busca"], estado["lista"] = self.busca.get(), self.lista
         estado["filtro"] = self.filtro.get()
         estado["comando"] = self.comando.ler()      # só na memória
+        estado["entra"] = self.var_entra.get()
         return estado
 
     def restaurar_formulario(self, estado):
@@ -713,7 +845,9 @@ class AbaCadastro(ControleMixin):
         completar, ele mostra de novo a situação da pessoa."""
         for chave, campo in self._campos_digitaveis().items():
             if chave != "cpf":
-                self._escrever(campo, estado[chave])
+                self._escrever(campo, estado.get(chave, ""))
+        self.var_entra.set(estado.get("entra", False))
+        self._mostrar_campos_do_tipo()
         if estado["entrada"] is not None:
             self._escrever(self.entrada, estado["entrada"])
         self._escrever(self.busca, estado["busca"])
@@ -725,7 +859,9 @@ class AbaCadastro(ControleMixin):
 
     def _campos_digitaveis(self):
         return {**self._campos_pessoa(), "cpf": self.var_cpf,
-                "saida": self.saida, "anfitriao": self.anfitriao}
+                "saida": self.saida, "anfitriao": self.anfitriao,
+                "destinatario": self.destinatario, "bloco": self.bloco,
+                "remetente": self.remetente, "descricao": self.descricao}
 
     def preencher_pessoa(self, pessoa):
         """Começa uma nova entrada para a pessoa (usado pela página Pessoas)."""
@@ -755,6 +891,8 @@ class AbaCadastro(ControleMixin):
 
     def _ao_digitar_cpf(self, *args):
         """Ao completar o CPF, busca a pessoa e preenche os campos vazios."""
+        if self.so_entrega():
+            return        # 3.5: o CPF está escondido (formulário da entrega)
         cpf = so_digitos(self.var_cpf.get())
         if self._auto and self._auto["cpf"] != cpf:
             self._desfazer_preenchimento()

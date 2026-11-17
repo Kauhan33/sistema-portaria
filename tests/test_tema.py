@@ -286,23 +286,26 @@ class TestTrocaDeTemaSemFechar(BaseTema):
         self.assertEqual(estilo.TEMA["atual"], "claro")
         self.assertEqual(self.app.corpo.cget("bg"), estilo.PALETAS["claro"]["fundo"])
 
-    def test_menu_da_conta_tem_o_tema(self):
+    def test_menu_da_conta_leva_a_aparencia(self):
+        """3.5: tema, letra e cores ficam na página Aparência; o menu da
+        conta tem um item só para ela (antes eram seis rádios)."""
         menu = self.app.menu_usuario
         rotulos = [menu.entrycget(i, "label") for i in range(menu.index("end") + 1)
                    if menu.type(i) != "separator"]
         self.assertEqual(rotulos, ["Trocar minha senha",
                                    "Gerar novos códigos de recuperação",
-                                   "Tema: Claro",
-                                   "Tema: Escuro", "Tema: Seguir o Windows",
-                                   "Letra: Normal", "Letra: Grande",
-                                   "Letra: Maior",
+                                   "Aparência (cores, tema e letra)",
                                    "Recado para o próximo turno", "Sair"])
-        escuro = next(i for i in range(menu.index("end") + 1)
-                      if menu.type(i) == "radiobutton"
-                      and menu.entrycget(i, "value") == "escuro")
-        menu.invoke(escuro)
+        menu.invoke(next(i for i in range(menu.index("end") + 1)
+                         if menu.type(i) != "separator" and menu.entrycget(
+                             i, "label") == "Aparência (cores, tema e letra)"))
+        self.assertEqual(self.app.abas.select(), str(self.app.aba_aparencia))
+        self.app.tela_aparencia.opcoes[("tema", "escuro")].invocar()
         self.assertEqual(estilo.TEMA["atual"], "escuro")
         self.assertEqual(self.app.var_tema.get(), "escuro")
+        self.assertEqual(self.app.abas.select(), str(self.app.aba_aparencia))
+        self.assertTrue(self.app.tela_aparencia.opcoes[("tema", "escuro")]
+                        .escolhida)
 
 
 class TestTemaPorUsuario(BaseTema):

@@ -415,7 +415,8 @@ class TestConfiguracoes(BaseHorarios):
 
     def test_so_admin_tem_a_pagina(self):
         textos = [i.cget("text") for i in self.app.itens_menu.values()]
-        self.assertEqual(textos[-2:], ["Usuários", "Configurações"])
+        self.assertEqual(textos[-3:], ["Usuários", "Configurações",
+                                       "Aparência"])          # 3.5
 
     def test_mostra_a_configuracao_em_vigor(self):
         aberto, abre, fecha = self.tela.dias[5]

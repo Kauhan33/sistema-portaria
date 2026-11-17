@@ -273,8 +273,9 @@ class Botao(tk.Canvas):
         """(fundo, hover, pressionado, texto, borda) no tema em uso (lidas na
         hora: uma tabela fixa ficaria com as cores do tema do import)."""
         return {
-            "primario": (COR["primario"], COR["primario_hover"],
-                         COR["primario_press"], COR["texto_invertido"], None),
+            # 3.5: na cor que o usuário escolheu (página Aparência)
+            "primario": (COR["botao"], COR["botao_hover"], COR["botao_press"],
+                         COR["botao_texto"], COR["botao_borda"] or None),
             "marca": (COR["marca"], COR["marca_escura"], COR["marca_press"],
                       COR["texto_sobre_marca"], None),
             "secundario": (COR["superficie"], COR["superficie_2"], COR["hover"],
@@ -385,7 +386,7 @@ class Botao(tk.Canvas):
                 cor, cor_texto = COR["hover"], COR["texto_3"]
             borda = COR["borda"] if borda else None
         if self.focado and self.ativo:
-            borda, esp = COR["foco"], px(2)
+            borda, esp = self._cor_do_foco(), px(2)
         if cor != self.fundo_pai or borda:
             ret_arredondado(self, 0, 0, w, h, px(RAIO_CONTROLE), cor,
                             self.fundo_pai, borda, esp)
@@ -402,11 +403,17 @@ class Botao(tk.Canvas):
                          font=FONTE["botao"], fill=cor_texto)
         if self.dica_tecla:
             x += self.fonte.measure(self.texto) + px(10)
-            sobre_primario = cor_texto == COR["texto_invertido"]
+            dica = COR["texto_3"]
+            if self.ativo and self.variante == "primario":
+                dica = COR["botao_dica"]
+            elif self.ativo and self.variante == "marca":
+                dica = COR["dica_invertida"]
             self.create_text(x, h / 2, text=self.dica_tecla, anchor="w",
-                             font=FONTE["dica"],
-                             fill=COR["dica_invertida"] if sobre_primario
-                             else COR["texto_3"])
+                             font=FONTE["dica"], fill=dica)
+
+    def _cor_do_foco(self):
+        """O anel de foco: azul; no botão principal azul, escuro (3.5)."""
+        return COR["botao_foco"] if self.variante == "primario" else COR["foco"]
 
 
 class BotaoTk(tk.Button):
@@ -469,7 +476,8 @@ class BotaoTk(tk.Button):
                 cor = COR["hover"]
             borda = COR["borda"] if borda else None
         if self.focado and self.ativo:
-            borda, esp = COR["foco"], px(2)
+            borda, esp = (COR["botao_foco"] if self.variante == "primario"
+                          else COR["foco"]), px(2)
         chave = (cor, borda, esp)
         if chave not in self._imagens:
             self._imagens[chave] = imagem_arredondada(
@@ -691,13 +699,16 @@ def _png_da_caixa(marcada):
 
 
 def imagens_da_caixa(widget):
-    """(desmarcada, marcada) do tema em uso, guardadas na janela raiz."""
+    """(desmarcada, marcada) do tema em uso, guardadas na janela raiz.
+    A chave tem a cor do destaque (3.5: os botões azuis deixam a caixa
+    azul) e o tamanho (a letra Grande e a Maior aumentam a caixa)."""
     cache = _cache(widget)
-    if "caixa" not in cache:
-        cache["caixa"] = tuple(
+    chave = ("caixa", COR["primario"], px(18))
+    if chave not in cache:
+        cache[chave] = tuple(
             tk.PhotoImage(master=widget, data=_png_da_caixa(m), format="png")
             for m in (False, True))
-    return cache["caixa"]
+    return cache[chave]
 
 
 def checkbutton(pai, texto, var, comando=None, fundo=None):
@@ -1289,6 +1300,11 @@ class ItemMenu(tk.Canvas):
 
     def definir_contador(self, contador):
         self._mudar("contador", contador)
+
+    def compactar(self, compacto=True):
+        """Tela baixa (3.5): item mais baixo, para as doze páginas caberem
+        no notebook (1366x768 a 125%)."""
+        self.config(height=px(30 if compacto else 35))
 
     def _desenhar(self):
         self.delete("all")

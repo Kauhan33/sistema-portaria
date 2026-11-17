@@ -86,12 +86,13 @@ from .componentes import Avatar, BotaoIcone, ItemMenu, marca_cancela
 from .tela_livros import (AbaAutorizacoes, AbaChaves, AbaEncomendas,
                           AbaFuncionarios)
 from .tela_ocorrencias import AbaOcorrencias
-from .estilo import (COR, FONTE, ICONE, LARGURA_LATERAL, PREFERENCIAS_TEMA,
-                     aplicar_tema, carregar_fontes, pintar_barra_de_titulo, px)
+from .estilo import (COR, FONTE, ICONE, LARGURA_LATERAL, aplicar_tema,
+                     carregar_fontes, pintar_barra_de_titulo, px)
 from .tela_cadastro import AbaCadastro
 from .tela_configuracoes import AbaConfiguracoes
 from .tela_dashboard import AbaDashboard
 from .tela_login import TelaLogin
+from .tela_aparencia import AbaAparencia
 from .tela_pessoas import AbaPessoas
 from .tela_recuperacao import JanelaNovosCodigos
 from .tela_senha import JanelaSenha
@@ -104,6 +105,9 @@ TECLAS_DA_SESSAO = ("<Return>", "<KP_Enter>", "<F2>", "<Control-k>",
                     "<Control-K>", "<Control-l>", "<Control-L>",
                     "<Control-D>")
 ITEM_RECADO = "Recado para o próximo turno"
+ITEM_APARENCIA = "Aparência (cores, tema e letra)"
+# abaixo desta altura (px lógicos) a barra lateral usa os itens baixos
+ALTURA_MENU_NORMAL = 600
 ITEM_CODIGOS = "Gerar novos códigos de recuperação"
 GUARITA_TRAVADA = "Guarita travada"
 GUARITA_DESTRAVADA = "Guarita destravada"
@@ -140,6 +144,7 @@ PAGINAS_SOB_DEMANDA = {
     "tela_dashboard": ("aba_dash", AbaDashboard),
     "tela_usuarios": ("aba_usuarios", AbaUsuarios),
     "tela_configuracoes": ("aba_configuracoes", AbaConfiguracoes),
+    "tela_aparencia": ("aba_aparencia", AbaAparencia),
 }
 
 
@@ -374,7 +379,11 @@ class AppPortaria:
         self._sessao += 1
         self.tentar(self.banco.registrar_evento, usuario["login"],
                     "Entrou no sistema")
-        self._usar_tema(usuario.get("tema", TEMA_PADRAO))
+        ok, aparencia = self.tentar(self.banco.aparencia_do_usuario,
+                                    usuario["login"])
+        usuario["lateral"], usuario["botoes"] = (
+            aparencia if ok else (estilo.LATERAL_PADRAO, estilo.BOTOES_PADRAO))
+        self._usar_tema(usuario.get("tema", TEMA_PADRAO), self._aparencia())
         ok, letra = self.tentar(self.banco.letra_do_usuario, usuario["login"])
         usuario["letra"] = letra if ok else "normal"
         self._usar_letra(usuario["letra"])
@@ -441,7 +450,7 @@ class AppPortaria:
     # Tema: claro, escuro ou seguir o Windows (cada usuário escolhe o seu)
     # --------------------------------------------------------------
     def trocar_tema(self, preferencia):
-        """Menu da conta → Tema. Grava a escolha no usuário (vale nos
+        """Página Aparência → Tema. Grava a escolha no usuário (vale nos
         próximos logins) e, se as cores mudaram, remonta a janela agora."""
         ok, _ = self.tentar(self.banco.definir_tema, preferencia, self.autor)
         if not ok:
@@ -449,12 +458,67 @@ class AppPortaria:
                 self.var_tema.set(self.usuario.get("tema", TEMA_PADRAO))
             return False
         self.usuario["tema"] = preferencia
-        if self._usar_tema(preferencia):
+        if self._usar_tema(preferencia, self._aparencia()):
             self._remontar()
+        self._marcar_aparencia()
+        return True
+
+    def _marcar_aparencia(self):
+        """A página Aparência aberta marca a escolha nova (3.5: quando as
+        cores não mudam, a janela não é remontada)."""
+        if "tela_aparencia" in self.__dict__:
+            self.tela_aparencia.atualizar()
+
+    # --------------------------------------------------------------
+    # Aparência (3.5): cor da barra lateral e dos botões principais
+    # --------------------------------------------------------------
+    def _aparencia(self):
+        """(cor da lateral, cor dos botões) de quem está logado."""
+        usuario = self.usuario or {}
+        return usuario.get("lateral"), usuario.get("botoes")
+
+    def trocar_aparencia(self, lateral=None, botoes=None):
+        """Página Aparência. Grava no usuário (vale nos próximos logins) e
+        remonta a janela com as cores novas; o que não veio continua."""
+        atual_lateral, atual_botoes = self._aparencia()
+        lateral = lateral or atual_lateral or estilo.LATERAL_PADRAO
+        botoes = botoes or atual_botoes or estilo.BOTOES_PADRAO
+        ok, _ = self.tentar(self.banco.definir_aparencia, lateral, botoes,
+                            self.autor)
+        if not ok:
+            return False
+        self.usuario.update(lateral=lateral, botoes=botoes)
+        if self._usar_tema(self.usuario.get("tema", TEMA_PADRAO),
+                           self._aparencia()):
+            self._remontar()
+        self._marcar_aparencia()
+        return True
+
+    def restaurar_aparencia(self):
+        """"Restaurar o padrão": barra grafite, botões vermelhos, tema do
+        Windows e letra normal, numa remontagem só."""
+        padrao = (estilo.LATERAL_PADRAO, estilo.BOTOES_PADRAO)
+        for metodo, argumentos in (
+                (self.banco.definir_aparencia, padrao),
+                (self.banco.definir_tema, (TEMA_PADRAO,)),
+                (self.banco.definir_letra, ("normal",))):
+            ok, _ = self.tentar(metodo, *argumentos, self.autor)
+            if not ok:
+                return False
+        self.usuario.update(lateral=padrao[0], botoes=padrao[1],
+                            tema=TEMA_PADRAO, letra="normal")
+        self.var_tema.set(TEMA_PADRAO)
+        self.var_letra.set("normal")
+        mudou = self._usar_letra("normal")
+        mudou = self._usar_tema(TEMA_PADRAO, padrao) or mudou
+        if mudou:
+            self._remontar()
+        self._marcar_aparencia()
+        self.avisar("Aparência de volta ao padrão.")
         return True
 
     def trocar_letra(self, letra):
-        """Menu da conta → Letra. Grava no usuário e remonta a janela no
+        """Página Aparência → Letra. Grava no usuário e remonta a janela no
         tamanho novo (a sessão, a página e o formulário continuam)."""
         ok, _ = self.tentar(self.banco.definir_letra, letra, self.autor)
         if not ok:
@@ -464,6 +528,7 @@ class AppPortaria:
         self.usuario["letra"] = letra
         if self._usar_letra(letra):
             self._remontar()
+        self._marcar_aparencia()
         return True
 
     def _usar_letra(self, letra):
@@ -477,10 +542,13 @@ class AppPortaria:
         self._montar_lateral()
         return True
 
-    def _usar_tema(self, preferencia):
-        """Põe em uso o tema da preferência; se as cores mudaram, refaz a
-        barra lateral (ainda escondida) e devolve True."""
-        if not estilo.usar_tema(estilo.resolver_tema(preferencia)):
+    def _usar_tema(self, preferencia, aparencia=(None, None)):
+        """Põe em uso o tema da preferência e a aparência (cor da lateral e
+        dos botões; None = a padrão, como no login); se as cores mudaram,
+        refaz a barra lateral (ainda escondida) e devolve True."""
+        mudou = estilo.usar_aparencia(*aparencia)
+        mudou = estilo.usar_tema(estilo.resolver_tema(preferencia)) or mudou
+        if not mudou:
             return False
         self._pintar_janela()
         self.lateral.destroy()
@@ -628,9 +696,13 @@ class AppPortaria:
         fundo = COR["lateral"]
         self.lateral = tk.Frame(self.janela, bg=fundo, width=px(LARGURA_LATERAL))
         self.lateral.pack_propagate(False)
+        if COR["lateral_contorno"]:        # a barra branca (3.5) tem um fio
+            tk.Frame(self.lateral, bg=COR["lateral_contorno"], width=1).pack(
+                side="right", fill="y")
         marca = tk.Frame(self.lateral, bg=fundo)
         marca.pack(fill="x", padx=px(16), pady=(px(16), px(14)))
-        marca_cancela(marca, fundo).pack(side="left")
+        marca_cancela(marca, fundo, cor=COR["lateral_simbolo"],
+                      traco=COR["lateral_simbolo_traco"]).pack(side="left")
         textos = tk.Frame(marca, bg=fundo)
         textos.pack(side="left", padx=(px(12), 0))
         tk.Label(textos, text="Portaria", font=FONTE["marca"], bg=fundo,
@@ -640,6 +712,8 @@ class AppPortaria:
 
         self.menu = tk.Frame(self.lateral, bg=fundo)
         self.menu.pack(fill="x", padx=px(10))
+        self._menu_compacto = False
+        self.lateral.bind("<Configure>", self._ajustar_menu_a_altura)
 
         # Rodapé: quem está logado, menu do usuário e sair
         self.sessao = tk.Frame(self.lateral, bg=fundo)
@@ -691,21 +765,12 @@ class AppPortaria:
         self.menu_usuario.add_command(label="Trocar minha senha",
                                       command=self.trocar_senha)
         self._com_item_codigos = False      # só o administrador tem
-        # o tema fica à vista (sem submenu): um clique troca; a seta de
-        # submenu do Windows sairia preta no tema escuro
-        self.menu_usuario.add_separator()
+        # 3.5: tema, letra e cores ficam juntos na página Aparência (o menu
+        # tinha seis itens só de tema e letra)
         self.var_tema = tk.StringVar(self.janela)
-        for preferencia, texto in PREFERENCIAS_TEMA.items():
-            self.menu_usuario.add_radiobutton(
-                label=f"Tema: {texto}", value=preferencia,
-                variable=self.var_tema,
-                command=lambda p=preferencia: self.trocar_tema(p))
-        self.menu_usuario.add_separator()
         self.var_letra = tk.StringVar(self.janela)
-        for letra, texto in estilo.NOMES_DA_LETRA.items():
-            self.menu_usuario.add_radiobutton(
-                label=f"Letra: {texto}", value=letra, variable=self.var_letra,
-                command=lambda t=letra: self.trocar_letra(t))
+        self.menu_usuario.add_command(label=ITEM_APARENCIA,
+                                      command=self.abrir_aparencia)
         self.menu_usuario.add_separator()
         self.menu_usuario.add_command(label=ITEM_RECADO,
                                       command=self.deixar_recado)
@@ -740,9 +805,33 @@ class AppPortaria:
     def _divisoria_do_menu(self):
         """Fio fino entre os grupos do menu: o dia a dia da portaria, os
         livros (funcionários, autorizações, encomendas, chaves e
-        ocorrências) e a gestão (Painel, Usuários e Configurações)."""
-        tk.Frame(self.menu, bg=COR["lateral_borda"], height=1).pack(
-            fill="x", padx=px(12), pady=px(5))
+        ocorrências) e a gestão (Painel, Usuários, Configurações e
+        Aparência)."""
+        fio = tk.Frame(self.menu, bg=COR["lateral_borda"], height=1)
+        fio.pack(fill="x", padx=px(12), pady=px(3 if self._menu_compacto else 5))
+        fio.divisoria = True
+
+    def _ajustar_menu_a_altura(self, event=None):
+        """3.5: em tela baixa (notebook) os itens do menu ficam mais baixos,
+        para as doze páginas do administrador caberem acima de quem está
+        logado."""
+        compacto = self.lateral.winfo_height() < px(ALTURA_MENU_NORMAL)
+        if compacto == self._menu_compacto:
+            return
+        self._menu_compacto = compacto
+        self._compactar_menu()
+
+    def _compactar_menu(self):
+        for filho in self.menu.winfo_children():
+            if getattr(filho, "divisoria", False):
+                filho.pack_configure(pady=px(3 if self._menu_compacto else 5))
+            elif hasattr(filho, "compactar"):
+                filho.compactar(self._menu_compacto)
+
+    def abrir_aparencia(self):
+        """Menu da conta → Aparência (a mesma página do menu lateral)."""
+        self.ir_para(self.aba_aparencia)
+        return self.tela_aparencia
 
     def deixar_recado(self):
         """Menu da conta → "Recado para o próximo turno" (3.4: à mão na
@@ -756,6 +845,8 @@ class AppPortaria:
         item = ItemMenu(self.menu, titulo, ICONE[icone],
                         lambda: self.ir_para(aba))
         item.pack(fill="x")
+        if self._menu_compacto:
+            item.compactar()
         self.itens_menu[str(aba)] = item
         return aba
 
@@ -784,6 +875,9 @@ class AppPortaria:
         if pode_gerenciar_usuarios(self.usuario):
             self.aba_usuarios = self._nova_pagina("Usuários", "escudo")
             self.aba_configuracoes = self._nova_pagina("Configurações", "config")
+        # 3.5: cada usuário (o porteiro também) escolhe as cores, o tema e a
+        # letra
+        self.aba_aparencia = self._nova_pagina("Aparência", "aparencia")
         for nome in PAGINAS_SOB_DEMANDA:       # as da sessão anterior saem
             self.__dict__.pop(nome, None)
         # o Cadastro é a página inicial: montado já

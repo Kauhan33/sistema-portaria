@@ -87,7 +87,7 @@ from . import horarios, senhas, validacao, veiculos
 from .base_dados import (FORMATO_ISO, FORMATO_ISO_SEGUNDOS,  # noqa: F401
                          ErroDados, de_iso, para_iso)
 from .dados_modulos import (ModulosMixin, hash_do_evento, passo_v14,
-                            passo_v15)
+                            passo_v15, passo_v16)
 from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
                        conferir_autorizador, pode_editar, pode_excluir_pessoa,
                        validar_edicao_usuario)
@@ -131,7 +131,10 @@ from .validacao import (FORMATO, MAXIMO_BUSCA, MAXIMO_CELULAR, MAXIMO_CPF,
 #     turno, crachá e quem a visita procura, dados do funcionário, o elo
 #     (hash) de cada evento do histórico e o tamanho da letra do usuário
 #     (tudo em dados_modulos.py)
-VERSAO_ESQUEMA = 15
+# 15 (versão 3.4): o tipo de acesso da autorização de entrada
+# 16 (versão 3.5): a aparência de cada usuário (cor da barra lateral e dos
+#     botões principais)
+VERSAO_ESQUEMA = 16
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
 REGISTRO_MUDOU = ("Este registro foi alterado em outra estação enquanto a "
@@ -938,7 +941,7 @@ def _passo_v13(banco, con, versao):
 MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7), (8, _passo_v8),
              (9, _passo_v9), (10, _passo_v10), (11, _passo_v11),
              (12, _passo_v12), (13, _passo_v13), (14, passo_v14),
-             (15, passo_v15)]
+             (15, passo_v15), (16, passo_v16)]
 
 VERSAO_MAIS_NOVA = ("Este banco de dados foi criado por uma versão mais nova "
                     "do programa.\nAtualize o programa para abrir este banco "
@@ -2842,7 +2845,44 @@ class Banco(ModulosMixin):
                                  "WHERE pessoa_id = ? "
                                  "ORDER BY entrada DESC, id DESC LIMIT ?",
                                  (id_pessoa, int(limite))).fetchall()
-        return [_registro(linha) for linha in linhas]
+            visitas = [_registro(linha) for linha in linhas]
+            self._carros_das_visitas(con, visitas)
+        return visitas
+
+    @staticmethod
+    def _carros_das_visitas(con, visitas):
+        """3.5: com que carro cada visita saiu ("saiu_com": placa, CPF e
+        nome do dono, ou None = a pé) e se o carro com que ela entrou
+        ficou no estacionamento depois da saída ("carro_ficou"). Quem sai
+        com o carro de outra pessoa (RN35) mostra o dono. "com_estadia":
+        a visita abriu a estadia de um carro (as visitas com placa de antes
+        da v8, e as da demonstração, não têm: o carro saiu com a pessoa)."""
+        ids = [v["id"] for v in visitas]
+        saiu, ficou, com_estadia = {}, set(), set()
+        for inicio in range(0, len(ids), 500):
+            lote = ids[inicio:inicio + 500]
+            marcas = ", ".join("?" * len(lote))
+            for registro, placa, cpf, nome in con.execute(
+                    "SELECT e.registro_saida_id, e.placa, e.cpf, "
+                    "COALESCE(p.nome, e.nome) FROM estadias_veiculo e "
+                    "LEFT JOIN pessoas p ON p.cpf = e.cpf "
+                    f"WHERE e.registro_saida_id IN ({marcas}) "
+                    "ORDER BY e.id", lote):
+                saiu.setdefault(registro, {"placa": placa, "cpf": cpf,
+                                           "nome": nome})
+            com_estadia.update(registro for registro, in con.execute(
+                "SELECT DISTINCT registro_id FROM estadias_veiculo "
+                f"WHERE registro_id IN ({marcas})", lote))
+            # o carro ficou: ainda está lá ou saiu depois da pessoa
+            ficou.update(registro for registro, in con.execute(
+                "SELECT e.registro_id FROM estadias_veiculo e "
+                "JOIN registros r ON r.id = e.registro_id "
+                f"WHERE e.registro_id IN ({marcas}) AND r.saida <> '' "
+                "AND (e.saida = '' OR e.saida > r.saida)", lote))
+        for v in visitas:
+            v["saiu_com"] = saiu.get(v["id"])
+            v["carro_ficou"] = v["id"] in ficou
+            v["com_estadia"] = v["id"] in com_estadia
 
     def buscar_pessoa(self, cpf):
         """Pessoa já cadastrada com esse CPF, ou None."""

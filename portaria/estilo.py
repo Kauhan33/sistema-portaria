@@ -14,7 +14,14 @@ este arquivo (e componentes.py, que monta as peças com estes valores).
 Dois temas, claro e escuro ("Guarita à noite"), com os mesmos nomes de
 token: usar_tema("escuro") troca o conteúdo de COR, ESTADO e CORES_TIPO
 e aplicar_tema(janela) refaz os estilos ttk. Cada usuário escolhe o seu
-(claro, escuro ou seguir o Windows) no menu da conta; ver interface.py.
+(claro, escuro ou seguir o Windows) na página Aparência; ver interface.py.
+
+Aparência (3.5): por cima do tema, cada usuário escolhe a cor da barra
+lateral (grafite, vermelho ou branco) e a dos botões principais (vermelho,
+azul ou branco). Cada escolha troca só alguns tokens (LATERAIS e BOTOES);
+usar_aparencia() põe em uso. O botão principal tem tokens próprios
+("botao", "botao_texto"...): o branco não pode mudar a caixa de seleção e o
+calendário, que continuam no "primario".
 
 Nitidez (DPI): com a escala do Windows em 125%, o programa precisa avisar
 que sabe lidar com a escala (ligar_nitidez), senão o Windows estica a
@@ -83,6 +90,9 @@ PALETAS = {
         "lateral_hover": "#212837",    # item com o mouse em cima
         "lateral_borda": "#2A3344",    # divisores dentro da barra
         "lateral_marca": "#FF4D5E",    # traço do item ativo (3:1 no grafite)
+        "lateral_simbolo": "#D9001B",  # quadrado do símbolo (a cancela)
+        "lateral_simbolo_traco": "#FFFFFF",
+        "lateral_contorno": "",        # fio à direita da barra ("" = sem)
         "avatar_fundo": "#3A4558",     # círculo das iniciais
         "avatar_texto": "#FFFFFF",
         "superficie": "#FFFFFF",       # cartões, campos, tabelas
@@ -143,6 +153,9 @@ PALETAS = {
         "lateral_hover": "#171C25",
         "lateral_borda": "#1E2530",
         "lateral_marca": "#FF4D5E",
+        "lateral_simbolo": "#E01A32",
+        "lateral_simbolo_traco": "#FFFFFF",
+        "lateral_contorno": "",
         "avatar_fundo": "#2D3644",
         "avatar_texto": "#FFFFFF",
         "superficie": "#1B2028",
@@ -212,6 +225,77 @@ TIPOS_POR_TEMA = {
                "Entregador": "#FF8A93", "Prestador de serviço": "#B6BFCC"},
 }
 
+# ----------------------------------------------------------------------
+# Aparência (3.5): cor da barra lateral e dos botões principais
+# ----------------------------------------------------------------------
+# (as chaves são as mesmas de dados_modulos.CORES_DA_LATERAL e
+# CORES_DOS_BOTOES, que o banco aceita; um teste confere)
+NOMES_DA_LATERAL = {"grafite": "Grafite", "vermelho": "Vermelho",
+                    "branco": "Branco"}
+NOMES_DOS_BOTOES = {"vermelho": "Vermelho", "azul": "Azul", "branco": "Branco"}
+LATERAL_PADRAO, BOTOES_PADRAO = "grafite", "vermelho"
+# o que cada cor da barra lateral troca (o grafite é a paleta do tema)
+LATERAIS = {
+    "claro": {
+        "grafite": {},
+        "vermelho": {
+            "lateral": "#B00017", "lateral_texto": "#FFE9EC",
+            "lateral_texto_2": "#FFC9D0", "lateral_destaque": "#FFFFFF",
+            "lateral_ativo": "#7A0010", "lateral_hover": "#930013",
+            "lateral_borda": "#C8334A", "lateral_marca": "#FFFFFF",
+            "avatar_fundo": "#7A0010", "avatar_texto": "#FFFFFF",
+            # o símbolo vermelho sumiria: fica branco, com a cancela vermelha
+            "lateral_simbolo": "#FFFFFF", "lateral_simbolo_traco": "#B00017"},
+        "branco": {
+            "lateral": "#FFFFFF", "lateral_texto": "#3B4556",
+            "lateral_texto_2": "#5B6578", "lateral_destaque": "#1B2330",
+            "lateral_ativo": "#FDECEE", "lateral_hover": "#F1F3F6",
+            "lateral_borda": "#E1E4EA", "lateral_marca": "#D9001B",
+            "avatar_fundo": "#E3E9F4", "avatar_texto": "#1B2330",
+            "lateral_contorno": "#E1E4EA"},
+    },
+    "escuro": {
+        "grafite": {},
+        "vermelho": {
+            "lateral": "#5A0A14", "lateral_texto": "#F6D9DD",
+            "lateral_texto_2": "#DDAEB5", "lateral_destaque": "#FFFFFF",
+            "lateral_ativo": "#7A1220", "lateral_hover": "#6A0D18",
+            "lateral_borda": "#7A1220", "lateral_marca": "#FFFFFF",
+            "avatar_fundo": "#7A1220", "avatar_texto": "#FFFFFF",
+            "lateral_simbolo": "#FFFFFF", "lateral_simbolo_traco": "#5A0A14"},
+        "branco": {
+            "lateral": "#E9EDF3", "lateral_texto": "#3B4556",
+            "lateral_texto_2": "#5B6578", "lateral_destaque": "#1B2330",
+            "lateral_ativo": "#D5DCE6", "lateral_hover": "#DDE2EA",
+            "lateral_borda": "#C5CBD5", "lateral_marca": "#C8001C",
+            "avatar_fundo": "#D5DCE6", "avatar_texto": "#1B2330"},
+    },
+}
+# o que cada cor dos botões troca. O azul vale para todo destaque (botão,
+# caixa marcada, dia escolhido no calendário); o branco, só para o botão
+# principal (contorno escuro no tema claro, para não sumir no cartão)
+BOTOES = {
+    "claro": {
+        "vermelho": {},
+        "azul": {"primario": "#1D4E9E", "primario_hover": "#173F80",
+                 "primario_press": "#12336A", "dica_invertida": "#F0F5FF",
+                 "botao_foco": "#1B2330"},
+        "branco": {"botao": "#FFFFFF", "botao_hover": "#EEF0F3",
+                   "botao_press": "#E1E5EB", "botao_texto": "#1B2330",
+                   "botao_borda": "#1B2330", "botao_dica": "#5B6578"},
+    },
+    "escuro": {
+        "vermelho": {},
+        "azul": {"primario": "#2F6BD0", "primario_hover": "#2860C0",
+                 "primario_press": "#2156AE", "dica_invertida": "#F0F5FF",
+                 "botao_foco": "#FFFFFF"},
+        "branco": {"botao": "#FFFFFF", "botao_hover": "#E9EDF3",
+                   "botao_press": "#DDE1E8", "botao_texto": "#1B2330",
+                   "botao_dica": "#475467"},
+    },
+}
+APARENCIA = {"lateral": LATERAL_PADRAO, "botoes": BOTOES_PADRAO}
+
 COR, ESTADO, CORES_TIPO = {}, {}, {}
 TEMA = {"atual": None}            # "claro" ou "escuro": o que está na tela
 
@@ -231,12 +315,44 @@ def usar_tema(nome):
     sozinhas: quem troca o tema remonta a janela (AppPortaria)."""
     if nome == TEMA["atual"]:
         return False
-    for destino, origem in ((COR, PALETAS), (ESTADO, ESTADOS),
-                            (CORES_TIPO, TIPOS_POR_TEMA)):
-        destino.clear()
-        destino.update(origem[nome])
     TEMA["atual"] = nome
+    _aplicar_cores()
     return True
+
+
+def usar_aparencia(lateral, botoes):
+    """3.5: a cor da barra lateral e a dos botões principais (por cima do
+    tema). Cor desconhecida vira a padrão. Devolve True se mudou; como no
+    tema, quem chama remonta a janela."""
+    lateral = lateral if lateral in NOMES_DA_LATERAL else LATERAL_PADRAO
+    botoes = botoes if botoes in NOMES_DOS_BOTOES else BOTOES_PADRAO
+    if (lateral, botoes) == (APARENCIA["lateral"], APARENCIA["botoes"]):
+        return False
+    APARENCIA.update(lateral=lateral, botoes=botoes)
+    if TEMA["atual"]:
+        _aplicar_cores()
+    return True
+
+
+def _aplicar_cores():
+    """Enche COR, ESTADO e CORES_TIPO: a paleta do tema, a cor da barra
+    lateral e a dos botões por cima, e os tokens do botão principal (que,
+    sem escolha, são os do "primario")."""
+    nome = TEMA["atual"]
+    cores = dict(PALETAS[nome])
+    cores.update(LATERAIS[nome][APARENCIA["lateral"]])
+    botoes = BOTOES[nome][APARENCIA["botoes"]]
+    cores.update({k: v for k, v in botoes.items() if not k.startswith("botao")})
+    cores.update(botao=cores["primario"], botao_hover=cores["primario_hover"],
+                 botao_press=cores["primario_press"],
+                 botao_texto=cores["texto_invertido"],
+                 botao_dica=cores["dica_invertida"], botao_borda="",
+                 botao_foco=cores["foco"])
+    cores.update({k: v for k, v in botoes.items() if k.startswith("botao")})
+    for destino, origem in ((COR, cores), (ESTADO, ESTADOS[nome]),
+                            (CORES_TIPO, TIPOS_POR_TEMA[nome])):
+        destino.clear()
+        destino.update(origem)
 
 
 def windows_usa_tema_escuro():
@@ -315,8 +431,9 @@ def pares_de_contraste():
          TEXTO_AA),
         ("lateral_marca / lateral_ativo (traço do item ativo)", c["lateral_marca"],
          c["lateral_ativo"], GRAFICO_AA),
-        ("lateral_texto / painel_login", c["lateral_texto"], c["painel_login"],
-         TEXTO_AA),
+        # o login é da estação: sempre com a barra lateral padrão
+        ("lateral_texto / painel_login",
+         PALETAS[TEMA["atual"]]["lateral_texto"], c["painel_login"], TEXTO_AA),
         ("texto_invertido / ligado (interruptor)", c["texto_invertido"],
          c["ligado"], GRAFICO_AA),
         ("texto / selecao", c["texto"], c["selecao"], TEXTO_AA),
@@ -335,7 +452,14 @@ def pares_de_contraste():
          c["primario_hover"], TEXTO_AA),
         ("texto_3 / hover (botão desativado)", c["texto_3"], c["hover"],
          TEXTO_AA),
+        # 3.5: o botão principal na cor que o usuário escolheu
+        ("botao_dica / botao", c["botao_dica"], c["botao"], TEXTO_AA),
+        ("lateral_simbolo_traco / lateral_simbolo (a cancela)",
+         c["lateral_simbolo_traco"], c["lateral_simbolo"], GRAFICO_AA),
     ]
+    for fundo in ("botao", "botao_hover", "botao_press"):
+        pares.append((f"botao_texto / {fundo}", c["botao_texto"], c[fundo],
+                      TEXTO_AA))
     for fundo in ("marca", "marca_escura", "marca_press", "painel_login"):
         pares.append((f"texto_sobre_marca / {fundo}", c["texto_sobre_marca"],
                       c[fundo], TEXTO_AA))
@@ -397,6 +521,7 @@ ICONE = {
     "autorizado": chr(0xE930), "pacote": chr(0xE7B8), "imprimir": chr(0xE749),
     # campo de senha (3.3): olho = mostrar; olho cortado = esconder
     "olho": chr(0xE890), "olho_cortado": chr(0xED1A),
+    "aparencia": chr(0xE790),          # página Aparência (3.5): cores
 }
 
 # ----------------------------------------------------------------------

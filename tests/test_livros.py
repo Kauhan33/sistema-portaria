@@ -461,11 +461,17 @@ class TestCamposPorTipoNoCadastro(BaseInterface):
                 ("Aluno", set()), ("Professor", set()),
                 ("Funcionário", set()),
                 ("Visitante", {"motivo", "anfitriao"}),
-                ("Entregador", {"motivo", "anfitriao"}),
                 ("Prestador de serviço", {"empresa", "motivo", "anfitriao"})):
             with self.subTest(tipo=tipo):
                 self.app.tipo.set(tipo)
                 self.assertEqual(self.visiveis(), esperado)
+        # 3.5: o entregador que vai entrar informa motivo e quem procura;
+        # o que só deixa a entrega, nenhum dos dois (é uma encomenda)
+        tela = self.app.tela_cadastro
+        self.app.tipo.set("Entregador")
+        self.assertEqual(self.visiveis(), set())
+        tela.chk_entra.invoke()
+        self.assertEqual(self.visiveis(), {"motivo", "anfitriao"})
         self.app.limpar()
         self.assertEqual(self.visiveis(), set())
 
@@ -1028,12 +1034,12 @@ class TestCodigoDaPessoa(BaseInterface):
 
 
 class TestMenuCabeNaTelaPequena(BaseInterface):
-    def test_o_menu_com_onze_paginas_cabe_em_536_px(self):
+    def test_o_menu_com_doze_paginas_cabe_em_536_px(self):
         self.janela.deiconify()
         self.janela.geometry("1093x536")
         self.janela.update()
         app = self.app
-        self.assertEqual(len(app.itens_menu), 11)
+        self.assertEqual(len(app.itens_menu), 12)       # 3.5: + Aparência
         base = self.janela.winfo_rooty() + 536
         for item in app.itens_menu.values():
             self.assertTrue(item.winfo_ismapped())
@@ -1043,4 +1049,19 @@ class TestMenuCabeNaTelaPequena(BaseInterface):
                              topo_do_rodape)
         self.assertLessEqual(app.sessao.winfo_rooty() + app.sessao.winfo_height(),
                              base)
+        # 3.5: na tela baixa os itens ficam mais baixos
+        self.assertTrue(app._menu_compacto)
+
+    def test_em_tela_alta_os_itens_voltam_ao_normal(self):
+        self.janela.deiconify()
+        for altura, compacto in ((600, False), (536, True), (760, False)):
+            with self.subTest(altura=altura):
+                self.janela.geometry(f"1093x{altura}")
+                self.janela.update()
+                app = self.app
+                self.assertEqual(app._menu_compacto, compacto)
+                ultimo = list(app.itens_menu.values())[-1]
+                self.assertEqual(ultimo.winfo_height(), 30 if compacto else 35)
+                self.assertLessEqual(ultimo.winfo_rooty() + ultimo.winfo_height(),
+                                     app.sessao.winfo_rooty())
 

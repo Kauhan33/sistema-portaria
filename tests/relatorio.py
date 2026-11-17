@@ -1478,7 +1478,7 @@ CASOS = [
           "test_modulos.TestMigracaoV14.test_migrar_duas_vezes_nao_estraga",
           "test_livros.TestDadosEPrivacidade.test_conferir_o_historico"]),
     caso("CT-131", ["RF46", "RNF01"], POSITIVO,
-         "Tamanho da letra, código da pessoa e menu com onze páginas",
+         "Tamanho da letra, código da pessoa e menu com doze páginas",
          "Escolher Letra: Maior no menu do usuário; sair e entrar com outro "
          "usuário; abrir a ficha de uma pessoa; usar a janela pequena.",
          "A letra aumenta em todas as páginas e é de cada usuário (a tela de "
@@ -1489,7 +1489,7 @@ CASOS = [
           "test_livros.TestTamanhoDaLetra.test_e_de_cada_usuario_e_o_login_fica_normal",
           "test_livros.TestTamanhoDaLetra.test_todas_as_paginas_abrem_com_a_letra_maior",
           "test_livros.TestCodigoDaPessoa.test_ficha_mostra_o_codigo_do_cadastro",
-          "test_livros.TestMenuCabeNaTelaPequena.test_o_menu_com_onze_paginas_cabe_em_536_px"]),
+          "test_livros.TestMenuCabeNaTelaPequena.test_o_menu_com_doze_paginas_cabe_em_536_px"]),
     caso("CT-132", ["RF34", "RNF02"], POSITIVO,
          "Olho no campo de senha",
          "No login, clicar no olho do canto direito do campo de senha; "
@@ -1538,6 +1538,163 @@ CASOS = [
           "test_livros.TestAutorizacoesNaTela.test_empresa_so_aparece_para_o_prestador",
           "test_livros.TestAutorizacoesNaTela.test_registrar_entrada_leva_ao_cadastro_com_os_dados",
           "test_modulos.TestMigracaoV15.test_banco_da_3_3_ganha_o_tipo_da_autorizacao"]),
+    # --- 3.5: Aparência, histórico com o carro e entregador -------------
+    caso("CT-136", ["RF46", "RNF07"], POSITIVO,
+         "Aparência: cor da barra lateral",
+         "Abrir Aparência (último item do menu, também no menu da conta) e "
+         "escolher a barra lateral Vermelho; depois Branco; depois Grafite "
+         "(também com Espaço/Enter no cartão).",
+         "A janela é remontada na hora e volta à página Aparência com a opção "
+         "marcada; a barra vermelha tem o símbolo branco com a cancela "
+         "vermelha; a branca tem o fio à direita; a escolha fica gravada no "
+         "usuário; o porteiro também tem a página.",
+         ["test_v35.TestPaginaAparencia.test_item_aparencia_e_o_ultimo_do_menu",
+          "test_v35.TestPaginaAparencia.test_menu_da_conta_sem_os_radios_de_tema_e_letra",
+          "test_v35.TestPaginaAparencia.test_quatro_grupos_com_as_opcoes_e_o_padrao_marcado",
+          "test_v35.TestPaginaAparencia.test_escolher_a_lateral_vermelha",
+          "test_v35.TestPaginaAparencia.test_lateral_branca_tem_o_fio_e_a_grafite_nao",
+          "test_v35.TestPaginaAparencia.test_espaco_e_enter_escolhem",
+          "test_v35.TestPaginaAparenciaDoPorteiro.test_porteiro_ve_a_pagina_e_escolhe_a_sua",
+          "test_v35.TestCoresDaAparencia.test_lateral_vermelha_tem_o_simbolo_branco",
+          "test_v35.TestCoresDaAparencia.test_lateral_branca_tem_o_fio_no_claro"]),
+    caso("CT-137", ["RF46", "RNF07"], POSITIVO,
+         "Aparência: cor dos botões principais",
+         "Escolher os botões Azul e depois Branco; abrir o Cadastro e as "
+         "outras páginas.",
+         "Azul: o botão principal e o \"primario\" (caixa marcada, calendário) "
+         "ficam azuis. Branco: só o botão principal fica branco, com contorno "
+         "escuro no tema claro e texto escuro; o resto continua vermelho.",
+         ["test_v35.TestPaginaAparencia.test_escolher_botoes_azuis",
+          "test_v35.TestPaginaAparencia.test_caixa_marcada_fica_azul_com_os_botoes_azuis",
+          "test_v35.TestPaginaAparencia.test_escolher_botoes_brancos",
+          "test_v35.TestCoresDaAparencia.test_azul_muda_o_primario_e_o_botao",
+          "test_v35.TestCoresDaAparencia.test_branco_muda_so_o_botao",
+          "test_v35.TestPaginaAparencia.test_todas_as_paginas_abrem_nas_cores_extremas"]),
+    caso("CT-138", ["RF46", "RN02"], POSITIVO,
+         "Aparência: de cada usuário, persistente e Restaurar o padrão",
+         "Escolher cores, tema e letra; sair e entrar; entrar com outro "
+         "usuário; travar e voltar; clicar em Restaurar o padrão; digitar "
+         "no Cadastro e trocar a cor; abrir um banco da 3.4 (v15).",
+         "A escolha volta no próximo login, o outro usuário fica com o "
+         "padrão e a tela de login volta às cores de sempre; Restaurar volta "
+         "grafite, vermelho, tema do Windows e letra normal numa remontagem "
+         "só; o formulário digitado continua; o banco v15 ganha as colunas "
+         "com o padrão (backup -de-v15-) sem perder nada.",
+         ["test_v35.TestPaginaAparencia.test_escolha_persiste_depois_de_sair_e_entrar",
+          "test_v35.TestPaginaAparencia.test_outro_usuario_nao_herda_a_escolha",
+          "test_v35.TestPaginaAparencia.test_trava_e_volta_com_as_cores_do_usuario",
+          "test_v35.TestPaginaAparencia.test_restaurar_o_padrao_numa_remontagem_so",
+          "test_v35.TestPaginaAparencia.test_tema_claro_com_o_windows_claro_fica_marcado",
+          "test_v35.TestPaginaAparencia.test_restaurar_com_o_tema_claro_escolhido_marca_do_windows",
+          "test_v35.TestPaginaAparencia.test_formulario_do_cadastro_sobrevive_a_troca_de_cor",
+          "test_v35.TestAparenciaNoBanco.test_cada_usuario_guarda_a_sua",
+          "test_v35.TestMigracaoV16.test_banco_da_3_4_ganha_as_colunas_com_o_padrao",
+          "test_v35.TestMigracaoV16.test_faz_o_backup_de_v15"]),
+    caso("CT-139", ["RF46", "RN02"], NEGATIVO,
+         "Aparência: cor desconhecida e usuário sem permissão",
+         "Gravar direto no banco a cor \"rosa\", \"Vermelho\" (maiúscula), "
+         "vazia ou um texto de SQL; sem usuário, com usuário inexistente, "
+         "inativo ou com a troca de senha pendente; valor estranho gravado "
+         "por fora; a gravação falha com a janela aberta.",
+         "Tudo recusado (ErroDados) e nada muda; o valor estranho lido do "
+         "banco vira o padrão; se a gravação falha, a mensagem aparece e as "
+         "cores da tela não mudam.",
+         ["test_v35.TestAparenciaNoBanco.test_cor_desconhecida_e_recusada",
+          "test_v35.TestAparenciaNoBanco.test_sem_sessao_inexistente_ou_inativo_e_recusado",
+          "test_v35.TestAparenciaNoBanco.test_quem_ainda_vai_trocar_a_senha_nao_muda",
+          "test_v35.TestAparenciaNoBanco.test_valor_estranho_gravado_por_fora_vira_o_padrao",
+          "test_v35.TestCoresDaAparencia.test_usar_aparencia_diz_se_mudou_e_ignora_cor_estranha",
+          "test_v35.TestPaginaAparencia.test_erro_ao_gravar_nao_troca_as_cores"]),
+    caso("CT-140", ["RNF07"], POSITIVO,
+         "Aparência: contraste WCAG em todas as combinações",
+         "Conferir os pares de texto/fundo e de gráfico/fundo nos 2 temas x "
+         "3 barras laterais x 3 botões (18 combinações).",
+         "Todo texto com 4,5:1 e todo gráfico (botão sobre o cartão, símbolo "
+         "sobre a barra, anel de foco) com 3:1; as chaves de cor batem com "
+         "as que o banco aceita.",
+         ["test_v35.TestCoresDaAparencia.test_contraste_wcag_em_todas_as_combinacoes",
+          "test_v35.TestCoresDaAparencia.test_botao_simbolo_e_foco_se_destacam_do_fundo",
+          "test_v35.TestCoresDaAparencia.test_nomes_batem_com_o_que_o_banco_aceita",
+          "test_v35.TestCoresDaAparencia.test_as_mesmas_chaves_de_cor_em_toda_combinacao"]),
+    caso("CT-141", ["RF09", "RN35"], POSITIVO,
+         "Histórico da pessoa: de carro ou a pé",
+         "Abrir a ficha (seção Visitas) de quem entrou de carro e saiu de "
+         "carro; de quem saiu a pé deixando o carro; de quem saiu a pé e "
+         "voltou depois para buscar o carro; de quem está dentro; e de uma "
+         "visita antiga, de antes do controle do estacionamento.",
+         "Cada visita diz como entrou e como saiu: \"Entrou de carro "
+         "(BRA2E19) · saiu de carro\", \"... · saiu a pé, o carro ficou no "
+         "estacionamento\", \"Entrou a pé · saiu com o carro BRA2E19\", "
+         "\"Entrou a pé · saiu a pé\"; a visita aberta só diz como entrou; a "
+         "antiga, sem estadia, mostra \"saiu de carro\".",
+         ["test_v35.TestDescreverVeiculo.test_os_textos",
+          "test_v35.TestDescreverVeiculo.test_legado_sem_estadia_saiu_de_carro",
+          "test_v35.TestComoEntrouESaiuNoBanco.test_dono_sai_de_carro",
+          "test_v35.TestComoEntrouESaiuNoBanco.test_anonimizada_nao_mostra_nome_nem_placa",
+          "test_v35.TestComoEntrouESaiuNoBanco.test_dono_sai_a_pe_e_o_carro_fica",
+          "test_v35.TestComoEntrouESaiuNoBanco.test_dono_sai_a_pe_e_volta_para_buscar_o_carro",
+          "test_v35.TestComoEntrouESaiuNoBanco.test_visitas_abertas",
+          "test_v35.TestComoEntrouESaiuNoBanco.test_visita_antiga_sem_estadia_saiu_de_carro",
+          "test_v35.TestComoEntrouESaiuNoBanco.test_desfazer_a_saida_apaga_o_carro_da_saida",
+          "test_v35.TestHistoricoNaFicha.test_ficha_com_a_visita_aberta_so_diz_como_entrou"]),
+    caso("CT-142", ["RF09", "RN35", "RF23"], POSITIVO,
+         "Histórico da pessoa: saiu com o carro de outra pessoa",
+         "Bruno, da lista de quem pode retirar o BRA2E19 de Carla, sai pelo "
+         "CPF e responde que vai levar o carro; abrir a ficha dele e a dela.",
+         "Na ficha do Bruno: \"Entrou a pé · saiu com o carro BRA2E19, de "
+         "Carla Nogueira\"; na da Carla: \"Entrou de carro (BRA2E19) · saiu a "
+         "pé, o carro ficou no estacionamento\".",
+         ["test_v35.TestHistoricoNaFicha.test_ficha_mostra_quem_levou_o_carro_de_quem",
+          "test_v35.TestComoEntrouESaiuNoBanco.test_autorizado_leva_o_carro_de_outra_pessoa",
+          "test_v35.TestComoEntrouESaiuNoBanco.test_nome_do_dono_e_o_do_cadastro_atual"]),
+    caso("CT-143", ["RF40", "RN52", "RN48"], POSITIVO,
+         "Entregador que só deixa a entrega",
+         "No Cadastro, tipo Entregador sem marcar \"Vai entrar na unidade\"; "
+         "preencher destinatário Helena Souza, bloco B, remetente Correios e "
+         "a descrição; clicar em Registrar encomenda (ou Enter).",
+         "O formulário mostra só destinatário, bloco, remetente e descrição "
+         "(a ficha da direita some e o botão vira \"Registrar encomenda\"); "
+         "a encomenda vai para Encomendas aguardando retirada, nenhuma visita "
+         "é criada, o formulário é limpo e a faixa mostra \"Encomenda nº 001 "
+         "para Helena Souza registrada.\" com o link Ver encomendas; o "
+         "rascunho sobrevive à trava da guarita e à troca de cor.",
+         ["test_v35.TestEntregadorSoDeixaAEntrega.test_formulario_vira_o_da_encomenda",
+          "test_v35.TestRascunhoDaEncomenda.test_faixa_da_entrega_volta_depois_da_remontagem",
+          "test_v35.TestEntregadorSoDeixaAEntrega.test_campos_da_pessoa_somem_de_verdade",
+          "test_v35.TestEntregadorSoDeixaAEntrega.test_registrar_encomenda_vai_para_encomendas_sem_visita",
+          "test_v35.TestEntregadorSoDeixaAEntrega.test_confirmacao_limpa_e_leva_a_encomendas",
+          "test_v35.TestEntregadorSoDeixaAEntrega.test_enter_registra_a_encomenda",
+          "test_v35.TestEntregadorSoDeixaAEntrega.test_enter_na_descricao_registra_uma_vez_so",
+          "test_v35.TestRascunhoDaEncomenda.test_travar_e_voltar_mantem_o_rascunho",
+          "test_v35.TestRascunhoDaEncomenda.test_rascunho_sobrevive_a_troca_de_cor",
+          "test_v35.TestEncomendaDoPorteiro.test_porteiro_registra_e_a_pagina_mostra"]),
+    caso("CT-144", ["RF40", "RN52"], NEGATIVO,
+         "Entregador: encomenda incompleta ou grande demais",
+         "Registrar a encomenda sem destinatário, sem remetente ou só com "
+         "espaços; colar textos maiores que o campo; CPF na descrição.",
+         "Recusa com \"Dados inválidos\" e a mensagem do campo, sem apagar o "
+         "que foi digitado e sem gravar nada; o texto colado é cortado no "
+         "máximo do campo; o CPF da descrição é gravado mascarado.",
+         ["test_v35.TestEntregadorSoDeixaAEntrega.test_destinatario_e_remetente_obrigatorios",
+          "test_v35.TestEntregadorSoDeixaAEntrega.test_tamanhos_e_espacos",
+          "test_v35.TestEntregadorSoDeixaAEntrega.test_digitar_alem_do_maximo_nao_entra",
+          "test_v35.TestEntregadorSoDeixaAEntrega.test_cpf_na_descricao_vai_mascarado"]),
+    caso("CT-145", ["RF01", "RN48", "RF39"], POSITIVO,
+         "Entregador que vai entrar na unidade",
+         "Marcar \"Vai entrar na unidade\"; escolher Entregador com o CPF ou o "
+         "nome já digitado; digitar o CPF de quem é cadastrado como "
+         "Entregador; registrar a entrada por uma autorização de entregador "
+         "ou pela ficha da página Pessoas.",
+         "O cadastro normal da pessoa volta (CPF, nome, telefone, motivo e "
+         "quem procura) e a entrada vira uma visita do tipo Entregador, sem "
+         "encomenda; em todos esses caminhos a marca já vem ligada.",
+         ["test_v35.TestEntregadorQueVaiEntrar.test_marcar_vai_entrar_volta_o_cadastro_da_pessoa",
+          "test_v35.TestEntregadorQueVaiEntrar.test_entregador_que_entra_e_cadastrado_como_visita",
+          "test_v35.TestEntregadorQueVaiEntrar.test_com_cpf_ou_nome_ja_digitado_a_marca_vem_ligada",
+          "test_v35.TestEntregadorQueVaiEntrar.test_cpf_de_quem_e_cadastrado_como_entregador",
+          "test_v35.TestEntregadorQueVaiEntrar.test_autorizacao_de_entregador_vem_para_entrar",
+          "test_v35.TestEntregadorQueVaiEntrar.test_ficha_da_pessoa_entregador_vem_para_entrar",
+          "test_v35.TestRascunhoDaEncomenda.test_travar_mantem_o_vai_entrar"]),
     caso_da_linguagem(
         "CT-108", "Semântico", ["RN46", "RN48"], NEGATIVO,
         "Empresa e motivo: as mesmas regras do formulário",

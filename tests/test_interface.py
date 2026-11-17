@@ -1015,7 +1015,7 @@ class TestSessao(BaseInterface):
         self.assertEqual(textos, ["Cadastro", "Controle de acesso", "Pessoas", "Funcionários",
                                   "Autorizações",
                                   "Encomendas", "Chaves", "Ocorrências",
-                                  "Painel"])               # porteiro: sem Usuários
+                                  "Painel", "Aparência"])  # porteiro: sem Usuários
         self.assertTrue(self.app.itens_menu[str(self.app.aba_cad)].ativo)
 
     def test_ir_para_acende_o_item_do_menu(self):
@@ -2072,7 +2072,7 @@ class TestHistoricoEOrdemNaPaginaPessoas(BaseInterface):
         texto = self.aba.lista_visitas.get("1.0", tk.END)
         self.assertIn("15/10/2026 07:00  " + chr(0x2192) + "  12:00", texto)
         self.assertIn("Registrado como (31) 90000-1111", texto)
-        self.assertIn("Visitante  ·  a pé", texto)
+        self.assertIn("Visitante\nEntrou a pé · saiu a pé", texto)   # 3.5
 
 
 class TestFichaDoPorteiro(BaseInterface):

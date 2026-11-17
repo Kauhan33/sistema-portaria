@@ -23,6 +23,10 @@ FORMATO_DIA_ISO = "%Y-%m-%d"
 FORMATO_DIA = "%d/%m/%Y"
 ANONIMO = "Pessoa anonimizada"
 TAMANHOS_DE_LETRA = ("normal", "grande", "maior")
+# 3.5: aparência de cada usuário (estilo.py tem as cores de cada opção)
+CORES_DA_LATERAL = ("grafite", "vermelho", "branco")
+CORES_DOS_BOTOES = ("vermelho", "azul", "branco")
+APARENCIA_PADRAO = ("grafite", "vermelho")
 
 ESQUEMA_V14 = [
     # chaves da portaria: o cadastro e quem está com cada uma
@@ -152,6 +156,16 @@ def passo_v15(banco, con, versao):
                     "NOT NULL DEFAULT 'Visitante'")
         con.execute("UPDATE autorizacoes_entrada SET tipo = ? "
                     "WHERE empresa <> ''", (validacao.PRESTADOR,))
+
+
+def passo_v16(banco, con, versao):
+    """Versão 3.5: a aparência de cada usuário (a cor da barra lateral e a
+    dos botões principais), como o tema e a letra."""
+    existentes = {c[1] for c in con.execute("PRAGMA table_info(usuarios)")}
+    for coluna, padrao in zip(("lateral", "botoes"), APARENCIA_PADRAO):
+        if coluna not in existentes:
+            con.execute(f"ALTER TABLE usuarios ADD COLUMN {coluna} TEXT "
+                        f"NOT NULL DEFAULT '{padrao}'")
 
 
 def cpf_ficticio(base):
@@ -644,6 +658,32 @@ class ModulosMixin:
         return linha[0] if linha and linha[0] in TAMANHOS_DE_LETRA else "normal"
 
     # --------------------------------------------------------------
+    # Aparência (3.5): cor da barra lateral e dos botões principais
+    # --------------------------------------------------------------
+    def definir_aparencia(self, lateral, botoes, autor):
+        """Cada usuário escolhe a SUA (vale nos próximos logins, em
+        qualquer computador). Não vai para o histórico: é preferência de
+        tela, como o tema e a letra."""
+        if lateral not in CORES_DA_LATERAL or botoes not in CORES_DOS_BOTOES:
+            raise ErroDados("Cor desconhecida.",
+                            detalhe=repr((lateral, botoes)))
+        with self._conexao() as con:
+            self._exigir(con, autor, so_admin=False)
+            con.execute("UPDATE usuarios SET lateral = ?, botoes = ? "
+                        "WHERE login = ?", (lateral, botoes, autor))
+
+    def aparencia_do_usuario(self, login):
+        """(cor da lateral, cor dos botões); o padrão se não houver."""
+        with self._conexao() as con:
+            linha = con.execute("SELECT lateral, botoes FROM usuarios "
+                                "WHERE login = ?", (login,)).fetchone()
+        if not linha:
+            return APARENCIA_PADRAO
+        lateral, botoes = linha
+        return (lateral if lateral in CORES_DA_LATERAL else APARENCIA_PADRAO[0],
+                botoes if botoes in CORES_DOS_BOTOES else APARENCIA_PADRAO[1])
+
+    # --------------------------------------------------------------
     # Privacidade (LGPD): anonimizar e prazo de guarda
     # --------------------------------------------------------------
     def _anonimizar(self, con, id_pessoa):
@@ -654,6 +694,13 @@ class ModulosMixin:
         con.execute("UPDATE pessoas SET nome = ?, cpf = ?, celular = '', "
                     "placa = '', empresa = '', matricula = '', setor = '', "
                     "cargo = '' WHERE id = ?", (ANONIMO, codigo, id_pessoa))
+        # 3.5: as estadias do carro dela também (o histórico da ficha diz
+        # com que carro cada visita saiu, e a lista de veículos mostra o
+        # responsável); a placa vira o código (a coluna não aceita vazio)
+        con.execute("UPDATE estadias_veiculo SET nome = ?, cpf = ?, placa = ? "
+                    "WHERE saida <> '' AND (pessoa_id = ? OR registro_id IN "
+                    "(SELECT id FROM registros WHERE pessoa_id = ?))",
+                    (ANONIMO, codigo, codigo, id_pessoa, id_pessoa))
         con.execute("UPDATE registros SET nome = ?, cpf = ?, celular = '', "
                     "placa = '', empresa = '', motivo = '', anfitriao = '' "
                     "WHERE pessoa_id = ?", (ANONIMO, codigo, id_pessoa))
@@ -677,9 +724,10 @@ class ModulosMixin:
                        "valor = ? AND ativo = 1", (linha[1],)).fetchone():
             return (f"{linha[0]} está desativada: o motivo precisa do CPF.\n"
                     "Reative antes de anonimizar.")
-        if con.execute("SELECT 1 FROM estadias_veiculo e JOIN registros r ON "
-                       "r.id = e.registro_id WHERE r.pessoa_id = ? AND "
-                       "e.saida = ''", (id_pessoa,)).fetchone():
+        if con.execute("SELECT 1 FROM estadias_veiculo e LEFT JOIN registros "
+                       "r ON r.id = e.registro_id WHERE (r.pessoa_id = ? OR "
+                       "e.pessoa_id = ?) AND e.saida = ''",
+                       (id_pessoa, id_pessoa)).fetchone():
             return (f"{linha[0]} tem um carro no estacionamento.\nRegistre a "
                     "saída do carro antes de anonimizar.")
         return ""

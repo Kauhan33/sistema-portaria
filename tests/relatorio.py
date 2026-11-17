@@ -1695,6 +1695,29 @@ CASOS = [
           "test_v35.TestEntregadorQueVaiEntrar.test_autorizacao_de_entregador_vem_para_entrar",
           "test_v35.TestEntregadorQueVaiEntrar.test_ficha_da_pessoa_entregador_vem_para_entrar",
           "test_v35.TestRascunhoDaEncomenda.test_travar_mantem_o_vai_entrar"]),
+    caso("CT-146", ["RNF01", "RNF04"], POSITIVO,
+         "Símbolo novo: a cancela suave (ícone, login e barra lateral)",
+         "Abrir o programa; ver o símbolo na barra lateral grafite, "
+         "vermelha e branca, nos temas claro e escuro; sair para o login; "
+         "conferir o arquivo do ícone (.ico) e o logo do login.",
+         "A cancela com poste, eixo e braço listrado, de bordas suaves (sem "
+         "blocos de pixel): placa vermelha com cancela branca, ou placa "
+         "branca com cancela da cor da barra vermelha; o .ico tem os tamanhos "
+         "de 16 a 256 px e o logo do login é a placa branca com a cancela "
+         "vermelha.",
+         ["test_v35.TestDesenhoDaCancela.test_cantos_transparentes_e_placa_opaca",
+          "test_v35.TestDesenhoDaCancela.test_placa_e_cancela_nas_cores_pedidas",
+          "test_v35.TestDesenhoDaCancela.test_parafuso_e_listras_sao_recortes",
+          "test_v35.TestDesenhoDaCancela.test_bordas_suaves_sem_serrilhado",
+          "test_v35.TestDesenhoDaCancela.test_placa_vermelha_tem_esmalte_mais_claro_em_cima",
+          "test_v35.TestDesenhoDaCancela.test_grande_tem_o_braco_erguido",
+          "test_v35.TestDesenhoDaCancela.test_desenhar_e_rapido",
+          "test_v35.TestArquivosDoIcone.test_ico_tem_todos_os_tamanhos",
+          "test_v35.TestArquivosDoIcone.test_logo_do_login_placa_branca_cancela_vermelha",
+          "test_v35.TestArquivosDoIcone.test_gerador_e_o_programa_usam_as_mesmas_medidas",
+          "test_v35.TestSimboloNaJanela.test_simbolo_da_barra_e_uma_imagem_de_36",
+          "test_v35.TestSimboloNaJanela.test_cores_do_simbolo_em_cada_barra_e_tema",
+          "test_v35.TestSimboloNaJanela.test_login_mostra_o_logo_novo"]),
     caso_da_linguagem(
         "CT-108", "Semântico", ["RN46", "RN48"], NEGATIVO,
         "Empresa e motivo: as mesmas regras do formulário",

@@ -136,7 +136,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-1358 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
+1373 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
 Atividade A3 item por item** (`tests/test_enunciado_a3.py`: as três telas, os
 requisitos técnicos e os desafios extras, além de um teste de que usar as telas
 não consome os recursos do Windows), os **módulos da 3.2**
@@ -191,7 +191,7 @@ resultado não depende da hora em que eles rodam.
 python -m tests.relatorio [pasta de saída] [--sem-suite]
 ```
 
-Roda os testes automáticos ligados a cada caso (CT-01 a CT-145, positivos e
+Roda os testes automáticos ligados a cada caso (CT-01 a CT-146, positivos e
 negativos, cada um com o RF/RN, a entrada, o resultado esperado e o teste
 que o comprova; os casos da linguagem ficam na seção **"Linguagem de comandos"**,
 com a fase do analisador, os CT-90 a CT-107 são os do enunciado do A3, os
@@ -218,6 +218,8 @@ os próprios **dados de demonstração** do programa).
 | **Barra branca e botões azuis**, no Cadastro | **Tema escuro** com a barra vermelha e os botões azuis |
 | ![Botões brancos](docs/design/final/v35_cadastro_botao_branco.png) | ![Histórico com o carro](docs/design/final/v35_pessoas_historico_carro.png) |
 | **Botões brancos**, com contorno escuro no tema claro | **Pessoas › Visitas** (3.5) — como entrou e saiu; aqui, com o carro de outra pessoa |
+| ![Símbolo na barra lateral](docs/design/final/v35_simbolo_laterais.png) | ![Ícone e logo](docs/design/final/v35_simbolo_icone.png) |
+| **Símbolo novo** (3.5) — a cancela suave na barra grafite, vermelha e branca, no claro e no escuro | **Ícone e logo** — o `.ico` de 256 a 16 px e o logo do login |
 | ![Login](docs/design/final/v34_login_claro.png) | ![Mostrar senha](docs/design/final/v34_login_olho_aberto_claro.png) |
 | **Login** — usuário, senha, logo, Entrar e Limpar | **Mostrar senha** — o olho no campo e o Checkbutton, juntos (3.3) |
 | ![Campos vazios](docs/design/final/v34_login_campos_vazios_claro.png) | ![Senha errada](docs/design/final/v34_login_senha_errada_escuro.png) |
@@ -1000,7 +1002,12 @@ do aluno; banco v16, migrado sozinho, com backup antes):
   sempre. As 18 combinações passam no contraste WCAG AA;
 - **menu que cabe**: com a Aparência, o administrador tem doze páginas; em
   tela baixa (notebook 1366×768) os itens ficam um pouco mais baixos;
-- **testes**: 1358 testes automatizados e 145 casos de teste.
+- **símbolo novo, a "cancela suave"**: o ícone do programa, o logo do login
+  e o símbolo da barra lateral foram redesenhados com curvas e bordas suaves
+  (poste, eixo redondo e o braço com listras inclinadas), no lugar dos blocos
+  que pareciam pixels. A barra lateral desenha o símbolo na cor escolhida na
+  Aparência, só com a biblioteca padrão;
+- **testes**: 1373 testes automatizados e 146 casos de teste.
 
 **3.4** (17/11/2026) — **revisão geral de uso** (o que não fazia sentido foi
 corrigido e os caminhos do dia a dia ficaram mais curtos; banco v15, migrado

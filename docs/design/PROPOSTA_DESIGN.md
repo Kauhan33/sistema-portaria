@@ -78,7 +78,7 @@ O que já está bom e será mantido: a fonte Segoe UI, o fundo cinza-claro, a l�
 
 **O elemento memorável** (a única ousadia): a **placa Mercosul desenhada** na ficha da pessoa, com faixa azul "BRASIL" e caracteres em **Bahnschrift**. A Bahnschrift é a versão da Microsoft da DIN 1451, parente direta da FE-Schrift usada nas placas. Isso é vocabulário de portaria, não decoração. O resto fica quieto.
 
-**Símbolo:** uma cancela (poste + braço listrado) num quadrado vermelho UNA, desenhada no Canvas. Não usa o logotipo oficial da faculdade.
+**Símbolo:** uma cancela (poste + braço listrado) num quadrado vermelho UNA, desenhada no Canvas. Não usa o logotipo oficial da faculdade. (Na 3.5 virou a "Cancela suave", com bordas suaves: veja a seção 15.)
 
 ### 4.1 Cores
 
@@ -777,4 +777,22 @@ direção escolhida por ele entre três propostas foi a de **menu escuro**.
   encomenda". Destinatário e remetente ficam à esquerda; bloco e descrição, à
   direita. A caixa "Vai entrar na unidade" ocupa o lugar da empresa (que o
   entregador não tem), e o Tab passa por ela logo depois do tipo.
+- **Símbolo novo, "Cancela suave":** escolhido entre quatro propostas (cancela
+  suave, guarita com cancela, monograma P e escudo). A mesma ideia de antes,
+  redesenhada com volumes arredondados: base, poste, eixo redondo com
+  parafuso e o braço com três listras inclinadas recortadas. O de antes era
+  feito de retângulos e parecia pixel art quando ampliado. As medidas ficam
+  numa grade de 256 × 256 unidades, as mesmas em dois lugares:
+  `assets/gerar_icone.py` (com o Pillow, só para quem desenvolve) gera o
+  `.ico` de 16 a 256 px e o logo do login (`logo_portaria.png`, placa branca e
+  cancela vermelha). O ícone grande ganha um esmalte discreto na placa, o
+  braço erguido 12° e uma sombra curta; em 16 px o braço fica deitado e as
+  listras viram cortes retos na grade de pixels, para continuar nítido na
+  barra de tarefas. Na barra lateral o próprio programa desenha o símbolo
+  (`componentes.marca_cancela`) só com a biblioteca padrão: cada pixel recebe
+  a cobertura calculada pela distância até a borda das formas (campo de
+  distância), e o resultado vira um PNG com transparência. Assim ele fica
+  suave em qualquer escala (125%, 150%, letra Maior) e em qualquer cor da
+  barra (`lateral_simbolo` e `lateral_simbolo_traco`), sem um arquivo para
+  cada combinação.
 

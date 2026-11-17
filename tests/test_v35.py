@@ -426,10 +426,11 @@ class BaseAparencia(BaseInterface):
         tela.entrar()
 
     def simbolo(self):
-        """O Canvas do símbolo (a cancela) no alto da barra lateral."""
+        """O símbolo (a cancela) no alto da barra lateral: um rótulo com a
+        imagem desenhada pelo programa."""
         def primeiro(widget):
             for filho in widget.winfo_children():
-                if isinstance(filho, tk.Canvas):
+                if hasattr(filho, "cores") and hasattr(filho, "imagem"):
                     return filho
                 achado = primeiro(filho)
                 if achado is not None:
@@ -438,16 +439,9 @@ class BaseAparencia(BaseInterface):
         return primeiro(self.app.lateral)
 
     @staticmethod
-    def preenchimentos(canvas):
-        cores = set()
-        for item in canvas.find_all():
-            try:
-                cor = canvas.itemcget(item, "fill")
-            except tk.TclError:
-                continue
-            if cor:
-                cores.add(cor.upper())
-        return cores
+    def preenchimentos(simbolo):
+        """As cores do símbolo: a da placa e a da cancela."""
+        return set(simbolo.cores)
 
     def fios(self):
         return [f for f in self.app.lateral.winfo_children()
@@ -1525,3 +1519,164 @@ class TestEncomendaDoPorteiro(BaseEntregador):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ----------------------------------------------------------------------
+# O símbolo novo (3.5: "Cancela suave"), na barra lateral, no login e no .ico
+# ----------------------------------------------------------------------
+RAIZ_DO_PROJETO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _imagem(raiz, t, cor, traco, grande=False):
+    return tk.PhotoImage(master=raiz, format="png",
+                         data=componentes._png_da_cancela(t, cor, traco, grande))
+
+
+def _pixel(t, u, grande=False):
+    """O pixel da imagem t x t que fica no ponto u (em unidades 0..256)."""
+    margem = 8 if grande else 0
+    k = t * (256 - 2 * margem) / 256 / 256
+    return tuple(int(margem * t / 256 + v * k) for v in u)
+
+
+class TestDesenhoDaCancela(unittest.TestCase):
+    """O desenho em si (sem a janela do programa): placa, cancela, bordas."""
+
+    def setUp(self):
+        self.raiz = tk.Tk()
+        self.raiz.withdraw()
+        self.addCleanup(self.raiz.destroy)
+
+    def cor(self, img, xy):
+        return tuple(img.get(*xy))
+
+    def test_cantos_transparentes_e_placa_opaca(self):
+        img = _imagem(self.raiz, 36, "#FFFFFF", "#B00017")
+        self.assertEqual((img.width(), img.height()), (36, 36))
+        for canto in ((0, 0), (35, 0), (0, 35), (35, 35)):
+            self.assertTrue(img.transparency_get(*canto), canto)
+        self.assertFalse(img.transparency_get(18, 18))
+
+    def test_placa_e_cancela_nas_cores_pedidas(self):
+        img = _imagem(self.raiz, 36, "#FFFFFF", "#B00017")
+        self.assertEqual(self.cor(img, _pixel(36, (200, 170))),
+                         (255, 255, 255))                       # só placa
+        self.assertEqual(self.cor(img, _pixel(36, (74, 146))),
+                         (0xB0, 0x00, 0x17))                    # o poste
+        self.assertEqual(self.cor(img, _pixel(36, (72, 220))),
+                         (255, 255, 255))                       # abaixo da base
+
+    def test_parafuso_e_listras_sao_recortes(self):
+        img = _imagem(self.raiz, 72, "#FFFFFF", "#B00017")
+        self.assertEqual(self.cor(img, _pixel(72, (72, 96))),
+                         (255, 255, 255))                       # parafuso
+        self.assertEqual(self.cor(img, _pixel(72, (125, 96))),
+                         (255, 255, 255))                       # 1ª listra
+        self.assertEqual(self.cor(img, _pixel(72, (150, 96))),
+                         (0xB0, 0x00, 0x17))                    # entre listras
+
+    def test_bordas_suaves_sem_serrilhado(self):
+        """Nas bordas o pixel mistura as duas cores (antes eram blocos)."""
+        img = _imagem(self.raiz, 36, "#FFFFFF", "#B00017")
+        cores = {self.cor(img, (x, y)) for x in range(36) for y in range(36)
+                 if not img.transparency_get(x, y)}
+        self.assertGreater(len(cores), 10)
+
+    def test_placa_vermelha_tem_esmalte_mais_claro_em_cima(self):
+        img = _imagem(self.raiz, 36, "#D9001B", "#FFFFFF")
+        cima = self.cor(img, _pixel(36, (230, 40)))
+        baixo = self.cor(img, _pixel(36, (230, 230)))
+        self.assertGreater(sum(cima), sum(baixo))
+        for r, g, b in (cima, baixo):
+            self.assertGreater(r, 150)
+            self.assertLess(g, 60)
+
+    def test_placa_branca_sem_esmalte(self):
+        img = _imagem(self.raiz, 36, "#FFFFFF", "#B00017")
+        self.assertEqual(self.cor(img, _pixel(36, (230, 40))),
+                         self.cor(img, _pixel(36, (230, 230))))
+
+    def test_grande_tem_o_braco_erguido(self):
+        """Em 48 px lógicos ou mais o braço sobe 12 graus, como no .ico."""
+        ponto = (187, 71)        # acima do braço deitado, dentro do erguido
+        grande = _imagem(self.raiz, 112, "#FFFFFF", "#B00017", grande=True)
+        deitado = _imagem(self.raiz, 112, "#FFFFFF", "#B00017")
+        self.assertEqual(self.cor(grande, _pixel(112, ponto, True)),
+                         (0xB0, 0x00, 0x17))
+        self.assertEqual(self.cor(deitado, _pixel(112, ponto)),
+                         (255, 255, 255))
+
+    def test_desenhar_e_rapido(self):
+        import time
+        inicio = time.perf_counter()
+        componentes._png_da_cancela(90, "#D9001B", "#FFFFFF")  # 36 em 250%
+        self.assertLess(time.perf_counter() - inicio, 0.5)
+
+    def test_imagem_guardada_por_tamanho_e_cor(self):
+        a = componentes.imagem_da_cancela(self.raiz, 36, "#D9001B", "#FFFFFF")
+        b = componentes.imagem_da_cancela(self.raiz, 36, "#D9001B", "#FFFFFF")
+        c = componentes.imagem_da_cancela(self.raiz, 36, "#FFFFFF", "#B00017")
+        self.assertIs(a, b)
+        self.assertIsNot(a, c)
+
+
+class TestArquivosDoIcone(unittest.TestCase):
+    """assets/portaria.ico (janela e .exe) e assets/logo_portaria.png."""
+
+    def test_ico_tem_todos_os_tamanhos(self):
+        import struct
+        with open(os.path.join(RAIZ_DO_PROJETO, "assets", "portaria.ico"),
+                  "rb") as f:
+            dados_ico = f.read()
+        reservado, tipo, n = struct.unpack("<HHH", dados_ico[:6])
+        self.assertEqual((reservado, tipo), (0, 1))
+        lados = {dados_ico[6 + 16 * i] or 256 for i in range(n)}
+        self.assertEqual(lados, {16, 24, 32, 48, 64, 128, 256})
+
+    def test_logo_do_login_placa_branca_cancela_vermelha(self):
+        raiz = tk.Tk()
+        raiz.withdraw()
+        self.addCleanup(raiz.destroy)
+        logo = tk.PhotoImage(master=raiz, file=os.path.join(
+            RAIZ_DO_PROJETO, "assets", "logo_portaria.png"))
+        self.assertEqual((logo.width(), logo.height()), (72, 72))
+        self.assertTrue(logo.transparency_get(0, 0))
+        self.assertEqual(tuple(logo.get(*_pixel(72, (200, 170), True))),
+                         (255, 255, 255))
+        self.assertEqual(tuple(logo.get(*_pixel(72, (74, 146), True))),
+                         (217, 0, 27))
+
+    def test_gerador_e_o_programa_usam_as_mesmas_medidas(self):
+        with open(os.path.join(RAIZ_DO_PROJETO, "assets", "gerar_icone.py"),
+                  encoding="utf-8") as f:
+            gerador = f.read()
+        self.assertIn("cx, cy, meia = 72, 96, 18", gerador)
+        self.assertIn("for x in (124, 166, 208)", gerador)
+        self.assertEqual(componentes.EIXO_DA_CANCELA, (72, 96))
+        self.assertEqual(componentes.MEIA_ALTURA_DO_BRACO, 18)
+        self.assertEqual(componentes.LISTRAS_DO_BRACO, (124, 166, 208))
+
+
+class TestSimboloNaJanela(BaseAparencia):
+    def test_simbolo_da_barra_e_uma_imagem_de_36(self):
+        simbolo = self.simbolo()
+        self.assertIsInstance(simbolo, tk.Label)
+        self.assertEqual(int(simbolo.imagem.width()), estilo.px(36))
+        self.assertEqual(simbolo.cget("bg").upper(), COR["lateral"].upper())
+
+    def test_cores_do_simbolo_em_cada_barra_e_tema(self):
+        for tema in ("claro", "escuro"):
+            self.app.trocar_tema(tema)
+            for lateral in LATERAIS:
+                with self.subTest(tema=tema, lateral=lateral):
+                    self.app.trocar_aparencia(lateral=lateral,
+                                              botoes="vermelho")
+                    self.assertEqual(self.simbolo().cores,
+                                     (COR["lateral_simbolo"].upper(),
+                                      COR["lateral_simbolo_traco"].upper()))
+
+    def test_login_mostra_o_logo_novo(self):
+        self.app.sair()
+        tela = self.app.tela_login
+        self.assertIsNotNone(tela.logo)
+        self.assertEqual(int(tela.logo.width()), 72)

@@ -1352,23 +1352,116 @@ class Avatar(tk.Canvas):
                          fill=COR["avatar_texto"], font=FONTE["rotulo"])
 
 
-def marca_cancela(pai, fundo_pai, tamanho=36, cor=None, traco=None):
-    """Símbolo do sistema: uma cancela (poste + braço listrado) num
-    quadrado vermelho UNA, desenhada no Canvas (não é o logotipo da UNA)."""
+# O símbolo (3.5: "Cancela suave"). O desenho está numa grade de 256 x 256
+# unidades, a mesma de assets/gerar_icone.py (que faz o .ico e o logo do
+# login com as mesmas medidas). Aqui cada pixel recebe a cobertura calculada
+# pela distância até a borda das formas: bordas suaves em qualquer tamanho e
+# em qualquer cor da barra lateral, só com a biblioteca padrão.
+EIXO_DA_CANCELA = (72, 96)        # centro do eixo do braço
+MEIA_ALTURA_DO_BRACO = 18
+LISTRAS_DO_BRACO = (124, 166, 208)
+
+
+def _d_ret(x, y, x0, y0, x1, y1, r=0):
+    """Distância (com sinal: negativa dentro) a um retângulo de cantos
+    arredondados de raio r."""
+    dx = abs(x - (x0 + x1) / 2) - ((x1 - x0) / 2 - r)
+    dy = abs(y - (y0 + y1) / 2) - ((y1 - y0) / 2 - r)
+    return (math.hypot(max(dx, 0), max(dy, 0)) + min(max(dx, dy), 0)) - r
+
+
+def _d_circulo(x, y, cx, cy, r):
+    return math.hypot(x - cx, y - cy) - r
+
+
+def _d_listra(x, y, x0, topo, base, largura, inclinacao):
+    """Distância a uma listra inclinada (paralelogramo): a base fica
+    `inclinacao` unidades à direita (negativo: à esquerda) do topo."""
+    altura = base - topo
+    dy = abs(y - (topo + base) / 2) - altura / 2
+    borda = x0 + inclinacao * (y - topo) / altura    # borda esquerda em y
+    fator = altura / math.hypot(altura, inclinacao)  # horizontal -> normal
+    return max(max(borda - x, x - borda - largura) * fator, dy)
+
+
+def _d_cancela(x, y, angulo=0):
+    """Distância ao desenho branco: base, poste, eixo com parafuso e o
+    braço com três listras recortadas, erguido `angulo` graus."""
+    cx, cy = EIXO_DA_CANCELA
+    meia = MEIA_ALTURA_DO_BRACO
+    bx, by = x, y              # o ponto no referencial do braço (deitado)
+    if angulo:
+        a = math.radians(angulo)
+        c, s = math.cos(a), math.sin(a)
+        bx = cx + (x - cx) * c + (y - cy) * s
+        by = cy - (x - cx) * s + (y - cy) * c
+    corpo = min(_d_ret(x, y, 36, 192, 108, 212, 10),               # base
+                _d_ret(x, y, 58, 100, 86, 200),                    # poste
+                _d_circulo(x, y, cx, cy, 30),                      # eixo
+                _d_ret(bx, by, cx, cy - meia, 230, cy + meia, meia))  # braço
+    cortes = min(min(_d_listra(bx, by, x0, cy - meia - 2, cy + meia + 2, 18,
+                               -16) for x0 in LISTRAS_DO_BRACO),
+                 _d_circulo(x, y, cx, cy, 10))                     # parafuso
+    return max(corpo, -cortes)
+
+
+def _png_da_cancela(t, cor, traco, grande=False):
+    """PNG t x t do símbolo: a placa na cor `cor` (com um esmalte discreto,
+    mais claro em cima) e a cancela em `traco`. Grande (48 px lógicos ou
+    mais): o braço erguido e uma pequena margem, como no ícone do .exe."""
+    margem = 8 if grande else 0
+    angulo = -12 if grande else 0
+    k = t * (256 - 2 * margem) / 256 / 256          # pixels por unidade
+    desloc = margem * t / 256
+    placa, desenho = _rgb(cor), _rgb(traco)
+    clara = sum(placa) > 600          # placa branca: sem esmalte (ficaria cinza)
+    linhas = []
+    for j in range(t):
+        y = (j + 0.5 - desloc) / k
+        g = 0 if clara else 0.08 - 0.18 * j / max(1, t - 1)
+        fundo = tuple(v + (255 - v) * g if g > 0 else v * (1 + g)
+                      for v in placa)
+        linha = []
+        for i in range(t):
+            x = (i + 0.5 - desloc) / k
+            a = min(1.0, max(0.0, 0.5 - _d_ret(x, y, 0, 0, 256, 256, 56) * k))
+            if a <= 0:
+                linha.append((0, 0, 0, 0))
+                continue
+            f = min(1.0, max(0.0, 0.5 - _d_cancela(x, y, angulo) * k))
+            linha.append(tuple(round(b + (d - b) * f)
+                               for b, d in zip(fundo, desenho))
+                         + (round(255 * a),))
+        linhas.append(linha)
+    return _png_rgba(t, t, linhas)
+
+
+def imagem_da_cancela(widget, tamanho=36, cor=None, traco=None):
+    """O símbolo como imagem do Tk, guardada por tamanho e cores."""
     cor = cor or COR["marca"]
     traco = traco or COR["texto_sobre_marca"]
     t = px(tamanho)
-    cv = tk.Canvas(pai, width=t, height=t, bg=fundo_pai, highlightthickness=0,
-                   bd=0)
-    ret_arredondado(cv, 0, 0, t, t, px(8), cor, fundo_pai)
-    u = t / 36
-    cv.create_rectangle(8 * u, 9 * u, 13 * u, 26 * u, fill=traco, width=0)    # poste
-    cv.create_rectangle(6 * u, 25 * u, 15 * u, 28 * u, fill=traco, width=0)   # base
-    cv.create_rectangle(13 * u, 11 * u, 30 * u, 17 * u, fill=traco, width=0)  # braço
-    for x in (17, 24):   # listras do braço
-        cv.create_rectangle(x * u, 12.5 * u, (x + 3) * u, 15.5 * u, fill=cor,
-                            width=0)
-    return cv
+    cache = _cache(widget)
+    chave = ("cancela", t, cor, traco)
+    if chave not in cache:
+        cache[chave] = tk.PhotoImage(
+            master=widget, format="png",
+            data=_png_da_cancela(t, cor, traco, grande=tamanho >= 48))
+    return cache[chave]
+
+
+def marca_cancela(pai, fundo_pai, tamanho=36, cor=None, traco=None):
+    """Símbolo do sistema: uma cancela (poste, eixo e braço listrado) num
+    quadrado vermelho (não é o logotipo da UNA). Na barra lateral vermelha
+    a placa fica branca e a cancela vermelha (cor e traco)."""
+    cor = cor or COR["marca"]
+    traco = traco or COR["texto_sobre_marca"]
+    imagem = imagem_da_cancela(pai, tamanho, cor, traco)
+    rotulo = tk.Label(pai, image=imagem, bg=fundo_pai, bd=0,
+                      highlightthickness=0)
+    rotulo.imagem = imagem        # o Tk apaga a imagem sem uma referência
+    rotulo.cores = (cor.upper(), traco.upper())     # (placa, cancela)
+    return rotulo
 
 
 # ----------------------------------------------------------------------

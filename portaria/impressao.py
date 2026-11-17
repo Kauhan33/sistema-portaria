@@ -60,7 +60,9 @@ def autorizacao_html(a, cpf_na_tela, emitida_por, momento):
     linhas = "".join(f"<tr><td>{e(rotulo)}</td><td>{e(valor)}</td></tr>"
                      for rotulo, valor in (
                          ("Nome", a["nome"]), ("CPF", cpf_na_tela),
-                         ("Empresa", a["empresa"]), ("Motivo", a["motivo"]),
+                         ("Tipo de acesso", a.get("tipo", "")),
+                         ("Empresa", a["empresa"] or "—"),
+                         ("Motivo", a["motivo"]),
                          ("Autorizado por", a["anfitriao"]),
                          ("Válida", periodo),
                          ("Situação", a["situacao"])))

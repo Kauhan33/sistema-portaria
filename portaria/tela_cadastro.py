@@ -788,6 +788,10 @@ class AbaCadastro(ControleMixin):
             self._auto = {"cpf": cpf, "pessoa_id": None, "campos": {},
                           "placas": []}
         automaticos = self._auto["campos"]
+        # 3.4: o tipo também vem da autorização (e com ele os campos certos)
+        if not self.tipo.get() and a.get("tipo"):
+            self._escrever(self.tipo, a["tipo"])
+            automaticos["tipo"] = a["tipo"]
         campos = {"nome": self.nome, "empresa": self.empresa,
                   "motivo": self.motivo, "anfitriao": self.anfitriao}
         for chave, campo in campos.items():

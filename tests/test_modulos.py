@@ -180,12 +180,31 @@ class TestEncomendas(BaseRegras):
 
 class TestAutorizacoes(BaseRegras):
     def criar(self, **mudancas):
-        campos = {"cpf": ANA, "nome": "Ana Silva", "empresa": "Alfa Ltda",
+        campos = {"cpf": ANA, "nome": "Ana Silva", "empresa": "",
                   "motivo": "Reunião", "anfitriao": "Diretoria",
                   "valida_de": "19/10/2026", "valida_ate": "21/10/2026",
                   "autor": "paulo"}
         campos.update(mudancas)
         return self.banco.criar_autorizacao(**campos)
+
+    def test_tipo_de_acesso_e_empresa(self):
+        """3.4: a autorização diz o tipo de quem vem; a empresa é só do
+        prestador de serviço (RN48), como no Cadastro."""
+        self.assertEqual(self.banco.buscar_autorizacao(self.criar())["tipo"],
+                         "Visitante")                       # o padrão
+        id_ = self.criar(cpf=BETO, nome="Beto Rocha",
+                         tipo="Prestador de serviço", empresa="Clima Frio")
+        a = self.banco.buscar_autorizacao(id_)
+        self.assertEqual((a["tipo"], a["empresa"]),
+                         ("Prestador de serviço", "Clima Frio"))
+        for mudanca, trecho in (
+                ({"tipo": "Prestador de serviço", "empresa": ""}, "obrigatória"),
+                ({"tipo": "Visitante", "empresa": "Alfa"}, "só é informada"),
+                ({"tipo": "Aluno"}, "Tipo de acesso"),
+                ({"tipo": ""}, "Tipo de acesso")):
+            with self.subTest(mudanca=mudanca), \
+                    self.assertRaisesRegex(dados.ErroDados, trecho):
+                self.criar(cpf=CARLA, nome="Carla Souza", **mudanca)
 
     def test_criar_e_situacoes(self):
         valida = self.criar()
@@ -674,6 +693,45 @@ class TestDemonstracao(BaseRegras):
             self.assertTrue(validacao.cpf_valido(cpf_ficticio(base)), base)
 
 
+class TestMigracaoV15(unittest.TestCase):
+    """3.4: a autorização ganha o tipo de acesso; a que tinha empresa era
+    de um prestador de serviço."""
+
+    def test_banco_da_3_3_ganha_o_tipo_da_autorizacao(self):
+        import tempfile
+        from portaria.senhas import gerar_hash
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        caminho = os.path.join(pasta.name, "portaria.db")
+        banco = dados.Banco(caminho, relogio=lambda: datetime(2026, 10, 19, 10))
+        banco.criar_usuario("Ana Admin", "ana", "admin", gerar_hash("senha123"))
+        visitante = banco.criar_autorizacao(
+            ANA, "Ana Silva", "", "Reunião", "Diretoria", "19/10/2026",
+            "20/10/2026", "ana")
+        prestador = banco.criar_autorizacao(
+            BETO, "Beto Rocha", "Clima Frio", "Reparo", "Manutenção",
+            "19/10/2026", "20/10/2026", "ana", tipo="Prestador de serviço")
+        del banco
+        con = sqlite3.connect(caminho)          # como a 3.3 deixava
+        con.execute("UPDATE autorizacoes_entrada SET tipo = 'Visitante'")
+        con.execute("ALTER TABLE autorizacoes_entrada DROP COLUMN tipo")
+        con.execute("PRAGMA user_version = 14")
+        con.execute("UPDATE meta SET valor = '14' WHERE chave = "
+                    "'versao_esquema'")
+        con.commit()
+        con.close()
+        banco = dados.Banco(caminho, relogio=lambda: datetime(2026, 10, 19, 10))
+        self.assertEqual(versao_do_arquivo(caminho), dados.VERSAO_ESQUEMA)
+        self.assertEqual(banco.buscar_autorizacao(visitante)["tipo"],
+                         "Visitante")
+        self.assertEqual(banco.buscar_autorizacao(prestador)["tipo"],
+                         "Prestador de serviço")
+        self.assertTrue(any("-de-v14-" in f for f in os.listdir(
+            os.path.join(pasta.name, "backups"))))
+        self.assertTrue(banco.verificar_historico()["integro"])
+        del banco
+
+
 class TestMigracaoV14(unittest.TestCase):
     def setUp(self):
         import tempfile
@@ -706,7 +764,7 @@ class TestMigracaoV14(unittest.TestCase):
         # o histórico antigo ganhou a corrente na migração
         self.assertTrue(banco.verificar_historico()["integro"])
         self.assertEqual(banco.letra_do_usuario("ana"), "normal")
-        self.assertTrue(any("antes-v14-de-v13" in f for f in
+        self.assertTrue(any("-de-v13-" in f for f in
                             os.listdir(os.path.join(self.pasta.name,
                                                     "backups"))))
 

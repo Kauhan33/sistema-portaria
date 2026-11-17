@@ -276,11 +276,13 @@ class Maquina:
         dia = self.agora.date()
         de = dia + timedelta(days=self.r.choice([-2, 0, 0, 1]))
         ate = de + timedelta(days=self.r.choice([-1, 0, 2, 120]))
+        tipo = self.r.choice(["Visitante", "Entregador",
+                              "Prestador de serviço", "Aluno"])
         self.banco.criar_autorizacao(
             self.r.choice(CPFS + ["123"]), self.r.choice(NOMES + ["Ana"]),
             self.r.choice(["", "Alfa Ltda"]), self.r.choice(["", "Reunião"]),
             self.r.choice(["", "Diretoria"]), de.strftime("%d/%m/%Y"),
-            ate.strftime("%d/%m/%Y"), self.autor())
+            ate.strftime("%d/%m/%Y"), self.autor(), tipo)
 
     def op_autorizacao_cancelar(self):
         ids = self.sql("SELECT id FROM autorizacoes_entrada")
@@ -380,7 +382,10 @@ class Maquina:
                           f"{nome}: encomenda fora das regras")
         teste.assertEqual(s("SELECT id FROM autorizacoes_entrada WHERE "
                             "valida_ate < valida_de OR usos < 0 OR motivo = '' "
-                            "OR anfitriao = ''"), [],
+                            "OR anfitriao = '' OR tipo NOT IN ('Visitante', "
+                            "'Entregador', 'Prestador de serviço') OR "
+                            "(empresa <> '') <> (tipo = 'Prestador de "
+                            "serviço')"), [],
                           f"{nome}: autorização fora das regras")
         teste.assertEqual(s("SELECT p.id FROM pessoas p WHERE p.cpf LIKE 'X%' "
                             "AND (p.nome <> 'Pessoa anonimizada' OR EXISTS "

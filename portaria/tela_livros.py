@@ -21,7 +21,8 @@ from .componentes import (Aviso, Botao, Cabecalho, Campo, CampoTexto, Cartao,
                           tabela, titulo_cartao)
 from .estilo import COR, ICONE, MARGEM, px
 from .usuarios import eh_admin
-from .validacao import (AUT_CANCELADA, AUT_FUTURA, AUT_VALIDA, AUT_VENCIDA,
+from .validacao import (TIPOS_AUTORIZACAO, usa_campo,
+                        AUT_CANCELADA, AUT_FUTURA, AUT_VALIDA, AUT_VENCIDA,
                         FUNCIONARIO, MAXIMO_ANFITRIAO, MAXIMO_BUSCA,
                         MAXIMO_CARGO, MAXIMO_CHAVE, MAXIMO_DESCRICAO_ENCOMENDA,
                         MAXIMO_EMPRESA, MAXIMO_LOCAL, MAXIMO_MATRICULA,
@@ -529,17 +530,25 @@ class DialogoAutorizacao(DialogoSimples):
         super().__init__(pagina, "Nova autorização de entrada",
                          "Quem um setor avisou que vai receber. Na chegada, o "
                          "Cadastro mostra a autorização pelo CPF.",
-                         "Autorizar", largura=520)
+                         "Autorizar", largura=560)
         hoje = self.app.relogio().date()
         c = self.campo("CPF *", "só números", juntas=1, numeros=11)
         self.cpf = c.entrada
         self.nome = self.campo("Nome completo *", juntas=1, coluna=1,
                                maximo=MAXIMO_NOME).entrada
-        self.empresa = self.campo("Empresa", "opcional", juntas=1,
-                                  maximo=MAXIMO_EMPRESA).entrada
+        # 3.4: o tipo de quem vem (a empresa é só do prestador, RN48)
+        campo_tipo = self.campo("Tipo de acesso *", juntas=1,
+                                opcoes=TIPOS_AUTORIZACAO)
+        self.tipo = campo_tipo.entrada
+        self.tipo.set(TIPOS_AUTORIZACAO[0])
         self.anfitriao = self.campo("Autorizado por *", "pessoa ou setor",
                                     juntas=1, coluna=1,
                                     maximo=MAXIMO_ANFITRIAO).entrada
+        campo_empresa = self.campo("Empresa *", "do prestador de serviço",
+                                   maximo=MAXIMO_EMPRESA)
+        self.empresa, self.grupo_empresa = (campo_empresa.entrada,
+                                            campo_empresa.master)
+        campo_tipo.var.trace_add("write", self._mostrar_empresa)
         self.de = self.campo("Válida de *", "dd/mm/aaaa", juntas=1,
                              seletor="data", relogio=self.app.relogio).entrada
         self.ate = self.campo("Até *", "dd/mm/aaaa", juntas=1, coluna=1,
@@ -549,14 +558,50 @@ class DialogoAutorizacao(DialogoSimples):
         self.motivo = self.texto_longo("Motivo *", MAXIMO_MOTIVO_VISITA,
                                        linhas=2)
         self.puxar_pessoa(c.var, {"nome": self.nome, "empresa": self.empresa})
+        self._quatro_colunas(c.master, campo_tipo.master)
+        self._mostrar_empresa()
         self.abrir(confirmar=self.salvar, foco=self.cpf)
+
+    def _quatro_colunas(self, grupo_cpf, grupo_tipo):
+        """3.4: quatro colunas — tipo e empresa lado a lado, e quem autoriza
+        junto das datas: o diálogo do prestador (com a empresa) cabe na tela
+        de notebook (1366x768) com a mesma altura do de visitante."""
+        m = self.miolo
+        m.columnconfigure((0, 1), weight=0, uniform="")
+        m.columnconfigure((0, 1, 2, 3), weight=1, uniform="a")
+        grupo = lambda caixa: caixa.master.master          # noqa: E731
+        for g, linha, coluna, juntas in (
+                (grupo_cpf, 0, 0, 2), (grupo(self.nome), 0, 2, 2),
+                (grupo_tipo, 1, 0, 2), (self.grupo_empresa, 1, 2, 2),
+                (grupo(self.anfitriao), 2, 0, 2), (grupo(self.de), 2, 2, 1),
+                (grupo(self.ate), 2, 3, 1)):
+            g.grid_configure(row=linha, column=coluna, columnspan=juntas,
+                             padx=(0, px(10)) if coluna + juntas < 4 else 0)
+        for w in m.grid_slaves():
+            if w not in (self.grupo_empresa,) and int(
+                    w.grid_info()["row"]) >= 3:
+                w.grid_configure(columnspan=4)
+        self.linha_atual = 4
+
+    def erro(self, texto):
+        self.faixa.mostrar("erro", texto)
+        self.faixa.grid(row=9, column=0, columnspan=4, sticky="ew")
+        return False
+
+    def _mostrar_empresa(self, *args):
+        if usa_campo(self.tipo.get(), "empresa"):
+            self.grupo_empresa.grid()
+        else:
+            self.grupo_empresa.grid_remove()
 
     def salvar(self):
         nome = " ".join(self.nome.get().split())
+        tipo = self.tipo.get()
+        empresa = self.empresa.get() if usa_campo(tipo, "empresa") else ""
         ok, id_ = self.app.tentar(
             self.app.banco.criar_autorizacao, self.cpf.get(), nome,
-            self.empresa.get(), self.motivo.get(), self.anfitriao.get(),
-            self.de.get(), self.ate.get(), self.app.autor)
+            empresa, self.motivo.get(), self.anfitriao.get(),
+            self.de.get(), self.ate.get(), self.app.autor, tipo)
         if not ok:
             return False
         self.fechar()
@@ -572,8 +617,8 @@ class AbaAutorizacoes(PaginaLista):
     NOVO, FILTRO = "Nova autorização", "Só válidas hoje"
     DICA = "Selecione uma autorização para emitir, registrar a entrada ou cancelar."
     SITUACAO = ("Situação", 110)
-    COLUNAS = [("numero", "Nº", 50, "center"), ("nome", "Nome", 170, "w"),
-               ("cpf", "CPF", 118, "w"), ("empresa", "Empresa", 130, "w"),
+    COLUNAS = [("numero", "Nº", 50, "center"), ("nome", "Nome", 150, "w"),
+               ("cpf", "CPF", 118, "w"), ("tipo", "Tipo", 190, "w"),
                ("anfitriao", "Autorizado por", 130, "w"),
                ("periodo", "Válida", 150, "w"), ("usos", "Entradas", 70, "center")]
     CORES = {AUT_VALIDA: "sucesso", AUT_FUTURA: "info", AUT_VENCIDA: "barra",
@@ -595,8 +640,10 @@ class AbaAutorizacoes(PaginaLista):
     def linha(self, a):
         periodo = (a["valida_de"] if a["valida_de"] == a["valida_ate"]
                    else f"{a['valida_de'][:5]} a {a['valida_ate']}")
+        tipo = a["tipo"].replace(" de serviço", "")
         return ((f"{a['id']:03d}", a["nome"], self.cpf(a["cpf"]),
-                 a["empresa"] or "—", a["anfitriao"], periodo, a["usos"]),
+                 f"{tipo} · {a['empresa']}" if a["empresa"] else tipo,
+                 a["anfitriao"], periodo, a["usos"]),
                 a["situacao"], COR[self.CORES[a["situacao"]]])
 
     def resumo(self, itens):

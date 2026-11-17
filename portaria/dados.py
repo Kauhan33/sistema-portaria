@@ -86,7 +86,8 @@ from datetime import date, datetime, timedelta
 from . import horarios, senhas, validacao, veiculos
 from .base_dados import (FORMATO_ISO, FORMATO_ISO_SEGUNDOS,  # noqa: F401
                          ErroDados, de_iso, para_iso)
-from .dados_modulos import ModulosMixin, hash_do_evento, passo_v14
+from .dados_modulos import (ModulosMixin, hash_do_evento, passo_v14,
+                            passo_v15)
 from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
                        conferir_autorizador, pode_editar, pode_excluir_pessoa,
                        validar_edicao_usuario)
@@ -130,7 +131,7 @@ from .validacao import (FORMATO, MAXIMO_BUSCA, MAXIMO_CELULAR, MAXIMO_CPF,
 #     turno, crachá e quem a visita procura, dados do funcionário, o elo
 #     (hash) de cada evento do histórico e o tamanho da letra do usuário
 #     (tudo em dados_modulos.py)
-VERSAO_ESQUEMA = 14
+VERSAO_ESQUEMA = 15
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
 REGISTRO_MUDOU = ("Este registro foi alterado em outra estação enquanto a "
@@ -936,7 +937,8 @@ def _passo_v13(banco, con, versao):
 # Cada passo pode rodar de novo sem estragar nada (banco rebaixado).
 MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7), (8, _passo_v8),
              (9, _passo_v9), (10, _passo_v10), (11, _passo_v11),
-             (12, _passo_v12), (13, _passo_v13), (14, passo_v14)]
+             (12, _passo_v12), (13, _passo_v13), (14, passo_v14),
+             (15, passo_v15)]
 
 VERSAO_MAIS_NOVA = ("Este banco de dados foi criado por uma versão mais nova "
                     "do programa.\nAtualize o programa para abrir este banco "

@@ -141,6 +141,19 @@ def passo_v14(banco, con, versao):
     encadear_historico(con)
 
 
+def passo_v15(banco, con, versao):
+    """Versão 3.4: o tipo de acesso da autorização de entrada (visitante,
+    entregador ou prestador de serviço). A que tinha empresa era de um
+    prestador (desde a 3.3 a empresa é só dele)."""
+    existentes = {c[1] for c in con.execute(
+        "PRAGMA table_info(autorizacoes_entrada)")}
+    if "tipo" not in existentes:
+        con.execute("ALTER TABLE autorizacoes_entrada ADD COLUMN tipo TEXT "
+                    "NOT NULL DEFAULT 'Visitante'")
+        con.execute("UPDATE autorizacoes_entrada SET tipo = ? "
+                    "WHERE empresa <> ''", (validacao.PRESTADOR,))
+
+
 def cpf_ficticio(base):
     """CPF válido (dígitos verificadores certos) a partir de 9 dígitos."""
     d = [int(c) for c in f"{base:09d}"]
@@ -379,10 +392,11 @@ class ModulosMixin:
     # Visitantes autorizados e emissão da autorização de entrada
     # --------------------------------------------------------------
     def criar_autorizacao(self, cpf, nome, empresa, motivo, anfitriao,
-                          valida_de, valida_ate, autor):
+                          valida_de, valida_ate, autor, tipo="Visitante"):
         """Autoriza a entrada de alguém num período (qualquer usuário ativo
         registra o que o setor pediu). Datas como na tela (dd/mm/aaaa).
-        Devolve o id (o número da autorização)."""
+        `tipo`: visitante, entregador ou prestador de serviço (a empresa é
+        só do prestador). Devolve o id (o número da autorização)."""
         cpf, nome, empresa = so_digitos(cpf or ""), _limpo(nome), _limpo(empresa)
         motivo = mascarar_cpfs_no_texto(_limpo(motivo))
         anfitriao = _limpo(anfitriao)
@@ -390,16 +404,16 @@ class ModulosMixin:
         ate = _dia_da_tela(valida_ate, "Válida até")
         self._recusar(validacao.validar_autorizacao(
             cpf, nome, empresa, motivo, anfitriao, de, ate,
-            self.relogio().date()))
+            self.relogio().date(), tipo))
         with self._conexao() as con:
             self._exigir(con, autor, so_admin=False)
             cursor = con.execute(
                 "INSERT INTO autorizacoes_entrada (cpf, nome, empresa, motivo, "
-                "anfitriao, valida_de, valida_ate, criada_em, criada_por) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "anfitriao, valida_de, valida_ate, criada_em, criada_por, "
+                "tipo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (cpf, nome, empresa, motivo, anfitriao,
                  de.strftime(FORMATO_DIA_ISO), ate.strftime(FORMATO_DIA_ISO),
-                 self._agora_iso(), autor))
+                 self._agora_iso(), autor, tipo))
             self._evento(con, autor, "Autorização de entrada criada",
                          f"nº {cursor.lastrowid}: {nome}, por {anfitriao}, de "
                          f"{de.strftime(FORMATO_DIA)} a "
@@ -409,7 +423,7 @@ class ModulosMixin:
     @staticmethod
     def _autorizacao(linha, hoje):
         (i, cpf, nome, empresa, motivo, anfitriao, de, ate, criada, por,
-         cancelada, cancelada_por, usos, ultimo, emissoes) = linha
+         cancelada, cancelada_por, usos, ultimo, emissoes, tipo) = linha
         if cancelada:
             situacao = validacao.AUT_CANCELADA
         elif ate < hoje:
@@ -424,12 +438,12 @@ class ModulosMixin:
                 "criada_em": de_iso(criada), "criada_por": por,
                 "cancelada_em": de_iso(cancelada), "cancelada_por": cancelada_por,
                 "usos": usos, "ultimo_uso": de_iso(ultimo), "emissoes": emissoes,
-                "situacao": situacao}
+                "situacao": situacao, "tipo": tipo}
 
     COLUNAS_AUTORIZACAO = ("id, cpf, nome, empresa, motivo, anfitriao, "
                            "valida_de, valida_ate, criada_em, criada_por, "
                            "cancelada_em, cancelada_por, usos, ultimo_uso, "
-                           "emissoes")
+                           "emissoes, tipo")
 
     def listar_autorizacoes(self, texto="", so_validas=False, limite=200,
                             so_cpf_completo=False):
@@ -892,19 +906,20 @@ class ModulosMixin:
                                                remetente, descricao, autor))
                     feito["encomendas"] += 1
                 hoje = agora.date()
-                for base, nome, empresa, motivo, anfitriao, dias in (
-                        (135792468, "Paula Viana", "Gama Engenharia",
-                         "Vistoria do elevador", "Manutenção", 2),
-                        (246813579, "Sérgio Antunes", "Delta Seguros",
+                for base, nome, tipo, empresa, motivo, anfitriao, dias in (
+                        (135792468, "Paula Viana", validacao.PRESTADOR,
+                         "Gama Engenharia", "Vistoria do elevador",
+                         "Manutenção", 2),
+                        (246813579, "Sérgio Antunes", "Visitante", "",
                          "Reunião sobre o contrato", "Diretoria", 0)):
                     con.execute(
                         "INSERT INTO autorizacoes_entrada (cpf, nome, empresa, "
                         "motivo, anfitriao, valida_de, valida_ate, criada_em, "
-                        "criada_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "criada_por, tipo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (cpf_ficticio(base), nome, empresa, motivo, anfitriao,
                          hoje.strftime(FORMATO_DIA_ISO),
                          (hoje + timedelta(days=dias)).strftime(FORMATO_DIA_ISO),
-                         agora_iso, autor))
+                         agora_iso, autor, tipo))
                     feito["autorizações"] += 1
                 for categoria, texto in (
                         ("Veículo", "Carro estacionado sobre a calçada do "

@@ -200,11 +200,12 @@ class TestEncomendasNaTela(BasePagina):
 class TestAutorizacoesNaTela(BasePagina):
     PAGINA = "autorizacoes"
 
-    def criar(self, cpf=ANA, nome="Ana Silva"):
+    def criar(self, cpf=ANA, nome="Ana Silva", tipo="Visitante"):
         d = self.pagina.novo()
         d.cpf.insert(0, cpf)
         d.nome.insert(0, nome)
-        d.empresa.insert(0, "Alfa Ltda")
+        d.tipo.set(tipo)
+        d.empresa.insert(0, "Alfa Ltda")      # (só vale para o prestador)
         d.anfitriao.insert(0, "Diretoria")
         d.motivo.insert(0, "Reunião sobre o contrato")
         self.assertTrue(d.salvar())
@@ -268,17 +269,17 @@ class TestAutorizacoesNaTela(BasePagina):
         self.assertIsNone(self.pagina.emitir())
 
     def test_registrar_entrada_leva_ao_cadastro_com_os_dados(self):
-        id_ = self.criar()
+        id_ = self.criar(tipo="Prestador de serviço")
         self.pagina.registrar_entrada()
         app = self.app
         self.assertEqual(app.abas.select(), str(app.aba_cad))
-        self.assertEqual((app.nome.get(), app.empresa.get(), app.motivo.get(),
-                          app.anfitriao.get()),
-                         ("Ana Silva", "Alfa Ltda", "Reunião sobre o contrato",
-                          "Diretoria"))
+        # 3.4: o tipo também vem da autorização
+        self.assertEqual((app.nome.get(), app.tipo.get(), app.empresa.get(),
+                          app.motivo.get(), app.anfitriao.get()),
+                         ("Ana Silva", "Prestador de serviço", "Alfa Ltda",
+                          "Reunião sobre o contrato", "Diretoria"))
         self.assertIn(f"autorização nº {id_:03d}", app.lbl_pessoa.cget("text"))
         app.celular.insert(0, "31987654321")
-        app.tipo.set("Visitante")
         app.cadastrar()
         self.assertEqual(len(self.no_banco()), 1)
         self.assertEqual(self.banco.buscar_autorizacao(id_)["usos"], 1)
@@ -311,6 +312,26 @@ class TestAutorizacoesNaTela(BasePagina):
             self.assertTrue(botao.winfo_ismapped())
             self.assertLessEqual(botao.winfo_rooty() + botao.winfo_height(),
                                  base)
+
+    def test_empresa_so_aparece_para_o_prestador(self):
+        d = self.pagina.novo()
+        d.janela.update_idletasks()
+        self.assertEqual(d.tipo.get(), "Visitante")
+        self.assertFalse(d.grupo_empresa.winfo_manager())
+        d.tipo.set("Prestador de serviço")
+        d.janela.update_idletasks()
+        self.assertTrue(d.grupo_empresa.winfo_manager())
+        self.assertLessEqual(d.janela.winfo_reqheight(), 536 - 30)
+        d.cpf.insert(0, ANA)
+        d.nome.insert(0, "Ana Silva")
+        d.anfitriao.insert(0, "Manutenção")
+        d.motivo.insert(0, "Reparo do ar-condicionado")
+        self.assertFalse(d.salvar())                       # falta a empresa
+        d.empresa.insert(0, "Clima Frio")
+        self.assertTrue(d.salvar())
+        linha = self.pagina.tabela.get_children()[0]
+        self.assertEqual(self.pagina.tabela.set(linha, "tipo"),
+                         "Prestador · Clima Frio")
 
     def test_trocar_o_cpf_limpa_o_que_veio_da_autorizacao(self):
         self.criar()

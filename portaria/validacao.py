@@ -30,6 +30,8 @@ CAMPOS_DO_TIPO = {
     PRESTADOR: ("empresa", "motivo", "anfitriao"),
 }
 CAMPOS_VARIAVEIS = ("empresa", "motivo", "anfitriao")
+# quem pode ter autorização de entrada: quem vem de fora (3.4)
+TIPOS_AUTORIZACAO = ["Visitante", "Entregador", PRESTADOR]
 
 # Mude para True se a placa também for obrigatória
 PLACA_OBRIGATORIA = False
@@ -416,9 +418,14 @@ def validar_encomenda(destinatario, remetente, setor="", descricao=""):
         checar_tamanho("Descrição", descricao, MAXIMO_DESCRICAO_ENCOMENDA))
 
 
-def validar_autorizacao(cpf, nome, empresa, motivo, anfitriao, de, ate, hoje):
-    """Autorização de entrada: quem (CPF e nome), por quê, quem autorizou e
-    o período (datas `date`). Não começa no passado nem passa de 90 dias."""
+def validar_autorizacao(cpf, nome, empresa, motivo, anfitriao, de, ate, hoje,
+                        tipo="Visitante"):
+    """Autorização de entrada: quem (CPF, nome e tipo de acesso), por quê,
+    quem autorizou e o período (datas `date`). Não termina no passado nem
+    passa de 90 dias. A empresa segue o tipo (RN48: só do prestador)."""
+    if tipo not in TIPOS_AUTORIZACAO:
+        return False, ("Tipo de acesso da autorização: visitante, entregador "
+                       "ou prestador de serviço.")
     if not cpf:
         return False, "O CPF é obrigatório."
     if not cpf_valido(cpf):
@@ -429,7 +436,7 @@ def validar_autorizacao(cpf, nome, empresa, motivo, anfitriao, de, ate, hoje):
         return False, "Informe o nome completo (nome e sobrenome, só letras)."
     ok, msg = _primeiro_erro(
         checar_tamanho("Nome completo", nome, MAXIMO_NOME),
-        checar_tamanho("Empresa", empresa, MAXIMO_EMPRESA),
+        validar_campo_do_tipo(tipo, "empresa", empresa),
         _obrigatorio("motivo", motivo, MAXIMO_MOTIVO_VISITA),
         _obrigatorio("nome de quem autoriza", anfitriao, MAXIMO_ANFITRIAO))
     if not ok:

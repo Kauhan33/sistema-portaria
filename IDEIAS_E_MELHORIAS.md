@@ -412,6 +412,15 @@ Sem mudança de esquema (banco v12).
 - Fora do alcance (precisa de serviço pago): certificado para o Windows não
   mostrar o aviso do SmartScreen ao abrir o instalador.
 
+### Versão 3.4 — Revisão geral de uso (17/11/2026) ✅
+
+- ✅ Botões do Controle de acesso seguem a linha escolhida (nada que daria
+  erro fica ativo); a ficha de quem está no campus oferece a saída.
+- ✅ Funcionário entra direto pela página Funcionários.
+- ✅ Autorização de entrada com o tipo de acesso (banco v15).
+- ✅ Recado para o próximo turno no menu da conta; menu lateral em três
+  grupos; subtítulo do Cadastro; demonstração com matrícula.
+
 ### Versão 3.3 — Campos por tipo de acesso (16/11/2026) ✅
 
 - ✅ **RN48** reescrita: cada tipo de acesso tem os seus campos (a empresa é só
@@ -653,8 +662,10 @@ fica.
 RN52 ENCOMENDAS: destinatário e remetente obrigatórios; setor e descrição
 opcionais; CPF na descrição é mascarado; a retirada informa quem levou e acontece
 uma vez só; só o administrador exclui.
-RN53 AUTORIZAÇÃO DE ENTRADA: CPF válido, nome completo, motivo e quem autoriza
-obrigatórios; validade de até 90 dias, que não termina no passado nem antes de
+RN53 AUTORIZAÇÃO DE ENTRADA: CPF válido, nome completo, tipo de acesso
+(visitante, entregador ou prestador de serviço, desde a 3.4), motivo e quem
+autoriza obrigatórios; a empresa segue a RN48 (só do prestador, e obrigatória
+para ele); validade de até 90 dias, que não termina no passado nem antes de
 começar; vale do primeiro ao último dia; cada entrada conta como uso; cancelar
 não volta; a autorização não passa por cima da desativação (RN12), do horário nem
 de "já está dentro"; o porteiro vê o CPF mascarado, inclusive na página impressa.

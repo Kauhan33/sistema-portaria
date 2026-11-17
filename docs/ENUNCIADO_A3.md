@@ -89,6 +89,11 @@ regras no banco e `tests/test_livros.py`, as telas).
 
 ## Além do enunciado
 
+Na 3.4 a revisão geral de uso deixou apagado o que daria erro (por exemplo,
+"Registrar entrada" para quem já está dentro), fez o funcionário entrar direto
+pela página Funcionários e deu à autorização de entrada o **tipo de acesso**
+(a empresa só aparece para o prestador).
+
 Na 3.3 o Cadastro passou a mostrar **só os campos de cada tipo de acesso**
 (RN48: a empresa é do prestador de serviço; motivo e quem procura, de quem vem
 de fora), o crachá saiu e o login ganhou o **olho** no campo de senha, junto

@@ -722,3 +722,18 @@ direção escolhida por ele entre três propostas foi a de **menu escuro**.
   fica no canto direito do campo; com a senha à mostra vira o olho cortado
   (`ED1A`). Ele e a caixa "Mostrar senha" (pedida pelo enunciado) são o mesmo
   controle: mexer em um muda o outro.
+
+## 14. Versão 3.4: revisão geral de uso
+
+- **O que não serve fica apagado:** no Controle de acesso, o botão que daria
+  erro para a linha escolhida fica desativado (entrada de quem está dentro,
+  saída de quem saiu, correção de várias linhas). Sem nada escolhido os
+  botões continuam ativos, e o clique explica o que fazer.
+- **A ação certa no lugar certo:** na ficha de quem está no campus, o botão
+  principal vira "Registrar saída"; na página Funcionários, "Registrar entrada"
+  registra direto.
+- **Menu em grupos:** um fio fino separa o dia a dia, os livros da portaria e a
+  gestão; os onze itens continuam cabendo no notebook (1366×768).
+- **Autorização em quatro colunas:** tipo e empresa lado a lado, e quem
+  autoriza junto das datas, para o diálogo do prestador caber no notebook.
+

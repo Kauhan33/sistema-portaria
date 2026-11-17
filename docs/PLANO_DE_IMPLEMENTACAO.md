@@ -14,7 +14,7 @@ As ideias estão agrupadas em versões. Cada versão é entregável sozinha.
 ## Como ler
 
 - **Esforço:** P = até meio dia · M = 1 a 2 dias · G = 3 dias ou mais, contando os testes.
-- **Esquema:** a versão do banco depois da entrega. Hoje o banco está na v14.
+- **Esquema:** a versão do banco depois da entrega. Hoje o banco está na v15.
   Toda migração é atômica (`PRAGMA user_version`) e faz um backup antes.
 - **RN nova:** a numeração continua a partir da RN35 (na 2.3 foram da RN41
   à RN45; na 2.4, a RN46; na 2.5, a RN47; na 3.0, a RN48 e a RN49; na 3.2, da
@@ -548,6 +548,21 @@ Feita em 16/11/2026, a pedido do aluno.
 - **Crachá removido** (a coluna `registros.cracha` e o índice ficam, sem uso,
   para não mexer no esquema).
 - **Olho no campo de senha** do login, ligado à caixa "Mostrar senha".
+
+---
+
+## Versão 3.4 — Revisão geral de uso (esquema v15) ✅
+
+Feita em 17/11/2026, a pedido do aluno ("ver o que faz sentido e o que não
+faz, e deixar o mais simples possível de entender e usar").
+
+- **Nada que daria erro fica ativo:** os botões do Controle de acesso seguem a
+  linha escolhida; a ficha de quem está no campus oferece a saída.
+- **Caminhos mais curtos:** funcionário entra direto; recado no menu da conta.
+- **Autorização com tipo de acesso:** coluna `autorizacoes_entrada.tipo`
+  (v15); a empresa segue a RN48; o Cadastro já vem com o tipo.
+- **Mais claro:** menu em três grupos; subtítulo do Cadastro; demonstração com
+  matrícula, setor e cargo.
 
 ---
 

@@ -617,10 +617,10 @@ class AbaAutorizacoes(PaginaLista):
     NOVO, FILTRO = "Nova autorização", "Só válidas hoje"
     DICA = "Selecione uma autorização para emitir, registrar a entrada ou cancelar."
     SITUACAO = ("Situação", 110)
-    COLUNAS = [("numero", "Nº", 50, "center"), ("nome", "Nome", 150, "w"),
-               ("cpf", "CPF", 118, "w"), ("tipo", "Tipo", 190, "w"),
-               ("anfitriao", "Autorizado por", 130, "w"),
-               ("periodo", "Válida", 150, "w"), ("usos", "Entradas", 70, "center")]
+    COLUNAS = [("numero", "Nº", 46, "center"), ("nome", "Nome", 140, "w"),
+               ("cpf", "CPF", 112, "w"), ("tipo", "Tipo", 170, "w"),
+               ("anfitriao", "Autorizado por", 116, "w"),
+               ("periodo", "Válida", 128, "w"), ("usos", "Entradas", 66, "center")]
     CORES = {AUT_VALIDA: "sucesso", AUT_FUTURA: "info", AUT_VENCIDA: "barra",
              AUT_CANCELADA: "erro"}
 

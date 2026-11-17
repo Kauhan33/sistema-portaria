@@ -4,9 +4,9 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
-**Versão atual: 3.3** (projeto final, Atividade A3, com todos os desafios extras) — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
+**Versão atual: 3.4** (projeto final, Atividade A3, com todos os desafios extras) — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
 
-![Tela Controle de acesso](docs/design/final/v33_controle_claro.png)
+![Tela Controle de acesso](docs/design/final/v34_controle_claro.png)
 
 O sistema atende, item por item, ao **enunciado da Atividade A3**: login,
 cadastro e controle de entrada e saída em telas próprias, mais os **oito
@@ -136,7 +136,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-1248 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
+1257 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
 Atividade A3 item por item** (`tests/test_enunciado_a3.py`: as três telas, os
 requisitos técnicos e os desafios extras, além de um teste de que usar as telas
 não consome os recursos do Windows), os **módulos da 3.2**
@@ -201,43 +201,43 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 ## Galeria
 
-As telas `v33_*` são da versão atual (3.3), em claro e escuro, no tamanho normal
+As telas `v34_*` são da versão atual (3.4), em claro e escuro, no tamanho normal
 e num notebook 1366×768 a 125% (`_1366x670`). Dados fictícios (os das páginas da 3.2 são
 os próprios **dados de demonstração** do programa).
 
 | | |
 |---|---|
-| ![Login](docs/design/final/v33_login_claro.png) | ![Mostrar senha](docs/design/final/v33_login_olho_aberto_claro.png) |
+| ![Login](docs/design/final/v34_login_claro.png) | ![Mostrar senha](docs/design/final/v34_login_olho_aberto_claro.png) |
 | **Login** — usuário, senha, logo, Entrar e Limpar | **Mostrar senha** — o olho no campo e o Checkbutton, juntos (3.3) |
-| ![Campos vazios](docs/design/final/v33_login_campos_vazios_claro.png) | ![Senha errada](docs/design/final/v33_login_senha_errada_escuro.png) |
+| ![Campos vazios](docs/design/final/v34_login_campos_vazios_claro.png) | ![Senha errada](docs/design/final/v34_login_senha_errada_escuro.png) |
 | **Campos vazios** são recusados | **Dados incorretos** — a mesma mensagem para usuário ou senha |
-| ![Cadastro do aluno](docs/design/final/v33_cadastro_aluno_claro.png) | ![Cadastro do visitante](docs/design/final/v33_cadastro_preenchido_claro.png) |
+| ![Cadastro do aluno](docs/design/final/v34_cadastro_aluno_claro.png) | ![Cadastro do visitante](docs/design/final/v34_cadastro_preenchido_claro.png) |
 | **Cadastro do aluno** (3.3) — só os campos comuns | **Cadastro do visitante** — mais o motivo e quem procura |
-| ![Cadastro do prestador](docs/design/final/v33_cadastro_prestador_escuro.png) | ![Confirmação](docs/design/final/v33_cadastro_confirmacao_claro.png) |
+| ![Cadastro do prestador](docs/design/final/v34_cadastro_prestador_escuro.png) | ![Confirmação](docs/design/final/v34_cadastro_confirmacao_claro.png) |
 | **Cadastro do prestador de serviço** — mais a empresa | **Confirmação** — com o código de identificação |
-| ![Controle de acesso](docs/design/final/v33_controle_claro.png) | ![Prestadores](docs/design/final/v33_controle_prestadores_claro.png) |
+| ![Controle de acesso](docs/design/final/v34_controle_claro.png) | ![Prestadores](docs/design/final/v34_controle_prestadores_claro.png) |
 | **Controle de acesso** — pesquisa, filtro, Código, Situação e as ações | **Prestadores de serviços** — o filtro mostra a empresa e o motivo |
-| ![Pesquisa](docs/design/final/v33_controle_pesquisa_claro.png) | ![Filtro Dentro](docs/design/final/v33_controle_dentro_escuro.png) |
+| ![Pesquisa](docs/design/final/v34_controle_pesquisa_claro.png) | ![Filtro Dentro](docs/design/final/v34_controle_dentro_escuro.png) |
 | **Pesquisa** — no histórico inteiro; achar pelo código também | **Filtro "Dentro"**, no tema escuro |
-| ![Ocorrências](docs/design/final/v33_ocorrencias_selecionada_claro.png) | ![Nova ocorrência](docs/design/final/v33_nova_ocorrencia_claro.png) |
+| ![Ocorrências](docs/design/final/v34_ocorrencias_selecionada_claro.png) | ![Nova ocorrência](docs/design/final/v34_nova_ocorrencia_claro.png) |
 | **Ocorrências** — o livro da portaria | **Nova ocorrência** — categoria, descrição, CPF e placa opcionais |
-| ![Corrigir](docs/design/final/v33_corrigir_claro.png) | ![Nova pessoa](docs/design/final/v33_nova_pessoa_claro.png) |
+| ![Corrigir](docs/design/final/v34_corrigir_claro.png) | ![Nova pessoa](docs/design/final/v34_nova_pessoa_claro.png) |
 | **Corrigir registro** — agora com a empresa e o motivo | **Nova pessoa** — com a empresa |
-| ![Cadastro no notebook](docs/design/final/v33_cadastro_preenchido_escuro_1366x670.png) | ![Controle no notebook](docs/design/final/v33_controle_claro_1366x670.png) |
+| ![Cadastro no notebook](docs/design/final/v34_cadastro_preenchido_escuro_1366x670.png) | ![Controle no notebook](docs/design/final/v34_controle_claro_1366x670.png) |
 | **Notebook 1366×768**: o Cadastro cabe inteiro (tema escuro) | **Notebook 1366×768**: o Controle de acesso |
-| ![Visitante autorizado](docs/design/final/v33_cadastro_autorizado_claro.png) | ![Autorizações](docs/design/final/v33_autorizacoes_claro.png) |
+| ![Visitante autorizado](docs/design/final/v34_cadastro_autorizado_claro.png) | ![Autorizações](docs/design/final/v34_autorizacoes_claro.png) |
 | **Visitante autorizado** (3.2) — o CPF traz a autorização, com o motivo e quem procura | **Autorizações** — criar, emitir para imprimir e cancelar |
-| ![Nova autorização](docs/design/final/v33_nova_autorizacao_claro.png) | ![Recado de turno](docs/design/final/v33_controle_dentro_recado_escuro.png) |
+| ![Nova autorização](docs/design/final/v34_nova_autorizacao_claro.png) | ![Recado de turno](docs/design/final/v34_controle_dentro_recado_escuro.png) |
 | **Nova autorização de entrada** | **Recado de turno** no Controle de acesso, com o filtro Dentro |
-| ![Chaves](docs/design/final/v33_chaves_escuro.png) | ![Histórico das chaves](docs/design/final/v33_historico_chaves_claro.png) |
+| ![Chaves](docs/design/final/v34_chaves_escuro.png) | ![Histórico das chaves](docs/design/final/v34_historico_chaves_claro.png) |
 | **Chaves** — entregues e devolvidas | **Histórico das chaves** |
-| ![Encomendas](docs/design/final/v33_encomendas_claro.png) | ![Retirar encomenda](docs/design/final/v33_retirar_encomenda_claro.png) |
+| ![Encomendas](docs/design/final/v34_encomendas_claro.png) | ![Retirar encomenda](docs/design/final/v34_retirar_encomenda_claro.png) |
 | **Encomendas** — o que chegou e para quem | **Registrar retirada** — quem levou |
-| ![Funcionários](docs/design/final/v33_funcionarios_claro.png) | ![Novo funcionário](docs/design/final/v33_novo_funcionario_escuro.png) |
+| ![Funcionários](docs/design/final/v34_funcionarios_claro.png) | ![Novo funcionário](docs/design/final/v34_novo_funcionario_escuro.png) |
 | **Funcionários** — matrícula, setor, cargo e o ponto de hoje | **Novo funcionário** |
-| ![Painel: horário de pico](docs/design/final/v33_painel_pico_escuro.png) | ![Relatório para imprimir](docs/design/final/v33_relatorio_claro.png) |
+| ![Painel: horário de pico](docs/design/final/v34_painel_pico_escuro.png) | ![Relatório para imprimir](docs/design/final/v34_relatorio_claro.png) |
 | **Painel** — entradas por hora, com o pico em destaque | **Relatório para imprimir** |
-| ![Dados e privacidade](docs/design/final/v33_config_dados_escuro.png) | ![Letra maior](docs/design/final/v33_letra_maior_claro.png) |
+| ![Dados e privacidade](docs/design/final/v34_config_dados_escuro.png) | ![Letra maior](docs/design/final/v34_letra_maior_claro.png) |
 | **Dados e privacidade** — demonstração, histórico protegido e LGPD | **Letra: Maior**, para quem prefere ler de longe |
 
 <details>
@@ -366,14 +366,16 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   escura no Windows 10/11
   (`docs/design/PROPOSTA_DESIGN.md`, seção 10). As caixas de mensagem
   nativas do Windows seguem o tema do próprio Windows.
-- **Barra lateral**: Cadastro, Controle de acesso, Pessoas, Funcionários,
-  Autorizações, Encomendas, Chaves, Ocorrências, Painel, Usuários e
-  Configurações (as duas últimas só para o administrador), com o
+- **Barra lateral**, em três grupos separados por um fio (3.4): o dia a dia
+  (Cadastro, Controle de acesso, Pessoas), os livros da portaria
+  (Funcionários, Autorizações, Encomendas, Chaves, Ocorrências) e a gestão
+  (Painel e, só para o administrador, Usuários e Configurações), com o
   número de pessoas cadastradas. (Até a 2.2 havia a página Bloqueios: na 2.3 ela virou
   a desativação, dentro de Pessoas.) No
   rodapé, quem está logado, o menu da conta (**Trocar minha senha**, **Gerar
   novos códigos de recuperação** para o administrador, o **tema**, o **tamanho
-  da letra** — Normal, Grande ou Maior, de cada usuário (RF46) — e Sair),
+  da letra** — Normal, Grande ou Maior, de cada usuário (RF46) —, o
+  **Recado para o próximo turno** (3.4) e Sair),
   o **cadeado** ("Ausentar", Ctrl+L) e o botão sair.
 - **Cadastro** (tela 2 do enunciado; **Enter** ou **Cadastrar** registra a
   entrada), em dois blocos, na ordem em que o porteiro pergunta. **Pessoa**:
@@ -402,19 +404,26 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   a **pesquisa** (nome, CPF, telefone, placa, tipo, empresa ou código), o **filtro**
   (Todos, Dentro, Saiu ou um tipo de acesso), a tabela (Situação "Dentro" ou
   "Saiu", Código, Nome, CPF, Placa, Tipo de acesso, Entrada e Saída) e, no pé,
-  **Registrar entrada** (na pessoa selecionada, com o horário de agora; quem
-  está dentro é recusado), **Registrar saída**, **Corrigir**, **Excluir**
-  (administrador), **Atualizar** (relê o banco, inclusive o que outra estação
-  gravou) e **Voltar** (ao Cadastro). Filtrando por **Prestador de serviço**, a
+  **Registrar entrada** (na pessoa selecionada, com o horário de agora),
+  **Registrar saída**, **Corrigir**, **Excluir** (administrador), **Atualizar**
+  (relê o banco, inclusive o que outra estação gravou) e **Voltar** (ao
+  Cadastro). Desde a 3.4 os botões seguem a linha escolhida: para quem está
+  dentro, "Registrar entrada" fica apagado; para quem já saiu, "Registrar
+  saída"; com várias linhas, "Corrigir". Sem nada escolhido, o clique explica
+  o que fazer. Filtrando por **Prestador de serviço**, a
   tabela mostra a empresa e o motivo no lugar da placa e do tipo.
 - **Funcionários** (desafio extra, RF38): quem é do tipo Funcionário, com a
   **matrícula** (não se repete), o setor, o cargo e o **ponto de hoje**
   (entrada, saída e se está dentro). **Novo funcionário** cadastra a pessoa;
-  **Registrar entrada** leva ao Cadastro.
+  **Registrar entrada** registra direto, com o horário de agora (3.4: o
+  funcionário não informa motivo nem empresa, então não precisa passar pelo
+  Cadastro).
 - **Autorizações** (desafios extras "visitantes autorizados" e "emissão de
   autorização de entrada", RF39): um setor avisa quem vai receber — CPF, nome,
-  empresa, motivo, quem autoriza e a validade (até 90 dias). Na chegada, o
-  Cadastro reconhece o CPF. **Emitir autorização** abre no navegador uma página
+  **tipo de acesso** (visitante, entregador ou prestador de serviço; a
+  **empresa** aparece só para o prestador, 3.4), motivo, quem autoriza e a
+  validade (até 90 dias). Na chegada, o Cadastro reconhece o CPF e já vem com o
+  tipo e os campos dele. **Emitir autorização** abre no navegador uma página
   pronta para imprimir ou salvar em PDF; **Cancelar** vale só para as que ainda
   não venceram. Cada entrada conta como uso, e tudo fica no histórico. A
   autorização não passa por cima da desativação (RN12).
@@ -922,6 +931,27 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**3.4** (17/11/2026) — **revisão geral de uso** (o que não fazia sentido foi
+corrigido e os caminhos do dia a dia ficaram mais curtos; banco v15, migrado
+sozinho, com backup antes):
+
+- **o sistema não oferece o que daria erro**: no Controle de acesso,
+  "Registrar entrada" fica apagado para quem está dentro e "Registrar saída"
+  para quem já saiu (e "Corrigir" com várias linhas); na ficha de Pessoas, o
+  botão de quem está no campus vira **Registrar saída** e dá a saída ali;
+- **caminhos mais curtos**: o funcionário entra direto pela página
+  Funcionários (sem passar pelo Cadastro); o **Recado para o próximo turno**
+  também está no menu da conta;
+- **autorização de entrada com o tipo de acesso** (visitante, entregador ou
+  prestador): a empresa aparece só para o prestador, como no Cadastro, e o
+  Cadastro já vem com o tipo; a autorização antiga que tinha empresa virou de
+  prestador na atualização do banco;
+- **mais claro**: o menu lateral em três grupos; o subtítulo do Cadastro diz
+  o que a tela faz ("Registre aqui a entrada de quem chega à portaria"); os
+  dados de demonstração trazem os funcionários com matrícula, setor e cargo;
+- **testes**: 1257 testes automatizados e 135 casos de teste (CT-133 a
+  CT-135 são os da revisão); campanha de ataque de novo, sem falhas.
 
 **3.3** (16/11/2026) — **cada tipo de acesso com os seus campos** (pedido do
 aluno; sem mudança no esquema do banco):

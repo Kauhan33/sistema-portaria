@@ -57,13 +57,21 @@ from .usuarios import (eh_admin, pode_excluir_pessoa,
 from .validacao import (DESATIVADO, MAXIMO_BUSCA, MAXIMO_EMPRESA, MAXIMO_MOTIVO,
                         codigo_da_pessoa,
                         MAXIMO_NOME, pede_empresa,
-                        O_QUE, TIPOS_ACESSO, converter_data, cpf_valido,
+                        O_QUE, TIPOS_ACESSO, converter_data, cpf_valido, mensagem_cpf,
                         formatar_celular, formatar_desativacao,
                         formatar_placa, normalizar, normalizar_desativacao,
                         so_digitos, validar_campos, validar_desativacao,
                         validar_placas, MAXIMO_PLACAS_PESSOA)
 from .veiculos import (DONO_PRECISA_ESTAR, pode_cadastrar_autorizado,
+                       conferir_autorizado_encomenda, ler_validade,
                        validar_autorizado, validar_nova_validade)
+from .sugestoes import ligar_sugestoes
+
+# 3.6: quem pode retirar as encomendas da pessoa (como o carro, RN35)
+DICA_ENCOMENDAS = ("Retiram as encomendas desta pessoa, se estiverem na "
+                   "unidade.")
+PESSOA_FORA = ("A pessoa precisa estar na unidade para o porteiro adicionar "
+               "ou mudar a validade.")
 
 ABAS = ("Ativas", "Pessoas desativadas", "Veículos desativados")
 COLUNAS = [("nome", "Nome", 160, "w"), ("cpf", "CPF", 112, "w"),
@@ -76,7 +84,7 @@ COLUNAS_VISIVEIS = ("nome", "cpf", "visitas", "ultima")
 LIMITE_BUSCA = 200
 SEM_SELECAO = "Escolha uma pessoa na lista para ver a ficha."
 SEM_CADASTRO = "(sem cadastro)"
-SECOES_FICHA = ("Visitas", "Veículo")
+SECOES_FICHA = ("Visitas", "Veículo", "Encomendas")
 CARROS_EM_BOTOES = 3     # RN47: mais carros que isso viram uma lista na ficha
 # Abaixo desta altura (px lógicos) a página fica compacta: no notebook
 # 1366x670 a página tem uns 536
@@ -399,7 +407,8 @@ class AbaPessoas:
                                      fundo_pai=fundo)
         self.seletor_ficha.pack(fill="x", pady=(px(12), px(10)))
         self.secoes = {"Visitas": self._montar_visitas(c),
-                       "Veículo": self._montar_veiculo(c)}
+                       "Veículo": self._montar_veiculo(c),
+                       "Encomendas": self._montar_encomendas(c)}
         self.seletor_ficha.selecionar(SECOES_FICHA[0])
 
     def _montar_sem_cadastro(self, pai):
@@ -534,10 +543,154 @@ class AbaPessoas:
         self.autorizados = []
         return secao
 
+    def _montar_encomendas(self, c):
+        """3.6: quem pode retirar as encomendas da pessoa (como o carro)
+        e as encomendas dela que aguardam retirada."""
+        fundo = COR["superficie"]
+        secao = tk.Frame(c, bg=fundo)
+        self.lbl_encomendas = tk.Label(
+            secao, text="Quem pode retirar as encomendas",
+            font=FONTE["rotulo"], bg=fundo, fg=COR["texto"], anchor="w")
+        self.lbl_encomendas.pack(fill="x")
+        self.lbl_encomendas_dica = tk.Label(
+            secao, font=FONTE["dica"], bg=fundo, fg=COR["texto_3"],
+            justify="left", anchor="w", wraplength=px(320),
+            text=DICA_ENCOMENDAS)
+        self.lbl_encomendas_dica.pack(fill="x", pady=(px(2), px(8)))
+        self.botoes_encomendas = tk.Frame(secao, bg=fundo)
+        self.botoes_encomendas.pack(side="bottom", fill="x", pady=(px(8), 0))
+        self.btn_adicionar_encomenda = Botao(
+            self.botoes_encomendas, "Adicionar",
+            self.adicionar_autorizado_encomenda, "secundario")
+        self.btn_adicionar_encomenda.pack(side="left")
+        self.btn_validade_encomenda = Botao(
+            self.botoes_encomendas, "Validade", self.editar_validade_encomenda,
+            "secundario", icone=ICONE["editar"])
+        self.btn_validade_encomenda.pack(side="left", padx=(px(8), 0))
+        self.btn_remover_encomenda = Botao(
+            self.botoes_encomendas, "Remover",
+            self.remover_autorizado_encomenda, "perigo")
+        self.btn_remover_encomenda.pack(side="left", padx=(px(8), 0))
+        self.lbl_pessoa_fora = tk.Label(secao, font=FONTE["dica"], bg=fundo,
+                                        fg=COR["alerta"], justify="left",
+                                        anchor="w", wraplength=px(320),
+                                        text=PESSOA_FORA)
+        self.lbl_aguardando = tk.Label(secao, font=FONTE["dica"], bg=fundo,
+                                       fg=COR["texto_2"], justify="left",
+                                       anchor="w", wraplength=px(320))
+        self.lbl_aguardando.pack(side="bottom", fill="x", pady=(px(6), 0))
+        self.quadro_autorizados_encomenda, self.tabela_autorizados_encomenda = \
+            tabela(secao, COLUNAS_AUTORIZADOS, altura=3, rolagem=True,
+                   compacta=True)
+        self.quadro_autorizados_encomenda.pack(fill="both", expand=True,
+                                               pady=(px(4), 0))
+        self.autorizados_encomenda = []
+        return secao
+
+    def mostrar_autorizados_encomenda(self, pessoa):
+        """A lista de quem pode retirar as encomendas da pessoa, as
+        encomendas dela aguardando retirada e o estado dos botões (o
+        porteiro só adiciona com a pessoa na unidade)."""
+        tabela_ = self.tabela_autorizados_encomenda
+        tabela_.delete(*tabela_.get_children())
+        self.autorizados_encomenda = []
+        cpf = pessoa.get("cpf", "")
+        ok, lista = self.app.tentar(self.app.banco.listar_autorizados_encomenda,
+                                    cpf)
+        if ok:
+            self.autorizados_encomenda = lista
+        hoje = self.app.relogio().date()
+        for i, a in enumerate(self.autorizados_encomenda):
+            vencida = a["valido_ate"] is not None and a["valido_ate"] < hoje
+            validade = ("venceu" if vencida else "sem prazo"
+                        if a["valido_ate"] is None
+                        else f"{a['valido_ate']:%d/%m/%Y}")
+            inserir_linha(tabela_, i,
+                          (a["nome"], self.app.exibir_cpf(a["cpf"]), validade),
+                          iid=str(a["id"]),
+                          tags=("apagado",) if vencida else ())
+        n = len(self.autorizados_encomenda)
+        self.seletor_ficha.definir_texto(
+            "Encomendas", f"Encomendas ({n})" if n else "Encomendas")
+        ok, encomendas = self.app.tentar(self.app.banco.listar_encomendas,
+                                         so_pendentes=True, limite=1000)
+        minhas = [e for e in (encomendas if ok else [])
+                  if e.get("destinatario_cpf") == cpf]
+        self.lbl_aguardando.config(
+            text=(f"Aguardando retirada: {len(minhas)} encomenda"
+                  f"{'' if len(minhas) == 1 else 's'} (nº "
+                  + ", ".join(f"{e['id']:03d}" for e in minhas[:5])
+                  + ("…" if len(minhas) > 5 else "") + ")."
+                  if minhas else "Nenhuma encomenda aguardando retirada."))
+        pode = eh_admin(self.app.usuario) or bool(pessoa.get("dentro_desde"))
+        self.btn_adicionar_encomenda.definir_ativo(pode)
+        self.btn_validade_encomenda.definir_ativo(
+            pode and bool(self.autorizados_encomenda))
+        self.btn_remover_encomenda.definir_ativo(
+            bool(self.autorizados_encomenda))
+        if pode:
+            self.lbl_pessoa_fora.pack_forget()
+        else:
+            self.lbl_pessoa_fora.pack(side="bottom", fill="x",
+                                      pady=(px(6), 0),
+                                      before=self.botoes_encomendas)
+        if self.compacta:
+            self.lbl_encomendas_dica.pack_forget()
+        else:
+            self.lbl_encomendas_dica.pack(fill="x", pady=(px(2), px(8)),
+                                          after=self.lbl_encomendas)
+
+    def adicionar_autorizado_encomenda(self):
+        """Abre o diálogo de quem pode retirar as encomendas; devolve-o."""
+        if not self._exigir_selecao():
+            return None
+        p = self.selecionada
+        if not (eh_admin(self.app.usuario) or p["dentro_desde"]):
+            mensagens.aviso("Quem pode retirar as encomendas", PESSOA_FORA)
+            return None
+        self.dialogo = DialogoAutorizado(self, p, encomenda=True)
+        return self.dialogo
+
+    def editar_validade_encomenda(self):
+        if not self._exigir_selecao():
+            return None
+        selecao = self.tabela_autorizados_encomenda.selection()
+        if not selecao:
+            mensagens.aviso("Atenção", "Selecione na lista quem terá a "
+                                       "validade alterada.")
+            return None
+        if not (eh_admin(self.app.usuario)
+                or self.selecionada["dentro_desde"]):
+            mensagens.aviso("Quem pode retirar as encomendas", PESSOA_FORA)
+            return None
+        a = next(x for x in self.autorizados_encomenda
+                 if str(x["id"]) == selecao[0])
+        self.dialogo = DialogoValidade(self, a, encomenda=True)
+        return self.dialogo
+
+    def remover_autorizado_encomenda(self):
+        selecao = self.tabela_autorizados_encomenda.selection()
+        if not selecao:
+            mensagens.aviso("Atenção", "Selecione quem sai da lista.")
+            return
+        a = next(x for x in self.autorizados_encomenda
+                 if str(x["id"]) == selecao[0])
+        if not self.app.perguntar(
+                mensagens.confirmar, "Remover da lista",
+                f"{a['nome']} não poderá mais retirar as encomendas de "
+                f"{self.selecionada['nome']}. A remoção fica no histórico."):
+            return
+        ok, _ = self.app.tentar(self.app.banco.remover_autorizado_encomenda,
+                                a["id"], autor=self.app.autor)
+        if ok:
+            self.mostrar_autorizados_encomenda(self.selecionada)
+
     def mostrar_autorizados(self, pessoa):
         """Lista "Quem pode retirar" da placa da pessoa e o estado dos
         botões (o porteiro só adiciona com o dono no campus). A placa é a
-        escolhida em "Carro" (RN47); sem escolha, a principal."""
+        escolhida em "Carro" (RN47); sem escolha, a principal. 3.6: e a
+        lista de quem pode retirar as encomendas dela."""
+        self.mostrar_autorizados_encomenda(pessoa)
         placa = self.placa_da_ficha
         self.autorizados = []
         self.tabela_autorizados.delete(*self.tabela_autorizados.get_children())
@@ -674,7 +827,7 @@ class AbaPessoas:
         """Visitas ou Veículo. Na tela baixa, com o Veículo aberto, a placa
         e os números saem da frente: sobra altura para a lista de quem
         pode retirar."""
-        if nome == SECOES_FICHA[1] and self.compacta:
+        if nome != SECOES_FICHA[0] and self.compacta:
             self.linha_placa.pack_forget()
         else:
             self.linha_placa.pack(fill="x", pady=(px(10), 0),
@@ -1361,6 +1514,9 @@ class DialogoPessoa(Dialogo):
         self.tipo = campo_tipo.entrada
         campo_nome = campo("Nome completo", 1, 0, maximo=MAXIMO_NOME)
         self.nome, self.grupo_nome = campo_nome.entrada, campo_nome.master
+        if nova:        # 3.6: as sugestões mostram quem já está cadastrado
+            self.sugestoes = ligar_sugestoes(
+                app, {"cpf": self.cpf, "nome": self.nome})
         # RN48: a Empresa só aparece para o prestador de serviço (sem ela,
         # o nome ocupa a linha toda)
         campo_empresa = campo("Empresa", 1, 1, maximo=MAXIMO_EMPRESA)
@@ -1478,7 +1634,7 @@ class DialogoPessoa(Dialogo):
             self.faixa.grid_forget()
             return
         if not cpf_valido(cpf):
-            self._mostrar_faixa("erro", "CPF inválido: confira os números.")
+            self._mostrar_faixa("erro", mensagem_cpf(cpf).replace("\n", " "))
             return
         app = self.pagina.app
         ok, pessoa = app.tentar(app.banco.buscar_pessoa, cpf)
@@ -1592,6 +1748,8 @@ class DialogoDesativar(Dialogo):
                 **({"numeros": 11} if tipo == "cpf" else {"placa": True}))
             grupo.pack(fill="x", pady=(0, px(14)))
             self.valor = campo.entrada
+            if tipo == "cpf":           # 3.6: com as sugestões de pessoas
+                self.sugestoes = ligar_sugestoes(app, {"cpf": self.valor})
         grupo, campo = campo_rotulado(form, "Motivo", "aparece na entrada",
                                       contador=True, maximo=MAXIMO_MOTIVO)
         grupo.pack(fill="x")
@@ -1630,15 +1788,17 @@ class DialogoDesativar(Dialogo):
 
 class DialogoValidade(Dialogo):
     """RN45: troca a validade de quem pode retirar o carro (vazio = sem
-    prazo, até alguém remover; nunca antes de hoje)."""
+    prazo, até alguém remover; nunca antes de hoje). 3.6: `encomenda`, a
+    de quem pode retirar as encomendas."""
 
-    def __init__(self, aba, autorizado):
-        self.aba, self.autorizado = aba, autorizado
+    def __init__(self, aba, autorizado, encomenda=False):
+        self.aba, self.autorizado, self.encomenda = aba, autorizado, encomenda
         app = aba.app
-        placa = formatar_placa(autorizado["placa"])
+        o_que = ("as encomendas" if encomenda
+                 else f"o carro {formatar_placa(autorizado['placa'])}")
         super().__init__(app.janela, "Validade da autorização",
-                         f"Até quando {autorizado['nome']} pode retirar o "
-                         f"carro {placa}. Vazio = sem prazo (até alguém "
+                         f"Até quando {autorizado['nome']} pode retirar "
+                         f"{o_que}. Vazio = sem prazo (até alguém "
                          "remover).", largura=380, ao_usar=app.registrar_uso)
         grupo, campo = campo_rotulado(self.miolo, "Válido até", "opcional",
                                       seletor="data", relogio=app.relogio)
@@ -1659,8 +1819,10 @@ class DialogoValidade(Dialogo):
             self.faixa.mostrar("erro", erro)
             self.faixa.pack(fill="x", pady=(px(12), 0))
             return False
-        ok, _ = app.tentar(app.banco.alterar_validade_autorizado,
-                           self.autorizado["id"], valido_ate, autor=app.autor)
+        alterar = (app.banco.alterar_validade_autorizado_encomenda
+                   if self.encomenda else app.banco.alterar_validade_autorizado)
+        ok, _ = app.tentar(alterar, self.autorizado["id"], valido_ate,
+                           autor=app.autor)
         if not ok:
             return False
         self.fechar()
@@ -1670,17 +1832,24 @@ class DialogoValidade(Dialogo):
 
 class DialogoAutorizado(Dialogo):
     """RN35: CPF e nome de quem pode retirar o carro da pessoa e a
-    validade (opcional: vazio = até alguém remover)."""
+    validade (opcional: vazio = até alguém remover). 3.6: `encomenda`,
+    quem pode retirar as encomendas dela (com as sugestões de pessoas)."""
 
-    def __init__(self, aba, dono):
-        self.aba, self.dono = aba, dono
+    def __init__(self, aba, dono, encomenda=False):
+        self.aba, self.dono, self.encomenda = aba, dono, encomenda
         app = aba.app
-        placa = formatar_placa(dono["placa"])
-        super().__init__(app.janela, "Quem pode retirar",
-                         f"Esta pessoa vai poder levar o carro {placa} de "
-                         f"{dono['nome']} sem o dono e sem a senha do "
-                         "administrador, se estiver no campus a pé.",
-                         largura=420, ao_usar=app.registrar_uso)
+        if encomenda:
+            titulo = "Quem pode retirar as encomendas"
+            texto = (f"Esta pessoa vai poder retirar as encomendas de "
+                     f"{dono['nome']}, se estiver na unidade.")
+        else:
+            titulo = "Quem pode retirar"
+            texto = (f"Esta pessoa vai poder levar o carro "
+                     f"{formatar_placa(dono['placa'])} de {dono['nome']} sem "
+                     "o dono e sem a senha do administrador, se estiver no "
+                     "campus a pé.")
+        super().__init__(app.janela, titulo, texto, largura=420,
+                         ao_usar=app.registrar_uso)
         form = self.miolo
         form.columnconfigure((0, 1), weight=1, uniform="a")
         grupo, campo = campo_rotulado(form, "CPF", "só números", numeros=11)
@@ -1697,6 +1866,9 @@ class DialogoAutorizado(Dialogo):
                                       maximo=MAXIMO_NOME)
         grupo.grid(row=1, column=0, columnspan=2, sticky="ew")
         self.nome = campo.entrada
+        self.sugestoes = ligar_sugestoes(
+            app, {"cpf": self.cpf, "nome": self.nome},
+            excluir=lambda: (dono["cpf"],))
         self.faixa = Aviso(form)
         self.lbl_erro = self.faixa.lbl
         self.adicionar_botao("Adicionar", self.salvar, "primario")
@@ -1714,6 +1886,8 @@ class DialogoAutorizado(Dialogo):
 
     def salvar(self):
         app = self.aba.app
+        if self.encomenda:
+            return self._salvar_encomenda()
         dados, erro = validar_autorizado(self.dono, so_digitos(self.cpf.get()),
                                          self.nome.get(), self.validade.get(),
                                          app.relogio().date())
@@ -1729,3 +1903,24 @@ class DialogoAutorizado(Dialogo):
             return
         self.fechar()
         self.aba.mostrar_autorizados(self.dono)
+
+    def _salvar_encomenda(self):
+        app = self.aba.app
+        cpf, nome = so_digitos(self.cpf.get()), " ".join(self.nome.get().split())
+        valido_ate, erro = ler_validade(self.validade.get())
+        if not erro:
+            _, erro = conferir_autorizado_encomenda(
+                self.dono["cpf"], cpf, nome, valido_ate, app.relogio().date())
+        if erro:
+            self.faixa.mostrar("erro", erro)
+            self.faixa.grid(row=2, column=0, columnspan=2, sticky="ew",
+                            pady=(px(12), 0))
+            return False
+        ok, _ = app.tentar(app.banco.adicionar_autorizado_encomenda,
+                           self.dono["cpf"], cpf, nome, valido_ate,
+                           autor=app.autor)
+        if not ok:
+            return False
+        self.fechar()
+        self.aba.mostrar_autorizados(self.dono)
+        return True

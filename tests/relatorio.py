@@ -1718,6 +1718,386 @@ CASOS = [
           "test_v35.TestSimboloNaJanela.test_simbolo_da_barra_e_uma_imagem_de_36",
           "test_v35.TestSimboloNaJanela.test_cores_do_simbolo_em_cada_barra_e_tema",
           "test_v35.TestSimboloNaJanela.test_login_mostra_o_logo_novo"]),
+    # --- 3.6: encomenda e chave ligadas às pessoas do cadastro -----
+    caso("CT-147", ["RF40", "RN52"], POSITIVO,
+         "Encomenda só para uma pessoa do cadastro",
+         "Nova encomenda (página Encomendas ou Cadastro › Entregador): "
+         "digitar 3 letras do destinatário e escolher nas sugestões; ou "
+         "digitar o nome inteiro, só o primeiro nome (único), sem acento ou "
+         "em maiúsculas; ou o CPF.",
+         "A encomenda é gravada com o nome e o CPF do cadastro (\"Encomenda "
+         "nº 001 para Helena Souza registrada.\"); trocar o texto depois de "
+         "escolher desfaz a escolha; a pessoa não precisa estar na unidade.",
+         ["test_v36.TestDestinatarioDoCadastro.test_pelo_cpf_grava_o_nome_e_o_cpf_do_cadastro",
+          "test_v36.TestDestinatarioDoCadastro.test_cpf_com_pontuacao_vale",
+          "test_v36.TestDestinatarioDoCadastro.test_nome_inteiro_sem_diferenca_de_acento_e_maiuscula",
+          "test_v36.TestDestinatarioDoCadastro.test_so_o_primeiro_nome_basta_se_for_unico",
+          "test_v36.TestDestinatarioDoCadastro.test_texto_so_com_numeros_e_tratado_como_cpf",
+          "test_v36.TestDestinatarioDoCadastro.test_pessoa_de_fora_tambem_recebe_encomenda",
+          "test_v36.TestEncomendaNaTela.test_escolher_nas_sugestoes_grava_o_cpf",
+          "test_v36.TestEncomendaNaTela.test_escolher_e_depois_trocar_o_texto_perde_a_escolha",
+          "test_v36.TestEncomendaNaTela.test_cpf_escolhido",
+          "test_v36.TestCadastroEntregadorComSugestoes.test_destinatario_escolhido_vai_com_o_cpf"]),
+    caso("CT-148", ["RF40", "RN52", "RN06"], NEGATIVO,
+         "Encomenda para quem não é do cadastro",
+         "Destinatário \"Setor de Compras\", só o sobrenome, um primeiro "
+         "nome de duas pessoas, o nome de duas pessoas iguais, uma pessoa "
+         "anonimizada, um CPF incompleto, inexistente ou de ninguém.",
+         "Recusa: \"Ninguém do cadastro se chama ...\", \"Há 2 pessoas com o "
+         "nome ...\" ou a mensagem do CPF; nada é gravado e o diálogo (ou o "
+         "formulário do Cadastro) continua com o que foi digitado.",
+         ["test_v36.TestDestinatarioDoCadastro.test_cpf_errado_ou_de_ninguem_e_recusado_com_a_mensagem_certa",
+          "test_v36.TestDestinatarioDoCadastro.test_primeiro_nome_de_varias_pessoas_pede_o_nome_completo",
+          "test_v36.TestDestinatarioDoCadastro.test_mesmo_nome_completo_em_duas_pessoas",
+          "test_v36.TestDestinatarioDoCadastro.test_quem_nao_e_do_cadastro_e_recusado",
+          "test_v36.TestDestinatarioDoCadastro.test_anonimizada_nao_e_destinataria",
+          "test_v36.TestDestinatarioDoCadastro.test_sem_usuario_ativo_nada_e_gravado",
+          "test_v36.TestEncomendaNaTela.test_nome_de_ninguem_avisa_e_o_dialogo_fica",
+          "test_v36.TestCadastroEntregadorComSugestoes.test_destinatario_que_nao_e_do_cadastro_avisa",
+          "test_v36.TestExcluirPessoaComEncomenda.test_com_encomenda_aguardando_a_exclusao_e_recusada",
+          "test_v36.TestExcluirPessoaComEncomenda.test_depois_de_excluir_a_encomenda_exclui"]),
+    caso("CT-149", ["RF40", "RN52", "RN35"], POSITIVO,
+         "Retirada pelo destinatário ou por um autorizado, na unidade",
+         "Registrar retirada: CPF da destinatária (o nome vem sozinho) ou o "
+         "nome inteiro; depois, CPF de um autorizado dela que está na "
+         "unidade (validade até hoje); encomenda antiga (sem CPF) retirada "
+         "por quem tem o mesmo primeiro nome.",
+         "Retirada gravada com o nome e o CPF do cadastro; o histórico diz "
+         "\"#1 por Bruno Almeida, autorizado por Helena Souza\" quando foi "
+         "um autorizado.",
+         ["test_v36.TestRetiradaDaEncomenda.test_destinatario_na_unidade_retira",
+          "test_v36.TestRetiradaDaEncomenda.test_autorizado_na_unidade_retira_e_o_historico_diz",
+          "test_v36.TestRetiradaDaEncomenda.test_validade_vale_ate_o_ultimo_dia_inclusive",
+          "test_v36.TestRetiradaDaEncomenda.test_nome_gravado_e_o_do_cadastro",
+          "test_v36.TestRetiradaDaEncomenda.test_encomenda_antiga_vale_pelo_primeiro_nome",
+          "test_v36.TestEncomendaNaTela.test_retirada_pelo_cpf_puxa_o_nome",
+          "test_v36.TestEncomendaNaTela.test_retirada_pelo_nome_inteiro_acha_o_cpf"]),
+    caso("CT-150", ["RF40", "RN52", "RN06"], NEGATIVO,
+         "Retirada recusada: fora da unidade, sem autorização ou CPF errado",
+         "Retirar com a destinatária fora; com outra pessoa sem autorização, "
+         "com autorização vencida, removida ou de outra pessoa; com CPF "
+         "vazio, incompleto, inexistente, de ninguém ou que não é do nome "
+         "digitado; retirar duas vezes.",
+         "Recusa com a mensagem certa (\"... não está na unidade\", \"... "
+         "não pode retirar a encomenda de ...\", a do CPF, \"Este CPF é de "
+         "..., não de ...\"); a encomenda continua aguardando retirada.",
+         ["test_v36.TestRetiradaDaEncomenda.test_destinatario_fora_da_unidade_nao_retira",
+          "test_v36.TestRetiradaDaEncomenda.test_outra_pessoa_sem_autorizacao_nao_retira",
+          "test_v36.TestRetiradaDaEncomenda.test_autorizado_fora_da_unidade_nao_retira",
+          "test_v36.TestRetiradaDaEncomenda.test_autorizado_vencido_nao_vale",
+          "test_v36.TestRetiradaDaEncomenda.test_autorizado_removido_nao_vale",
+          "test_v36.TestRetiradaDaEncomenda.test_autorizado_de_outra_pessoa_nao_vale",
+          "test_v36.TestRetiradaDaEncomenda.test_cpf_obrigatorio_valido_e_do_cadastro",
+          "test_v36.TestRetiradaDaEncomenda.test_nao_retira_duas_vezes_nem_a_que_nao_existe",
+          "test_v36.TestRetiradaDaEncomenda.test_sem_usuario_ativo_nao_retira",
+          "test_v36.TestRetiradaDaEncomenda.test_encomenda_antiga_outro_primeiro_nome_nao_retira",
+          "test_v36.TestEncomendaNaTela.test_retirada_recusas_no_dialogo",
+          "test_v36.TestEncomendaNaTela.test_retirada_por_quem_nao_pode_avisa_e_nao_grava"]),
+    caso("CT-151", ["RF40", "RN35", "RN45"], POSITIVO,
+         "Quem pode retirar as encomendas (ficha da pessoa)",
+         "Pessoas › ficha › Encomendas: o porteiro, com a pessoa na unidade, "
+         "adiciona Bruno (o nome vem pelo CPF), muda a validade e remove; o "
+         "administrador adiciona com a pessoa fora; a ficha mostra as "
+         "encomendas aguardando retirada.",
+         "A lista mostra nome, CPF (mascarado para o porteiro) e validade "
+         "(\"sem prazo\", a data ou \"venceu\"); a seção vira \"Encomendas "
+         "(1)\"; cada mudança vai ao histórico; excluir a pessoa desativa a "
+         "lista dela.",
+         ["test_v36.TestAutorizadosDeEncomenda.test_porteiro_adiciona_com_a_pessoa_na_unidade",
+          "test_v36.TestAutorizadosDeEncomenda.test_administrador_adiciona_a_qualquer_hora",
+          "test_v36.TestAutorizadosDeEncomenda.test_validade_hoje_vale_e_ontem_nao",
+          "test_v36.TestAutorizadosDeEncomenda.test_remover_e_logico_e_vai_ao_historico",
+          "test_v36.TestAutorizadosDeEncomenda.test_porteiro_remove_mesmo_com_a_pessoa_fora",
+          "test_v36.TestAutorizadosDeEncomenda.test_alterar_validade",
+          "test_v36.TestAutorizadosDeEncomenda.test_lista_ativos_primeiro_e_mais_recentes_primeiro",
+          "test_v36.TestAutorizadosDeEncomenda.test_excluir_a_pessoa_desativa_a_lista_dela",
+          "test_v36.TestFichaEncomendas.test_a_secao_existe",
+          "test_v36.TestFichaEncomendas.test_aguardando_retirada",
+          "test_v36.TestFichaEncomendas.test_porteiro_adiciona_com_a_pessoa_na_unidade",
+          "test_v36.TestFichaEncomendas.test_validade_pela_ficha",
+          "test_v36.TestFichaEncomendas.test_vencido_aparece_como_venceu",
+          "test_v36.TestFichaEncomendas.test_remover_pede_confirmacao",
+          "test_v36.TestFichaEncomendasDoAdministrador.test_administrador_adiciona_com_a_pessoa_fora"]),
+    caso("CT-152", ["RN35", "RN45", "RN06"], NEGATIVO,
+         "Quem pode retirar as encomendas: recusas",
+         "Porteiro com a pessoa fora da unidade; o próprio dono; CPF "
+         "incompleto ou inexistente; nome sem sobrenome ou grande demais; "
+         "validade antes de hoje; a mesma pessoa duas vezes; mudar a "
+         "validade de quem foi removido; gravar direto no banco o dono ou o "
+         "repetido.",
+         "Recusa com a mensagem do caso (\"O porteiro só cadastra ... com a "
+         "pessoa na unidade\", \"A própria pessoa já retira as encomendas "
+         "dela.\", ...); o diálogo fica aberto; nada é gravado.",
+         ["test_v36.TestAutorizadosDeEncomenda.test_porteiro_com_a_pessoa_fora_nao_adiciona",
+          "test_v36.TestAutorizadosDeEncomenda.test_nao_pode_o_proprio_dono",
+          "test_v36.TestAutorizadosDeEncomenda.test_nao_duplica_quem_esta_ativo",
+          "test_v36.TestAutorizadosDeEncomenda.test_cpf_invalido_usa_as_mensagens_novas",
+          "test_v36.TestAutorizadosDeEncomenda.test_nome_completo_e_tamanho",
+          "test_v36.TestAutorizadosDeEncomenda.test_dono_precisa_estar_cadastrado",
+          "test_v36.TestAutorizadosDeEncomenda.test_alterar_validade_porteiro_so_com_a_pessoa_na_unidade",
+          "test_v36.TestAutorizadosDeEncomenda.test_alterar_validade_de_removido_e_recusado",
+          "test_v36.TestAutorizadosDeEncomenda.test_sem_usuario_ativo_nada_muda",
+          "test_v36.TestAutorizadosDeEncomenda.test_autorizado_fora_do_cadastro_entra_na_lista_mas_nao_retira",
+          "test_v36.TestAutorizadosDeEncomenda.test_banco_recusa_o_proprio_dono_e_o_repetido_mesmo_sem_a_checagem",
+          "test_v36.TestFichaEncomendas.test_porteiro_com_a_pessoa_fora_nao_adiciona",
+          "test_v36.TestFichaEncomendas.test_dados_invalidos_ficam_no_dialogo",
+          "test_v36.TestFichaEncomendas.test_porteiro_com_a_pessoa_fora_nao_muda_a_validade"]),
+    caso("CT-153", ["RF41", "RN06"], POSITIVO,
+         "Chave entregue a uma pessoa do cadastro que está na unidade",
+         "Entregar chave: CPF de quem está dentro (o nome vem do cadastro); "
+         "CPF de quem saiu, de ninguém, incompleto ou inexistente; pessoa "
+         "anonimizada.",
+         "Com quem está dentro: a chave sai com o nome do cadastro e o "
+         "histórico \"Laboratório 2 para Helena Souza\"; nos outros casos, "
+         "recusa (\"... não está na unidade\" ou a mensagem do CPF) e a "
+         "chave fica na portaria.",
+         ["test_v36.TestEntregarChave.test_entrega_com_o_nome_do_cadastro",
+          "test_v36.TestEntregarChave.test_so_quem_esta_na_unidade",
+          "test_v36.TestEntregarChave.test_cpf_obrigatorio_valido_e_do_cadastro",
+          "test_v36.TestEntregarChave.test_anonimizada_nao_recebe",
+          "test_v36.TestEntregarChave.test_chaves_da_pessoa",
+          "test_v36.TestChavesNaTela36.test_entregar_pela_tela_exige_quem_esta_dentro",
+          "test_v36.TestChaveComQuemEstaDentroAleatorio.test_invariante_da_chave",
+          "test_modulos.TestChaves.test_quem_retira_precisa_de_cpf_valido_e_cadastrado",
+          "test_livros.TestChavesNaTela.test_entregar_e_devolver"]),
+    caso("CT-154", ["RF41"], POSITIVO,
+         "Transferir a chave para outra pessoa da unidade",
+         "Página Chaves, chave emprestada à Helena: Transferir para Bruno "
+         "(que está dentro); de novo para Carla; tentar transferir para a "
+         "própria Helena, para quem saiu, para quem não é do cadastro ou uma "
+         "chave na portaria.",
+         "O botão Transferir só fica ativo com a chave emprestada; a chave "
+         "passa para Bruno, o empréstimo da Helena fecha com \"→ Bruno "
+         "Almeida\" no histórico e o evento \"Chave transferida\"; as "
+         "recusas não mudam nada.",
+         ["test_v36.TestTransferirChave.test_transfere_para_outra_pessoa_na_unidade",
+          "test_v36.TestTransferirChave.test_devolucao_comum_nao_tem_transferida_para",
+          "test_v36.TestTransferirChave.test_nao_transfere_para_quem_ja_esta_com_ela",
+          "test_v36.TestTransferirChave.test_quem_recebe_precisa_estar_na_unidade_e_no_cadastro",
+          "test_v36.TestTransferirChave.test_so_chave_emprestada",
+          "test_v36.TestTransferirChave.test_sem_usuario_ativo_nao_transfere",
+          "test_v36.TestTransferirChave.test_transferir_de_novo_encadeia_o_historico",
+          "test_v36.TestTransferirChave.test_o_banco_trava_duas_pessoas_com_a_mesma_chave",
+          "test_v36.TestChavesNaTela36.test_transferir_so_com_a_chave_emprestada",
+          "test_v36.TestChavesNaTela36.test_transferir_pela_tela",
+          "test_v36.TestChavesNaTela36.test_transferir_para_quem_ja_esta_com_a_chave_e_recusado_no_dialogo",
+          "test_v36.TestChavesNaTela36.test_historico_mostra_para_quem_foi",
+          "test_v36.TestChavesNaTela36.test_dialogos_cabem_no_notebook"]),
+    caso("CT-155", ["RF02", "RF41"], NEGATIVO,
+         "A chave da portaria não sai com a pessoa",
+         "Registrar a saída (botão, Saída rápida pelo CPF) de quem está com "
+         "uma ou duas chaves e responder Registrar devolução, Transferir "
+         "(para quem está dentro ou fora) ou Cancelar; saída de duas "
+         "pessoas; corrigir ou excluir a visita aberta de quem tem chave; "
+         "transferir para quem também está saindo; Encerrar o dia com "
+         "alguém com chave; chamar o banco direto.",
+         "Uma pergunta por chave; Devolver/Transferir gravam e a saída "
+         "segue; Cancelar (ou cancelar a transferência, ou transferir para "
+         "quem está fora) não grava nada e a pessoa continua dentro; o banco "
+         "recusa \"... está com a chave ... Registre a devolução ou "
+         "transfira ...\" e, na saída de várias, nenhuma é gravada; "
+         "quem também está saindo é recusado no diálogo, que continua "
+         "aberto quando o banco recusa; o Encerrar o dia não dá saída a "
+         "quem está com chave e avisa quem é.",
+         ["test_v36.TestChaveNaSaidaNaTela.test_pergunta_uma_vez_por_chave",
+          "test_v36.TestChaveNaSaidaNaTela.test_devolver_e_sair",
+          "test_v36.TestChaveNaSaidaNaTela.test_transferir_e_sair",
+          "test_v36.TestChaveNaSaidaNaTela.test_cancelar_a_pergunta_nao_grava_nada",
+          "test_v36.TestChaveNaSaidaNaTela.test_cancelar_a_transferencia_nao_grava_nada",
+          "test_v36.TestChaveNaSaidaNaTela.test_transferir_para_quem_esta_fora_avisa_e_nao_sai",
+          "test_v36.TestChaveNaSaidaNaTela.test_duas_chaves_duas_perguntas",
+          "test_v36.TestChaveNaSaidaNaTela.test_quem_nao_tem_chave_nao_e_perguntado",
+          "test_v36.TestChaveNaSaidaNaTela.test_botao_registrar_saida_tambem_pergunta",
+          "test_v36.TestChaveNaSaidaNaTela.test_saida_rapida_pelo_cpf_tambem_pergunta",
+          "test_v36.TestChaveNaSaidaNaTela.test_duas_pessoas_cancelar_nao_grava_nenhuma",
+          "test_v36.TestChaveNaSaidaNaTela.test_dialogo_da_pergunta_tem_os_tres_botoes",
+          "test_v36.TestChaveNaSaidaNoBanco.test_saida_de_quem_esta_com_chave_e_recusada",
+          "test_v36.TestChaveNaSaidaNoBanco.test_com_duas_chaves_a_mensagem_lista_as_duas",
+          "test_v36.TestChaveNaSaidaNoBanco.test_saida_de_varias_e_uma_transacao",
+          "test_v36.TestChaveNaSaidaNoBanco.test_depois_de_devolver_sai",
+          "test_v36.TestChaveNaSaidaNoBanco.test_depois_de_transferir_sai_e_quem_recebeu_nao",
+          "test_v36.TestChaveNaSaidaNoBanco.test_correcao_nao_fecha_a_visita_de_quem_tem_chave",
+          "test_v36.TestChaveNaSaidaNoBanco.test_correcao_nao_troca_o_cpf_da_visita_de_quem_tem_chave",
+          "test_v36.TestChaveNaSaidaNoBanco.test_correcao_de_outro_campo_continua_valendo",
+          "test_v36.TestChaveNaSaidaNoBanco.test_excluir_a_visita_aberta_de_quem_tem_chave_e_recusado",
+          "test_v36.TestChaveNaSaidaNoBanco.test_encerrar_o_dia_nao_deixa_a_chave_com_quem_saiu",
+          "test_v36.TestChaveNaSaidaNoBanco.test_encerrar_o_dia_depois_de_devolver_encerra",
+          "test_v36.TestChaveNaSaidaNaTela.test_transferir_para_quem_tambem_esta_saindo_e_recusado",
+          "test_v36.TestChaveNaSaidaNaTela.test_transferencia_recusada_pelo_banco_deixa_o_dialogo_aberto",
+          "test_v36.TestChaveNaSaidaNaTela.test_corrigir_o_cpf_no_mesmo_dialogo_transfere",
+          "test_v36.TestEncerrarODiaComChaveNaTela.test_pergunta_e_aviso_falam_de_quem_esta_com_a_chave",
+          "test_v36.TestEncerrarODiaComChaveNaTela.test_sem_chave_a_pergunta_nao_fala_de_chave"]),
+    caso("CT-156", ["RN06", "RN49"], NEGATIVO,
+         "Mensagens do CPF",
+         "CPF com menos de 11 números, com letras, com os 11 números mas "
+         "dígitos errados; na ocorrência, na chave e na encomenda, um CPF "
+         "válido de quem não é do cadastro; o mesmo no Cadastro, Nova "
+         "pessoa, Configurações › Anonimizar e na linguagem de comandos.",
+         "\"CPF inválido. Digite os 11 números (somente números).\", \"CPF "
+         "inválido. Digite um CPF existente.\" ou \"... (de uma pessoa "
+         "cadastrada).\"; na linguagem, \"... não conferem: digite um CPF "
+         "existente.\"; nada é gravado.",
+         ["test_v36.TestMensagensDeCpf.test_mensagem_cpf",
+          "test_v36.TestMensagensDeCpf.test_textos_exatos",
+          "test_v36.TestMensagensDeCpf.test_validar_quem_retira_cpf_e_nome_obrigatorios",
+          "test_v36.TestMensagensDeCpf.test_os_formularios_usam_a_mensagem_certa",
+          "test_v36.TestMensagensDeCpf.test_sem_acento_e_primeiro_nome",
+          "test_v36.TestCpfDaOcorrenciaNoBanco.test_cpf_da_ocorrencia_e_de_uma_pessoa_cadastrada",
+          "test_v36.TestCpfNaLinguagem.test_digitos_que_nao_conferem_pedem_um_cpf_existente",
+          "test_v36.TestMensagensNasTelas.test_cadastro_avisa_cpf_que_nao_existe_na_hora",
+          "test_v36.TestMensagensNasTelas.test_cadastrar_com_cpf_incompleto",
+          "test_v36.TestMensagensNasTelas.test_nova_pessoa",
+          "test_v36.TestMensagensNasTelas.test_ocorrencia_com_cpf_de_quem_nao_e_do_cadastro",
+          "test_v36.TestMensagensNasTelas.test_anonimizar_em_configuracoes"]),
+    caso("CT-157", ["RF39", "RN53"], NEGATIVO,
+         "Uma autorização de entrada em vigor por CPF",
+         "Criar uma segunda autorização para um CPF que já tem uma válida, "
+         "uma futura ou uma que vence hoje; depois cancelar a anterior, "
+         "esperar ela vencer ou usar outro CPF.",
+         "Recusa \"Este CPF já tem a autorização nº N (nome, de ... a ...). "
+         "Para mudar o período, cancele a anterior e crie outra.\" (o "
+         "diálogo fica aberto); cancelada, vencida ou de outro CPF: aceita.",
+         ["test_v36.TestAutorizacaoUnicaPorCpf.test_segunda_em_vigor_e_recusada_com_o_numero_da_primeira",
+          "test_v36.TestAutorizacaoUnicaPorCpf.test_a_futura_tambem_conta",
+          "test_v36.TestAutorizacaoUnicaPorCpf.test_vence_hoje_ainda_conta_e_amanha_nao",
+          "test_v36.TestAutorizacaoUnicaPorCpf.test_cancelada_nao_conta",
+          "test_v36.TestAutorizacaoUnicaPorCpf.test_outro_cpf_nao_conta",
+          "test_v36.TestMensagensNasTelas.test_autorizacao_repetida_avisa_e_o_dialogo_fica"]),
+    caso("CT-158", ["RF48", "RF01", "RNF01", "RNF05"], POSITIVO,
+         "Sugestões de pessoas ao digitar o CPF ou o nome",
+         "Digitar 2 e depois 3 letras do nome (ou números do CPF), continuar "
+         "digitando; setas, Enter, Tab, Esc e clique; como porteiro e como "
+         "administrador; nos diálogos que só aceitam quem está dentro; nomes "
+         "com acento, pessoa desativada, anonimizada e textos estranhos.",
+         "Com 2 não aparece nada; com 3, até 3 pessoas (primeiro quem começa "
+         "com o texto, quem está dentro antes), refinando a cada letra; "
+         "Enter, Tab e clique escolhem e preenchem CPF e nome (o Enter não "
+         "salva o diálogo), Esc fecha só a lista; o porteiro vê o CPF "
+         "mascarado; \"na unidade\" e \"desativada\" marcados; anonimizadas "
+         "nunca aparecem.",
+         ["test_v36.TestSugerirPessoas.test_menos_de_3_nao_sugere",
+          "test_v36.TestSugerirPessoas.test_ordem_comeca_depois_palavra_depois_o_resto",
+          "test_v36.TestSugerirPessoas.test_refina_enquanto_digita",
+          "test_v36.TestSugerirPessoas.test_sem_diferenca_de_acento_e_maiuscula",
+          "test_v36.TestSugerirPessoas.test_pelo_comeco_do_cpf",
+          "test_v36.TestSugerirPessoas.test_no_maximo_3_e_limite",
+          "test_v36.TestSugerirPessoas.test_quem_esta_dentro_vem_antes",
+          "test_v36.TestSugerirPessoas.test_campos_de_cada_sugestao",
+          "test_v36.TestSugerirPessoas.test_so_dentro",
+          "test_v36.TestSugerirPessoas.test_excluir",
+          "test_v36.TestSugerirPessoas.test_sem_as_anonimizadas",
+          "test_v36.TestSugerirPessoas.test_texto_estranho_nao_quebra_nem_acha_tudo",
+          "test_v36.TestComponenteSugestoes.test_2_caracteres_nao_sugere_3_sugere",
+          "test_v36.TestComponenteSugestoes.test_refina_e_fecha_sem_ninguem",
+          "test_v36.TestComponenteSugestoes.test_no_maximo_3_mesmo_se_o_banco_mandar_mais",
+          "test_v36.TestComponenteSugestoes.test_escolher_preenche_cpf_e_nome",
+          "test_v36.TestComponenteSugestoes.test_escolher_pelo_cpf_tambem_preenche_o_nome",
+          "test_v36.TestComponenteSugestoes.test_setas_marcam_e_enter_escolhe",
+          "test_v36.TestComponenteSugestoes.test_tab_escolhe_a_marcada",
+          "test_v36.TestComponenteSugestoes.test_enter_sem_marcar_so_fecha",
+          "test_v36.TestComponenteSugestoes.test_esc_fecha_sem_escolher",
+          "test_v36.TestComponenteSugestoes.test_admin_ve_o_cpf_inteiro_e_quem_esta_na_unidade",
+          "test_v36.TestComponenteSugestoes.test_desativada_aparece_marcada",
+          "test_v36.TestComponenteSugestoes.test_clique_na_linha_escolhe",
+          "test_v36.TestComponenteSugestoes.test_so_dentro_e_excluir",
+          "test_v36.TestComponenteSugestoes.test_pessoa_pelo_nome",
+          "test_v36.TestSugestoesDoPorteiro.test_porteiro_ve_o_cpf_mascarado",
+          "test_v36.TestSugestoesNasTelas.test_campos_ligados",
+          "test_v36.TestSugestoesNasTelas.test_quem_retira_so_mostra_quem_esta_dentro",
+          "test_v36.TestSugestoesNasTelas.test_cadastro_escolher_preenche_o_cadastro",
+          "test_v36.TestSugestoesNasTelas.test_dialogo_autorizado_nao_sugere_o_proprio_dono",
+          "test_v36.TestEncomendaNaTela.test_enter_com_a_lista_aberta_escolhe_e_nao_registra",
+          "test_v36.TestEncomendaNaTela.test_esc_com_a_lista_aberta_fecha_so_a_lista"]),
+    caso("CT-159", ["RN56", "RF45"], POSITIVO,
+         "Banco v17: a migração do banco da 3.5",
+         "Abrir com a 3.6 um banco da 3.5 (v16) com visitas, uma encomenda e "
+         "uma chave emprestada; abrir de novo; usar as funções novas nele; "
+         "preencher os dados de demonstração.",
+         "O banco vira v17 (backup \"-de-v16-\" antes), ganha o CPF do "
+         "destinatário, o \"transferida_para\" e a lista de quem pode "
+         "retirar as encomendas; nada se perde, o histórico continua "
+         "íntegro, a encomenda antiga vale pelo primeiro nome e a chave "
+         "antiga pode ser transferida; abrir de novo não muda nada; na "
+         "demonstração, as encomendas são de pessoas do cadastro e a chave "
+         "está com a Carla, que está dentro.",
+         ["test_v36.TestMigracaoV17.test_versao_17",
+          "test_v36.TestMigracaoV17.test_banco_da_3_5_ganha_as_colunas_e_a_tabela",
+          "test_v36.TestMigracaoV17.test_depois_da_migracao_tudo_funciona",
+          "test_v36.TestMigracaoV17.test_faz_o_backup_de_v16",
+          "test_v36.TestMigracaoV17.test_migrar_duas_vezes_e_passo_idempotente",
+          "test_v36.TestDemonstracao.test_encomendas_de_pessoas_do_cadastro_e_a_chave_com_quem_esta_dentro"]),
+    caso("CT-160", ["RF47", "RNF05"], POSITIVO,
+         "Anonimização: encomendas, chaves e listas da pessoa",
+         "Anonimizar a pessoa que recebeu e retirou encomendas, levou e "
+         "transferiu chaves, tem e está na lista de quem pode retirar as "
+         "encomendas.",
+         "Nenhuma dessas tabelas guarda mais o nome nem o CPF dela (viram "
+         "\"Pessoa anonimizada\" e um código); as listas dela ficam inativas "
+         "(\"(anonimização)\"); os dados dos outros não mudam; ela some das "
+         "sugestões e não recebe mais encomendas.",
+         ["test_v36.TestAnonimizacaoDosLivros.test_nada_guarda_o_nome_nem_o_cpf",
+          "test_v36.TestAnonimizacaoDosLivros.test_encomendas",
+          "test_v36.TestAnonimizacaoDosLivros.test_chaves",
+          "test_v36.TestAnonimizacaoDosLivros.test_listas_de_quem_pode_retirar",
+          "test_v36.TestAnonimizacaoDosLivros.test_dados_dos_outros_nao_mudam",
+          "test_v36.TestAnonimizacaoDosLivros.test_anonimizada_some_das_sugestoes_e_nao_recebe_mais",
+          "test_v36.TestAnonimizacaoDosLivros.test_transferencias_no_mesmo_minuto_nao_apagam_o_nome_de_outro"]),
+    caso("CT-161", ["RF44", "RF38", "RF40", "RF41", "RN49"], POSITIVO,
+         "Painel com abas: Veículos, Entregas, Chaves, Ocorrências e Funcionários",
+         "Abrir o Painel (administrador e porteiro), passar por cada aba com "
+         "os dados de demonstração e com o banco vazio, trocar 7 e 30 dias e "
+         "dia ou hora, no tema escuro e na janela de notebook.",
+         "Visão geral igual à de antes; cada aba mostra os números do dia e "
+         "dois gráficos com os dados certos (vagas, aguardando, emprestadas, "
+         "abertas, dentro agora, rankings e por dia); vazio avisa; só a aba "
+         "na tela é relida; tudo cabe e nada fica com fundo claro no escuro.",
+         ["test_painel_abas.TestVeiculos.test_numeros_de_agora_e_de_hoje",
+          "test_painel_abas.TestVeiculos.test_um_dia_so_e_por_hora",
+          "test_painel_abas.TestVeiculos.test_por_tipo_no_periodo_e_agora",
+          "test_painel_abas.TestVeiculos.test_saida_com_autorizado_e_com_senha",
+          "test_painel_abas.TestVeiculos.test_o_dono_saindo_com_o_carro_nao_conta",
+          "test_painel_abas.TestEntregas.test_numeros",
+          "test_painel_abas.TestEntregas.test_ranking_junta_maiusculas_e_conta_quem_aguarda",
+          "test_painel_abas.TestEntregas.test_ranking_tem_limite",
+          "test_painel_abas.TestEntregas.test_entregadores",
+          "test_painel_abas.TestChaves.test_numeros",
+          "test_painel_abas.TestChaves.test_periodo_de_um_dia",
+          "test_painel_abas.TestChaves.test_chave_removida_sai_da_conta_de_cadastradas",
+          "test_painel_abas.TestOcorrencias.test_numeros",
+          "test_painel_abas.TestOcorrencias.test_por_categoria_ordena_e_mostra_todas",
+          "test_painel_abas.TestFuncionarios.test_numeros",
+          "test_painel_abas.TestFuncionarios.test_por_setor",
+          "test_painel_abas.TestFuncionarios.test_anonimizado_sai_dos_cadastrados",
+          "test_painel_abas.TestPeriodoEVazio.test_banco_vazio",
+          "test_painel_abas.TestSecoesNaTela.test_seletor_comeca_na_visao_geral_e_monta_as_outras_ao_abrir",
+          "test_painel_abas.TestSecoesNaTela.test_so_a_secao_na_tela_e_relida",
+          "test_painel_abas.TestSecoesNaTela.test_periodo_e_visao",
+          "test_painel_abas.TestSecoesNaTela.test_cada_secao_com_a_demonstracao",
+          "test_painel_abas.TestSecoesNaTela.test_graficos_vazios_avisam",
+          "test_painel_abas.TestSecoesNaTela.test_vagas_e_alertas_mudam_a_cor",
+          "test_painel_abas.TestVisaoGeralIgual.test_numeros_graficos_e_botoes_de_antes",
+          "test_painel_abas.TestVisaoGeralIgual.test_volta_a_visao_geral_com_os_numeros_novos",
+          "test_painel_abas.TestVisaoGeralIgual.test_faixa_do_administrador_fica_acima_das_secoes",
+          "test_painel_abas.TestSecoesNoEscuro.test_todas_as_secoes_no_escuro_sem_fundo_claro",
+          "test_painel_abas.TestSecoesNaTelaPequena.test_numeros_e_graficos_cabem",
+          "test_painel_abas.TestSecoesNaTelaPequena.test_nome_comprido_e_cortado",
+          "test_painel_abas.TestDesenhos.test_ranking_nas_duas_alturas",
+          "test_painel_abas.TestDesenhos.test_sem_dados_mostra_o_aviso"]),
+    caso("CT-162", ["RF44", "RNF05"], NEGATIVO,
+         "Painel com abas: período inválido, erro do banco e CPF",
+         "Pedir um período de 0, 367 ou não inteiro de dias; o banco falhar "
+         "ao abrir uma aba; procurar CPF nas consultas e na tela do "
+         "administrador e do porteiro; tentar gravar pelo Painel.",
+         "Período recusado com mensagem; o erro avisa e a página não quebra; "
+         "nenhuma aba mostra ou devolve CPF; o porteiro não tem Exportar nem "
+         "Relatório; o Painel não grava nada (só leitura).",
+         ["test_painel_abas.TestPeriodoEVazio.test_periodo_fora_dos_limites_e_recusado",
+          "test_painel_abas.TestPeriodoEVazio.test_limites_do_periodo",
+          "test_painel_abas.TestPeriodoEVazio.test_so_leitura",
+          "test_painel_abas.TestSecoesNaTela.test_erro_do_banco_avisa_e_nao_quebra",
+          "test_painel_abas.TestSecoesNaTela.test_sem_cpf_na_tela_do_administrador",
+          "test_painel_abas.TestSecoesDoPorteiro.test_porteiro_ve_as_secoes_sem_cpf_e_sem_exportar",
+          "test_painel_abas.TestNadaDeCpf.test_nenhuma_consulta_devolve_cpf"]),
     caso_da_linguagem(
         "CT-108", "Semântico", ["RN46", "RN48"], NEGATIVO,
         "Empresa e motivo: as mesmas regras do formulário",

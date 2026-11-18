@@ -31,6 +31,7 @@ com o estacionamento lotado AVISA e pede a confirmação do porteiro; com
 from datetime import date, datetime
 
 from .validacao import (MAXIMO_DATA, MAXIMO_NOME, checar_tamanho, cpf_valido,
+                        mensagem_cpf,
                         nome_valido, placa_valida)
 
 FORMATO_DIA = "%d/%m/%Y"
@@ -57,9 +58,26 @@ def conferir_autorizado(placa, dono_cpf, cpf, nome, valido_ate, hoje):
     if not placa_valida(placa or ""):
         return False, "O dono não tem veículo cadastrado (placa)."
     if not cpf_valido(cpf or ""):
-        return False, "CPF inválido: confira os números de quem vai retirar."
+        return False, mensagem_cpf(cpf)
     if cpf == dono_cpf:
         return False, "O dono já pode sair com o próprio carro."
+    ok, msg = checar_tamanho("Nome completo", nome or "", MAXIMO_NOME)
+    if not ok:
+        return False, msg
+    if not nome_valido(nome or ""):
+        return False, "Informe o nome completo de quem vai retirar (só letras)."
+    if valido_ate is not None and valido_ate < hoje:
+        return False, "A validade não pode ser antes de hoje."
+    return True, ""
+
+
+def conferir_autorizado_encomenda(dono_cpf, cpf, nome, valido_ate, hoje):
+    """(ok, motivo) de quem vai poder retirar as encomendas de `dono_cpf`
+    (3.6, como conferir_autorizado do carro)."""
+    if not cpf_valido(cpf or ""):
+        return False, mensagem_cpf(cpf)
+    if cpf == dono_cpf:
+        return False, "A própria pessoa já retira as encomendas dela."
     ok, msg = checar_tamanho("Nome completo", nome or "", MAXIMO_NOME)
     if not ok:
         return False, msg

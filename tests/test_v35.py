@@ -307,8 +307,9 @@ class TestAparenciaNoBanco(BaseRegras):
                          ("grafite", "vermelho"))
 
     def test_colunas_novas_no_esquema(self):
-        self.assertEqual(dados.VERSAO_ESQUEMA, 16)
-        self.assertEqual(versao_do_arquivo(self.caminho), 16)
+        # 3.6: o banco v17 continua com as colunas da 3.5
+        self.assertGreaterEqual(dados.VERSAO_ESQUEMA, 16)
+        self.assertEqual(versao_do_arquivo(self.caminho), dados.VERSAO_ESQUEMA)
         con = sqlite3.connect(self.caminho)
         colunas = {c[1]: c for c in con.execute("PRAGMA table_info(usuarios)")}
         con.close()
@@ -1086,10 +1087,20 @@ CAMPOS_DA_PESSOA = {"cpf", "nome", "celular", "placa", "data", "hora",
                     "saida", "motivo", "anfitriao"}
 
 
+# 3.6: o destinatário da encomenda é uma pessoa do cadastro (sem visita)
+DESTINATARIOS = ("Helena Souza", "Rafael Lima", "Marcos Lima", "Ana d'Ávila",
+                 " ".join(("  Helena   Souza  " + "x" * 200)[:MAXIMO_NOME]
+                          .split()))
+
+
 class BaseEntregador(BaseInterface):
     def setUp(self):
         super().setUp()
         self.tela = self.app.tela_cadastro
+        for n, nome in enumerate(DESTINATARIOS):
+            self.banco.cadastrar_pessoa(
+                dados_modulos.cpf_ficticio(284759163 + n), nome,
+                "31987654321", "", "Funcionário", "ana.admin")
 
     def visiveis(self):
         self.janela.update_idletasks()
@@ -1199,10 +1210,10 @@ class TestEntregadorSoDeixaAEntrega(BaseEntregador):
         self.assertEqual(t.btn_cadastrar.cget("text"), "Cadastrar")
         self.assertEqual(t.ficha.winfo_manager(), "pack")
         # a segunda é a nº 002
-        self.entrega(destinatario="Setor de Compras", remetente="Kalunga",
+        self.entrega(destinatario="Rafael Lima", remetente="Kalunga",
                      bloco="", descricao="")
         t.cadastrar()
-        self.assertIn("Encomenda nº 002 para Setor de Compras",
+        self.assertIn("Encomenda nº 002 para Rafael Lima",
                       t.lbl_pessoa.cget("text"))
         # "Ver encomendas" abre a página com as duas aguardando
         t.aviso_pessoa.comando()
@@ -1211,7 +1222,7 @@ class TestEntregadorSoDeixaAEntrega(BaseEntregador):
         linhas = pagina.tabela.get_children()
         self.assertEqual(len(linhas), 2)
         destinatarios = {pagina.tabela.set(l, "destinatario") for l in linhas}
-        self.assertEqual(destinatarios, {"Helena Souza", "Setor de Compras"})
+        self.assertEqual(destinatarios, {"Helena Souza", "Rafael Lima"})
         for linha in linhas:
             self.assertEqual(pagina.tabela.item(linha)["text"],
                              "Aguardando retirada")

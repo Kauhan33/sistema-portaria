@@ -6,7 +6,12 @@ tabela, a linha de detalhe e as ações.
 - Autorizações: visitantes autorizados e a emissão da autorização de entrada
   (uma página para imprimir, impressao.py).
 - Encomendas: o que chegou e quem retirou.
-- Chaves: com quem está cada chave, entrega e devolução.
+- Chaves: com quem está cada chave, entrega, devolução e transferência.
+
+3.6: a chave e a encomenda são de pessoas do cadastro que estão na unidade
+(o CPF é obrigatório e o nome vem do cadastro); o destinatário da
+encomenda é escolhido entre as pessoas cadastradas; os campos de CPF e de
+nome sugerem as pessoas a partir de 3 letras ou números (sugestoes.py).
 
 Como no resto do sistema, a tela só organiza: quem confere as regras e as
 permissões é o banco (dados_modulos.py).
@@ -19,7 +24,8 @@ from .componentes import (Aviso, Botao, Cabecalho, Campo, CampoTexto, Cartao,
                           Contador, Dialogo, EsperaDigitacao, campo_rotulado,
                           checkbutton, inserir_linha, plural, rotulo_campo,
                           tabela, titulo_cartao)
-from .estilo import COR, ICONE, MARGEM, px
+from .estilo import COR, FONTE, ICONE, MARGEM, px
+from .sugestoes import ligar_sugestoes, pessoa_pelo_nome
 from .usuarios import eh_admin
 from .validacao import (TIPOS_AUTORIZACAO, usa_campo,
                         AUT_CANCELADA, AUT_FUTURA, AUT_VALIDA, AUT_VENCIDA,
@@ -29,7 +35,15 @@ from .validacao import (TIPOS_AUTORIZACAO, usa_campo,
                         MAXIMO_MOTIVO_VISITA, MAXIMO_NOME, MAXIMO_REMETENTE,
                         MAXIMO_SETOR, cpf_valido, normalizar, so_digitos,
                         validar_campos, validar_chave, validar_encomenda,
-                        validar_funcionario, validar_quem_retira)
+                        validar_funcionario, validar_quem_retira,
+                        CPF_NAO_CADASTRADO, sem_acento)
+
+
+def validar_nome_da_pessoa(digitado, do_cadastro):
+    """'' se o nome digitado é o do cadastro (sem diferença de acento e
+    maiúscula); senão, um texto não vazio."""
+    return "" if sem_acento(" ".join(digitado.split())) == sem_acento(
+        do_cadastro) else "diferente"
 
 FORMATO_DIA = "%d/%m/%Y"
 # a tabela desenha no máximo isto (um quadro com milhares de funcionários
@@ -237,24 +251,64 @@ class DialogoSimples(Dialogo):
 
 
 class DialogoQuemRetira(DialogoSimples):
-    """Quem está levando (a chave ou a encomenda): nome e, se quiser, CPF."""
+    """Quem leva (a chave ou a encomenda) ou recebe a chave transferida.
+    3.6: uma pessoa do cadastro que está na unidade; CPF e nome são
+    obrigatórios: o CPF completo puxa o nome e o nome (escolhido nas
+    sugestões, ou inteiro e de uma pessoa só) puxa o CPF. `excluir()`: CPFs
+    que não podem ser escolhidos (quem já está com a chave, quem também está
+    saindo): não aparecem nas sugestões e, digitados, são recusados com a
+    mensagem `recusa` ({nome} = a pessoa).
+    `ao_confirmar(nome, cpf)` grava; se devolver False (o banco recusou e
+    já avisou), o diálogo continua aberto para corrigir."""
 
-    def __init__(self, pagina, titulo, subtitulo, confirmar_texto, ao_confirmar):
+    RECUSA = "{nome} não pode ser escolhida aqui.\nEscolha outra pessoa."
+
+    def __init__(self, pagina, titulo, subtitulo, confirmar_texto, ao_confirmar,
+                 excluir=None, recusa=RECUSA):
         super().__init__(pagina, titulo, subtitulo, confirmar_texto)
         self.ao_confirmar = ao_confirmar
-        c = self.campo("CPF", "opcional", numeros=11)
+        self.excluir, self.recusa = excluir, recusa
+        c = self.campo("CPF *", "ou comece pelo nome", numeros=11)
         self.cpf = c.entrada
         self.nome = self.campo("Nome completo *", maximo=MAXIMO_NOME).entrada
         self.puxar_pessoa(c.var, {"nome": self.nome})
+        self.sugestoes = ligar_sugestoes(
+            self.app, {"cpf": self.cpf, "nome": self.nome}, so_dentro=True,
+            excluir=excluir)
+        tk.Label(self.miolo, text="Só quem está na unidade agora.",
+                 font=FONTE["dica"], bg=COR["superficie"],
+                 fg=COR["texto_3"]).grid(row=self.linha_atual, column=0,
+                                         columnspan=2, sticky="w",
+                                         pady=(0, px(8)))
+        self.linha_atual += 1
         self.abrir(confirmar=self.salvar, foco=self.cpf)
 
     def salvar(self):
         nome, cpf = " ".join(self.nome.get().split()), self.cpf.get().strip()
+        if not cpf and nome:            # digitou o nome inteiro, sem escolher
+            pessoa = pessoa_pelo_nome(self.app, nome, so_dentro=True)
+            if pessoa is None:
+                return self.erro("Escolha a pessoa nas sugestões (comece a "
+                                 "digitar o nome ou o CPF): o CPF é "
+                                 "obrigatório.")
+            cpf, nome = pessoa["cpf"], pessoa["nome"]
         ok, msg = validar_quem_retira(nome, cpf)
         if not ok:
             return self.erro(msg)
-        self.fechar()
-        self.ao_confirmar(nome, cpf)
+        ok, pessoa = self.app.tentar(self.app.banco.buscar_pessoa, cpf)
+        if not ok:
+            return False
+        if pessoa is None:
+            return self.erro(CPF_NAO_CADASTRADO)
+        if validar_nome_da_pessoa(nome, pessoa["nome"]):
+            return self.erro(f"Este CPF é de {pessoa['nome']}, não de {nome}."
+                             "\nConfira o CPF ou o nome.")
+        if self.excluir is not None and cpf in tuple(self.excluir()):
+            return self.erro(self.recusa.format(nome=pessoa["nome"]))
+        if self.ao_confirmar(pessoa["nome"], cpf) is False:
+            return False
+        if self.janela.winfo_exists():
+            self.fechar()
         return True
 
 
@@ -290,24 +344,28 @@ class DialogoChave(DialogoSimples):
 class DialogoHistoricoChaves(Dialogo):
     """As últimas entregas e devoluções (só leitura)."""
 
-    COLUNAS = [("chave", "Chave", 150, "w"), ("nome", "Com quem", 170, "w"),
+    COLUNAS = [("chave", "Chave", 130, "w"), ("nome", "Com quem", 150, "w"),
                ("retirada", "Retirada", 124, "w"),
-               ("devolucao", "Devolução", 124, "w"),
+               ("devolucao", "Devolução", 190, "w"),
                ("por", "Entregue por", 100, "w")]
 
     def __init__(self, pagina):
         app = pagina.app
         super().__init__(app.janela, "Histórico das chaves",
-                         "As 200 entregas mais recentes.", largura=700,
+                         "As 200 entregas mais recentes (a transferência "
+                         "mostra para quem a chave foi).", largura=740,
                          ao_usar=app.registrar_uso)
         # 8 linhas: o diálogo cabe na tela de notebook (1366x768)
         quadro, self.tabela = tabela(self.miolo, self.COLUNAS, altura=8)
         quadro.pack(fill="both", expand=True)
         ok, historico = app.tentar(app.banco.historico_de_chaves)
         for n, h in enumerate(historico if ok else []):
+            devolucao = h["devolvida_em"] or "com a pessoa"
+            if h.get("transferida_para"):
+                devolucao = f"{h['devolvida_em']} → {h['transferida_para']}"
             inserir_linha(self.tabela, n, (
-                h["chave"], h["nome"], h["retirada_em"],
-                h["devolvida_em"] or "com a pessoa", h["entregue_por"]))
+                h["chave"], h["nome"], h["retirada_em"], devolucao,
+                h["entregue_por"]))
         self.adicionar_botao("Fechar", self.fechar)
         self.abrir()
 
@@ -315,7 +373,8 @@ class DialogoHistoricoChaves(Dialogo):
 class AbaChaves(PaginaLista):
     TITULO, TITULO_CARTAO, NOVO = "Chaves", "Chaves da portaria", "Nova chave"
     FILTRO = "Só emprestadas"
-    DICA = "Selecione uma chave para entregar ou registrar a devolução."
+    DICA = ("Selecione uma chave para entregar, transferir ou registrar a "
+            "devolução.")
     SITUACAO = ("Situação", 120)
     COLUNAS = [("nome", "Chave", 190, "w"), ("local", "Local", 190, "w"),
                ("quem", "Com quem", 190, "w"), ("desde", "Desde", 130, "w")]
@@ -330,6 +389,8 @@ class AbaChaves(PaginaLista):
                                        self.entregar, "primario")
         self.btn_devolver = self.botao("devolver", "Registrar devolução",
                                        self.devolver, icone="ok")
+        self.btn_transferir = self.botao("transferir", "Transferir",
+                                         self.transferir)
         self.btn_historico = self.botao("historico", "Ver histórico",
                                         self.ver_historico, "fantasma")
         self.btn_remover = None
@@ -361,7 +422,7 @@ class AbaChaves(PaginaLista):
 
     def habilitados(self, c):
         return {"entregar": not c["emprestada"], "devolver": c["emprestada"],
-                "remover": not c["emprestada"]}
+                "transferir": c["emprestada"], "remover": not c["emprestada"]}
 
     def novo(self):
         self.dialogo = DialogoChave(self)
@@ -375,8 +436,33 @@ class AbaChaves(PaginaLista):
             self, "Entregar chave", f"Quem está levando a chave \"{c['nome']}\"?",
             "Entregar",
             lambda nome, cpf: self.executar(
-                self.app.banco.entregar_chave, c["id"], nome, self.app.autor,
-                cpf, sucesso=f"Chave \"{c['nome']}\" entregue a {nome}."))
+                self.app.banco.entregar_chave, c["id"], cpf, self.app.autor,
+                sucesso=f"Chave \"{c['nome']}\" entregue a {nome}."))
+        return self.dialogo
+
+    def transferir(self, chave=None, depois=None):
+        """3.6: a chave passa de quem está com ela para outra pessoa que está
+        na unidade (ex.: quem vai sair deixa a chave com um colega).
+        `depois(ok)`: roda depois de gravar (a saída que esperava)."""
+        c = chave or self.selecionado()
+        if c is None or not c["emprestada"]:
+            return None
+
+        def transferir(nome, cpf):
+            ok = self.executar(
+                self.app.banco.transferir_chave, c["id"], cpf, self.app.autor,
+                sucesso=f"Chave \"{c['nome']}\" transferida de "
+                        f"{c['com_quem']} para {nome}.")
+            if depois is not None:
+                depois(ok)
+            return ok
+
+        self.dialogo = DialogoQuemRetira(
+            self, "Transferir chave",
+            f"A chave \"{c['nome']}\" está com {c['com_quem']}. Para quem ela "
+            "vai?", "Transferir", transferir, excluir=lambda: (c["cpf"],),
+            recusa=f"A chave \"{c['nome']}\" já está com {{nome}}.\n"
+                   "Escolha outra pessoa.")
         return self.dialogo
 
     def devolver(self):
@@ -409,10 +495,16 @@ class AbaChaves(PaginaLista):
 class DialogoEncomenda(DialogoSimples):
     def __init__(self, pagina):
         super().__init__(pagina, "Nova encomenda",
-                         "O que chegou na portaria e para quem.", "Registrar",
-                         largura=480)
-        self.destinatario = self.campo("Destinatário *", "pessoa ou setor",
+                         "O que chegou na portaria e para quem (uma pessoa "
+                         "do cadastro).", "Registrar", largura=480)
+        self.destinatario = self.campo("Destinatário *", "nome ou CPF",
                                        juntas=1, maximo=MAXIMO_NOME).entrada
+        # 3.6: o destinatário é uma pessoa do cadastro, escolhida nas
+        # sugestões (o CPF dela vai junto) ou pelo nome, se for de uma só
+        self.escolhido = None
+        self.sugestoes = ligar_sugestoes(
+            self.app, {"nome": self.destinatario},
+            ao_escolher=lambda p: setattr(self, "escolhido", p))
         self.setor = self.campo("Bloco ou setor", "opcional", juntas=1,
                                 coluna=1, maximo=MAXIMO_LOCAL).entrada
         self.remetente = self.campo("Remetente *", "quem mandou ou a "
@@ -430,22 +522,35 @@ class DialogoEncomenda(DialogoSimples):
         if not ok:
             return self.erro(msg)
         destinatario, remetente, setor, descricao = campos
-        ok, _ = self.app.tentar(self.app.banco.registrar_encomenda,
-                                destinatario, remetente, self.app.autor,
-                                setor=setor, descricao=descricao)
+        cpf = cpf_escolhido(self.escolhido, destinatario)
+        ok, numero = self.app.tentar(self.app.banco.registrar_encomenda,
+                                     destinatario, remetente, self.app.autor,
+                                     setor=setor, descricao=descricao,
+                                     cpf_destinatario=cpf)
         if not ok:
             return False
         self.fechar()
         self.pagina.atualizar()
-        self.pagina.aviso("sucesso", f"Encomenda para {destinatario} "
+        para = self.escolhido["nome"] if cpf else destinatario
+        self.pagina.aviso("sucesso", f"Encomenda nº {numero:03d} para {para} "
                                      "registrada.")
         return True
+
+
+def cpf_escolhido(escolhido, texto):
+    """O CPF da pessoa escolhida nas sugestões, se o campo ainda tem o
+    nome dela (quem apagou e digitou outro nome perde a escolha)."""
+    if escolhido and sem_acento(" ".join(texto.split())) == sem_acento(
+            escolhido["nome"]):
+        return escolhido["cpf"]
+    return ""
 
 
 class AbaEncomendas(PaginaLista):
     TITULO, TITULO_CARTAO = "Encomendas", "Encomendas recebidas"
     NOVO, FILTRO = "Nova encomenda", "Só aguardando retirada"
-    DICA = "Selecione uma encomenda para registrar a retirada."
+    DICA = ("Selecione uma encomenda para registrar a retirada (pelo "
+            "destinatário ou por quem ele autorizou, na unidade).")
     SITUACAO = ("Situação", 150)
     COLUNAS = [("numero", "Nº", 50, "center"),
                ("recebida", "Recebida em", 124, "w"),
@@ -501,11 +606,13 @@ class AbaEncomendas(PaginaLista):
             return None
         self.dialogo = DialogoQuemRetira(
             self, "Registrar retirada",
-            f"Quem está retirando a encomenda de {e['destinatario']}?",
+            f"Quem está retirando a encomenda de {e['destinatario']}? Só "
+            f"{e['destinatario'].split()[0]} ou quem está na lista de quem "
+            "pode retirar as encomendas (na ficha, em Pessoas).",
             "Registrar retirada",
             lambda nome, cpf: self.executar(
-                self.app.banco.retirar_encomenda, e["id"], nome,
-                self.app.autor, cpf,
+                self.app.banco.retirar_encomenda, e["id"], cpf,
+                self.app.autor,
                 sucesso=f"Encomenda nº {e['id']} retirada por {nome}."))
         return self.dialogo
 
@@ -558,6 +665,8 @@ class DialogoAutorizacao(DialogoSimples):
         self.motivo = self.texto_longo("Motivo *", MAXIMO_MOTIVO_VISITA,
                                        linhas=2)
         self.puxar_pessoa(c.var, {"nome": self.nome, "empresa": self.empresa})
+        self.sugestoes = ligar_sugestoes(
+            self.app, {"cpf": self.cpf, "nome": self.nome})
         self._quatro_colunas(c.master, campo_tipo.master)
         self._mostrar_empresa()
         self.abrir(confirmar=self.salvar, foco=self.cpf)
@@ -730,6 +839,9 @@ class DialogoFuncionario(DialogoSimples):
                                       coluna=1, numeros=11).entrada
             self.nome = self.campo("Nome completo *",
                                    maximo=MAXIMO_NOME).entrada
+            # 3.6: as sugestões mostram quem já está no cadastro
+            self.sugestoes = ligar_sugestoes(
+                self.app, {"cpf": self.cpf, "nome": self.nome})
         self.matricula = self.campo("Matrícula", "opcional",
                                     maximo=MAXIMO_MATRICULA).entrada
         self.setor = self.campo("Setor", "opcional", juntas=1,

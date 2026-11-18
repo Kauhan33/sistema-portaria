@@ -20,6 +20,7 @@ from .componentes import (Aviso, bolinha, BotaoTk, Campo, Cartao,
                           titulo_cartao)
 from .estilo import COR, FONTE, fonte_icone, ICONE, MARGEM, px
 from .tela_autorizacao import autorizar_excecao
+from .tela_chave_saida import resolver_chaves
 from .tela_comando import DICA_VAZIO
 from .tela_edicao import JanelaEdicao
 from .tela_veiculo import (A_PE, COM_CARRO, com_qual_carro, JUNTO, LEVA,
@@ -598,9 +599,28 @@ class ControleMixin:
         if not ok:
             return
         self.app.atualizar_tabela()
-        self.avisar(plural(len(encerradas), "saída automática registrada",
-                           "saídas automáticas registradas")
-                    + " no encerramento do dia.")
+        texto = (plural(len(encerradas), "saída automática registrada",
+                        "saídas automáticas registradas")
+                 + " no encerramento do dia.")
+        ficaram = len(pendentes) - len(encerradas)
+        if ficaram > 0 and self._com_chave(pendentes):
+            texto += (" " + plural(ficaram, "visita continua pendente",
+                                   "visitas continuam pendentes")
+                      + ": a pessoa está com uma chave da portaria.")
+        self.avisar(texto)
+
+    def _com_chave(self, registros):
+        """3.6: os nomes de quem, entre `registros`, está com uma chave da
+        portaria (o Encerrar o dia não dá saída a eles)."""
+        nomes = []
+        for r in registros:
+            ok, chaves = self.app.tentar(self.app.banco.chaves_da_pessoa,
+                                         r["cpf"])
+            if ok and chaves:
+                nomes.append(f"{r['nome']} (chave "
+                             + ", ".join(f"\"{c['nome']}\"" for c in chaves)
+                             + ")")
+        return nomes
 
     def _texto_encerramento(self, pendentes):
         linhas = []
@@ -617,6 +637,11 @@ class ControleMixin:
                                          "veículos continuam")
                         + " no estacionamento: o carro está lá. Registre a "
                           "saída dele pela placa quando sair.")
+        com_chave = self._com_chave(pendentes)
+        aviso_chaves = ("" if not com_chave else
+                        "\n\nQuem está com uma chave da portaria não recebe "
+                        "a saída automática (registre a devolução ou a "
+                        "transferência antes): " + "; ".join(com_chave) + ".")
         return ("Dar saída automática a "
                 + plural(len(pendentes), "visita pendente", "visitas pendentes")
                 + ", no prazo do dia de cada entrada (fechamento + tolerância "
@@ -624,7 +649,7 @@ class ControleMixin:
                 + "\n".join(linhas)
                 + "\n\nCada uma fica no histórico como "
                   "\"Saída automática (encerramento)\"."
-                + aviso_carros)
+                + aviso_carros + aviso_chaves)
 
     def _registro(self, iid):
         """Registro da linha da tabela (iid = id no banco). Se a linha já
@@ -998,6 +1023,9 @@ class ControleMixin:
                 recusas.append(msg)
         if not prontos:
             mensagens.info("Aviso", "\n".join(recusas))
+            return False
+        # 3.6: a chave da portaria fica: devolução ou transferência antes
+        if not resolver_chaves(self.app, prontos):
             return False
         a_pe, levados = dict(a_pe or {}), dict(levados or {})
         if com_veiculo is None:

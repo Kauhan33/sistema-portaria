@@ -66,11 +66,14 @@ from .componentes import (Aviso, BotaoTk, Cabecalho, Campo, CampoTexto,
 from .dados import ENTRADA_RECUSADA
 from .estilo import COR, CORES_TIPO, FONTE, ICONE, MARGEM, px
 from .tela_autorizacao import autorizar_excecao
+from .sugestoes import ligar_sugestoes
 from .tela_comando import PainelComando
+from .tela_livros import cpf_escolhido
 from .tela_veiculo import (A_PE, COM_CARRO, entrar_com_outro_carro,
                            ENTRAR_COM_SENHA, JA_SAIU, OUTRO_CARRO,
                            vai_entrar_de_carro)
 from .validacao import (CAMPOS_VARIAVEIS, checar_desativacao, codigo_da_visita, cpf_valido,
+                        mensagem_cpf,
                         formatar_cpf, formatar_placa, FORMATO,
                         MAXIMO_ANFITRIAO, MAXIMO_DESCRICAO_ENCOMENDA,
                         MAXIMO_EMPRESA, MAXIMO_LOCAL, MAXIMO_REMETENTE,
@@ -261,7 +264,7 @@ class AbaCadastro(ControleMixin):
         # 3.5: o entregador que só deixa a entrega (vai para Encomendas)
         self.destinatario = self._peca("destinatario", "Destinatário *",
                                        Campo(form, maximo=MAXIMO_NOME),
-                                       "pessoa ou setor")
+                                       "nome ou CPF")
         self.bloco = self._peca("bloco", "Bloco ou setor",
                                 Campo(form, maximo=MAXIMO_LOCAL), "opcional")
         self.remetente = self._peca("remetente", "Remetente *",
@@ -304,6 +307,22 @@ class AbaCadastro(ControleMixin):
         # Liga o preenchimento automático e os alertas só depois de tudo montado
         self.var_cpf.trace_add("write", self._ao_digitar_cpf)
         self.var_placa.trace_add("write", self._ao_digitar_placa)
+        # 3.6: sugestões de pessoas no CPF e no nome; no destinatário da
+        # encomenda, a pessoa escolhida (o CPF dela vai junto)
+        self.sugestoes = ligar_sugestoes(
+            self.app, {"cpf": self.cpf, "nome": self.nome},
+            preencher=self._preencher_pela_sugestao)
+        self._destinatario_escolhido = None
+        self.sugestoes_destinatario = ligar_sugestoes(
+            self.app, {"nome": self.destinatario},
+            ao_escolher=lambda p: setattr(self, "_destinatario_escolhido", p))
+
+    def _preencher_pela_sugestao(self, pessoa):
+        """3.6: a pessoa escolhida nas sugestões. O nome e o CPF; o CPF
+        completo preenche o resto do cadastro, como se fosse digitado."""
+        self.nome.delete(0, tk.END)
+        self.nome.insert(0, pessoa["nome"])
+        self.var_cpf.set(pessoa["cpf"])
 
     def so_entrega(self):
         """3.5: entregador que só deixa a entrega (não vai entrar)."""
@@ -553,12 +572,17 @@ class AbaCadastro(ControleMixin):
             mensagens.erro("Dados inválidos", msg)
             return None
         destinatario, remetente, bloco, descricao = campos
+        # 3.6: o destinatário é uma pessoa do cadastro (a escolhida nas
+        # sugestões; sem escolha, o banco procura pelo nome)
+        cpf = cpf_escolhido(self._destinatario_escolhido, destinatario)
         ok, numero = self.app.tentar(self.app.banco.registrar_encomenda,
                                      destinatario, remetente, self.app.autor,
-                                     setor=bloco, descricao=descricao)
+                                     setor=bloco, descricao=descricao,
+                                     cpf_destinatario=cpf)
         if not ok:
             return None
-        texto = f"Encomenda nº {numero:03d} para {destinatario} registrada."
+        para = self._destinatario_escolhido["nome"] if cpf else destinatario
+        texto = f"Encomenda nº {numero:03d} para {para} registrada."
         self.limpar()
         self._situacao("sucesso", texto, "Ver encomendas",
                        lambda: self.app.ir_para(self.app.aba_encomendas),
@@ -810,6 +834,7 @@ class AbaCadastro(ControleMixin):
 
     def limpar(self):
         self._auto = None
+        self._destinatario_escolhido = None
         self.var_entra.set(False)
         for campo in (self.destinatario, self.bloco, self.remetente,
                       self.descricao):
@@ -903,7 +928,7 @@ class AbaCadastro(ControleMixin):
         if self._auto:
             return
         if not cpf_valido(cpf):
-            self._situacao("erro", "CPF inválido: confira os números.")
+            self._situacao("erro", mensagem_cpf(cpf).replace("\n", " "))
             return
         ok, pessoa = self.app.tentar(self.app.banco.buscar_pessoa, cpf)
         if not ok:

@@ -132,7 +132,7 @@ class AnalisadorSemantico:
         self._exigir(cpf_valido(cpf), "CPF com dígitos verificadores válidos",
                      "RN06", f"o CPF {self.s.exibir_cpf(cpf)} tem 11 "
                              "números, mas os dígitos verificadores não "
-                             "conferem.", token)
+                             "conferem: digite um CPF existente.", token)
         return cpf
 
     def _opcoes_unicas(self, opcoes, conflitos=CONFLITOS):

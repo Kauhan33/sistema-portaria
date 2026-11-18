@@ -87,7 +87,8 @@ from . import horarios, senhas, validacao, veiculos
 from .base_dados import (FORMATO_ISO, FORMATO_ISO_SEGUNDOS,  # noqa: F401
                          ErroDados, de_iso, para_iso)
 from .dados_modulos import (ModulosMixin, hash_do_evento, passo_v14,
-                            passo_v15, passo_v16)
+                            passo_v15, passo_v16, passo_v17)
+from .dados_painel import PainelMixin
 from .usuarios import (LOGIN_INEXISTENTE, SESSAO_ENCERRADA, TEMA_PADRAO, TEMAS,
                        conferir_autorizador, pode_editar, pode_excluir_pessoa,
                        validar_edicao_usuario)
@@ -134,7 +135,9 @@ from .validacao import (FORMATO, MAXIMO_BUSCA, MAXIMO_CELULAR, MAXIMO_CPF,
 # 15 (versão 3.4): o tipo de acesso da autorização de entrada
 # 16 (versão 3.5): a aparência de cada usuário (cor da barra lateral e dos
 #     botões principais)
-VERSAO_ESQUEMA = 16
+# 17 (versão 3.6): a encomenda ligada ao CPF do destinatário, quem pode
+#     retirar as encomendas de cada pessoa e a chave transferida
+VERSAO_ESQUEMA = 17
 SEGUNDOS_ESPERA = 10          # espera pelo banco ocupado por outro computador
 AUTOR_SISTEMA = "(sistema)"   # não é um login válido: ninguém se passa por ele
 REGISTRO_MUDOU = ("Este registro foi alterado em outra estação enquanto a "
@@ -941,7 +944,7 @@ def _passo_v13(banco, con, versao):
 MIGRACOES = [(5, _passo_v5), (6, _passo_v6), (7, _passo_v7), (8, _passo_v8),
              (9, _passo_v9), (10, _passo_v10), (11, _passo_v11),
              (12, _passo_v12), (13, _passo_v13), (14, passo_v14),
-             (15, passo_v15), (16, passo_v16)]
+             (15, passo_v15), (16, passo_v16), (17, passo_v17)]
 
 VERSAO_MAIS_NOVA = ("Este banco de dados foi criado por uma versão mais nova "
                     "do programa.\nAtualize o programa para abrir este banco "
@@ -964,7 +967,7 @@ def _versao_gravada(con):
     return linha[0] if linha else 0
 
 
-class Banco(ModulosMixin):
+class Banco(ModulosMixin, PainelMixin):
     def __init__(self, caminho, wal=True, relogio=None, estacao=None):
         """
         Abre (e atualiza, se preciso) o banco. `wal=False` para banco em
@@ -1072,6 +1075,8 @@ class Banco(ModulosMixin):
             con.execute(f"PRAGMA busy_timeout = {SEGUNDOS_ESPERA * 1000}")
             con.execute("PRAGMA synchronous = NORMAL")
             con.create_function("minusculo", 1, _minusculo, deterministic=True)
+            con.create_function("sem_acento", 1, validacao.sem_acento,
+                                deterministic=True)
         except sqlite3.Error as e:
             raise _erro(e) from e
         try:
@@ -1537,11 +1542,13 @@ class Banco(ModulosMixin):
             self._conferir_autor(con, autor)
             self._conferir_autorizacao(con, autorizacao)
             for i in ids:
-                linha = con.execute("SELECT nome, entrada FROM registros "
+                linha = con.execute("SELECT nome, entrada, cpf FROM registros "
                                     "WHERE id = ? AND saida = ''", (i,)).fetchone()
                 if linha is None:
                     continue
-                nome, entrada = linha
+                nome, entrada, cpf = linha
+                # 3.6: a chave da portaria não sai com a pessoa
+                self._exigir_sem_chave(con, cpf, nome, saindo=tuple(ids))
                 acima_de_24h = _duracao_iso(entrada, saida_iso)
                 self._exigir_autorizacao_24h(acima_de_24h, autorizacao, nome)
                 cursor = con.execute("UPDATE registros SET saida = ? "
@@ -1617,6 +1624,8 @@ class Banco(ModulosMixin):
                 if linha is None:
                     continue
                 nome, cpf, entrada, saida = linha
+                if not saida:       # 3.6: a visita aberta de quem tem chave
+                    self._exigir_sem_chave(con, cpf, nome, saindo=tuple(ids))
                 placas = [p for (p,) in con.execute(
                     "SELECT placa FROM estadias_veiculo WHERE registro_id = ? "
                     "AND saida = ''", (i,))]
@@ -1681,6 +1690,12 @@ class Banco(ModulosMixin):
                                 "ser corrigida.")
             self._conferir_desativacao(con, novo, original={
                 "cpf": linha[5], "placa": linha[4], "saida": linha[3]})
+            # 3.6: a correção que fecha a visita (ou a passa para outro CPF)
+            # de quem está com uma chave da portaria
+            if not linha[3] and (novo.get("saida") or so_digitos(
+                    novo.get("cpf", linha[5])) != linha[5]):
+                self._exigir_sem_chave(con, linha[5], linha[1],
+                                       saindo=(id_registro,))
             pessoa_antiga = linha[0]
             sem_o_dono = self._correcao_mexe_no_carro(
                 con, id_registro, {"cpf": linha[5], "saida": linha[3]}, novo)
@@ -1896,6 +1911,9 @@ class Banco(ModulosMixin):
         no momento `agora` recebe a saída no prazo dela (horarios.prazo_saida:
         o fechamento do dia da entrada), com o evento "Saída automática
         (encerramento)". Tudo numa transação. Devolve [(id, nome, saída)].
+        3.6: quem está com uma chave da portaria não recebe a saída
+        automática (a chave não sai com a pessoa): continua pendente até a
+        devolução ou a transferência.
         """
         encerradas = []
         with self._conexao() as con:
@@ -1905,6 +1923,11 @@ class Banco(ModulosMixin):
                                   "WHERE saida = '' ORDER BY entrada, id")
             for r in [_registro(linha) for linha in abertas.fetchall()]:
                 if horarios.situacao(config, r, agora) != horarios.SAIDA_PENDENTE:
+                    continue
+                try:
+                    self._exigir_sem_chave(con, r["cpf"], r["nome"],
+                                           saindo=(r["id"],))
+                except ErroDados:
                     continue
                 prazo = horarios.prazo_saida(
                     config, r["tipo"], datetime.strptime(r["entrada"], FORMATO))
@@ -2884,6 +2907,55 @@ class Banco(ModulosMixin):
             v["carro_ficou"] = v["id"] in ficou
             v["com_estadia"] = v["id"] in com_estadia
 
+    def sugerir_pessoas(self, texto, limite=validacao.MAXIMO_SUGESTOES,
+                        so_dentro=False, excluir=()):
+        """
+        3.6: pessoas do cadastro para o preenchimento automático, a partir
+        de 3 números do CPF (pelo começo do CPF) ou 3 letras do nome (sem
+        diferença de acento e maiúscula; primeiro quem começa com o texto,
+        depois quem tem uma palavra começando com ele, depois o resto).
+        Quem está na unidade vem antes. `so_dentro`: só quem está na
+        unidade (entregar a chave, retirar a encomenda). `excluir`: CPFs que
+        não entram (ex.: quem já está com a chave). Cada uma: nome, cpf,
+        tipo, dentro e desativada. Sem as anonimizadas.
+        """
+        texto = " ".join((texto or "").split())[:MAXIMO_BUSCA]
+        numeros = so_digitos(texto)
+        por_cpf = bool(numeros) and not re.sub(r"[\d.\-\s]", "", texto)
+        if len(numeros if por_cpf else texto) < validacao.MINIMO_SUGESTAO:
+            return []
+        dentro = ("EXISTS (SELECT 1 FROM registros r WHERE r.cpf = p.cpf "
+                  "AND r.saida = '')")
+        filtros, params, ordem = ["p.cpf NOT LIKE 'X%'"], [], ""
+        if por_cpf:
+            filtros.append("substr(p.cpf, 1, ?) = ?")
+            params += [len(numeros), numeros]
+        else:
+            alvo = validacao.sem_acento(texto)
+            filtros.append("instr(sem_acento(p.nome), ?) > 0")
+            params.append(alvo)
+            ordem = ("instr(sem_acento(p.nome), ?) <> 1, "
+                     "instr(' ' || sem_acento(p.nome), ?) = 0, ")
+        if so_dentro:
+            filtros.append(dentro)
+        excluir = [c for c in excluir if c]
+        if excluir:
+            filtros.append(f"p.cpf NOT IN ({', '.join('?' * len(excluir))})")
+            params += excluir
+        if ordem:
+            params += [alvo, " " + alvo]
+        with self._conexao() as con:
+            linhas = con.execute(
+                f"SELECT p.nome, p.cpf, p.tipo, {dentro}, EXISTS (SELECT 1 "
+                "FROM bloqueios b WHERE b.tipo = 'cpf' AND b.valor = p.cpf "
+                "AND b.ativo = 1) FROM pessoas p "
+                f"WHERE {' AND '.join(filtros)} "
+                f"ORDER BY {ordem}{dentro} DESC, p.nome COLLATE NOCASE "
+                "LIMIT ?", (*params, int(limite))).fetchall()
+        return [{"nome": nome, "cpf": cpf, "tipo": tipo, "dentro": bool(d),
+                 "desativada": bool(des)}
+                for nome, cpf, tipo, d, des in linhas]
+
     def buscar_pessoa(self, cpf):
         """Pessoa já cadastrada com esse CPF, ou None."""
         with self._conexao() as con:
@@ -2983,11 +3055,26 @@ class Banco(ModulosMixin):
             ok, msg = pode_excluir_pessoa(usuario, visitas)
             if not ok:
                 raise ErroDados(msg)
+            # 3.6: a encomenda que aguarda retirada é de uma pessoa do
+            # cadastro; sem o cadastro, ninguém poderia retirá-la
+            pendentes, = con.execute(
+                "SELECT COUNT(*) FROM encomendas WHERE destinatario_cpf = ? "
+                "AND retirada_em = ''", (cpf,)).fetchone()
+            if pendentes:
+                raise ErroDados(
+                    f"{nome} tem {pendentes} encomenda"
+                    f"{'' if pendentes == 1 else 's'} aguardando retirada.\n"
+                    "Registre a retirada ou exclua a encomenda (Encomendas) "
+                    "antes de excluir o cadastro.")
             agora = self.relogio().strftime(FORMATO_ISO)
             removidos = con.execute(
                 "UPDATE autorizados_veiculo SET ativo = 0, removido_em = ?, "
                 "removido_por = ? WHERE dono_cpf = ? AND ativo = 1",
                 (agora, autor, cpf)).rowcount
+            # 3.6: e quem podia retirar as encomendas dela
+            con.execute("UPDATE autorizados_encomenda SET ativo = 0, "
+                        "removido_em = ?, removido_por = ? WHERE dono_cpf = ? "
+                        "AND ativo = 1", (agora, autor, cpf))
             con.execute("DELETE FROM placas_pessoa WHERE pessoa_id = ?",
                         (id_pessoa,))
             con.execute("DELETE FROM pessoas WHERE id = ?", (id_pessoa,))
@@ -3400,6 +3487,8 @@ class Banco(ModulosMixin):
         texto = mascarar_cpfs_no_texto(texto)
         with self._conexao() as con:
             self._exigir(con, autor, so_admin=False)
+            if cpf:          # 3.6: o CPF é de uma pessoa do cadastro
+                self._pessoa_cadastrada(con, cpf)
             cursor = con.execute(
                 "INSERT INTO ocorrencias (momento, categoria, texto, cpf, placa,"
                 " autor) VALUES (?, ?, ?, ?, ?, ?)",

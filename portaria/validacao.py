@@ -6,6 +6,7 @@ por isso podem ser testadas automaticamente.
 """
 
 import re
+import unicodedata
 from datetime import datetime
 
 # ------------------------------------------------------------------
@@ -125,6 +126,29 @@ def cpf_valido(cpf):
         if digito != int(cpf[tamanho]):
             return False
     return True
+
+
+# 3.6: a mensagem diz o que está errado no CPF. Faltando números, pede os
+# 11; com os 11, mas dígitos verificadores que não conferem, o CPF não
+# existe; onde a pessoa precisa ser do cadastro (ocorrência, chave,
+# encomenda), o CPF que não é de ninguém cadastrado também não "existe".
+# 3.6: o preenchimento automático começa com 3 letras ou números e mostra
+# no máximo 3 pessoas
+MINIMO_SUGESTAO = 3
+MAXIMO_SUGESTOES = 3
+CPF_INCOMPLETO = "CPF inválido.\nDigite os 11 números (somente números)."
+CPF_INEXISTENTE = "CPF inválido.\nDigite um CPF existente."
+CPF_NAO_CADASTRADO = ("CPF inválido.\nDigite um CPF existente (de uma "
+                      "pessoa cadastrada).")
+
+
+def mensagem_cpf(cpf):
+    """'' se o CPF é válido; senão, a mensagem certa (faltam números ou os
+    dígitos verificadores não conferem: o CPF não existe)."""
+    cpf = cpf or ""
+    if len(cpf) != 11 or not cpf.isdigit():
+        return CPF_INCOMPLETO
+    return "" if cpf_valido(cpf) else CPF_INEXISTENTE
 
 
 def celular_valido(cel):
@@ -340,7 +364,7 @@ def validar_campos(registro):
     if not registro["cpf"]:
         return False, "O CPF é obrigatório."
     if not cpf_valido(registro["cpf"]):
-        return False, "CPF inválido.\nDigite os 11 números (somente números)."
+        return False, mensagem_cpf(registro["cpf"])
 
     if not registro["celular"]:
         return False, "O telefone é obrigatório."
@@ -396,8 +420,14 @@ def validar_chave(nome, local):
         checar_tamanho("Local", local, MAXIMO_LOCAL))
 
 
-def validar_quem_retira(nome, cpf=""):
-    """Quem pegou a chave ou a encomenda: nome completo; o CPF é opcional."""
+def validar_quem_retira(nome, cpf):
+    """Quem pega a chave ou retira a encomenda (3.6): CPF e nome completo,
+    os dois obrigatórios (a pessoa é do cadastro e está na unidade: isso o
+    banco confere)."""
+    if not cpf:
+        return False, "O CPF é obrigatório."
+    if not cpf_valido(cpf):
+        return False, mensagem_cpf(cpf)
     if not nome:
         return False, "Informe o nome de quem está retirando."
     ok, msg = checar_tamanho("Nome", nome, MAXIMO_NOME)
@@ -405,9 +435,19 @@ def validar_quem_retira(nome, cpf=""):
         return False, msg
     if not nome_valido(nome):
         return False, "Informe o nome completo (nome e sobrenome, só letras)."
-    if cpf and not cpf_valido(cpf):
-        return False, "CPF inválido.\nDigite os 11 números (somente números)."
     return True, ""
+
+
+def sem_acento(texto):
+    """Minúsculas e sem acento (para comparar nomes: "Otávio" = "otavio")."""
+    decomposto = unicodedata.normalize("NFD", (texto or "").casefold())
+    return "".join(c for c in decomposto if not unicodedata.combining(c))
+
+
+def primeiro_nome(nome):
+    """O primeiro nome, sem acento e em minúsculas (para comparar)."""
+    partes = sem_acento(nome).split()
+    return partes[0] if partes else ""
 
 
 def validar_encomenda(destinatario, remetente, setor="", descricao=""):
@@ -429,7 +469,7 @@ def validar_autorizacao(cpf, nome, empresa, motivo, anfitriao, de, ate, hoje,
     if not cpf:
         return False, "O CPF é obrigatório."
     if not cpf_valido(cpf):
-        return False, "CPF inválido.\nDigite os 11 números (somente números)."
+        return False, mensagem_cpf(cpf)
     if not nome:
         return False, "O nome da pessoa é obrigatório."
     if not nome_valido(nome):
@@ -506,7 +546,7 @@ def validar_ocorrencia(categoria, texto, cpf="", placa=""):
     if not ok:
         return False, msg
     if cpf and not cpf_valido(cpf):
-        return False, "CPF inválido.\nDigite os 11 números (somente números)."
+        return False, mensagem_cpf(cpf)
     if placa and not placa_valida(placa):
         return False, ("Placa inválida.\nUse o formato antigo (ABC1234) ou "
                        "Mercosul (ABC1D23).")
@@ -546,7 +586,7 @@ def validar_desativacao(tipo, valor, motivo, ativas):
     if tipo not in TIPOS_DESATIVACAO:
         return False, "Escolha se é uma pessoa (CPF) ou um veículo (placa)."
     if tipo == "cpf" and not cpf_valido(valor):
-        return False, "CPF inválido.\nDigite os 11 números."
+        return False, mensagem_cpf(valor)
     if tipo == "placa" and not placa_valida(valor):
         return False, "Placa inválida.\nUse ABC1234 ou ABC1D23."
     if len(motivo.strip()) < MOTIVO_MINIMO:

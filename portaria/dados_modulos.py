@@ -12,12 +12,14 @@ quem pode e se os dados valem.
 
 import hashlib
 import random
+import re
 from datetime import date, datetime, timedelta
 
-from . import validacao
+from . import validacao, veiculos
 from .base_dados import FORMATO_ISO, ErroDados, de_iso, para_iso
-from .validacao import (FORMATO, MAXIMO_BUSCA, mascarar_cpfs_no_texto,
-                        so_digitos)
+from .validacao import (FORMATO, MAXIMO_BUSCA, mascarar_cpf,
+                        mascarar_cpfs_no_texto, so_digitos)
+from .veiculos import conferir_autorizado_encomenda
 
 FORMATO_DIA_ISO = "%Y-%m-%d"
 FORMATO_DIA = "%d/%m/%Y"
@@ -108,6 +110,48 @@ COLUNAS_V14 = (("registros", "anfitriao", "TEXT NOT NULL DEFAULT ''"),
                ("usuarios", "letra", "TEXT NOT NULL DEFAULT 'normal'"))
 
 
+# 3.6 (banco v17): a encomenda é de uma pessoa do cadastro (o CPF do
+# destinatário; as antigas ficam sem: valem pelo primeiro nome), quem pode
+# retirar as encomendas de cada pessoa (como "Quem pode retirar o carro") e
+# a chave transferida de uma pessoa para outra
+COLUNAS_V17 = (("encomendas", "destinatario_cpf", "TEXT NOT NULL DEFAULT ''"),
+               ("emprestimos_chave", "transferida_para",
+                "TEXT NOT NULL DEFAULT ''"))
+ESQUEMA_V17 = [
+    """CREATE TABLE IF NOT EXISTS autorizados_encomenda (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        dono_cpf      TEXT NOT NULL CHECK (length(dono_cpf) = 11),
+        cpf           TEXT NOT NULL CHECK (length(cpf) = 11 AND cpf <> dono_cpf),
+        nome          TEXT NOT NULL CHECK (nome <> ''),
+        valido_ate    TEXT NOT NULL DEFAULT '',
+        dono_presente INTEGER NOT NULL DEFAULT 0 CHECK (dono_presente IN (0, 1)),
+        criado_por    TEXT NOT NULL,
+        criado_em     TEXT NOT NULL,
+        ativo         INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
+        removido_em   TEXT NOT NULL DEFAULT '',
+        removido_por  TEXT NOT NULL DEFAULT ''
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_autorizados_encomenda_dono
+        ON autorizados_encomenda (dono_cpf)""",
+    # a mesma pessoa não fica duas vezes ativa na lista do mesmo dono
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_autorizado_encomenda_ativo
+        ON autorizados_encomenda (dono_cpf, cpf) WHERE ativo = 1""",
+    "CREATE INDEX IF NOT EXISTS idx_encomendas_destinatario "
+    "ON encomendas (destinatario_cpf)",
+    "CREATE INDEX IF NOT EXISTS idx_emprestimos_cpf "
+    "ON emprestimos_chave (cpf) WHERE devolvida_em = ''",
+]
+COLUNAS_AUTORIZADO_ENCOMENDA = (
+    "id, dono_cpf, cpf, nome, valido_ate, dono_presente, criado_por, "
+    "criado_em, ativo, removido_em, removido_por")
+AUTORIZADO_ENCOMENDA_ADICIONADO = "Autorizado a retirar encomendas"
+AUTORIZADO_ENCOMENDA_REMOVIDO = "Autorização de encomendas removida"
+AUTORIZADO_ENCOMENDA_VALIDADE = "Validade da autorização de encomendas"
+PESSOA_PRECISA_ESTAR = ("O porteiro só cadastra quem pode retirar as "
+                        "encomendas com a pessoa na unidade.\nO "
+                        "administrador cadastra a qualquer hora.")
+
+
 def hash_do_evento(anterior, momento, usuario, acao, detalhe, registro_id):
     """Elo da corrente do histórico: o SHA-256 do evento junto com o elo do
     evento anterior. Mudar ou apagar um evento antigo quebra todos os elos
@@ -166,6 +210,27 @@ def passo_v16(banco, con, versao):
         if coluna not in existentes:
             con.execute(f"ALTER TABLE usuarios ADD COLUMN {coluna} TEXT "
                         f"NOT NULL DEFAULT '{padrao}'")
+
+
+def passo_v17(banco, con, versao):
+    """Versão 3.6: a encomenda ligada ao CPF do destinatário, quem pode
+    retirar as encomendas de cada pessoa e a chave transferida."""
+    for tabela, coluna, tipo in COLUNAS_V17:
+        existentes = {c[1] for c in con.execute(f"PRAGMA table_info({tabela})")}
+        if coluna not in existentes:
+            con.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo}")
+    for sql in ESQUEMA_V17:
+        con.execute(sql)
+
+
+def _autorizado_encomenda(linha):
+    (i, dono_cpf, cpf, nome, valido_ate, presente, criado_por, criado_em,
+     ativo, removido_em, removido_por) = linha
+    return {"id": i, "dono_cpf": dono_cpf, "cpf": cpf, "nome": nome,
+            "valido_ate": veiculos.dia_do_banco(valido_ate),
+            "dono_presente": bool(presente), "criado_por": criado_por,
+            "criado_em": de_iso(criado_em), "ativo": bool(ativo),
+            "removido_em": de_iso(removido_em), "removido_por": removido_por}
 
 
 def cpf_ficticio(base):
@@ -270,11 +335,41 @@ class ModulosMixin:
                  "desde": de_iso(desde or ""), "entregue_por": por or ""}
                 for i, nome, local, emprestimo, quem, cpf, desde, por in linhas]
 
-    def entregar_chave(self, id_chave, nome, autor, cpf=""):
-        """Empresta a chave (qualquer usuário ativo). A chave precisa estar
-        na portaria; o CPF é opcional, mas, se vier, tem de ser válido."""
-        nome, cpf = _limpo(nome), so_digitos(cpf or "")
-        self._recusar(validacao.validar_quem_retira(nome, cpf))
+    # 3.6: a chave é de uma pessoa do cadastro que está na unidade
+    @staticmethod
+    def _pessoa_cadastrada(con, cpf):
+        """(id, nome) da pessoa do cadastro com esse CPF (sem as
+        anonimizadas). CPF errado ou de ninguém: ErroDados com a mensagem
+        "Digite um CPF existente"."""
+        cpf = so_digitos(cpf or "")
+        msg = validacao.mensagem_cpf(cpf)
+        if msg:
+            raise ErroDados(msg)
+        linha = con.execute("SELECT id, nome FROM pessoas WHERE cpf = ?",
+                            (cpf,)).fetchone()
+        if linha is None:
+            raise ErroDados(validacao.CPF_NAO_CADASTRADO)
+        return linha
+
+    @staticmethod
+    def _esta_dentro(con, cpf):
+        return con.execute("SELECT 1 FROM registros WHERE cpf = ? AND "
+                           "saida = ''", (cpf,)).fetchone() is not None
+
+    def _pessoa_dentro(self, con, cpf, para):
+        """(id, nome) da pessoa do cadastro que está na unidade agora;
+        fora dela, ErroDados explicando (`para`: "receber a chave")."""
+        id_pessoa, nome = self._pessoa_cadastrada(con, cpf)
+        if not self._esta_dentro(con, so_digitos(cpf)):
+            raise ErroDados(f"{nome} não está na unidade.\nSó quem está "
+                            f"dentro pode {para}: registre a entrada antes.")
+        return id_pessoa, nome
+
+    def entregar_chave(self, id_chave, cpf, autor):
+        """Empresta a chave (qualquer usuário ativo) a uma pessoa do
+        cadastro que está na unidade (3.6: o CPF é obrigatório e o nome vem
+        do cadastro). A chave precisa estar na portaria."""
+        cpf = so_digitos(cpf or "")
         with self._conexao() as con:
             self._exigir(con, autor, so_admin=False)
             linha = con.execute("SELECT nome, ativa FROM chaves WHERE id = ?",
@@ -287,10 +382,80 @@ class ModulosMixin:
             if com:
                 raise ErroDados(f"A chave \"{linha[0]}\" já está com {com[0]}.\n"
                                 "Registre a devolução antes de entregar de novo.")
+            _, nome = self._pessoa_dentro(con, cpf, "receber a chave")
             con.execute("INSERT INTO emprestimos_chave (chave_id, nome, cpf, "
                         "retirada_em, entregue_por) VALUES (?, ?, ?, ?, ?)",
                         (id_chave, nome, cpf, self._agora_iso(), autor))
             self._evento(con, autor, "Chave entregue", f"{linha[0]} para {nome}")
+            return nome
+
+    def transferir_chave(self, id_chave, cpf, autor):
+        """Passa a chave de quem está com ela para outra pessoa do cadastro
+        que está na unidade (3.6; ex.: quem vai sair deixa a chave com um
+        colega). O empréstimo de quem estava com ela é encerrado (com o nome
+        de quem recebeu) e outro começa; vai ao histórico."""
+        cpf = so_digitos(cpf or "")
+        with self._conexao() as con:
+            self._exigir(con, autor, so_admin=False)
+            linha = con.execute(
+                "SELECT e.id, e.nome, e.cpf, c.nome FROM emprestimos_chave e "
+                "JOIN chaves c ON c.id = e.chave_id WHERE e.chave_id = ? "
+                "AND e.devolvida_em = '' AND c.ativa = 1",
+                (id_chave,)).fetchone()
+            if linha is None:
+                raise ErroDados("Esta chave não está emprestada (foi "
+                                "devolvida ou removida).")
+            id_emprestimo, de_nome, de_cpf, chave = linha
+            if cpf and cpf == de_cpf:
+                raise ErroDados(f"A chave \"{chave}\" já está com {de_nome}.")
+            _, nome = self._pessoa_dentro(con, cpf, "receber a chave")
+            agora = self._agora_iso()
+            con.execute("UPDATE emprestimos_chave SET devolvida_em = ?, "
+                        "recebida_por = ?, transferida_para = ? WHERE id = ?",
+                        (agora, autor, nome, id_emprestimo))
+            con.execute("INSERT INTO emprestimos_chave (chave_id, nome, cpf, "
+                        "retirada_em, entregue_por) VALUES (?, ?, ?, ?, ?)",
+                        (id_chave, nome, cpf, agora, autor))
+            self._evento(con, autor, "Chave transferida",
+                         f"{chave}: de {de_nome} para {nome}")
+            return nome
+
+    def chaves_da_pessoa(self, cpf):
+        """As chaves que estão com a pessoa agora (pelo CPF)."""
+        with self._conexao() as con:
+            return self._chaves_com(con, so_digitos(cpf or ""))
+
+    @staticmethod
+    def _chaves_com(con, cpf):
+        if not cpf:
+            return []
+        return [{"id": i, "nome": nome, "desde": de_iso(desde)}
+                for i, nome, desde in con.execute(
+                    "SELECT c.id, c.nome, e.retirada_em FROM emprestimos_chave e "
+                    "JOIN chaves c ON c.id = e.chave_id WHERE e.cpf = ? "
+                    "AND e.devolvida_em = '' ORDER BY minusculo(c.nome)",
+                    (cpf,))]
+
+    @classmethod
+    def _exigir_sem_chave(cls, con, cpf, nome, saindo=()):
+        """3.6: quem vai sair (ou deixar de estar na unidade) não pode
+        levar chave da portaria. `saindo`: as visitas abertas que deixam de
+        estar abertas nesta mesma transação (quem tem outra visita aberta
+        continua na unidade)."""
+        chaves = cls._chaves_com(con, cpf)
+        if not chaves:
+            return
+        marcas = ", ".join("?" * len(saindo)) or "NULL"
+        if con.execute(f"SELECT 1 FROM registros WHERE cpf = ? AND saida = '' "
+                       f"AND id NOT IN ({marcas})",
+                       (cpf, *saindo)).fetchone():
+            return
+        nomes = ", ".join(f"\"{c['nome']}\"" for c in chaves)
+        uma = len(chaves) == 1
+        raise ErroDados(f"{nome} está com a{'' if uma else 's'} chave"
+                        f"{'' if uma else 's'} {nomes}.\nRegistre a devolução "
+                        "ou transfira a chave para outra pessoa antes da "
+                        "saída.")
 
     def devolver_chave(self, id_chave, autor):
         """Registra a devolução (qualquer usuário ativo)."""
@@ -310,43 +475,81 @@ class ModulosMixin:
                          f"{linha[2]} por {linha[1]}")
 
     def historico_de_chaves(self, texto="", limite=200):
-        """Empréstimos, do mais recente para o mais antigo."""
+        """Empréstimos, do mais recente para o mais antigo (3.6: com a
+        transferência, "transferida_para" diz quem recebeu)."""
         texto = (texto or "").strip().lower()[:MAXIMO_BUSCA]
         where = ("WHERE " + _contem(("c.nome", "e.nome")) + " ") if texto else ""
         with self._conexao() as con:
             linhas = con.execute(
                 "SELECT c.nome, e.nome, e.cpf, e.retirada_em, e.entregue_por, "
-                "e.devolvida_em, e.recebida_por FROM emprestimos_chave e "
+                "e.devolvida_em, e.recebida_por, e.transferida_para "
+                "FROM emprestimos_chave e "
                 f"JOIN chaves c ON c.id = e.chave_id {where}"
                 "ORDER BY e.retirada_em DESC, e.id DESC LIMIT ?",
                 ((texto,) if texto else ()) + (int(limite),)).fetchall()
         return [{"chave": c, "nome": n, "cpf": cpf, "retirada_em": de_iso(r),
                  "entregue_por": por, "devolvida_em": de_iso(d),
-                 "recebida_por": rec}
-                for c, n, cpf, r, por, d, rec in linhas]
+                 "recebida_por": rec, "transferida_para": para}
+                for c, n, cpf, r, por, d, rec, para in linhas]
 
     # --------------------------------------------------------------
     # Encomendas
     # --------------------------------------------------------------
     def registrar_encomenda(self, destinatario, remetente, autor, setor="",
-                            descricao=""):
-        """Encomenda que chegou na portaria (qualquer usuário ativo)."""
+                            descricao="", cpf_destinatario=""):
+        """Encomenda que chegou na portaria (qualquer usuário ativo). 3.6:
+        o destinatário é uma pessoa do cadastro: pelo CPF (escolhido nas
+        sugestões) ou pelo nome, se só uma pessoa tiver esse nome (basta o
+        primeiro, se for único). O nome gravado é o do cadastro."""
         destinatario, remetente = _limpo(destinatario), _limpo(remetente)
         setor, descricao = _limpo(setor), _limpo(descricao)
+        cpf_destinatario = so_digitos(cpf_destinatario or "")
         self._recusar(validacao.validar_encomenda(destinatario, remetente,
                                                   setor, descricao))
         descricao = mascarar_cpfs_no_texto(descricao)
         with self._conexao() as con:
             self._exigir(con, autor, so_admin=False)
+            cpf_destinatario, destinatario = self._destinatario(
+                con, destinatario, cpf_destinatario)
             cursor = con.execute(
                 "INSERT INTO encomendas (recebida_em, destinatario, setor, "
-                "remetente, descricao, recebida_por) VALUES (?, ?, ?, ?, ?, ?)",
+                "remetente, descricao, recebida_por, destinatario_cpf) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (self._agora_iso(), destinatario, setor, remetente, descricao,
-                 autor))
+                 autor, cpf_destinatario))
             self._evento(con, autor, "Encomenda recebida",
                          f"#{cursor.lastrowid} para {destinatario}, de "
                          f"{remetente}")
             return cursor.lastrowid
+
+    def _destinatario(self, con, texto, cpf):
+        """(CPF, nome do cadastro) do destinatário. Com o CPF, a pessoa tem
+        de existir; sem ele, o texto tem de ser o nome (inteiro ou só o
+        primeiro, sem diferença de acento e maiúscula) de UMA pessoa."""
+        if cpf:
+            _, nome = self._pessoa_cadastrada(con, cpf)
+            return cpf, nome
+        numeros = so_digitos(texto)
+        if numeros and not re.sub(r"[\d.\-\s]", "", texto):   # digitou o CPF
+            _, nome = self._pessoa_cadastrada(con, numeros)
+            return numeros, nome
+        alvo = validacao.sem_acento(" ".join(texto.split()))
+        so_primeiro = len(alvo.split()) == 1
+        achados = []
+        for cpf_p, nome_p in con.execute(
+                "SELECT cpf, nome FROM pessoas WHERE cpf NOT LIKE 'X%'"):
+            nome_n = validacao.sem_acento(nome_p)
+            if nome_n == alvo or (so_primeiro and nome_n.split()[:1] == [alvo]):
+                achados.append((cpf_p, nome_p))
+        if len(achados) == 1:
+            return achados[0]
+        if not achados:
+            raise ErroDados(f"Ninguém do cadastro se chama \"{texto}\".\nO "
+                            "destinatário precisa ser uma pessoa cadastrada: "
+                            "digite pelo menos 3 letras do nome ou do CPF e "
+                            "escolha nas sugestões.")
+        raise ErroDados(f"Há {len(achados)} pessoas com o nome \"{texto}\"."
+                        "\nDigite o nome completo ou escolha nas sugestões.")
 
     def listar_encomendas(self, texto="", so_pendentes=False, limite=200):
         partes, params = [], []
@@ -362,33 +565,166 @@ class ModulosMixin:
             linhas = con.execute(
                 "SELECT id, recebida_em, destinatario, setor, remetente, "
                 "descricao, recebida_por, retirada_em, retirada_nome, "
-                f"retirada_cpf, entregue_por FROM encomendas {where}"
+                "retirada_cpf, entregue_por, destinatario_cpf "
+                f"FROM encomendas {where}"
                 "ORDER BY (retirada_em <> ''), recebida_em DESC, id DESC "
                 "LIMIT ?", (*params, int(limite))).fetchall()
         return [{"id": i, "recebida_em": de_iso(rec), "destinatario": dest,
                  "setor": setor, "remetente": rem, "descricao": desc,
                  "recebida_por": por, "retirada_em": de_iso(ret),
                  "retirada_nome": nome, "retirada_cpf": cpf,
-                 "entregue_por": ent}
-                for i, rec, dest, setor, rem, desc, por, ret, nome, cpf, ent
-                in linhas]
+                 "entregue_por": ent, "destinatario_cpf": dest_cpf}
+                for i, rec, dest, setor, rem, desc, por, ret, nome, cpf, ent,
+                dest_cpf in linhas]
 
-    def retirar_encomenda(self, id_encomenda, nome, autor, cpf=""):
-        """Entrega a encomenda a quem veio buscar (qualquer usuário ativo)."""
-        nome, cpf = _limpo(nome), so_digitos(cpf or "")
-        self._recusar(validacao.validar_quem_retira(nome, cpf))
+    def retirar_encomenda(self, id_encomenda, cpf, autor):
+        """Entrega a encomenda a quem veio buscar (qualquer usuário ativo).
+        3.6: quem retira é uma pessoa do cadastro que está na unidade (o
+        nome vem do cadastro) e é o destinatário ou alguém da lista dele de
+        quem pode retirar as encomendas (ativo e na validade). A encomenda
+        antiga, sem o CPF do destinatário, vale pelo primeiro nome."""
+        cpf = so_digitos(cpf or "")
         with self._conexao() as con:
             self._exigir(con, autor, so_admin=False)
-            cursor = con.execute(
+            linha = con.execute(
+                "SELECT destinatario, destinatario_cpf, retirada_em FROM "
+                "encomendas WHERE id = ?", (id_encomenda,)).fetchone()
+            if linha is None or linha[2]:
+                raise ErroDados("Esta encomenda já foi retirada ou não "
+                                "existe mais.")
+            destinatario, dest_cpf, _ = linha
+            _, nome = self._pessoa_dentro(con, cpf, "retirar a encomenda")
+            autorizado = self._pode_retirar(con, dest_cpf, destinatario, cpf,
+                                            nome)
+            con.execute(
                 "UPDATE encomendas SET retirada_em = ?, retirada_nome = ?, "
                 "retirada_cpf = ?, entregue_por = ? WHERE id = ? "
                 "AND retirada_em = ''",
                 (self._agora_iso(), nome, cpf, autor, id_encomenda))
-            if not cursor.rowcount:
-                raise ErroDados("Esta encomenda já foi retirada ou não "
-                                "existe mais.")
             self._evento(con, autor, "Encomenda retirada",
-                         f"#{id_encomenda} por {nome}")
+                         f"#{id_encomenda} por {nome}"
+                         + (f", autorizado por {destinatario}" if autorizado
+                            else ""))
+            return nome
+
+    def _pode_retirar(self, con, dest_cpf, destinatario, cpf, nome):
+        """False: é o destinatário; True: é um autorizado dele. Senão,
+        ErroDados dizendo quem pode."""
+        if dest_cpf:
+            if cpf == dest_cpf:
+                return False
+            hoje = self.relogio().date()
+            for linha in con.execute(
+                    f"SELECT {COLUNAS_AUTORIZADO_ENCOMENDA} FROM "
+                    "autorizados_encomenda WHERE dono_cpf = ? AND cpf = ? "
+                    "AND ativo = 1", (dest_cpf, cpf)):
+                if veiculos.autorizacao_vale(_autorizado_encomenda(linha), hoje):
+                    return True
+            raise ErroDados(
+                f"{nome} não pode retirar a encomenda de {destinatario}.\n"
+                f"Só {destinatario.split()[0]} ou quem está na lista dele(a) "
+                "de quem pode retirar as encomendas (Pessoas, na ficha).")
+        # encomenda de antes da 3.6: o primeiro nome tem de bater
+        if validacao.primeiro_nome(nome) == validacao.primeiro_nome(destinatario):
+            return False
+        raise ErroDados(f"{nome} não pode retirar a encomenda de "
+                        f"{destinatario}.\nEsta encomenda é de antes da 3.6: "
+                        "só quem tem o mesmo primeiro nome do destinatário "
+                        "a retira.")
+
+    # --------------------------------------------------------------
+    # Quem pode retirar as encomendas de cada pessoa (3.6, como RN35)
+    # --------------------------------------------------------------
+    def listar_autorizados_encomenda(self, dono_cpf, incluir_removidos=False):
+        """A lista da pessoa: ativos primeiro, mais recentes primeiro."""
+        filtro = "" if incluir_removidos else " AND ativo = 1"
+        with self._conexao() as con:
+            linhas = con.execute(
+                f"SELECT {COLUNAS_AUTORIZADO_ENCOMENDA} FROM "
+                f"autorizados_encomenda WHERE dono_cpf = ?{filtro} "
+                "ORDER BY ativo DESC, id DESC", (dono_cpf,)).fetchall()
+        return [_autorizado_encomenda(linha) for linha in linhas]
+
+    def adicionar_autorizado_encomenda(self, dono_cpf, cpf, nome, valido_ate,
+                                       autor):
+        """Põe `cpf`/`nome` na lista de quem pode retirar as encomendas de
+        `dono_cpf`, com validade opcional (date ou None). Como no carro
+        (RN35): o porteiro só cadastra com a pessoa na unidade; o
+        administrador, a qualquer hora. Devolve o id."""
+        nome, cpf = _limpo(nome), so_digitos(cpf or "")
+        with self._conexao() as con:
+            usuario = self._exigir(con, autor, so_admin=False)
+            dono = con.execute("SELECT nome FROM pessoas WHERE cpf = ? AND "
+                               "cpf NOT LIKE 'X%'", (dono_cpf,)).fetchone()
+            if dono is None:
+                raise ErroDados("A pessoa da ficha não está cadastrada.")
+            presente = self._esta_dentro(con, dono_cpf)
+            if usuario["perfil"] != "admin" and not presente:
+                raise ErroDados(PESSOA_PRECISA_ESTAR)
+            hoje = self.relogio().date()
+            ok, msg = conferir_autorizado_encomenda(dono_cpf, cpf, nome,
+                                                    valido_ate, hoje)
+            if not ok:
+                raise ErroDados(msg)
+            if con.execute("SELECT 1 FROM autorizados_encomenda WHERE "
+                           "dono_cpf = ? AND cpf = ? AND ativo = 1",
+                           (dono_cpf, cpf)).fetchone():
+                raise ErroDados(f"{nome} já está na lista de quem pode "
+                                f"retirar as encomendas de {dono[0]}.")
+            cursor = con.execute(
+                "INSERT INTO autorizados_encomenda (dono_cpf, cpf, nome, "
+                "valido_ate, dono_presente, criado_por, criado_em) VALUES "
+                "(?, ?, ?, ?, ?, ?, ?)",
+                (dono_cpf, cpf, nome, veiculos.dia_iso(valido_ate),
+                 int(presente), autor, self._agora_iso()))
+            self._evento(con, autor, AUTORIZADO_ENCOMENDA_ADICIONADO,
+                         f"Encomendas de {dono[0]}: {nome} (CPF "
+                         f"{mascarar_cpf(cpf)}) pode retirar, "
+                         f"{veiculos.descrever_validade(valido_ate)}.")
+            return cursor.lastrowid
+
+    def remover_autorizado_encomenda(self, id_autorizado, autor):
+        """Remoção lógica; qualquer usuário (remover só diminui a
+        permissão)."""
+        with self._conexao() as con:
+            self._exigir(con, autor, so_admin=False)
+            linha = con.execute("SELECT dono_cpf, nome FROM "
+                                "autorizados_encomenda WHERE id = ? AND "
+                                "ativo = 1", (id_autorizado,)).fetchone()
+            if linha is None:
+                raise ErroDados("Esta autorização já tinha sido removida.")
+            con.execute("UPDATE autorizados_encomenda SET ativo = 0, "
+                        "removido_em = ?, removido_por = ? WHERE id = ?",
+                        (self._agora_iso(), autor, id_autorizado))
+            self._evento(con, autor, AUTORIZADO_ENCOMENDA_REMOVIDO,
+                         f"{linha[1]} não pode mais retirar as encomendas "
+                         f"(CPF do titular {mascarar_cpf(linha[0])}).")
+
+    def alterar_validade_autorizado_encomenda(self, id_autorizado, valido_ate,
+                                              autor):
+        """Troca a validade (date ou None = sem prazo). Mesma permissão de
+        quem cadastra; não pode ser antes de hoje."""
+        with self._conexao() as con:
+            usuario = self._exigir(con, autor, so_admin=False)
+            linha = con.execute(
+                f"SELECT {COLUNAS_AUTORIZADO_ENCOMENDA} FROM "
+                "autorizados_encomenda WHERE id = ? AND ativo = 1",
+                (id_autorizado,)).fetchone()
+            if linha is None:
+                raise ErroDados("Esta autorização já tinha sido removida.")
+            antes = _autorizado_encomenda(linha)
+            if usuario["perfil"] != "admin" and not self._esta_dentro(
+                    con, antes["dono_cpf"]):
+                raise ErroDados(PESSOA_PRECISA_ESTAR)
+            if valido_ate is not None and valido_ate < self.relogio().date():
+                raise ErroDados("A validade não pode ser antes de hoje.")
+            con.execute("UPDATE autorizados_encomenda SET valido_ate = ? "
+                        "WHERE id = ?",
+                        (veiculos.dia_iso(valido_ate), id_autorizado))
+            self._evento(con, autor, AUTORIZADO_ENCOMENDA_VALIDADE,
+                         f"{antes['nome']}: "
+                         f"{veiculos.descrever_validade(antes['valido_ate'])}"
+                         f" → {veiculos.descrever_validade(valido_ate)}.")
 
     def excluir_encomenda(self, id_encomenda, autor):
         """Só o administrador (lançamento feito por engano)."""
@@ -421,6 +757,19 @@ class ModulosMixin:
             self.relogio().date(), tipo))
         with self._conexao() as con:
             self._exigir(con, autor, so_admin=False)
+            # 3.6: uma autorização em vigor (válida ou futura) por CPF
+            hoje = self.relogio().date().strftime(FORMATO_DIA_ISO)
+            outra = con.execute(
+                "SELECT id, nome, valida_de, valida_ate FROM "
+                "autorizacoes_entrada WHERE cpf = ? AND cancelada_em = '' "
+                "AND valida_ate >= ? ORDER BY id LIMIT 1",
+                (cpf, hoje)).fetchone()
+            if outra:
+                raise ErroDados(
+                    f"Este CPF já tem a autorização nº {outra[0]} ({outra[1]}, "
+                    f"de {_dia_para_tela(outra[2])} a "
+                    f"{_dia_para_tela(outra[3])}).\nPara mudar o período, "
+                    "cancele a anterior e crie outra.")
             cursor = con.execute(
                 "INSERT INTO autorizacoes_entrada (cpf, nome, empresa, motivo, "
                 "anfitriao, valida_de, valida_ate, criada_em, criada_por, "
@@ -691,6 +1040,8 @@ class ModulosMixin:
         neutros. As visitas ficam (os números do Painel não mudam). O CPF
         vira um código que nunca é um CPF de verdade."""
         codigo = f"X{id_pessoa:010d}"
+        cpf_antes = (con.execute("SELECT cpf FROM pessoas WHERE id = ?",
+                                 (id_pessoa,)).fetchone() or ("",))[0]
         con.execute("UPDATE pessoas SET nome = ?, cpf = ?, celular = '', "
                     "placa = '', empresa = '', matricula = '', setor = '', "
                     "cargo = '' WHERE id = ?", (ANONIMO, codigo, id_pessoa))
@@ -706,6 +1057,39 @@ class ModulosMixin:
                     "WHERE pessoa_id = ?", (ANONIMO, codigo, id_pessoa))
         con.execute("DELETE FROM placas_pessoa WHERE pessoa_id = ?",
                     (id_pessoa,))
+        self._anonimizar_livros(con, cpf_antes, codigo)
+
+    def _anonimizar_livros(self, con, cpf, codigo):
+        """3.6: encomendas, chaves e quem pode retirar as encomendas também
+        guardam o nome e o CPF da pessoa."""
+        if not cpf:
+            return
+        con.execute("UPDATE encomendas SET destinatario = ?, "
+                    "destinatario_cpf = ? WHERE destinatario_cpf = ?",
+                    (ANONIMO, codigo, cpf))
+        con.execute("UPDATE encomendas SET retirada_nome = ?, retirada_cpf = ? "
+                    "WHERE retirada_cpf = ?", (ANONIMO, codigo, cpf))
+        con.execute("UPDATE emprestimos_chave SET nome = ?, cpf = ? "
+                    "WHERE cpf = ? AND devolvida_em <> ''",
+                    (ANONIMO, codigo, cpf))
+        # o empréstimo seguinte da mesma chave é o de quem a recebeu (a
+        # transferência fecha um e abre o outro na mesma transação); pelo
+        # id, não pelo horário, que só tem minutos
+        con.execute("UPDATE emprestimos_chave SET transferida_para = ? WHERE "
+                    "transferida_para <> '' AND (SELECT d.cpf FROM "
+                    "emprestimos_chave d WHERE d.chave_id = "
+                    "emprestimos_chave.chave_id AND d.id > emprestimos_chave.id "
+                    "ORDER BY d.id LIMIT 1) IN (?, ?)", (ANONIMO, codigo, cpf))
+        agora = self._agora_iso()
+        con.execute("UPDATE autorizados_encomenda SET ativo = 0, removido_em = "
+                    "CASE WHEN ativo = 1 THEN ? ELSE removido_em END, "
+                    "removido_por = CASE WHEN ativo = 1 THEN ? ELSE "
+                    "removido_por END WHERE dono_cpf = ? OR cpf = ?",
+                    (agora, "(anonimização)", cpf, cpf))
+        con.execute("UPDATE autorizados_encomenda SET nome = ?, cpf = ? "
+                    "WHERE cpf = ?", (ANONIMO, codigo, cpf))
+        con.execute("UPDATE autorizados_encomenda SET dono_cpf = ? "
+                    "WHERE dono_cpf = ?", (codigo, cpf))
 
     @staticmethod
     def _impede_anonimizar(con, id_pessoa):
@@ -940,18 +1324,20 @@ class ModulosMixin:
                         (cursor.lastrowid, "Carla Nogueira",
                          cpf_ficticio(390533447), agora_iso, autor))
             if feito["pessoas"]:
-                for destinatario, setor, remetente, descricao in (
-                        ("Helena Souza", "Secretaria", "Correios",
+                # 3.6: cada encomenda é de uma pessoa do cadastro
+                for base, destinatario, setor, remetente, descricao in (
+                        (284759163, "Helena Souza", "Secretaria", "Correios",
                          "Envelope registrado"),
-                        ("Coordenação de Engenharia", "Bloco B", "Mercado Livre",
-                         "Caixa média"),
-                        ("Rafael Lima", "Manutenção", "Kalunga",
+                        (111444777, "Bruno Almeida", "Bloco B",
+                         "Mercado Livre", "Caixa média"),
+                        (714287938, "Rafael Lima", "Manutenção", "Kalunga",
                          "Material de escritório")):
                     con.execute(
                         "INSERT INTO encomendas (recebida_em, destinatario, "
-                        "setor, remetente, descricao, recebida_por) VALUES "
-                        "(?, ?, ?, ?, ?, ?)", (agora_iso, destinatario, setor,
-                                               remetente, descricao, autor))
+                        "setor, remetente, descricao, recebida_por, "
+                        "destinatario_cpf) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (agora_iso, destinatario, setor, remetente, descricao,
+                         autor, cpf_ficticio(base)))
                     feito["encomendas"] += 1
                 hoje = agora.date()
                 for base, nome, tipo, empresa, motivo, anfitriao, dias in (

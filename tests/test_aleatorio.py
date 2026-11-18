@@ -243,10 +243,18 @@ class Maquina:
         chaves = self.sql("SELECT id FROM chaves")
         return self.r.choice(chaves)[0] if chaves else 999
 
+    def _cpf_qualquer(self):
+        """3.6: a chave e a encomenda são de uma pessoa do cadastro (na
+        unidade); às vezes um CPF vazio, curto ou que não existe."""
+        return self.r.choice(CPFS + ["", "123", "12345678900"])
+
     def op_chave_entregar(self):
-        self.banco.entregar_chave(
-            self._chave(), self.r.choice(NOMES + ["", "Ana"]), self.autor(),
-            self.r.choice(["", self.r.choice(CPFS), "123"]))
+        self.banco.entregar_chave(self._chave(), self._cpf_qualquer(),
+                                  self.autor())
+
+    def op_chave_transferir(self):
+        self.banco.transferir_chave(self._chave(), self._cpf_qualquer(),
+                                    self.autor())
 
     def op_chave_devolver(self):
         self.banco.devolver_chave(self._chave(), self.autor())
@@ -256,18 +264,41 @@ class Maquina:
 
     def op_encomenda(self):
         self.banco.registrar_encomenda(
-            self.r.choice(NOMES + [""]), self.r.choice(["Correios", "", "x" * 90]),
+            self.r.choice(NOMES + ["", "Ana", "Carla"]),
+            self.r.choice(["Correios", "", "x" * 90]),
             self.autor(), setor=self.r.choice(["", "Bloco B"]),
-            descricao=self.r.choice(["", "Caixa", "CPF 529.982.247-25"]))
+            descricao=self.r.choice(["", "Caixa", "CPF 529.982.247-25"]),
+            cpf_destinatario=self.r.choice(["", "", self._cpf_qualquer()]))
 
     def _encomenda(self):
         encomendas = self.sql("SELECT id FROM encomendas")
         return self.r.choice(encomendas)[0] if encomendas else 999
 
     def op_encomenda_retirar(self):
-        self.banco.retirar_encomenda(self._encomenda(),
-                                     self.r.choice(NOMES + ["Ana"]),
-                                     self.autor(), self.r.choice(["", "123"]))
+        self.banco.retirar_encomenda(self._encomenda(), self._cpf_qualquer(),
+                                     self.autor())
+
+    def op_autorizado_encomenda(self):
+        validade = self.r.choice([None, self.agora.date(),
+                                  self.agora.date() - timedelta(days=1)])
+        self.banco.adicionar_autorizado_encomenda(
+            self.r.choice(CPFS), self._cpf_qualquer(),
+            self.r.choice(NOMES + ["Ana"]), validade, self.autor())
+
+    def _autorizado_encomenda(self):
+        ids = self.sql("SELECT id FROM autorizados_encomenda")
+        return self.r.choice(ids)[0] if ids else 999
+
+    def op_remover_autorizado_encomenda(self):
+        self.banco.remover_autorizado_encomenda(self._autorizado_encomenda(),
+                                                self.autor())
+
+    def op_validade_autorizado_encomenda(self):
+        self.banco.alterar_validade_autorizado_encomenda(
+            self._autorizado_encomenda(),
+            self.r.choice([None, self.agora.date(),
+                           self.agora.date() - timedelta(days=1)]),
+            self.autor())
 
     def op_encomenda_excluir(self):
         self.banco.excluir_encomenda(self._encomenda(), self.autor())
@@ -327,7 +358,9 @@ class Maquina:
         "remover_autorizado": 1, "encerrar": 1, "ocorrencia": 2,
         "resolver_ocorrencia": 1, "excluir_ocorrencia": 1,
         "chave_nova": 1, "chave_entregar": 3, "chave_devolver": 2,
-        "chave_remover": 1, "encomenda": 2, "encomenda_retirar": 2,
+        "chave_remover": 1, "chave_transferir": 2, "encomenda": 2,
+        "encomenda_retirar": 2, "autorizado_encomenda": 2,
+        "remover_autorizado_encomenda": 1, "validade_autorizado_encomenda": 1,
         "encomenda_excluir": 1, "autorizacao": 2, "autorizacao_cancelar": 1,
         "recado": 1, "recado_lido": 1, "funcionario": 1, "anonimizar": 1,
         "retencao": 1,
@@ -380,6 +413,20 @@ class Maquina:
                             "<> (retirada_nome = '') OR descricao LIKE "
                             "'%529.982.247-25%'"), [],
                           f"{nome}: encomenda fora das regras")
+        # 3.6: encomenda de uma pessoa do cadastro, retirada com o CPF;
+        # chave com o CPF de quem levou; quem pode retirar as encomendas
+        # não se repete nem é o próprio dono
+        teste.assertEqual(s("SELECT id FROM encomendas WHERE "
+                            "destinatario_cpf = '' OR (retirada_em <> '' AND "
+                            "retirada_cpf = '')"), [],
+                          f"{nome}: encomenda sem o CPF")
+        teste.assertEqual(s("SELECT id FROM emprestimos_chave WHERE cpf = ''"),
+                          [], f"{nome}: chave sem o CPF de quem levou")
+        teste.assertEqual(s("SELECT dono_cpf, cpf FROM autorizados_encomenda "
+                            "WHERE ativo = 1 GROUP BY dono_cpf, cpf HAVING "
+                            "COUNT(*) > 1 UNION ALL SELECT dono_cpf, cpf FROM "
+                            "autorizados_encomenda WHERE dono_cpf = cpf"), [],
+                          f"{nome}: quem pode retirar as encomendas repetido")
         teste.assertEqual(s("SELECT id FROM autorizacoes_entrada WHERE "
                             "valida_ate < valida_de OR usos < 0 OR motivo = '' "
                             "OR anfitriao = '' OR tipo NOT IN ('Visitante', "

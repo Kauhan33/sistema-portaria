@@ -29,6 +29,10 @@ class TestChaves(BaseRegras):
     def setUp(self):
         super().setUp()
         self.lab = self.banco.cadastrar_chave("Laboratório 2", "Bloco B", "ana")
+        # 3.6: a chave é de uma pessoa do cadastro que está na unidade
+        self.banco.inserir(visita(cpf=CARLA, nome="Carla Nogueira"),
+                           autor="paulo")
+        self.banco.inserir(visita(cpf=BETO, nome="Beto Rocha"), autor="paulo")
 
     def chave(self):
         return self.banco.listar_chaves()[0]
@@ -44,7 +48,7 @@ class TestChaves(BaseRegras):
                 self.banco.cadastrar_chave(nome, "", "ana")
 
     def test_entregar_e_devolver(self):
-        self.banco.entregar_chave(self.lab, "Carla Nogueira", "paulo", CARLA)
+        self.banco.entregar_chave(self.lab, CARLA, "paulo")
         c = self.chave()
         self.assertTrue(c["emprestada"])
         self.assertEqual((c["com_quem"], c["cpf"], c["entregue_por"]),
@@ -60,14 +64,14 @@ class TestChaves(BaseRegras):
         self.assertIn("Chave devolvida", acoes)
 
     def test_chave_emprestada_nao_sai_de_novo(self):
-        self.banco.entregar_chave(self.lab, "Carla Nogueira", "paulo")
+        self.banco.entregar_chave(self.lab, CARLA, "paulo")
         with self.assertRaises(dados.ErroDados) as erro:
-            self.banco.entregar_chave(self.lab, "Beto Rocha", "paulo")
+            self.banco.entregar_chave(self.lab, BETO, "paulo")
         self.assertIn("já está com Carla Nogueira", str(erro.exception))
 
     def test_o_banco_trava_duas_entregas_mesmo_sem_a_checagem(self):
         """Duas estações ao mesmo tempo: o índice único recusa a segunda."""
-        self.banco.entregar_chave(self.lab, "Carla Nogueira", "paulo")
+        self.banco.entregar_chave(self.lab, CARLA, "paulo")
         con = sqlite3.connect(self.caminho)
         with self.assertRaises(sqlite3.IntegrityError):
             con.execute("INSERT INTO emprestimos_chave (chave_id, nome, "
@@ -75,12 +79,17 @@ class TestChaves(BaseRegras):
                         "'2026-10-19 10:01', 'paulo')", (self.lab,))
         con.close()
 
-    def test_quem_retira_precisa_de_nome_completo_e_cpf_valido_se_vier(self):
-        for nome, cpf in (("", ""), ("Carla", ""), ("Carla 123", ""),
-                          ("Carla Nogueira", "12345678900")):
-            with self.subTest(nome=nome, cpf=cpf), \
-                    self.assertRaises(dados.ErroDados):
-                self.banco.entregar_chave(self.lab, nome, "paulo", cpf)
+    def test_quem_retira_precisa_de_cpf_valido_e_cadastrado(self):
+        # 3.6: o CPF é obrigatório (o nome vem do cadastro) e diz o que
+        # está errado: faltam números, não existe ou não é de ninguém
+        for cpf, msg in (("", validacao.CPF_INCOMPLETO),
+                         ("3905334", validacao.CPF_INCOMPLETO),
+                         ("12345678900", validacao.CPF_INEXISTENTE),
+                         ("86288366757", validacao.CPF_NAO_CADASTRADO)):
+            with self.subTest(cpf=cpf), \
+                    self.assertRaises(dados.ErroDados) as erro:
+                self.banco.entregar_chave(self.lab, cpf, "paulo")
+            self.assertEqual(str(erro.exception), msg)
         self.assertFalse(self.chave()["emprestada"])
 
     def test_devolver_o_que_nao_esta_emprestado_e_recusado(self):
@@ -88,7 +97,7 @@ class TestChaves(BaseRegras):
             self.banco.devolver_chave(self.lab, "paulo")
 
     def test_remover_so_admin_e_so_na_portaria(self):
-        self.banco.entregar_chave(self.lab, "Carla Nogueira", "paulo")
+        self.banco.entregar_chave(self.lab, CARLA, "paulo")
         with self.assertRaises(dados.ErroDados):
             self.banco.desativar_chave(self.lab, "ana")       # emprestada
         self.banco.devolver_chave(self.lab, "paulo")
@@ -98,11 +107,11 @@ class TestChaves(BaseRegras):
         self.assertEqual(self.banco.listar_chaves(), [])
         self.assertEqual(len(self.banco.historico_de_chaves()), 1)  # fica
         with self.assertRaises(dados.ErroDados):
-            self.banco.entregar_chave(self.lab, "Carla Nogueira", "paulo")
+            self.banco.entregar_chave(self.lab, CARLA, "paulo")
 
     def test_busca_e_so_emprestadas(self):
         self.banco.cadastrar_chave("Auditório", "Bloco A", "ana")
-        self.banco.entregar_chave(self.lab, "Carla Nogueira", "paulo")
+        self.banco.entregar_chave(self.lab, CARLA, "paulo")
         self.assertEqual([c["nome"] for c in self.banco.listar_chaves()],
                          ["Laboratório 2", "Auditório"])     # emprestada 1º
         self.assertEqual(len(self.banco.listar_chaves(so_emprestadas=True)), 1)
@@ -113,10 +122,18 @@ class TestChaves(BaseRegras):
     def test_sem_usuario_ativo_nada_e_gravado(self):
         for autor in (None, "ninguem"):
             with self.subTest(autor=autor), self.assertRaises(dados.ErroDados):
-                self.banco.entregar_chave(self.lab, "Carla Nogueira", autor)
+                self.banco.entregar_chave(self.lab, CARLA, autor)
 
 
 class TestEncomendas(BaseRegras):
+    def setUp(self):
+        super().setUp()
+        # 3.6: o destinatário e quem retira são pessoas do cadastro (quem
+        # retira, na unidade)
+        for cpf, nome in ((ANA, "Helena Souza"), (BETO, "Rafael Lima"),
+                          (CARLA, "Carla Nogueira")):
+            self.banco.inserir(visita(cpf=cpf, nome=nome), autor="paulo")
+
     def nova(self, **mudancas):
         dados_ = {"destinatario": "Helena Souza", "remetente": "Correios",
                   "autor": "paulo", "setor": "Secretaria",
@@ -131,7 +148,9 @@ class TestEncomendas(BaseRegras):
                           e["recebida_em"], e["retirada_em"]),
                          ("Helena Souza", "Correios", "paulo",
                           "19/10/2026 10:00", ""))
-        self.banco.retirar_encomenda(id_, "Helena Souza", "paulo", ANA)
+        self.assertEqual(e["destinatario_cpf"], ANA)
+        self.assertEqual(self.banco.retirar_encomenda(id_, ANA, "paulo"),
+                         "Helena Souza")
         e = self.banco.listar_encomendas()[0]
         self.assertEqual((e["retirada_nome"], e["retirada_cpf"],
                           e["entregue_por"]), ("Helena Souza", ANA, "paulo"))
@@ -148,9 +167,10 @@ class TestEncomendas(BaseRegras):
 
     def test_nao_se_retira_duas_vezes(self):
         id_ = self.nova()
-        self.banco.retirar_encomenda(id_, "Helena Souza", "paulo")
-        with self.assertRaises(dados.ErroDados):
-            self.banco.retirar_encomenda(id_, "Outra Pessoa", "ana")
+        self.banco.retirar_encomenda(id_, ANA, "paulo")
+        with self.assertRaises(dados.ErroDados) as erro:
+            self.banco.retirar_encomenda(id_, ANA, "ana")
+        self.assertIn("já foi retirada", str(erro.exception))
         self.assertEqual(self.banco.listar_encomendas()[0]["retirada_nome"],
                          "Helena Souza")
 
@@ -166,7 +186,7 @@ class TestEncomendas(BaseRegras):
     def test_pendentes_primeiro_e_busca(self):
         a = self.nova()
         self.nova(destinatario="Rafael Lima", remetente="Kalunga")
-        self.banco.retirar_encomenda(a, "Helena Souza", "paulo")
+        self.banco.retirar_encomenda(a, ANA, "paulo")
         self.assertEqual([e["destinatario"] for e in
                           self.banco.listar_encomendas()],
                          ["Rafael Lima", "Helena Souza"])

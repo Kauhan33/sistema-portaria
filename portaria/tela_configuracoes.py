@@ -34,8 +34,9 @@ from .componentes import (Alternador, Aviso, Botao, Cabecalho, Campo, Cartao,
 from .estilo import COR, CORES_TIPO, ESPACO_CARTOES, FONTE, ICONE, MARGEM, px
 from .horarios import DIAS_SEMANA, FORMATO_DATA
 from .validacao import (MAXIMO_DESCRICAO, MAXIMO_HORA, MAXIMO_JUSTIFICATIVA,
-                        TIPOS_ACESSO, cpf_valido, so_digitos,
+                        TIPOS_ACESSO, cpf_valido, mensagem_cpf, so_digitos,
                         validar_justificativa_simples)
+from .sugestoes import ligar_sugestoes
 from .veiculos import MAXIMO_VAGAS, ler_vagas
 
 SECAO_DADOS = "Dados e privacidade"
@@ -435,6 +436,8 @@ class AbaConfiguracoes:
                                       largura=130)
         grupo.grid(row=0, column=0, sticky="w", padx=(0, px(10)))
         self.cpf_anonimizar = campo.entrada
+        self.sugestoes_anonimizar = ligar_sugestoes(
+            self.app, {"cpf": self.cpf_anonimizar})
         grupo, campo = campo_rotulado(linha, "Justificativa",
                                       maximo=MAXIMO_JUSTIFICATIVA)
         grupo.grid(row=0, column=1, sticky="ew")
@@ -504,7 +507,7 @@ class AbaConfiguracoes:
         justificativa = " ".join(self.justificativa_anonimizar.get().split())
         if not cpf_valido(cpf):
             return self._dizer(self.faixa_privacidade, "erro",
-                               "CPF inválido: confira os números.")
+                               mensagem_cpf(cpf).replace("\n", " "))
         ok, msg = validar_justificativa_simples(justificativa)
         if not ok:
             return self._dizer(self.faixa_privacidade, "erro", msg)

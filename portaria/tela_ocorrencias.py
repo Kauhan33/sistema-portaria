@@ -14,7 +14,8 @@ from .componentes import (Aviso, Botao, Cabecalho, Campo, CampoTexto, Cartao,
                           tabela, titulo_cartao)
 from .estilo import COR, FONTE, ICONE, MARGEM, px
 from .usuarios import pode_excluir
-from .validacao import (CATEGORIAS_OCORRENCIA, MAXIMO_BUSCA, MAXIMO_OCORRENCIA,
+from .sugestoes import ligar_sugestoes
+from .validacao import (CPF_NAO_CADASTRADO, CATEGORIAS_OCORRENCIA, MAXIMO_BUSCA, MAXIMO_OCORRENCIA,
                         MAXIMO_RECADO, formatar_placa, validar_ocorrencia,
                         validar_recado)
 
@@ -55,6 +56,8 @@ class DialogoOcorrencia(Dialogo):
         grupo.grid(row=3, column=0, sticky="ew", padx=(0, px(10)),
                    pady=(0, px(12)))
         self.cpf = c.entrada
+        # 3.6: o CPF é de uma pessoa do cadastro (com as sugestões)
+        self.sugestoes = ligar_sugestoes(app, {"cpf": self.cpf})
         grupo, c = campo_rotulado(form, "Placa", "opcional", placa=True)
         grupo.grid(row=3, column=1, sticky="ew", pady=(0, px(12)))
         self.placa = c.entrada
@@ -69,6 +72,12 @@ class DialogoOcorrencia(Dialogo):
         ok, msg = validar_ocorrencia(self.categoria.get(), self.texto.get(),
                                      self.cpf.get().strip(),
                                      self.placa.get().strip())
+        if ok and self.cpf.get().strip():
+            ok, pessoa = app.tentar(app.banco.buscar_pessoa,
+                                    self.cpf.get().strip())
+            if not ok:
+                return False
+            ok, msg = (True, "") if pessoa else (False, CPF_NAO_CADASTRADO)
         if not ok:
             self.faixa.mostrar("erro", msg)
             self.faixa.grid(row=4, column=0, columnspan=2, sticky="ew")

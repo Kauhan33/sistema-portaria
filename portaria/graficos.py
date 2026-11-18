@@ -93,3 +93,82 @@ def desenhar_barras_verticais(cv, itens, destaque=None, nome_destaque="Hoje"):
                        text=nome_destaque if hoje else rotulo,
                        fill=COR["texto"] if hoje else COR["texto_3"],
                        font=FONTE["rotulo"] if hoje else FONTE["grafico"])
+
+
+def _sem_dados(cv, itens, aviso):
+    """Como _vazio, com o aviso de cada painel (ex.: "Nenhuma encomenda
+    neste período")."""
+    cv.delete("all")
+    if not itens or max(i[1] for i in itens) == 0:
+        cv.create_text(cv.winfo_width() / 2, cv.winfo_height() / 2,
+                       text=aviso, fill=COR["texto_3"], font=FONTE["corpo"])
+        return True
+    return False
+
+
+def _medir(widget, texto, fonte):
+    return int(widget.tk.call("font", "measure", fonte, texto))
+
+
+def cortar_texto(widget, texto, fonte, largura):
+    """O texto inteiro, se couber em `largura` px; senão, cortado com "…"."""
+    if _medir(widget, texto, fonte) <= largura:
+        return texto
+    while texto and _medir(widget, texto + "…", fonte) > largura:
+        texto = texto[:-1]
+    return texto.rstrip() + "…" if texto else ""
+
+
+def desenhar_colunas(cv, itens, destaque=None, nome_destaque="Hoje",
+                     aviso=SEM_DADOS):
+    """desenhar_barras_verticais com o aviso do painel quando não há dados."""
+    if not _sem_dados(cv, itens, aviso):
+        desenhar_barras_verticais(cv, itens, destaque, nome_destaque)
+
+
+def desenhar_ranking(cv, itens, aviso=SEM_DADOS):
+    """
+    itens: lista de (nome, valor, texto de apoio), na ordem de cima para
+    baixo, com barras de uma cor só. Com altura, cada linha tem o nome em
+    cima da barra e o valor e o apoio à direita: cabe nome comprido
+    ("Coordenação de Engenharia"). Na janela baixa, tudo numa linha só, com
+    o nome cortado com "…" se não couber.
+    """
+    if _sem_dados(cv, itens, aviso):
+        return
+    w, h = cv.winfo_width(), cv.winfo_height()
+    maximo = max(i[1] for i in itens)
+    esq, dir_ = px(2), w - px(2)
+    passo = min(h / len(itens), px(44))
+    duas_linhas = passo >= px(30)
+    espessura = px(8) if duas_linhas else min(px(10), max(passo - px(6), px(4)))
+    rotulos = min(w * 0.38, px(170))          # (uma linha) coluna dos nomes
+    for n, (nome, valor, extra) in enumerate(itens):
+        if duas_linhas:
+            texto = passo * n + (passo - px(28)) / 2 + px(8)
+            barra = texto + px(12)
+        else:
+            texto = passo * n + passo / 2
+            barra = texto - espessura / 2
+        x = dir_
+        if extra:
+            cv.create_text(x, texto, text=extra, anchor="e",
+                           fill=COR["texto_3"], font=FONTE["grafico"])
+            x -= _medir(cv, extra, FONTE["grafico"]) + px(10)
+        cv.create_text(x, texto, text=str(valor), anchor="e",
+                       fill=COR["texto"], font=FONTE["grafico_valor"])
+        x -= _medir(cv, str(valor), FONTE["grafico_valor"]) + px(12)
+        largura_nome = (x if duas_linhas else rotulos) - esq - px(8)
+        cv.create_text(esq, texto, anchor="w", fill=COR["texto_2"],
+                       font=FONTE["grafico"],
+                       text=cortar_texto(cv, nome, FONTE["grafico"],
+                                         largura_nome))
+        inicio, fim_ = (esq, dir_) if duas_linhas else (esq + rotulos, x)
+        if fim_ - inicio < px(10):
+            continue
+        cv.create_rectangle(inicio, barra, fim_, barra + espessura,
+                            fill=COR["superficie_2"], width=0)
+        if valor:
+            fim = inicio + max((fim_ - inicio) * valor / maximo, px(3))
+            ret_arredondado(cv, inicio, barra, fim, barra + espessura, px(3),
+                            COR["texto_2"], COR["superficie_2"])

@@ -12,7 +12,8 @@ from unittest import mock
 from portaria import estilo, impressao
 from portaria.validacao import AUT_CANCELADA, AUT_VALIDA
 
-from .test_interface import AGORA, VISITA_ANTIGA, BaseInterface
+from .test_dados import registro
+from .test_interface import AGORA, VISITA_ANTIGA, BaseInterface, agora_menos
 
 ANA, BETO, CARLA = "52998224725", "11144477735", "39053344705"
 HOJE = AGORA.strftime("%d/%m/%Y")
@@ -36,6 +37,12 @@ class BasePagina(BaseInterface):
     def evento(self):
         return self.banco.listar_eventos()[0]["acao"]
 
+    def dentro(self, cpf, nome):
+        """3.6: a chave e a encomenda são de quem está na unidade."""
+        return self.banco.inserir(registro(cpf=cpf, nome=nome,
+                                           entrada=agora_menos(60)),
+                                  autor="ana.admin")
+
 
 class TestChavesNaTela(BasePagina):
     PAGINA = "chaves"
@@ -44,6 +51,7 @@ class TestChavesNaTela(BasePagina):
         super().setUp()
         self.lab = self.banco.cadastrar_chave("Laboratório 2", "Bloco B",
                                               "ana.admin")
+        self.dentro(CARLA, "Carla Nogueira")
         self.pagina.atualizar()
         primeira(self.pagina)
 
@@ -78,7 +86,10 @@ class TestChavesNaTela(BasePagina):
         d.cpf.insert(0, "12345678900")
         d.nome.insert(0, "Carla Nogueira")
         self.assertFalse(d.salvar())                       # CPF inválido
+        self.assertEqual(d.faixa.lbl.cget("text"),
+                         "CPF inválido.\nDigite um CPF existente.")
         d.cpf.delete(0, tk.END)
+        d.cpf.insert(0, CARLA)                  # 3.6: o CPF é obrigatório
         self.assertTrue(d.salvar())
         linha = p.tabela.item(str(self.lab))
         self.assertEqual(linha["text"], "Emprestada")
@@ -99,16 +110,17 @@ class TestChavesNaTela(BasePagina):
         d.fechar()
 
     def test_outra_estacao_entregou_antes(self):
+        self.dentro(BETO, "Beto Rocha")
         d = self.pagina.entregar()
-        d.nome.insert(0, "Carla Nogueira")
-        self.banco.entregar_chave(self.lab, "Beto Rocha", "paulo")
+        d.nome.insert(0, "Carla Nogueira")      # o nome inteiro acha o CPF
+        self.banco.entregar_chave(self.lab, BETO, "paulo")
         d.salvar()
         self.msg.showerror.assert_called()
         self.assertEqual(self.pagina.tabela.set(str(self.lab), "quem"),
                          "Beto Rocha")
 
     def test_historico_e_remover(self):
-        self.banco.entregar_chave(self.lab, "Carla Nogueira", "paulo")
+        self.banco.entregar_chave(self.lab, CARLA, "paulo")
         self.banco.devolver_chave(self.lab, "paulo")
         d = self.pagina.ver_historico()
         self.assertEqual(len(d.tabela.get_children()), 1)
@@ -134,6 +146,7 @@ class TestChavesDoPorteiro(BasePagina):
         self.assertIsNone(self.pagina.btn_novo)
         self.assertIsNone(self.pagina.btn_remover)
         chave = self.banco.cadastrar_chave("Auditório", "", "ana.admin")
+        self.dentro(CARLA, "Carla Nogueira")
         self.pagina.atualizar()
         primeira(self.pagina)
         d = self.pagina.entregar()
@@ -148,6 +161,10 @@ class TestChavesDoPorteiro(BasePagina):
 
 class TestEncomendasNaTela(BasePagina):
     PAGINA = "encomendas"
+
+    def setUp(self):
+        super().setUp()
+        self.dentro(ANA, "Helena Souza")     # 3.6: destinatária, na unidade
 
     def nova(self):
         d = self.pagina.novo()
@@ -841,6 +858,7 @@ class TestDialogosCabemNoNotebook(BasePagina):
     def test_altura_e_largura(self):
         app = self.app
         self.banco.cadastrar_chave("Laboratório 2", "", "ana.admin")
+        self.dentro(ANA, "Ana Silva")    # 3.6: destinatária do cadastro
         self.banco.registrar_encomenda("Ana Silva", "Correios", "ana.admin")
         abrir = []
         for aba, tela, metodos in (

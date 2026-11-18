@@ -83,11 +83,19 @@ regras no banco e `tests/test_livros.py`, as telas).
 | **Registro de ocorrências** | Página **Ocorrências**: categoria, descrição, CPF e placa opcionais; resolver e excluir (RN49); e o **recado de turno** (RF42) | `TestOcorrencias`, `TestOcorrenciasNoBanco`, `TestRecados`, `TestRecadoDeTurno` |
 | **Controle de visitantes autorizados** | Página **Autorizações**: um setor avisa quem vai receber (CPF, nome, empresa, motivo, quem autoriza, validade). Na chegada, o Cadastro reconhece o CPF, preenche os dados e mostra quem autorizou; cada entrada conta como uso (RF39, RN53) | `TestAutorizacoes`, `TestAutorizacoesNaTela` |
 | **Emissão de autorização de entrada** | Botão **Emitir autorização**: página pronta para imprimir ou salvar em PDF, com número, validade e assinaturas; a emissão fica no histórico (RF39) | `TestAutorizacoes.test_emissao_fica_no_historico`, `TestAutorizacoesNaTela.test_emitir_abre_a_pagina_para_imprimir` |
-| **Controle de entrega de encomendas** | Página **Encomendas**: registrar o que chegou (destinatário, bloco ou setor, remetente, descrição) e a retirada (quem levou e quando); desde a 3.5, também pelo Cadastro, com o tipo Entregador (RF40, RN52) | `TestEncomendas`, `TestEncomendasNaTela` |
+| **Controle de entrega de encomendas** | Página **Encomendas**: registrar o que chegou (destinatário, bloco ou setor, remetente, descrição) e a retirada (quem levou e quando); desde a 3.5, também pelo Cadastro, com o tipo Entregador; desde a 3.6, o destinatário é uma pessoa do cadastro e só ele ou um autorizado dele, na unidade, retira (RF40, RN52) | `TestEncomendas`, `TestEncomendasNaTela`, `test_v36.TestRetiradaDaEncomenda` |
 | **Controle de funcionários** | Página **Funcionários**: matrícula (não se repete), setor, cargo e o ponto de hoje (entrada, saída, dentro) (RF38, RN54) | `TestFuncionarios`, `TestFuncionariosNaTela` |
-| **Controle de chaves entregues e devolvidas** | Página **Chaves**: cadastro das chaves, entrega (quem levou), devolução e histórico; a mesma chave não sai duas vezes (RF41, RN51) | `TestChaves`, `TestChavesNaTela`, `TestChavesDoPorteiro` |
+| **Controle de chaves entregues e devolvidas** | Página **Chaves**: cadastro das chaves, entrega (quem levou), devolução e histórico; a mesma chave não sai duas vezes (RF41, RN51); desde a 3.6, só para quem está na unidade, com **Transferir**, e ninguém sai com a chave | `TestChaves`, `TestChavesNaTela`, `TestChavesDoPorteiro`, `test_v36.TestTransferirChave` |
 
 ## Além do enunciado
+
+Na 3.6 a encomenda e a chave ficaram ligadas ao cadastro: o destinatário é
+uma pessoa cadastrada, a retirada é feita por quem está na unidade (ele ou
+alguém da lista dele), a chave só vai para quem está na unidade, pode ser
+**transferida** e não sai com a pessoa. Todo campo de CPF ou nome sugere até
+3 pessoas a partir de 3 caracteres, as mensagens de CPF dizem o que está
+errado, um CPF tem uma autorização em vigor só, e o **Painel** ganhou abas
+(Veículos, Entregas, Chaves, Ocorrências e Funcionários).
 
 Na 3.5 o entregador que só deixa a entrega passou a registrar a **encomenda**
 pelo próprio Cadastro (sem cadastrar a pessoa), o histórico da pessoa diz como

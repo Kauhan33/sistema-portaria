@@ -14,7 +14,7 @@ As ideias estão agrupadas em versões. Cada versão é entregável sozinha.
 ## Como ler
 
 - **Esforço:** P = até meio dia · M = 1 a 2 dias · G = 3 dias ou mais, contando os testes.
-- **Esquema:** a versão do banco depois da entrega. Hoje o banco está na v16.
+- **Esquema:** a versão do banco depois da entrega. Hoje o banco está na v17.
   Toda migração é atômica (`PRAGMA user_version`) e faz um backup antes.
 - **RN nova:** a numeração continua a partir da RN35 (na 2.3 foram da RN41
   à RN45; na 2.4, a RN46; na 2.5, a RN47; na 3.0, a RN48 e a RN49; na 3.2, da
@@ -52,6 +52,7 @@ não se repete abaixo):
 | **3.3** ✅ | Campos por tipo de acesso | — | v14 (sem mudança) | ~1 dia |
 | **3.4** ✅ | Revisão geral de uso | — | v15 | ~1 dia |
 | **3.5** ✅ | Entregador, histórico do carro e Aparência | — | v16 | ~1 dia |
+| **3.6** ✅ | Encomendas e chaves ligadas ao cadastro, sugestões e Painel com abas | — | v17 | ~2 dias |
 | Depois | O que ficou de fora | A4, A6, D3, C3, B8, N09, S02 | — | — |
 | Extras | Se sobrar tempo | E3, E6, D1, D2, E5 | — | — |
 | Contínuo | Qualidade e entrega | F3, limpeza de código, Word da entrega | — | — |
@@ -595,6 +596,38 @@ Feita em 17/11/2026, a pedido do aluno.
 - **Menu que cabe:** com a Aparência, o administrador tem doze páginas; em tela
   baixa os itens do menu ficam com 30 px em vez de 35
   (`_ajustar_menu_a_altura`) e cabem no notebook 1366×768.
+
+## Versão 3.6 — Encomendas e chaves ligadas ao cadastro, sugestões e Painel com abas (esquema v17) ✅
+
+Feita em 18/11/2026, a pedido do aluno.
+
+- **Encomenda de uma pessoa do cadastro:** `registrar_encomenda` resolve o
+  destinatário pelo CPF, pelo nome inteiro ou pelo primeiro nome único
+  (`_destinatario`) e grava `encomendas.destinatario_cpf` (v17). A retirada
+  (`retirar_encomenda(id, cpf, autor)`) exige quem está na unidade e é o
+  destinatário ou um autorizado válido da tabela nova
+  `autorizados_encomenda` (índice único por dono e CPF ativos), mantida na
+  ficha › Encomendas. O cadastro com encomenda aguardando não se exclui.
+- **Chave ligada à pessoa:** `entregar_chave(id, cpf, autor)` e
+  `transferir_chave` (coluna `emprestimos_chave.transferida_para`) só para
+  quem está na unidade. `_exigir_sem_chave` recusa a saída, a correção e a
+  exclusão da visita aberta de quem está com chave; o Encerrar o dia pula
+  essas visitas. Na tela, `tela_chave_saida.resolver_chaves` pergunta
+  devolver ou transferir antes da saída.
+- **Mensagens de CPF:** `validacao.mensagem_cpf` separa "Digite os 11
+  números" de "Digite um CPF existente"; na ocorrência, na chave e na
+  encomenda, também "de uma pessoa cadastrada".
+- **Autorização única por CPF:** `criar_autorizacao` recusa um CPF com
+  autorização válida ou futura.
+- **Sugestões de preenchimento** (`sugestoes.py`, `Banco.sugerir_pessoas`):
+  a partir de 3 caracteres, até 3 pessoas, sem diferença de acento; o
+  porteiro vê o CPF mascarado.
+- **Painel com abas** (`dados_painel.PainelMixin`, `tela_dashboard`):
+  Visão geral, Veículos, Entregas, Chaves, Ocorrências e Funcionários, só
+  leitura e sem CPF; a aba é montada ao abrir e só a da tela é relida.
+- **Revisão de QA:** três defeitos achados e corrigidos antes da entrega
+  (Encerrar o dia com chave, transferência para quem também sai e a
+  anonimização das transferências no mesmo minuto), cada um com teste.
 
 ---
 

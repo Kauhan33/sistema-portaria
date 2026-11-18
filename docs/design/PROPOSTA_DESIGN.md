@@ -796,3 +796,33 @@ direção escolhida por ele entre três propostas foi a de **menu escuro**.
   barra (`lateral_simbolo` e `lateral_simbolo_traco`), sem um arquivo para
   cada combinação.
 
+## 16. Versão 3.6: sugestões, chave na saída e Painel com abas
+
+- **Sugestões de preenchimento:** uma lista sem borda presa logo abaixo do
+  campo (alinhada à borda do `Campo`, pelo menos da largura dele), com até 3
+  pessoas. Cada linha tem o nome em cima e, embaixo, o CPF (mascarado para o
+  porteiro), o tipo e uma marca colorida: "na unidade" em verde ou
+  "desativada" em vermelho. A pessoa marcada (setas ou mouse) fica com o
+  fundo de seleção. A lista nunca pega o foco: o cursor continua no campo e
+  quem digita não é interrompido. Ela fica "sempre visível" por cima do
+  diálogo, sem `transient` (no Windows, o `transient` a deixava atrás do
+  diálogo), e se reposiciona quando o diálogo se move ou se centraliza.
+- **A chave na saída:** um diálogo curto, com o título dizendo o problema
+  ("Carla está com a chave "Laboratório 2""), uma frase com a regra e três
+  botões: **Registrar devolução** (principal: o caminho mais comum, também no
+  Enter), **Transferir para outra pessoa** e Cancelar. Uma pergunta por
+  chave. A transferência abre o diálogo de quem recebe, com as sugestões
+  (só quem está na unidade e não está saindo junto). Se o banco recusar, o
+  diálogo continua aberto para corrigir.
+- **Quem leva (chave e encomenda):** os campos ficaram "CPF *" e "Nome
+  completo *", com a dica "ou comece pelo nome" e a frase "Só quem está na
+  unidade agora." embaixo, porque essa é a regra que mais recusa.
+- **Painel com abas:** um seletor compacto (o mesmo das outras páginas)
+  logo abaixo da faixa do administrador, para sobrar altura aos gráficos.
+  Cada aba repete a forma da Visão geral: uma linha de 5 números (o rótulo e
+  o apoio cortados com "…" no cartão estreito) e dois gráficos, um
+  **ranking** à esquerda (nome em cima da barra; na tela baixa, numa linha
+  só) e um **por dia** à direita, com 7 ou 30 dias e o dia de hoje em
+  vermelho. As cores de alerta seguem a Visão geral: verde quando está tudo
+  em dia, laranja para o que pede atenção (ocorrências abertas) e vermelho
+  para o limite (estacionamento lotado). Nenhuma aba mostra CPF.

@@ -412,6 +412,24 @@ Sem mudança de esquema (banco v12).
 - Fora do alcance (precisa de serviço pago): certificado para o Windows não
   mostrar o aviso do SmartScreen ao abrir o instalador.
 
+### Versão 3.6 — Encomendas e chaves ligadas ao cadastro, sugestões e Painel com abas (18/11/2026) ✅
+
+- ✅ Encomenda de uma pessoa do cadastro; retirada só por ela ou por alguém da
+  lista "Quem pode retirar as encomendas" dela (ficha › Encomendas), na
+  unidade (RN52; banco v17).
+- ✅ Chave só para quem está na unidade, com CPF e nome; **Transferir**; ninguém
+  sai com a chave (a saída pergunta, o banco recusa, o Encerrar o dia pula).
+- ✅ Mensagens de CPF: "Digite os 11 números" ou "Digite um CPF existente"; CPF
+  cadastrado na ocorrência, na chave e na encomenda.
+- ✅ Sugestões de preenchimento em todo campo de CPF ou nome (RF48).
+- ✅ Uma autorização em vigor por CPF (RN53).
+- ✅ Painel com abas: Veículos, Entregas, Chaves, Ocorrências e Funcionários
+  (RF44).
+- Achados do QA da 3.6, corrigidos: o Encerrar o dia dava saída a quem estava
+  com chave; a transferência aceitava quem também estava saindo; a
+  anonimização apagava o nome de outra pessoa com duas transferências no
+  mesmo minuto.
+
 ### Versão 3.5 — Entregador, histórico do carro e Aparência (17/11/2026) ✅
 
 - ✅ Entregador integrado às Encomendas: no Cadastro, o tipo Entregador mostra
@@ -473,14 +491,17 @@ registrar prestadores de serviços, com empresa e motivo (3.0) · RF38 controlar
 funcionários: matrícula, setor, cargo e o ponto do dia (3.2) · RF39 autorizar a
 entrada de um visitante com antecedência e emitir a autorização para imprimir
 (3.2) · RF40 registrar as encomendas recebidas e a retirada (3.2; também pelo
-Cadastro, com o tipo Entregador, 3.5) · RF41
-controlar as chaves entregues e devolvidas (3.2) · RF42 deixar um recado para
+Cadastro, com o tipo Entregador, 3.5; destinatário do cadastro e retirada na
+unidade, 3.6) · RF41
+controlar as chaves entregues e devolvidas (3.2; transferir, 3.6) · RF42 deixar um recado para
 o próximo turno (3.2) · RF43 emitir o relatório do período para imprimir (3.2)
-· RF44 ver no Painel as entradas por dia ou por hora, em 7 ou 30 dias (3.2) ·
+· RF44 ver no Painel as entradas por dia ou por hora, em 7 ou 30 dias (3.2), e
+as abas de veículos, entregas, chaves, ocorrências e funcionários (3.6) ·
 RF45 preencher o sistema com dados de demonstração (admin) (3.2) · RF46
 escolher o tamanho da letra (3.2) e, na página Aparência, a cor da barra lateral
 e dos botões principais e o tema (3.5) · RF47 anonimizar uma pessoa e aplicar o
-prazo de guarda (admin) (3.2).
+prazo de guarda (admin) (3.2) · RF48 sugerir até 3 pessoas do cadastro ao
+digitar o CPF ou o nome (3.6).
 
 **RNF**: RNF01 interface simples com botões identificados · RNF02 senha oculta e
 armazenada com hash · RNF03 tela principal e busca respondem na hora mesmo com
@@ -663,7 +684,8 @@ usa (fica no histórico). Desde a 3.5, o entregador que só deixa a entrega não
 cadastrado: o Cadastro registra a encomenda (RN52); com "Vai entrar na unidade",
 vale esta regra.
 RN49 OCORRÊNCIAS: categoria da lista, descrição de 5 a 500 caracteres, CPF e placa
-opcionais (conferidos como no Cadastro); CPF digitado na descrição é mascarado;
+opcionais (conferidos como no Cadastro; desde a 3.6, o CPF é de uma pessoa
+cadastrada); CPF digitado na descrição é mascarado;
 qualquer usuário registra e marca como resolvida; só o administrador exclui (RN02);
 registrar, resolver e excluir ficam no histórico.
 
@@ -672,8 +694,9 @@ RN50 QUEM PROCURA: opcional, até 60 caracteres, só para visitante, entregador 
 prestador de serviço (RN48); CPF digitado vai mascarado. (Na 3.2 a regra também
 tinha o crachá, removido na 3.3 a pedido do aluno.)
 RN51 CHAVES: só o administrador cadastra e remove; nome obrigatório, até 40
-caracteres, sem repetir; qualquer usuário entrega (nome completo de quem leva e
-CPF opcional, válido se vier) e registra a devolução; a mesma chave não sai duas
+caracteres, sem repetir; qualquer usuário entrega (desde a 3.6, a uma pessoa do
+cadastro que está na unidade, com CPF e nome), transfere (3.6) e registra a
+devolução; quem está com uma chave não sai da unidade (3.6); a mesma chave não sai duas
 vezes (índice único); a chave emprestada não é removida; o histórico das entregas
 fica.
 RN52 ENCOMENDAS: destinatário e remetente obrigatórios; bloco (ou setor) e
@@ -681,14 +704,17 @@ descrição opcionais; CPF na descrição é mascarado; a retirada informa quem 
 acontece uma vez só; só o administrador exclui. Desde a 3.5 a encomenda também é
 registrada pelo Cadastro: com o tipo Entregador e sem "Vai entrar na unidade", o
 formulário é o da encomenda, o entregador não é cadastrado e nenhuma visita é
-aberta; as regras e a gravação são as mesmas da página Encomendas.
+aberta; as regras e a gravação são as mesmas da página Encomendas. Desde a 3.6 o
+destinatário é uma pessoa do cadastro e só ele ou alguém da lista dele, na
+unidade e dentro da validade, retira.
 RN53 AUTORIZAÇÃO DE ENTRADA: CPF válido, nome completo, tipo de acesso
 (visitante, entregador ou prestador de serviço, desde a 3.4), motivo e quem
 autoriza obrigatórios; a empresa segue a RN48 (só do prestador, e obrigatória
 para ele); validade de até 90 dias, que não termina no passado nem antes de
 começar; vale do primeiro ao último dia; cada entrada conta como uso; cancelar
 não volta; a autorização não passa por cima da desativação (RN12), do horário nem
-de "já está dentro"; o porteiro vê o CPF mascarado, inclusive na página impressa.
+de "já está dentro"; o porteiro vê o CPF mascarado, inclusive na página impressa. Desde a 3.6, um
+CPF tem no máximo uma autorização válida ou futura.
 RN54 FUNCIONÁRIOS: matrícula, setor e cargo são opcionais e só de quem é do tipo
 Funcionário; a matrícula (letras, números, ponto e hífen, até 20) não se repete.
 RN55 PRIVACIDADE: só o administrador anonimiza, com justificativa de pelo menos 10

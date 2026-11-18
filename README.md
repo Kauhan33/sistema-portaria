@@ -4,7 +4,7 @@ Projeto da disciplina **Teoria da Computação e Compiladores** (8º período �
 Controle de entrada e saída de pessoas no campus, feito em Python com Tkinter, e
 relacionado com as fases de um compilador (léxica, sintática e semântica).
 
-**Versão atual: 3.5** (projeto final, Atividade A3, com todos os desafios extras) — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
+**Versão atual: 3.6** (projeto final, Atividade A3, com todos os desafios extras) — veja [Versões](#versões). Download (instalador ou `.exe` portátil) na página de [Releases](https://github.com/Kauhan33/sistema-portaria/releases).
 
 ![Tela Controle de acesso](docs/design/final/v34_controle_claro.png)
 
@@ -136,7 +136,7 @@ logado e ativo.
 python -m unittest -v
 ```
 
-1373 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
+1611 testes (biblioteca padrão `unittest`) cobrindo o **enunciado da
 Atividade A3 item por item** (`tests/test_enunciado_a3.py`: as três telas, os
 requisitos técnicos e os desafios extras, além de um teste de que usar as telas
 não consome os recursos do Windows), os **módulos da 3.2**
@@ -203,13 +203,27 @@ repositório. `--sem-suite` pula a suíte completa (mais rápido).
 
 ## Galeria
 
-As telas `v35_*` mostram as novidades da versão atual (3.5); as `v34_*`, as
-telas que não mudaram, em claro e escuro, no tamanho normal
+As telas `v36_*` mostram as novidades da versão atual (3.6); as `v35_*`, as
+da 3.5; as `v34_*`, as outras telas, em claro e escuro, no tamanho normal
 e num notebook 1366×768 a 125% (`_1366x670`). Dados fictícios (os das páginas da 3.2 são
 os próprios **dados de demonstração** do programa).
 
 | | |
 |---|---|
+| ![Sugestões pelo nome](docs/design/final/v36_cadastro_sugestoes_nome.png) | ![Sugestões pelo CPF](docs/design/final/v36_cadastro_sugestoes_cpf.png) |
+| **Sugestões** (3.6) — a partir de 3 letras, até 3 pessoas; quem está na unidade vem marcado | **Pelo CPF** — 3 números já bastam; a escolha preenche o CPF e o nome |
+| ![Saída de quem está com a chave](docs/design/final/v36_saida_com_chave.png) | ![Transferir chave](docs/design/final/v36_chave_transferir.png) |
+| **Saída com a chave** (3.6) — devolver ou transferir antes de sair | **Transferir** — para outra pessoa que está na unidade, com as sugestões |
+| ![Nova encomenda](docs/design/final/v36_encomenda_nova.png) | ![Ficha › Encomendas](docs/design/final/v36_pessoas_encomendas.png) |
+| **Nova encomenda** (3.6) — o destinatário é uma pessoa do cadastro | **Ficha › Encomendas** — quem pode retirar, com validade, e o que aguarda retirada |
+| ![Retirada da encomenda](docs/design/final/v36_encomenda_retirada.png) | ![CPF que não é do cadastro](docs/design/final/v36_ocorrencia_cpf_nao_cadastrado.png) |
+| **Retirada** (3.6) — só quem está na unidade (o destinatário ou um autorizado) | **Ocorrência** — o CPF precisa ser de uma pessoa cadastrada |
+| ![Painel › Veículos](docs/design/final/v36_painel1_veiculos_claro.png) | ![Painel › Entregas](docs/design/final/v36_painel2_entregas_escuro.png) |
+| **Painel › Veículos** (3.6) — estacionamento, pendentes e saídas com autorizado | **Painel › Entregas** — aguardando, espera média e quem mais recebe |
+| ![Painel › Chaves](docs/design/final/v36_painel3_chaves_claro.png) | ![Painel › Ocorrências](docs/design/final/v36_painel4_ocorrencias_escuro.png) |
+| **Painel › Chaves** — emprestadas agora e as mais usadas | **Painel › Ocorrências** — abertas, tempo até resolver e por categoria |
+| ![Painel › Funcionários](docs/design/final/v36_painel5_funcionarios_claro.png) | ![Painel no notebook](docs/design/final/v36_painel3_chaves_claro_1366x670.png) |
+| **Painel › Funcionários** — dentro agora, permanência e por setor | **No notebook** (1366×768 a 125%) — tudo cabe |
 | ![Cadastro do entregador](docs/design/final/v35_cadastro_entregador.png) | ![Entregador que vai entrar](docs/design/final/v35_cadastro_entregador_vai_entrar.png) |
 | **Entregador** (3.5) — só a entrega: o formulário vira o da encomenda | **Vai entrar na unidade** — o cadastro da pessoa volta |
 | ![Aparência](docs/design/final/v35_aparencia.png) | ![Barra lateral vermelha](docs/design/final/v35_aparencia_vermelha.png) |
@@ -464,16 +478,24 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   tipo e os campos dele. **Emitir autorização** abre no navegador uma página
   pronta para imprimir ou salvar em PDF; **Cancelar** vale só para as que ainda
   não venceram. Cada entrada conta como uso, e tudo fica no histórico. A
-  autorização não passa por cima da desativação (RN12).
+  autorização não passa por cima da desativação (RN12). Desde a 3.6, um CPF
+  tem no máximo uma autorização em vigor (válida ou futura).
 - **Encomendas** (desafio extra, RF40): o que chegou (destinatário, bloco ou
   setor, remetente e descrição; a coluna se chama **Bloco** desde a 3.5), com
   as que aguardam retirada primeiro; **Registrar retirada** guarda quem levou;
   só o administrador exclui. Desde a 3.5 o porteiro também registra a
-  encomenda pelo **Cadastro**, com o tipo Entregador.
+  encomenda pelo **Cadastro**, com o tipo Entregador. Desde a 3.6 o
+  destinatário é uma pessoa do cadastro (escolhida nas sugestões) e a
+  retirada é feita por quem está na unidade: o destinatário ou alguém da
+  lista dele de quem pode retirar as encomendas (Pessoas › ficha ›
+  Encomendas).
 - **Chaves** (desafio extra, RF41): o administrador cadastra as chaves da
-  portaria; qualquer usuário **entrega** (nome e, se quiser, CPF de quem leva)
-  e **registra a devolução**. A mesma chave não sai duas vezes — o próprio
-  banco trava — e **Ver histórico** mostra as entregas.
+  portaria; qualquer usuário **entrega** a uma pessoa do cadastro que está
+  na unidade (3.6: CPF e nome obrigatórios, um puxa o outro),
+  **transfere** para outra pessoa que está na unidade (3.6) e **registra a
+  devolução**. A mesma chave não sai duas vezes — o próprio banco trava — e
+  **Ver histórico** mostra as entregas e as transferências. Quem vai sair
+  com uma chave devolve ou transfere antes (a saída pergunta; 3.6).
 - **Ocorrências** (desafio extra, RN49): o livro da portaria. O botão **Recado
   de turno** (RF42) deixa um aviso para quem assume: ele aparece numa faixa do
   Controle de acesso até alguém marcar como lido. **Nova ocorrência**
@@ -619,6 +641,9 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   placa"). Quem tem mais de um carro (RN47) tem a linha **Carro**, um botão
   por placa: a placa desenhada, a lista de quem pode retirar e o Desativar
   placa passam a falar do carro escolhido (o desativado fica em vermelho).
+  Desde a 3.6, a seção **Encomendas**: "Quem pode retirar as encomendas"
+  da pessoa (como a do carro, com validade; o porteiro só cadastra com a
+  pessoa na unidade) e as encomendas dela que aguardam retirada.
 - **Painel**: no campus agora, entradas de hoje, permanência média,
   **veículos no estacionamento** (com os pendentes, ou o total de visitas com
   veículo, logo abaixo) e **tempo excedido** (com as saídas pendentes logo
@@ -627,6 +652,17 @@ usa linhas mais baixas para mostrar mais visitas. Prints em
   administrador **exporta para CSV** (Excel) os registros de um período e emite
   o **Relatório para imprimir** (RF43): o resumo e as visitas do período numa
   página que o navegador imprime ou salva em PDF.
+  Desde a 3.6, o Painel tem **abas**: **Visão geral** (o que está acima),
+  **Veículos** (no estacionamento, entradas e saídas de hoje, pendentes, o
+  carro há mais tempo, saídas com autorizado; carros por tipo e entradas
+  por dia ou por hora), **Entregas** (aguardando, recebidas e retiradas
+  hoje, espera média; quem mais recebe e encomendas por dia), **Chaves**
+  (emprestadas agora, empréstimos e devoluções de hoje, a que está fora há
+  mais tempo, tempo médio fora; as mais usadas e empréstimos por dia),
+  **Ocorrências** (abertas, de hoje, no período, tempo médio até resolver,
+  a mais antiga aberta; por categoria e por dia) e **Funcionários** (dentro
+  agora, vieram hoje, permanência média, cadastrados; por setor e presença
+  por dia). Cada aba tem 7 ou 30 dias; nenhuma mostra CPF.
 - **Usuários** (administrador): **Contas** (criar em diálogo, **editar** o
   nome e o perfil, ativar/desativar, redefinir senha) com a atividade do sistema e filtro, e
   **Exceções** (V4): tudo o que passou por cima de uma regra no período —
@@ -930,6 +966,7 @@ danificado):
 | `portaria/base_dados.py` | O erro e os formatos de data que os dois arquivos do banco dividem |
 | `portaria/impressao.py` | Páginas para imprimir (autorização de entrada e relatório), abertas no navegador |
 | `portaria/consultas.py` | Busca e números do Painel (versão em Python, usada nos testes) |
+| `portaria/dados_painel.py` | Números das abas do Painel (3.6): veículos, entregas, chaves, ocorrências e funcionários |
 | `portaria/usuarios.py` | Perfis, permissões, login, troca de senha e códigos de recuperação |
 | `portaria/senhas.py` | Hash das senhas (PBKDF2), bloqueio progressivo e códigos de recuperação (sem importar o banco) |
 | `portaria/veiculos.py` | Quem pode retirar o veículo (RN35) e lotação do estacionamento (RN37) — funções puras |
@@ -944,6 +981,8 @@ danificado):
 | `portaria/tela_cadastro.py` | Cadastro: o formulário (tela 2 do enunciado) |
 | `portaria/tela_controle.py` | Controle de acesso: o Movimento, a pesquisa, as saídas e as faixas (tela 3 do enunciado) |
 | `portaria/tela_livros.py` | Chaves, Encomendas, Autorizações e Funcionários (uma base comum de página com lista) |
+| `portaria/tela_chave_saida.py` | Pergunta da saída de quem está com uma chave: devolver ou transferir (3.6) |
+| `portaria/sugestoes.py` | Sugestões de preenchimento de CPF e nome, até 3 pessoas a partir de 3 caracteres (3.6) |
 | `portaria/tela_ocorrencias.py` | Ocorrências: o livro da portaria (RN49) e o recado de turno |
 | `portaria/tela_comando.py` | Campo Comando: realce, Tab, console e modo didático (2.4) |
 | `portaria/linguagem/` | A linguagem de comandos: `lexico.py`, `gramatica.py`, `sintatico.py`, `simbolos.py`, `semantico.py`, `executor.py`, `interpretador.py`, `erros.py` |
@@ -976,6 +1015,47 @@ danificado):
 | `entrega/` | O que vai para a faculdade (Word com capa, prints, .exe) — local, fora do git |
 
 ## Versões
+
+**3.6** (18/11/2026) — **encomendas e chaves ligadas às pessoas, sugestões de
+preenchimento e painéis** (pedidos do aluno; banco v17, migrado sozinho, com
+backup antes):
+
+- **encomenda de uma pessoa do cadastro**: o destinatário é escolhido entre
+  as pessoas cadastradas (nas sugestões, ou pelo nome, se só uma pessoa tiver
+  esse nome; basta o primeiro nome se ele for único). A **retirada** só é
+  feita por quem está **na unidade** e é o destinatário ou alguém da lista
+  **"Quem pode retirar as encomendas"** dele, com validade, como no carro
+  (Pessoas › ficha › Encomendas; o porteiro só cadastra com a pessoa na
+  unidade). A encomenda de antes da 3.6 sai para quem tem o mesmo primeiro
+  nome do destinatário. O cadastro de quem tem encomenda aguardando
+  retirada não pode ser excluído;
+- **chave ligada à pessoa**: só é entregue a quem está na unidade, com CPF e
+  nome obrigatórios (o CPF puxa o nome e o nome, escolhido nas sugestões,
+  puxa o CPF). **Transferir** passa a chave para outra pessoa que está na
+  unidade (fica no histórico). **Quem vai sair com uma chave** devolve ou
+  transfere antes: a saída pergunta, e o banco recusa a saída (e a correção
+  ou exclusão da visita aberta) de quem ainda está com ela. O **Encerrar o
+  dia** não dá saída automática a quem está com uma chave (avisa quem é);
+- **mensagens de CPF**: com menos de 11 números, "Digite os 11 números";
+  com os 11, mas dígitos verificadores errados, "CPF inválido. Digite um CPF
+  existente". Na ocorrência, na chave e na encomenda o CPF também precisa
+  ser de uma pessoa cadastrada. Corrigido em todas as telas e na linguagem
+  de comandos;
+- **autorização de entrada única por CPF**: um CPF que já tem autorização
+  válida ou futura não ganha outra (para mudar o período, cancela a
+  anterior);
+- **sugestões de preenchimento**: em todo campo de CPF ou de nome, a partir
+  de 3 letras ou números aparecem até 3 pessoas do cadastro, cada vez mais
+  precisas conforme se digita (setas, Enter, Tab ou clique escolhem; Esc
+  fecha). Quem está na unidade vem primeiro; o porteiro vê o CPF mascarado;
+- **painéis**: a página Painel ganhou abas — Visão geral (a de sempre),
+  Veículos, Entregas, Chaves, Ocorrências e Funcionários, cada uma com os
+  números do dia e dois gráficos (ranking e por dia, em 7 ou 30 dias). Só
+  leitura, para os dois perfis, sem CPF;
+- **testes**: 1611 testes automatizados e 162 casos de teste; testes de
+  ataque (sequências aleatórias que conferem que ninguém fora da unidade
+  fica com chave, fuzz da linguagem, roteiro e macaco na janela de
+  verdade, que também responde à pergunta da chave) sem falhas.
 
 **3.5** (17/11/2026) — **entregador, histórico do carro e Aparência** (pedidos
 do aluno; banco v16, migrado sozinho, com backup antes):
